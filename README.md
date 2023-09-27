@@ -16,7 +16,7 @@ $ ./main 0 a e M w R
 
 "a, e, M, w" son los elementos orbitales.
 
-R es opcional.
+R es opcional. En caso de usarlo, calcula y reemplaza el valor de a.
 
 PARALELO: (Recordar estar en algún entorno)
 En este caso se debe tener un archivo con los datos de las partículas. La info está al inicio del archivo [parallel.py](./parallel.py#L3#L30))
