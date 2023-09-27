@@ -10,7 +10,7 @@ $ gfortran -O3 const.F90 run.F90 parameters.F90 integrators.F90 stokes.F90 gravi
 
 PARTÍCULA INDIVIDUAL: 
 ``` console
-$ main 0 a e M w R
+$ ./main 0 a e M w R
 ```
 0 (o cualquier otro "int") es obligatorio
 
