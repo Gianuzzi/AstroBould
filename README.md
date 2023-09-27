@@ -13,7 +13,9 @@ PARTÍCULA INDIVIDUAL:
 $ main 0 a e M w R
 ```
 0 (o cualquier otro "int") es obligatorio
+
 "a, e, M, w" son los elementos orbitales.
+
 R es opcional.
 
 PARALELO: (Recordar estar en algún entorno)
