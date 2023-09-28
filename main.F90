@@ -200,9 +200,9 @@ program main
     r_b(0)     = sqrt(rib(0,1)*rib(0,1) + rib(0,2)*rib(0,2))
     theta_b(0) = atan2(rib(0,2), rib(0,1))
     do i = 1, Nboul
-        rib(i,:)   = ria(1,:) - rcm
-        vib(i,:)   = via(1,:) - vcm
-        aib(i,:)   = aia(1,:) - acm
+        rib(i,:)   = ria(i,:) - rcm
+        vib(i,:)   = via(i,:) - vcm
+        aib(i,:)   = aia(i,:) - acm
         r_b(i)     = sqrt(rib(i,1)*rib(i,1) + rib(i,2)*rib(i,2))
         theta_b(i) = atan2(rib(i,2), rib(i,1))
     end do
