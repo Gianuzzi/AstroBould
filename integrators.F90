@@ -9,7 +9,7 @@ module integrators
 
     ! For adaptive step and implicit (might be overwritten)
     integer(kind=4)         :: MAX_N_ITER = 100
-    real(kind=8), parameter :: MAX_DT_FAC = 5.0d0, SAFE_LOW = 2.2204d-35
+    real(kind=8), parameter :: MAX_DT_FAC = 5.0d0, SAFE_LOW = 1.d-25
     real(kind=8)            :: BETA = 0.9d0, E_TOL = 1.d-13
 
     ! Aux Constants
@@ -1246,23 +1246,24 @@ module integrators
         !        Bulirsch_Stoer
         !---------------------------------
         
-        subroutine BStoer_caller (t, y, dt_adap, dydt, e_tol, dt_min, dt, ynew)
+        subroutine BStoer_caller (t, y, dt_adap, dydt, e_tol, dt, ynew) !, dt_min
             implicit none
-            real(kind=8), intent(in)                       :: t, e_tol, dt_min, dt
+            real(kind=8), intent(in)                       :: t, e_tol, dt!, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(size (y))              :: yaux
-            real(kind=8)                                   :: time, t_end, dtmin, dtused
+            real(kind=8)                                   :: time, t_end, dtused! , dtmin
 
             ynew  = y
             time  = t
             t_end = time + dt
-            dtmin = min (dt_min, dt)
+            ! dtmin = min (dt_min, dt)
             do while (time < t_end)
                 yaux  = ynew
-                dt_adap = min(max(dt_adap, dt_min), t_end - time)
+                dt_adap = min(dt_adap, t_end - time)
+                ! dt_adap = min(max(dt_adap, dt_min), t_end - time)
                 ! if ((time + dt_adap) > (t_end - C1_2 * dt_min)) dt_adap = t_end - time
                 call Bulirsch_Stoer (time, yaux, dt_adap, dydt, e_tol, dtused, ynew)
                 time = time + dtused
@@ -1322,7 +1323,7 @@ module integrators
             der = dydt (x, y)
             yscal = abs (y) + abs (htry * der) + SAFE_LOW
 
-            if (abs(eps - epsold) .gt. E_TOL) then !E_TOL? ! A new tolerance, so reinitialize.
+            if (abs(eps - epsold) .gt. SAFE_LOW) then !E_TOL? ! A new tolerance, so reinitialize.
                 hnext = -1.0d29 ! “Impossible” values.
                 xnew  = -1.0d29
                 eps1  = safe1 * eps
@@ -1344,7 +1345,7 @@ module integrators
             end if
             h = htry
             ysav = y
-            if ((abs(h - hnext) .gt. E_TOL) .or. (abs(x - xnew) .gt. E_TOL)) then !E_TOL? ! A new stepsize or a new integration: Reestablish the order window.
+            if ((abs(h - hnext) .gt. SAFE_LOW) .or. (abs(x - xnew) .gt. SAFE_LOW)) then !E_TOL? ! A new stepsize or a new integration: Reestablish the order window.
                 first = .true.
                 kopt = kmax
             end if
@@ -1485,23 +1486,24 @@ module integrators
         !        Bulirsch_Stoer2
         !---------------------------------
 
-        subroutine BStoer_caller2 (t, y, dt_adap, dydt, e_tol, dt_min, dt, ynew)
+        subroutine BStoer_caller2 (t, y, dt_adap, dydt, e_tol, dt, ynew) !,dt_min
             implicit none
-            real(kind=8), intent(in)                       :: t, e_tol, dt_min, dt
+            real(kind=8), intent(in)                       :: t, e_tol, dt!, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(size (y))              :: yaux
-            real(kind=8)                                   :: time, t_end, dtmin, dtused
+            real(kind=8)                                   :: time, t_end, dtused!, dtmin
 
             ynew  = y
             time  = t
             t_end = time + dt
-            dtmin = min (dt_min, dt)
+            ! dtmin = min (dt_min, dt)
             do while (time < t_end)
                 yaux  = ynew
-                dt_adap = min(max(dt_adap, dt_min), t_end - time)
+                ! dt_adap = min(max(dt_adap, dt_min), t_end - time)
+                dt_adap = min(dt_adap, t_end - time)
                 call Bulirsch_Stoer2 (time, yaux, dt_adap, dydt, e_tol, dtused, ynew)
                 time = time + dtused
             end do
@@ -1530,7 +1532,6 @@ module integrators
             real(kind=8), intent(in)    :: htry, t, eps
             real(kind=8), intent(inout) :: y(:)
             real(kind=8), intent(out)   :: hdid, hnext
-            
             real(kind=8), parameter :: SHRINK = 0.55d0
             real(kind=8), parameter :: GROW   = 1.3d0
             real(kind=8) :: der(sizex*4), dt, tt
@@ -1661,7 +1662,6 @@ module integrators
                     procedure(dydt_tem)                          :: dydt
                     real(kind=8), dimension(2,sizex), intent(in) :: x, v
                     real(kind=8), dimension(2,sizex)             :: a
-
                     real(kind=8), dimension(sizex*4) :: y, der
                     integer(kind=4)                  :: i
                     do i = 1, sizex

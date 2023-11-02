@@ -21,7 +21,7 @@ module parameters
     real(kind=8) :: theta_a(Nboul), theta_acm
     real(kind=8) :: r_b(0:Nboul), theta_b(0:Nboul)
     real(kind=8) :: omega, wk, lambda, R0, Prot, a_corot
-    real(kind=8) :: omega2, lambda2, fac_omega=uno, rmax=inf
+    real(kind=8) :: omega2, lambda2, fac_omega=uno, rmax=inf, rmin=cero
 
 
     contains

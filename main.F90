@@ -101,17 +101,17 @@ program main
     !!! Parámetros corrida
     t0       = cero            ! Initial time [Prot]
     tf       = 5.d3            ! Final time [Prot]
-    dt_min   = 1.d-3           ! Min timestep [Prot] ! Almost unused
+    dt_min   = cero            ! Min timestep [Prot] ! Almost unused
     logsp    = .FALSE.         ! LogSpaced outputs
     n_points = 100             ! Number of outputs (if logsp=.TRUE. or dt_out=0)
-    dt_out   = 1.d-1            ! Output timestep [Prot] (if logsp = .False.)
+    dt_out   = 1.d-1           ! Output timestep [Prot] (if logsp = .False.)
     beta     = 0.85d0          ! [For adaptive step integrators] Learning rate
     e_tol    = 1.d-11          ! [For adaptive step integrators] Relative error
     rmax     = 1.d2*radius(0)  ! Max distance before escape [km]
     
 
     !! Default
-    !!! Output ()"" or "no", if not used)
+    !!! Output ()"" or "no", if not used
     infofile  = ""
     datafile  = ""
     chaosfile = "chaos.dat"
@@ -298,6 +298,7 @@ program main
     !!!! Radio
     radius = radius * unit_r ! Unidades según G
     R0 = radius(0)
+    rmin = R0 + maxval(radius(1:)) ! Distancia mínima antes de impacto [km]
 
     !!!! Masas
     do i = 1, Nboul
@@ -458,12 +459,12 @@ program main
     
 
     !!!! Set times
-    t0 = t0 * Prot ; tf = tf * Prot ; dt_out = dt_out * Prot
+    t0 = t0 * Prot ; tf = tf * Prot ; dt_out = dt_out * Prot ; dt_min = dt_min * Prot
     call get_t_outs (t0, tf, n_points, dt_out, logsp, t_out) ! Get LOOP checkpoints
     t       = t0                                             ! Init time
-    dt_adap = dt_min                                         ! For adaptive step
     dt      = t_out(1) - t0                                  ! This should be == 0
-    dt_min  = min(dt_min * Prot, dt_out)
+    dt_min  = max(min(dt_min, dt_out), tini)                 ! Min timestep (almost unused)
+    dt_adap = dt_min                                         ! For adaptive step
 
     if (screen) write(*,*) "    t0 [Prot]: ", t0/Prot, " tf [Prot]: ", tf/Prot, " dt_out [Prot]: ", dt_out/Prot, &
         &" dt_min [Prot]: ", dt_min/Prot, "n_points: ", n_points
@@ -527,7 +528,7 @@ program main
     do j = 2, n_points ! From 2 because 1 is the IC (t0)
         ra  = rb + rcm
         da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
-        if (da0 < R0) then
+        if (da0 < rmin) then
             if (screen) write(*,*) ACHAR(10) // "Impacto en t = ", t
             bad = 1
             exit
@@ -544,8 +545,8 @@ program main
         ! call integ_caller (t, yb, dt_adap, dydt, Runge_Kutta4, dt, ybnew)
         ! call rk_half_step_caller (t, yb, dt_adap, dydt, Runge_Kutta5, 5, e_tol, beta, dt_min, dt, ybnew)
         ! call embedded_caller (t, yb, dt_adap, dydt, Dormand_Prince8_7, e_tol, beta, dt_min, dt, ybnew)
-        call BStoer_caller (t, yb, dt_adap, dydt, e_tol, dt_min, dt, ybnew)
-        ! call BStoer_caller2 (t, yb, dt_adap, dydt, e_tol, dt_min, dt, ybnew)
+        call BStoer_caller (t, yb, dt_adap, dydt, e_tol, dt, ybnew)
+        !!! call BStoer_caller2 (t, yb, dt_adap, dydt, e_tol, dt, ybnew) !! Este no sirve para este caso
         
         ! Update parameters
         t  = t + dt

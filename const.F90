@@ -11,7 +11,7 @@ module const
     real(kind=8), parameter :: rad    = twopi/360.0d0
     real(kind=8), parameter :: inf    = 1.0d30        ! Infinito
     real(kind=8), parameter :: eps    = 1.0d-13       ! Precisión / Error [Usado en elem y coord]
-    real(kind=8), parameter :: tini   = 2.2204d-16
+    real(kind=8), parameter :: tini   = 1.d-25
     real(kind=8), parameter :: unit_m = 1.d-15 ! [Kg]
     real(kind=8), parameter :: unit_r = 1.d0   ! [Km]
     real(kind=8), parameter :: unit_t = 1.d0   ! [Dia]
