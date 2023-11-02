@@ -36,10 +36,11 @@ from concurrent.futures import ProcessPoolExecutor as PPE
 particles = "fort.67"     # Nombre del archivo de partículas
 program = "main"          # Nombre del ejecutable
 chaosfile = "chaos.dat"   # Nombre de cada archivo de caos (chaosfile en el programa)
-datafile = "" # Nombre de cada archivo de salida (datafile en el programa)  ["" si no se usa]
-workers = 120             # Número de workers
+datafile = ""   # Nombre de cada archivo de salida (datafile en el programa)  ["" si no se usa]
+workers = 5               # Número de procesadores a usar (workers)
 suffix = ""               # Suffix for the output files
 outfile = "sump.out"      # Output file name
+exact   = False           # Método: Exacto (cos, sin), o NO exacto (integra boulders y m0)
 
 
 # Iniciamos
@@ -69,6 +70,11 @@ for i in range(nsys):
     lines[i] = lines[i].replace("e", "d")
 
 # Función general
+args = "--noinfo --noscreen --nomap --nodatascr --noperc"
+args += "%s"%(" -chaosfile %s"%chaosfile if chaosfile else "")
+args += "%s"%(" -datafile %s"%datafile if datafile else "")
+args += "%s"%(" --exact" if exact else " --noexact")
+
 def integrate_n(i):
     # Get processor ID
     PID = os.getpid()
@@ -78,8 +84,9 @@ def integrate_n(i):
         subprocess.run(["mkdir", dirp], check=True)
         p = subprocess.run(["cp", oprogr, nprogr], check=True)
     print("Running system %d\n"%(i))
-    # print("./%s"%program, "%d"%i, "%s"%lines[i]) ## ESTO SE ESTÁ EJECUTANDO EN LA SHELL
-    p = subprocess.run(["./%s %d %s"%(program,i,lines[i])],
+    ### ESTO SE ESTÁ EJECUTANDO EN LA SHELL
+    # print("Running: ./%s %s %d %s"%(program, args, i, lines[i]))
+    p = subprocess.run(["./%s %s %d %s"%(program, args, i, lines[i])],
                          cwd=dirp, check=True, shell=True)
     subprocess.run(["mv", "-f",
                     os.path.join(dirp, chaosfile),

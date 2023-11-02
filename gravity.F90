@@ -55,32 +55,32 @@ module gravity
             implicit none
             real(kind=8), intent(in)  :: m(0:Nboul), rb(2), rib(0:Nboul,2)
             real(kind=8), intent(out) :: ab(2)
-            real(kind=8) :: d, Gmi(0:Nboul)
+            real(kind=8) :: d 
             integer(kind=4) :: i
-            Gmi = G * m
             ab  = cero
             do i = 0, Nboul
                 d = sqrt((rb(1)-rib(i,1))**2 + (rb(2)-rib(i,2))**2)
-                ab = ab - Gmi(i) * (rb - rib(i,:)) / (d*d*d)
+                ab = ab - m(i) * (rb - rib(i,:)) / (d*d*d)
             end do
+            ab = ab * G
         end subroutine accbar
 
         subroutine accast(omega,m,ra,ria,aa)
             implicit none
             real(kind=8), intent(in)  :: m(0:Nboul), ra(2), ria(1:Nboul,2), omega
             real(kind=8), intent(out) :: aa(2)
-            real(kind=8) :: d, Gmi(0:Nboul), omega2, mucm(1:Nboul)
+            real(kind=8) :: d, omega2, mucm(1:Nboul)
             integer(kind=4) :: i
-            Gmi    = G * m
             mucm   = m(1:Nboul) / m(0)
             omega2 = omega * omega
             d      = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
-            aa     = - Gmi(0) * ra / (d*d*d)
+            aa     = - m(0) * ra / (d*d*d)
             ! aa = cero
             do i = 1, Nboul
                 d = sqrt((ra(1)-ria(i,1))**2 + (ra(2)-ria(i,2))**2)
-                aa = aa - Gmi(i) * (ra - ria(i,:)) / (d*d*d) - omega2 * mucm(i) * ria(i,:) ! - w^2 * rcm
+                aa = aa - m(i) * (ra - ria(i,:)) / (d*d*d) - omega2 * mucm(i) * ria(i,:) ! - w^2 * rcm
             end do
+            aa = aa * G
         end subroutine accast
 
         subroutine accrot(omega,m,rr,vr,ria,ar)

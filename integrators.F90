@@ -9,8 +9,8 @@ module integrators
 
     ! For adaptive step and implicit (might be overwritten)
     integer(kind=4)         :: MAX_N_ITER = 100
-    real(kind=8), parameter :: MAX_DT_FAC = 5.0d0, SAFE_LOW = 2.2204d-16
-    real(kind=8)            :: BETA = 0.9d0, E_TOL = 1d-13
+    real(kind=8), parameter :: MAX_DT_FAC = 5.0d0, SAFE_LOW = 2.2204d-35
+    real(kind=8)            :: BETA = 0.9d0, E_TOL = 1.d-13
 
     ! Aux Constants
     real(kind=8), parameter :: ZERO   = 0.0d0
@@ -1263,6 +1263,7 @@ module integrators
             do while (time < t_end)
                 yaux  = ynew
                 dt_adap = min(max(dt_adap, dt_min), t_end - time)
+                ! if ((time + dt_adap) > (t_end - C1_2 * dt_min)) dt_adap = t_end - time
                 call Bulirsch_Stoer (time, yaux, dt_adap, dydt, e_tol, dtused, ynew)
                 time = time + dtused
             end do
@@ -1309,7 +1310,7 @@ module integrators
             real(kind=8), dimension(imax), save         :: arr ! a in NR F90
             real(kind=8), save                          :: xnew, epsold = -1.d0
             real(kind=8)                   :: eps1, errmax, fact, h, red, scala, wrkmin, xest
-            real(kind=8), dimension(sizey) :: yerr, ysav, yseq, der
+            real(kind=8), dimension(sizey) :: yerr, ysav, yseq, der, yscal
             logical       :: reduct
             logical, save :: first = .true.
 
@@ -1319,6 +1320,7 @@ module integrators
             integer(kind=4) :: k, iq, i ,km, kk
 
             der = dydt (x, y)
+            yscal = abs (y) + abs (htry * der) + SAFE_LOW
 
             if (abs(eps - epsold) .gt. E_TOL) then !E_TOL? ! A new tolerance, so reinitialize.
                 hnext = -1.0d29 ! “Impossible” values.
@@ -1341,9 +1343,7 @@ module integrators
                 kmax = kopt
             end if
             h = htry
-            do i = 1, sizey
-                ysav(i) = y(i)
-            end do
+            ysav = y
             if ((abs(h - hnext) .gt. E_TOL) .or. (abs(x - xnew) .gt. E_TOL)) then !E_TOL? ! A new stepsize or a new integration: Reestablish the order window.
                 first = .true.
                 kopt = kmax
@@ -1357,12 +1357,13 @@ module integrators
                         return
                     end if
                     call mmid (ysav, der, sizey, x, h, nseq(k), yseq, dydt)
+                    yscal = abs (y) + abs (h * der) + SAFE_LOW
                     xest = (h / nseq(k))**2 ! Squared, since error series is even.
                     call pzextr (k, xest, yseq, y, yerr, sizey, qcolpz, xpz) ! Perform extrapolation.
                     if (k .ne. 1) then ! Compute normalized error estimate eps(k).
                         errmax = tini
                         do i = 1, sizey
-                            errmax = max (errmax, abs(yerr(i))) ! FALTA SCALADO?
+                            errmax = max (errmax, abs(yerr(i)/yscal(i))) ! FALTA SCALADO? !! Ya no?
                         end do
                         errmax = errmax / eps
                         km = k - 1
@@ -1427,10 +1428,8 @@ module integrators
             integer(kind=4) :: i, n 
 
             h  = htot / (nstep * ONE) ! Stepsize this trip.
-            do i = 1, sizey
-                ym(i) = y(i)
-                yn(i) = y(i) + h * dydx(i) ! First step.
-            end do
+            ym = y
+            yn = y + h * dydx ! First step.
             x  = xs + h
             yout = dydt(x, yn) ! Will use yout for temporary storage of derivatives.
             h2 = TWO * h
@@ -1443,9 +1442,7 @@ module integrators
                 x = x + h
                 yout = dydt(x, yn)
             end do
-            do i = 1, sizey
-                yout(i) = C1_2 * (ym(i) + yn(i) + h * yout(i)) ! Last step.
-            end do
+            yout = C1_2 * (ym + yn + h * yout) ! Last step.
         end subroutine mmid
 
         subroutine pzextr (iest, xest, yest, yz, dy, sizey, qcol, x)
@@ -1461,18 +1458,12 @@ module integrators
             real(kind=8)    :: delta, f1, f2, q
 
             x(iest) = xest  ! Save current independent variable.
-            do j = 1, sizey
-                dy(j) = yest(j)
-                yz(j) = yest(j)
-            end do
+            dy = yest
+            yz = yest
             if (iest .eq. 1) then  ! Store ﬁrst estimate in ﬁrst column.
-                do j = 1, sizey
-                    qcol(j, 1) = yest(j)
-                end do
+                qcol(:, 1) = yest(:)
             else
-                do j = 1, sizey
-                    d(j) = yest(j)
-                end do
+                d = yest
                 do k1 = 1, iest - 1
                     delta = ONE / (x(iest - k1) - xest)
                     f1 = xest * delta
@@ -1486,9 +1477,7 @@ module integrators
                         yz(j) = yz(j) + dy(j)
                     end do  
                 end do
-                do j = 1, sizey
-                    qcol(j, iest) = dy(j)
-                end do
+                qcol(:, iest) = dy(:)
             end if
         end subroutine pzextr
 

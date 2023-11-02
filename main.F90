@@ -1,6 +1,6 @@
 !!! Versión 5.0
 !!! Compilación:
-!! gfortran -O3 const.F90 run.F90 parameters.F90 integrators.F90 stokes.F90 gravity.F90 derivates.F90 main.F90 -o main
+!!! gfortran -O2 const.F90 run.F90 parameters.F90 integrators.F90 stokes.F90 gravity.F90 derivates.F90 main.F90 -o main
 
 module init
     use run
@@ -12,46 +12,55 @@ module init
     integer(kind=4) :: i, j, nin, nsim, bad, ineqs
     integer(kind=4) :: ngx, ngy 
     real(kind=8)    :: xmin, xmax, ymin, ymax 
-    character(30)   :: chn, cha, che, chM, chw, chR, datafile, chaosfile, infofile
-    character(2)    :: auxch
-    logical         :: auxlo
-    character(1)    :: ref
-    logical         :: screen, perc
-    logical         :: map_pot, datao, chaos
+    character(30)   :: chn, cha, che, chM, chw, chR, datafile, chaosfile, infofile, map_file
+    integer(kind=4) :: auxin
+    character(30)   :: auxch
+    character(1)    :: auxch1
+    character(2)    :: auxch2
+    logical         :: auxlo, is_number
+    logical         :: screen, perc, datas, eleout
+    logical         :: map_pot, infoo, datao, chaos
     logical         :: exact
     real(kind=8)    :: ang_mom
 
     contains
 
         subroutine init_vars()
-            !!! Inicializamos
-            nsim = 0   ; bad = 0
-            m = cero   ; mu = cero  ; GM = cero  ; mcm = cero ; Gm = cero ; mucm = cero
+            !!! Inicializamos (Variables default)
+            nsim = 0    ; bad = 0
+            m    = cero ; mu  = cero ; GM = cero ; mcm = cero ; Gm = cero
+            mucm = cero
             radius = cero
             rib = cero ; ria = cero ; rcm = cero
             vib = cero ; via = cero ; vcm = cero
             aib = cero ; aia = cero ; acm = cero
             rb = cero  ; vb = cero  ; ab = cero
             ra = cero  ; va = cero  ; aa = cero
-            rr = cero  ; vr = cero  ; ar = cero
             Prot = uno ; R0 = uno   ; theta_a = cero ; lambda = cero
             r_b = cero ; theta_b = cero
             omega = cero ; wk = cero   ; lambda2 = cero ; omega2 = cero 
-            yb = cero ; ybnew = cero ; ya = cero ; yanew = cero ; yr = cero ; yrnew = cero
-            xc = cero    ; xe = cero   ; xc0 = cero  ; xe0 = cero   ; Res0 = cero
-            ea = cero    ; ee = cero   ; ei = cero   ; eM = cero    ; ew = cero   ; eO = cero  ; eR = cero
-            da = cero    ; de = cero   ; amax = cero ; amin = inf   ; emax = cero ; emin = inf
+            yb = cero ; ybnew = cero ; ya = cero ; yanew = cero
+            xc = cero ; xe = cero  ; xc0 = cero  ; xe0 = cero
+            Res0 = cero
+            ea = cero ; ee = cero  ; ei = cero   ; eM = cero 
+            ew = cero ; eO = cero  ; eR = cero
+            da = cero ; de = cero  ; amax = cero ; amin = inf
+            emax = cero ; emin = inf
             tau_a = inf  ; tau_e = inf ; t_stokes = cero
-            t0 = cero    ; tf = cero   ; dt_min = cero ; dt_out = cero ; n_points = 1 ; logsp = .FALSE.
+            t0 = cero    ; tf = cero   ; dt_min = cero
+            dt_out = cero ; n_points = 1
+            logsp = .FALSE.
             beta = 0.9d0 ; e_tol = 1.d-12
-            ref = "b"
             ngx = 500   ; ngy = 500
             xmin = -300 ; xmax = 300 ; ymin = -300 ; ymax = 300
-            screen = .False. ; perc = .False.
-            map_pot = .False.
-            datao = .False.
-            chaos = .True.
-            exact = .True.
+            screen  = .False. ; perc = .False. !Pantalla, porcentaje
+            map_pot = .False. ! Mapa de potencial
+            infoo   = .False. ! Archivo de info
+            datao   = .False. ! Archivo de datos
+            chaos   = .True.  ! Archivo de caos
+            exact   = .True.  ! Método exacto
+            datas   = .False. ! Salida de datos en pantalla
+            eleout  = .False. ! Salida en elementos orbitales 
         end subroutine init_vars
 
 end module init
@@ -63,75 +72,227 @@ program main
     use derivates ! Incluye const, gravity, extern
 
     implicit none
-    ! integer(kind=4) :: i, j, nin, nsim, bad, ineqs
-    ! integer(kind=4) :: ngx = 500, ngy = 500
-    ! real(kind=8)    :: xmin = -300, xmax = 300, ymin = -300, ymax = 300
-    ! character(30) :: chn, cha, che, chM, chw, chR, datafile, chaosfile, infofile
-    ! character(2)  :: auxch
-    ! logical       :: auxlo
-    ! character(1)  :: ref
-    ! logical, parameter :: screen = .True., perc = .False.
-    ! logical, parameter :: map_pot = .False., data = .True., chaos = .True.
-    ! logical, parameter :: exact = .False.
-    ! real(kind=8) :: ang_mom
 
-    call init_vars()
-    
-    nin = command_argument_count()
-    if (nin > 0) then 
-        if((nin < 5) .or. (nin > 6)) then
-            write(*,*) "Error: Se requieren 5 o 6 argumentos de línea de comandos. Saliendo."
-            stop 1
-        end if
-    else
-        if (screen) print*, "Se utilizan los parámetros del código."
-    end if
-
+    call init_vars() ! Inicializamos variables
+ 
     !!! Definir parámetros:
-    m(0)       = 6.3d18            ! Masa del cuerpo 0 [kg]
-    mu(1)      = 1.d-7             ! Cociente de masas
-    ! mu(2)      = 1.d-6             ! Cociente de masas
-    ! mu(3)      = 1.d-4             ! Cociente de masas
-    ! mu(4)      = 1.d-7             ! Cociente de masas
-    theta_a(1) = cero              ! Ángulo de rotación [rad]
-    ! theta_a(2) = cero              ! Ángulo de rotación [rad]
-    ! theta_a(3) = pi * uno3         ! Ángulo de rotación [rad]
-    ! theta_a(4) = 250 * rad         ! Ángulo de rotación [rad]
-    radius(0)  = 129.d0            ! Radio del cuerpo 0 [km]
-    radius(1)  = 2.5d0             ! Radio del boulder 1 [km]
-    ! radius(2)  = 2.5d0             ! Radio del boulder 2 [km]
-    ! radius(3)  = 2.5d0             ! Radio del boulder 3 [km]
-    ! Prot       = 7.004d0 / 24.d0   ! Periodo de rotación de los cuerpos [days]
-    lambda     = 0.471d0           ! Cociente spin/wk
+    m(0)       = 6.3d18       ! Masa del cuerpo 0 [kg]
+    mu(1)      = 1.d-7        ! Cociente de masas
+    mu(2)      = 1.d-6        ! Cociente de masas
+    mu(3)      = 1.d-4        ! Cociente de masas
+    ! mu(4)      = 1.d-7        ! Cociente de masas
+    theta_a(1) = cero         ! Ángulo de fase respecto del origen angular [rad]
+    theta_a(2) = pi           ! Ángulo de fase [rad]
+    theta_a(3) = pi * uno3    ! Ángulo de fase [rad]
+    ! theta_a(4) = 250 * rad    ! Ángulo de fase [rad]
+    radius(0)  = 129.d0       ! Radio del cuerpo 0 [km]
+    radius(1)  = 2.5d0        ! Radio del boulder 1 [km]
+    radius(2)  = 1.5d0        ! Radio del boulder 2 [km]
+    radius(3)  = 3.5d0        ! Radio del boulder 3 [km]
+    ! radius(4)  = 2.5d0        ! Radio del boulder 3 [km]
+    ! Prot       = 7.004d0/24.d0  ! Periodo de rotación de los cuerpos [days]
+    lambda     = 0.471d0      ! Cociente spin/wk
 
     !!!! Stokes
     tau_a = inf           ! [Prot]
     tau_e = tau_a / 1.d2  ! [Prot]
-    t_stokes = cero       ! [Prot]
+    t_stokes = cero       ! [Prot] Tiempo que actua stokes
 
     !!! Parámetros corrida
-    ref      = "b"               ! "b"aricentric, "a"strocentric, "r"otating
-    t0       = cero              ! Initial time [Prot]
-    tf       = 1.d2              ! Final time [Prot]
-    dt_min   = 1.d-5             ! Min timestep [Prot]
-    logsp    = .FALSE.           ! LogSpaced outputs
-    n_points = 1000            ! Number of outputs (unused if logsp = .False. and dt_out > 0)
-    dt_out   = 1.d-2             ! Output timestep [Prot] (used to calculate n_points if logsp = .False.)
-    beta     = 0.85d0            ! [For adaptive step integrators] Learning rate
-    e_tol    = 1.d-11            ! [For adaptive step integrators] Relative error tolerance
-    rmax     = 1.d2 * radius(0)  ! Max distance before escape [km]
+    t0       = cero            ! Initial time [Prot]
+    tf       = 5.d3            ! Final time [Prot]
+    dt_min   = 1.d-3           ! Min timestep [Prot] ! Almost unused
+    logsp    = .FALSE.         ! LogSpaced outputs
+    n_points = 100             ! Number of outputs (if logsp=.TRUE. or dt_out=0)
+    dt_out   = 1.d-1            ! Output timestep [Prot] (if logsp = .False.)
+    beta     = 0.85d0          ! [For adaptive step integrators] Learning rate
+    e_tol    = 1.d-11          ! [For adaptive step integrators] Relative error
+    rmax     = 1.d2*radius(0)  ! Max distance before escape [km]
+    
 
-    !!! Default
+    !! Default
+    !!! Output ()"" or "no", if not used)
     infofile  = ""
-    datafile  = "salida.dat"
+    datafile  = ""
     chaosfile = "chaos.dat"
-    ea = 1.d1 * radius(0)
-    ee = cero !0.1d0
-    eM = cero
-    ew = cero
-    eR = 2.4d0 !1.001d0 !3.3d0
+    map_file  = ""
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!! Particle elements
+    ea = cero                  ! Element a of the particle
+    ee = cero !0.1d0           ! ecc
+    eM = cero                  ! Mean anomaly
+    ew = cero                  ! Pericenter argument
+    eR = cero !1.001d0 !3.3d0  ! resonancia nominal correspondiente
+
+    
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     !Leemos de la línea de comandos
+    nin = command_argument_count()
+    !!!!! PARTÍCULA (en caso de entrada por terminal)
+    auxlo = .False.
+    auxin = 0
+    if (nin > 0) then
+        do i = 1, nin
+            if (auxin /= 0) then
+                auxin = auxin - 1
+                cycle
+            end if
+            call get_command_argument(i, auxch)
+            select case (trim(auxch))
+            case ("--nodata")
+                datao    = .False.
+                datafile = ""
+            case ("-datafile")
+                datao    = .True.
+                call get_command_argument(i+1, datafile)
+                auxin = 1
+            case ("--noinfo")
+                infoo    = .False.
+                infofile = ""
+            case ("-infofile")
+                infoo    = .True.
+                call get_command_argument(i+1, infofile)
+                auxin = 1
+            case ("--nochaos")
+                chaos    = .False.
+                chaosfile = ""
+            case ("-chaosfile")
+                chaos    = .True.
+                call get_command_argument(i+1, chaosfile)
+                auxin = 1
+            case ("--screen")
+                screen = .True.
+            case ("--noscreen")
+                screen = .False.
+            case ("--perc")
+                perc = .True.
+            case ( "--noperc")
+                perc = .False.
+            case ("--datascr")
+                datas = .True.
+            case ( "--nodatascr")
+                datas = .False.
+            case ("--nomap")
+                map_pot  = .False.
+                map_file = ""
+            case ("-mapfile")
+                map_pot  = .True.
+                call get_command_argument(i+1, map_file)
+                auxin = 1
+            case ("--noexact")
+                exact = .False.
+            case ("--exact")
+                exact = .True.
+            case ("--elem")
+                eleout = .True.
+            case ("--noelem")
+                eleout = .True.
+            case ("--help")
+                call get_command_argument(0, auxch)
+                write(*,*) "Uso: " // trim(auxch) // " [nsim] [ea] [ee] [eM] [ew] [eR]"
+                write(*,*) "    nsim: Número de simulación"
+                write(*,*) "    ea  : Elemento a de la partícula"
+                write(*,*) "    ee  : Elemento e de la partícula"
+                write(*,*) "    eM  : Elemento M de la partícula"
+                write(*,*) "    ew  : Elemento w de la partícula"
+                write(*,*) "    eR  : Elemento R de la partícula"
+                write(*,*) "    --nodata   : No guardar datos"
+                write(*,*) "    -datafile  : Guardar datos en el archivo que sigue"
+                write(*,*) "    --noinfo   : No guardar información"
+                write(*,*) "    -infofile  : Guardar información en el archivo que sigue"
+                write(*,*) "    --nochaos  : No guardar caos"
+                write(*,*) "    -chaosfile : Guardar caos en el archivo que sigue"
+                write(*,*) "    --screen   : Imprimir información en pantalla"
+                write(*,*) "    --noscreen : No imprimir en pantalla"
+                write(*,*) "    --perc     : Imprimir porcentaje de integración"
+                write(*,*) "    --noperc   : No imprimir porcentaje de integración"
+                write(*,*) "    --datascr  : Imprimir datos en pantalla"
+                write(*,*) "    --nodatascr: No imprimir datos en pantalla"
+                write(*,*) "    --nomap    : No guardar mapas de potencial"
+                write(*,*) "    -mapfile   : Guardar mapas de potencial en el archivo que sigue"
+                write(*,*) "    --noexact  : No usar método exacto"
+                write(*,*) "    --exact    : Usar método exacto"
+                write(*,*) "    --elem     : Imprimir elementos orbitales (solo partícula)"
+                write(*,*) "    --noelem   : Imprimir coordenadas baricéntricas"
+                stop 0
+            case default
+                is_number = .False.
+                call get_command_argument(i, auxch)
+                do j = 0, 9
+                    if (auxch(1:1) == char(48 + j)) then !check if it's a number
+                        is_number = .True.
+                        exit
+                    end if
+                end do
+                if (.not. is_number) then ! No es un número
+                    write(*, '(A, I0, A, A)') "Error: No se reconoce el argumento ", i, ": ", trim(auxch)
+                    call get_command_argument(0, auxch)
+                    write(*,*) "Para ayuda, ejecute: ", trim(auxch), " --help"
+                    write(*,*) "Saliendo."
+                    stop 1
+                end if
+                if (.not. auxlo)  then! No leí los parámetros aún
+                    if (nin < i+4) then
+                        write(*,*) "Error: Error al intentar leer 'nsim'."
+                        write(*,*) "Se requieren al menos 5 argumentos más de línea de comandos"
+                        write(*,*) "Saliendo."
+                        stop 1
+                    else ! Leo los argumentos numéricos
+                        call get_command_argument(i, chn)
+                        read(chn,*) nsim
+                        call get_command_argument(i+1, cha)
+                        read(cha,*) ea
+                        call get_command_argument(i+2, che)
+                        read(che,*) ee
+                        call get_command_argument(i+3, chM)
+                        read(chM,*) eM
+                        call get_command_argument(i+4, chw)
+                        read(chw,*) ew
+                        auxin = 4
+                        auxlo = .True.
+                        eR = cero
+                    end if
+                else ! Ya leí los numéricos. Falta leer eR
+                    call get_command_argument(i, chR)
+                    read(chR,*) eR
+                end if
+            end select
+        end do
+    else
+        print*, "WARNING: Se utilizan los parámetros del código."
+    end if
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!    OUTPUT     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    if ((trim(infofile) /= "") .and. (trim(infofile) /= "no")) then
+        infoo = .True.
+    else 
+        infoo = .False.
+    end if
+    if ((trim(datafile) /= "") .and. (trim(datafile) /= "no")) then
+        datao = .True.
+    else 
+        datao = .False.
+    end if
+    if ((trim(chaosfile) /= "") .and. (trim(chaosfile) /= "no")) then
+        chaos = .True.
+    else 
+        chaos = .False.
+    end if
+    if ((trim(map_file) /= "") .and. (trim(map_file) /= "no")) then
+        map_pot = .True.
+    else 
+        map_pot = .False.
+    end if
+
+    if (.not. any((/screen, datao, chaos, map_pot/))) then ! No tiene sentido hacer nada
+        write(*,*)  "EXITING: No se guardará ni imprimirá ninguna salida."
+        stop 1
+    end if
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
     !!! Calcular variables:
     !!!! Radio
@@ -216,53 +377,23 @@ program main
     !!!!! Momento angular
     call ang_mom_bar(rib, vib, m, radius, omega, ang_mom)
     if (screen) write(*,*) "Momento angular:", ang_mom, "kg km^2 / s"
-    ! print*, "Momento angular:", (ang_mom + m(0)*omega*dot_product(rcm,rcm)) ! Traslacional
-    call ang_mom_ast(m, radius, omega, ang_mom)
-    if (screen) write(*,*) "Momento angular:", ang_mom, "kg km^2 / s"
     
 
     !!!! MAPAS Potenciales y Aceleraciones
-    if (map_pot) call mapas_pot(Nboul,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega)
-
-
-    !!!!! PARTÍCULA
-    if (nin > 0) then
-        call get_command_argument(1, chn)
-        read(chn,*) nsim
-        call get_command_argument(2, cha)
-        read(cha,*) ea
-        ea = ea * unit_r
-        call get_command_argument(3, che)
-        read(che,*) ee
-        call get_command_argument(4, chM)
-        read(chM,*) eM
-        call get_command_argument(5, chw)
-        read(chw,*) ew
-        if (nin == 6) then
-            call get_command_argument(6, chR)
-            read(chR,*) eR
-        end if
+    if (map_pot) then
+        if (screen) write(*,*) "Calculando MAPAS potencial..."
+        call mapas_pot(Nboul,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
+        if (screen) write(*,*) "Guardado en el archivo: ", trim(map_file)
     end if
-
+ 
+    !! Configuramos partícula
+    ea = ea * unit_r
     if (eR > tini) then
         ea = eR**(2/3.) * a_corot
     else
         eR = (ea/a_corot)**(1.5)
     end if
-
-    !!!!! MANUAL OVERRIDE
-    !! ra(1) = 3.3d0**(2/3.) * a_corot
-    ! ra(1) = cero 
-    ! ra(2) = a_corot
-    ! va(1) = - omega * ra(2)
-    ! va(2) = omega * ra(1)
-    ! fac_omega = 0.35d0
-    ! va = va * fac_omega
-    ! call ast2bar(ra, va, aa, rcm, vcm, acm, rb, vb, ab)
-    ! call elem(mcm, (/rb(1),rb(2),cero,vb(1),vb(2),cero/), ea, ee, ei, eM, ew, eO)
-    ! eR = (ea/a_corot)**(1.5)
-
-    !!!!! Set initial vectors
+    !! Set initial vectors
     xe0  = (/ea, ee, ei, eM, ew, eO/)
     xe   = xe0
     call coord(mcm, ea, ee, ei, eM, ew, eO, xc0)
@@ -274,11 +405,6 @@ program main
     vb = xc(4:5)
 
     !!! INTEGRACIÓN
-    !!!! Reference system
-    if ((ref /= "a") .and. (ref /= "b") .and. (ref /= "r")) then
-        write(*,*) "Sistema de Referencia no válido. Solo 'b', 'a' o 'r'"
-        stop 1
-    end if
 
     !!!! Set Stokes
     tau_a = tau_a*Prot ; tau_e = tau_e*Prot ; t_stokes = t_stokes*Prot
@@ -307,16 +433,12 @@ program main
     do i = 0, Nboul
         ineqs = i * neqs
         yb(ineqs+2)           = m(i)
-        yb(ineqs+3)           = radius(i)
-        yb(ineqs+4 : ineqs+5) = rib(i,:)
-        yb(ineqs+6 : ineqs+7) = vib(i,:)
+        yb(ineqs+3 : ineqs+4) = rib(i,:)
+        yb(ineqs+5 : ineqs+6) = vib(i,:)
     end do
-    do i = Nboul+1, Ntot
-        ineqs = i * neqs
-        yb(ineqs+2)           = m(i)
-        yb(ineqs+4 : ineqs+5) = rb
-        yb(ineqs+6 : ineqs+7) = vb
-    end do
+    yb(NP+2)        = m(FP)
+    yb(NP+3 : NP+4) = rb
+    yb(NP+5 : NP+6) = vb
     
     !!!! Ya[strocentric]
     ya(1)   = omega
@@ -326,37 +448,14 @@ program main
     do i = 1, Nboul
         ineqs = i * neqs
         ya(ineqs+2)           = m(i)
-        ya(ineqs+3)           = radius(i)
-        ya(ineqs+4 : ineqs+5) = ria(i,:)
-        ya(ineqs+6 : ineqs+7) = via(i,:)
+        ya(ineqs+3 : ineqs+4) = ria(i,:)
+        ya(ineqs+5 : ineqs+6) = via(i,:)
     end do
-    do i = Nboul+1, Ntot
-        call bar2ast(rb, vb, ab, rcm, vcm, acm, ra, va, aa)
-        ineqs = i * neqs
-        ya(ineqs+2)           = m(i)
-        ya(ineqs+4 : ineqs+5) = ra
-        ya(ineqs+6 : ineqs+7) = va
-    end do
+    call bar2ast(rb, vb, ab, rcm, vcm, acm, ra, va, aa)
+    ya(NP+2)        = m(FP)
+    ya(NP+3 : NP+4) = ra
+    ya(NP+5 : NP+6) = va
     
-    !!!! Yr[otating]
-    yr(1)   = omega
-    yr(2)   = m(0)
-    yr(3)   = radius(0)
-    yr(4:6) = cero
-    do i = 1, Nboul
-        ineqs = i * neqs
-        yr(ineqs+2)           = m(i)
-        yr(ineqs+3)           = radius(i)
-        yr(ineqs+4 : ineqs+5) = ria(i,:)
-        yr(ineqs+6 : ineqs+7) = cero
-    end do
-    do i = Nboul+1, Ntot
-        call ast2rot(ra, va, aa, omega, rr, vr, ar)
-        ineqs = i * neqs
-        yr(ineqs+2)           = m(i)
-        yr(ineqs+4 : ineqs+5) = rr
-        yr(ineqs+6 : ineqs+7) = vr
-    end do
 
     !!!! Set times
     t0 = t0 * Prot ; tf = tf * Prot ; dt_out = dt_out * Prot
@@ -369,363 +468,172 @@ program main
     if (screen) write(*,*) "    t0 [Prot]: ", t0/Prot, " tf [Prot]: ", tf/Prot, " dt_out [Prot]: ", dt_out/Prot, &
         &" dt_min [Prot]: ", dt_min/Prot, "n_points: ", n_points
 
-    
+
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  INFO FILE  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    if (trim(infofile) /= "") then
+    if (infoo) then
         i = 0
         inquire(file=trim(infofile), exist=auxlo)
         do while (auxlo)
             i = i + 1
             if (i > 10) then
-                if (screen) write(*,*) "Error: No se pudo crear el archivo de información."
+                if (screen) write(*,*) "Error: No se pudo crear el archivo de resumen."
                 i = -1
                 exit
             end if
-            write (auxch,'(I2.2)') i
-            inquire(file=trim(infofile)//"_"//trim(auxch), exist=auxlo)
+            write (auxch2,'(I2.2)') i
+            inquire(file=trim(infofile)//"_"//trim(auxch2), exist=auxlo)
         end do
         if (i >= 0) then
             if (i == 0) then
-                if (screen) write(*,*) "Se guardará la información en el archivo: ", trim(infofile)
+                if (screen) write(*,*) "Se guardará el resumen en el archivo: ", trim(infofile)
                 open(unit=1, file=trim(infofile), status="new", action="write")
             else
-                if (screen) write(*,*) "Se guardará la información en el archivo: ", trim(infofile)//"_"//trim(auxch)
-                open(unit=1, file=trim(infofile)//"_"//trim(auxch), status="new", action="write")
+                if (screen) write(*,*) "Se guardará el resumen en el archivo: ", trim(infofile)//"_"//trim(auxch2)
+                open(unit=1, file=trim(infofile)//"_"//trim(auxch2), status="new", action="write")
             end if
-            write(1,*) "Nboul,m0,mu,theta,R0,Prot,tau_a,tau_e,t_stokes,ref,tf,dt_out"
-            write(1,*) Nboul,m(0),mu,theta_a,R0,Prot,tau_a,tau_e,t_stokes,ref,tf,dt_out
+            write(1,*) "Nboul,m0,mu,theta,R0,Prot,tau_a,tau_e,t_stokes,tf,dt_out"
+            write(1,*) Nboul,m(0),mu,theta_a,R0,Prot,tau_a,tau_e,t_stokes,tf,dt_out
             close(1)
         end if
     end if
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
+
+
     if (screen) write(*,*) "Integrando..."
 
-    if (datao) open(unit=2, file=trim(datafile), status='replace', action='write')
+    if (datao) open(unit=2, file=trim(datafile), status='unknown', action='write', access="append")
     !!! t, x, y, vx, vy, ax, ay, a, e, w
-
-    select case (ref)
-    case ("b")
-        if (exact) then
-            dydt => dydt_bar_ex
+    
+    if (exact) then
+        dydt => dydt_bar_ex
+    else
+        dydt => dydt_bar_im
+    end if
+    !!! BARYCENTRIC
+    if (datas .and. .not. perc) write(*,*) t, ea, ee, ew, eR
+    if (datao) then
+        if (eleout) then
+            write(2,*) t, ea, ee, eM, ew, eR
         else
-            dydt => dydt_bar_im
-        end if
-        !!! BARYCENTRIC
-        call accbar(m, rb, rib, ab)   ! Este lo setea a 0 al principio
-        call accsto(t, rb, vb, ab) ! Este suma aceleración
-        ! if (screen .and. .not. perc) write(*,*) t, rb, vb, ab, ea, ee, ew, eR
-        ! if (data) write(2,*) t, rb, vb, ab, ea, ee, ew, eR
-        if (datao) then
             do i = 0, Nboul
-                write(2,*) t, rib(i,:), vib(i,:), aib(i,:), m(i), radius(i)
+                write(2,*) i, t, rib(i,:), vib(i,:), aib(i,:), m(i), radius(i)
             end do
-            write(2,*) t, rb, vb, ab, cero, cero
+            call accbar(m(0:Nboul), rb, rib, ab)   ! Este lo setea a 0 al principio
+            call accsto(t, rb, vb, ab) ! Este suma aceleración
+            write(2,*) FP, t, rb, vb, ab, cero, cero
         end if
-        ! MAIN LOOP
-        do j = 2, n_points ! From 2 because 1 is the IC (t0)
-            ra  = rb + rcm
-            da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
-            if (da0 < R0) then
-                if (screen) write(*,*) ACHAR(10) // "Impacto en t = ", t
-                bad = 1
-                exit
-            else if (da0 > rmax) then
-                if (screen) write(*,*) ACHAR(10) // "Escape en t = ", t
-                bad = 1
-                exit
-            end if
+    end if
+    ! MAIN LOOP
+    do j = 2, n_points ! From 2 because 1 is the IC (t0)
+        ra  = rb + rcm
+        da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
+        if (da0 < R0) then
+            if (screen) write(*,*) ACHAR(10) // "Impacto en t = ", t
+            bad = 1
+            exit
+        else if (da0 > rmax) then
+            if (screen) write(*,*) ACHAR(10) // "Escape en t = ", t
+            bad = 2
+            exit
+        end if
 
-            ! Update dt
-            dt = t_out(j) - t
+        ! Update dt
+        dt = t_out(j) - t
 
-            !!! Execute an integration method (uncomment/edit one of theese)
-            ! call integ_caller (t, yb, dt_adap, dydt, Runge_Kutta4, dt, ybnew)
-            ! call rk_half_step_caller (t, yb, dt_adap, dydt, Runge_Kutta5, 5, e_tol, beta, dt_min, dt, ybnew)
-            ! call embedded_caller (t, yb, dt_adap, dydt, Dormand_Prince8_7, e_tol, beta, dt_min, dt, ybnew)
-            call BStoer_caller (t, yb, dt_adap, dydt, e_tol, dt_min, dt, ybnew)
-            ! call BStoer_caller2 (t, yb, dt_adap, dydt, e_tol, dt_min, dt, ybnew)
-            
-            ! Update parameters
-            t  = t + dt
-            yb = ybnew
+        !!! Execute an integration method (uncomment/edit one of theese)
+        ! call integ_caller (t, yb, dt_adap, dydt, Runge_Kutta4, dt, ybnew)
+        ! call rk_half_step_caller (t, yb, dt_adap, dydt, Runge_Kutta5, 5, e_tol, beta, dt_min, dt, ybnew)
+        ! call embedded_caller (t, yb, dt_adap, dydt, Dormand_Prince8_7, e_tol, beta, dt_min, dt, ybnew)
+        call BStoer_caller (t, yb, dt_adap, dydt, e_tol, dt_min, dt, ybnew)
+        ! call BStoer_caller2 (t, yb, dt_adap, dydt, e_tol, dt_min, dt, ybnew)
+        
+        ! Update parameters
+        t  = t + dt
+        yb = ybnew
 
+        ybnew = dydt(t, yb)
 
-            ybnew = dydt(t, yb)
-
-            ! Asteroid and boulders
-            if (exact) then
-                do i = 0, Nboul
-                    rib(i,1) = cos(omega * t + theta_b(i)) * r_b(i)
-                    rib(i,2) = sin(omega * t + theta_b(i)) * r_b(i)
-                    vib(i,1) = - omega * rib(i,2)
-                    vib(i,2) =   omega * rib(i,1)
-                end do
-                aib = -omega2 * rib
-                do i = Nboul+1, Ntot
-                    ineqs = i * neqs
-                    rib(i,:) = yb(ineqs+4 : ineqs+5)
-                    vib(i,:) = yb(ineqs+6 : ineqs+7)
-                    aib(i,:) = ybnew(ineqs+6 : ineqs+7)
-                end do
-            else
-                omega = yb(1)
-                R0    = yb(3)
-                do i = 0, Ntot
-                    ineqs = i * neqs
-                    m(i)      = yb(ineqs+2)
-                    radius(i) = yb(ineqs+3)
-                    rib(i,:)  = yb(ineqs+4 : ineqs+5)
-                    vib(i,:)  = yb(ineqs+6 : ineqs+7)
-                    aib(i,:)  = ybnew(ineqs+6 : ineqs+7)
-                end do
-                a_corot = (GM / (omega * omega))**(1/3.)
-            end if
-
-            !! Center of mass
-            rcm = - rib(0,:)
-            vcm = - vib(0,:)
-            acm = - aib(0,:)
-            ! print*, rib
-            ! stop
-            
-            !! Particle
-            rb  = yb(NP+3 : NP+4)
-            vb  = yb(NP+5 : NP+6)
-            call accbar(m(0:Nboul), rb, rib, ab) ! Este lo setea a 0 al principio
-            call accsto(t, rb, vb, ab)  ! Este suma aceleración
-            
-            !! Elements
-            xc = (/rb(1),rb(2),cero,vb(1),vb(2),cero/)
-            call elem(mcm, xc, ea, ee, ei, eM, ew, eO)
-            eR = (ea/a_corot)**(1.5)
-
-            !! Chaos
-            call chaosvals(ea, ee, amax, amin, emax, emin)
-
-            ! Output
-            if (screen .and. .not. perc) then
-                ! write(*,*) t, rb, vb, ab, ea, ee, ew, eR
-                do i = 0, Nboul
-                    ! write(*,*) t/unit_t, omega*unit_t, m(0)/unit_m, eR !rib(i,:), vib(i,:), aib(i,:), m(i), radius(i)
-                end do
-                ! write(*,*) t, rb, vb, ab, cero, cero
-            end if
-            ! if (data) write(2,*) t, rb, vb, ab, ea, ee, ew, eR
-            if (datao) then
-                do i = 0, Nboul
-                    write(2,*) t, rib(i,:), vib(i,:), aib(i,:), m(i), radius(i)
-                end do
-                write(2,*) t, rb, vb, ab, cero, cero
-            end if
-            if (perc) call percentage(t, tf)
-        end do
-
-    case ("a")
-        !!! ASTROCENTRIC
+        ! Asteroid and boulders
         if (exact) then
-            dydt => dydt_ast_ex
-        else
-            dydt => dydt_ast_im
-        end if
-        call accast(omega, m, ra, ria, aa)    ! Este lo setea a 0 al principio
-        call accsto(t, ra, va, aa)  ! Este suma aceleración
-        ! if (screen .and. .not. perc) write(*,*) t, ra, va, aa, ea, ee, ew, eR
-        ! if (data) write(2,*) t, ra, va, aa, ea, ee, ew, eR
-        if (datao) then
-            do i = 1, Nboul
-                write(2,*) t, ria(i,:), via(i,:), aia(i,:), m(i), radius(i)
+            do i = 0, Nboul
+                ineqs = i * neqs
+                rib(i,1) = cos(omega * t + theta_b(i)) * r_b(i)
+                rib(i,2) = sin(omega * t + theta_b(i)) * r_b(i)
+                vib(i,1)   = - omega * rib(i,2)
+                vib(i,2)   =   omega * rib(i,1)
             end do
-            write(2,*) t, ra, va, aa, cero, cero
+        else
+            omega  = yb(1)
+            omega2 = omega * omega
+            do i = 0, Nboul
+                ineqs = i * neqs
+                m(i)      = yb(ineqs+2)
+                rib(i,:)  = yb(ineqs+3 : ineqs+4)
+                vib(i,:)  = yb(ineqs+5 : ineqs+6)
+            end do
+            a_corot = (GM / omega2)**(1/3.)
         end if
-        ! MAIN LOOP
-        do j = 2, n_points ! From 2 because 1 is the IC (t0)
-            da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
-            if (da0 < R0) then
-                if (screen) write(*,*) ACHAR(10) // "Impacto en t = ", t
-                bad = 1
-                exit
-            else if (da0 > rmax) then
-                if (screen) write(*,*) ACHAR(10) // "Escape en t = ", t
-                bad = 1
-                exit
-            end if
+        aib = -omega2 * rib
 
-            ! Update dt
-            dt = t_out(j) - t
+        !! Center of mass
+        rcm = - rib(0,:)
+        vcm = - vib(0,:)
+        acm = - aib(0,:)
+        
+        !! Particle
+        rb = yb(NP+3 : NP+4)
+        vb = yb(NP+5 : NP+6)
+        call accbar(m(0:Nboul), rb, rib(0:Nboul,:2), ab) ! Este lo setea a 0 al principio
+        call accsto(t, rb, vb, ab)  ! Este suma aceleración
+        rib(FP,:) = rb
+        vib(FP,:) = vb
+        aib(FP,:) = ab
 
-            !!! Execute an integration method (uncomment/edit one of theese)
-            ! call integ_caller (t, ya, dt_adap, dydt, Runge_Kutta4, dt, yanew)
-            ! call rk_half_step_caller (t, ya, dt_adap, dydt, Runge_Kutta5, 5, e_tol, beta, dt_min, dt, yanew)
-            ! call embedded_caller (t, ya, dt_adap, dydt, Dormand_Prince8_7, e_tol, beta, dt_min, dt, yanew)
-            call BStoer_caller (t, ya, dt_adap, dydt, e_tol, dt_min, dt, yanew)
-            ! call BStoer_caller2 (t, ya, dt_adap, dydt, e_tol, dt_min, dt, yanew)
-            
-            ! Update parameters
-            t  = t + dt
-            ya = yanew
+        !! Elements
+        xc = (/rb(1),rb(2),cero,vb(1),vb(2),cero/)
+        call elem(mcm, xc, ea, ee, ei, eM, ew, eO)
+        eR = (ea/a_corot)**(1.5)
 
-            !! Boulders
-            if (exact) then
-                do i = 1, Nboul
-                    ria(i,1) = cos(omega * t + theta_a(i))
-                    ria(i,2) = sin(omega * t + theta_a(i))
-                    via(i,1) = -omega * ria(i,2)
-                    via(i,2) =  omega * ria(i,1)
-                end do
-                ria = ria * R0
-                via = via * R0
-                aia = -omega2 * ria
+        !! Chaos
+        call chaosvals(ea, ee, amax, amin, emax, emin)
+
+        ! Output
+        if (datas .and. .not. perc) write(*,*) t, ea, ee, ew, eR
+        if (datao) then
+            if (eleout) then
+                write(2,*) t, ea, ee, eM, ew, eR
             else
-                omega = ya(1)
-                m(0)  = ya(2)
-                R0    = ya(3)
-                yanew = dydt(t, ya)
-                do i = 1, Nboul
-                    ineqs = i * neqs
-                    m(i)      = ya(ineqs+2)
-                    radius(i) = ya(ineqs+3)
-                    ria(i,:)  = ya(ineqs+4 : ineqs+5)
-                    via(i,:)  = ya(ineqs+6 : ineqs+7)
-                    aia(i,:)  = yanew(ineqs+6 : ineqs+7)
+                do i = 0, Nboul
+                    write(2,*) i, t, rib(i,:), vib(i,:), aib(i,:), m(i), radius(i)
                 end do
-                a_corot = (GM / (omega * omega))**(1/3.)
+                write(2,*) FP, t, rb, vb, ab, cero, cero
             end if
-            
-            !! Center of mass
-            call rcmfromast(ria(1:Nboul,:), via(1:Nboul,:), aia(1:Nboul,:), m(0:Nboul), rcm, vcm, acm)
-
-            !! Particle
-            ra  = ya(NP+3 : NP+4)
-            va  = ya(NP+5 : NP+6)
-            call accast(omega, m(0:Nboul), ra, ria, aa)   ! Este lo setea a 0 al principio
-            call accsto(t, ra, va, aa) ! Este suma aceleración
-
-            !! Elements
-            
-            call ast2bar(ra, va, aa, rcm, vcm, acm, rb, vb, ab)
-            xc = (/rb(1),rb(2),cero,vb(1),vb(2),cero/)
-            call elem(mcm, xc, ea, ee, ei, eM, ew, eO)
-            eR = (ea/a_corot)**(1.5)
-
-            !! Chaos
-            call chaosvals(ea, ee, amax, amin, emax, emin)
-
-            ! Output
-            if (screen .and. .not. perc) then
-                ! write(*,*) t, ra, va, aa, ea, ee, ew, eR
-                do i = 1, Nboul
-                    write(*,*) t, ria(i,:), via(i,:), aia(i,:), m(i), radius(i)
-                end do
-                write(*,*) t, ra, va, aa, cero, cero
-            end if
-            ! if (data) write(2,*) t, ra, va, aa, ea, ee, ew, eR
-            if (datao) then
-                do i = 1, Nboul
-                    write(2,*) t, ria(i,:), via(i,:), aia(i,:), m(i), radius(i)
-                end do
-                write(2,*) t, ra, va, aa, cero, cero
-            end if
-            if (perc) call percentage(t, tf)
-        end do
-
-    case ("r")
-        !!! ROTATING
-        call accrot(omega, m, rr, vr, ria, ar) ! Este lo setea a 0 al principio
-        call accsto(t, rb, vb, ar)   ! Este suma aceleración
-        if (screen .and. .not. perc) write(*,*) t, rr, vr, ar, ea, ee, ew, eR
-        ! if (data) write(2,*) t, rr, vr, ar, ea, ee, ew, eR
-        if (datao) write(2,*) t, rr, vr, ar
-        ! MAIN LOOP
-        do j = 2, n_points ! From 2 because 1 is the IC (t0)
-            da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
-            if (da0 < R0) then
-                if (screen) write(*,*) ACHAR(10) // "Impacto en t = ", t
-                bad = 1
-                exit
-            else if (da0 > rmax) then
-                if (screen) write(*,*) ACHAR(10) // "Escape en t = ", t
-                bad = 1
-                exit
-            end if
-
-            ! Update dt
-            dt = t_out(j) - t
-
-            !!! Execute an integration method (uncomment/edit one of theese)
-            ! call integ_caller (t, yr, dt_adap, dydt_rot, Runge_Kutta4, dt, yrnew)
-            ! call rk_half_step_caller (t, yr, dt_adap, dydt_rot, Runge_Kutta5, 5, e_tol, beta, dt_min, dt, yrnew)
-            ! call embedded_caller (t, yr, dt_adap, dydt_rot, Dormand_Prince8_7, e_tol, beta, dt_min, dt, yrnew)
-            call BStoer_caller (t, yr, dt_adap, dydt_rot, e_tol, dt_min, dt, yrnew)
-            ! call BStoer_caller2 (t, yr, dt_adap, dydt_rot, e_tol, dt_min, dt, yrnew)
-            
-            ! Update parameters
-            t  = t + dt
-            yr  = yrnew
-
-            !! Parameters
-            omega = ya(1)
-            R0    = ya(3)
-            do i = 0, Nboul ! Integradores usan desde i=1
-                ineqs  = i * neqs
-                m(i) = yb(ineqs+2)
-                ! radius(i) = yb(ineqs+3)
-            end do 
-
-            !! Particle
-            rr = yr(NP+3 : NP+4)
-            vr = yr(NP+5 : NP+6)
-            call accrot(omega, m, rr, vr, ria, ar)              ! Este lo setea a 0 al principio
-            call rot2ast(rr, vr, ar, omega, ra, va, aa)         ! Pasamos a astrocéntrico
-            call ast2bar(ra, va, aa, rcm, vcm, acm, rb, vb, ab) ! Pasamos a baricéntrico
-            call accsto(t, rb, vb, ar)                          ! Este suma aceleración
-
-
-            !! Elements
-            xc = (/rb(1),rb(2),cero,vb(1),vb(2),cero/)
-            call elem(mcm, xc, ea, ee, ei, eM, ew, eO)
-            eR = (ea/a_corot)**(1.5)
-
-            !! Chaos
-            call chaosvals(ea, ee, amax, amin, emax, emin)
-
-            ! Output
-            if (screen .and. .not. perc) then
-                do i = 1, Nboul
-                    write(*,*) t, cero, cero, cero, cero, cero, cero, m(i), radius(i)
-                end do
-                write(*,*) t, rr, vr, ar, cero, cero
-            end if
-            ! if (data) write(2,*) t, rr, vr, ar, ea, ee, ew, eR
-            if (datao) then
-                do i = 1, Nboul
-                    write(2,*) t, cero, cero, cero, cero, cero, cero, m(i), radius(i)
-                end do
-                write(2,*) t, rr, vr, ar, cero, cero
-            end if
-            if (perc) call percentage(t, tf)
-        end do
-
-    end select
+        end if
+        if (perc) call percentage(t, tf)
+    end do
+    if (perc) call percentage(tf+1., tf)
 
     if (datao) close(2)
+    if (screen .and. datao) write(*,*) "Se guardó la salida en el archivo: ", trim(datafile)
 
     ! Output chaos
     da = amax - amin
     de = emax - emin
-    if (screen) then
-        write(*,*) "amin [km]:", amin, "amax [km]:", amax, "da [km]:", da
-        write(*,*) "emin     :", emin, "emax     :", emax, "de     :", de
-    end if
     if (chaos) then
         open (3, file=trim(chaosfile), status='unknown', position='append')
-        write(3,*) nsim, bad, t, xe0(1), xe0(2), xe0(4), xe0(5), Res0, t, da, de, ea, ee, eM, ew, eR
+        ! numero simu, mala?, t total, a ini, e ini, M ini, w ini, Res ini, t integrado, da, de, a final, e final, M final, w final, R final 
+        write (3,*) nsim, bad, tf, xe0(1), xe0(2), xe0(4), xe0(5), Res0, t, da, de, ea, ee, eM, ew, eR        
         close(3)
+        if (screen) then
+            write(*,*) "amin [km]:", amin, "amax [km]:", amax, "da [km]:", da
+            write(*,*) "emin     :", emin, "emax     :", emax, "de     :", de
+            write(*,*) "Se guardó el caos en el archivo: ", trim(chaosfile)
+        end if
     end if
 
 end program main
 
-subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega)
+subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
     use gravity, only: potast, potbar, potrot, accbar, accast, accrot
     implicit none
     integer(kind=4), intent(in) :: N,ngx, ngy
@@ -735,14 +643,9 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega)
     real(kind=8) :: rcm(2), rb(2), ra(2), va(2), ab(2), aa(2), ar(2)
     real(kind=8) :: ria(N,2)
     integer(kind=4) :: i,j
-
-    if (N <= 0) then
-        write(*,*) "No se calcula el potencial"
-        return
-    end if
+    character(len=*) :: map_file
 
     !! Mapa de potencial
-    write(*,*) "Calculando MAPAS potencial..."
     rcm(1) = -rib(0,1)
     rcm(2) = -rib(0,2)
     do i = 1, N
@@ -768,7 +671,7 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega)
         end do
     end do
     ! write(*,*) "Potencial calculado. Escribiendo..."
-    open(unit=7, file='pot.dat', status='replace', action='write')
+    open(unit=7, file=trim(map_file), status='replace', action='write')
     do i = 1, ngx
         do j = 1, ngy
             write(7,*) xmin + i * (xmax-xmin)/ngx, ymin + j * (ymax-ymin)/ngy, &
