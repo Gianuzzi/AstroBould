@@ -5,7 +5,37 @@ Los parámetros iniciales del sistema y la integración se modifican en [main.F9
 
 COMPILAR:
 ``` console
-$ gfortran -O3 const.F90 run.F90 parameters.F90 integrators.F90 stokes.F90 gravity.F90 derivates.F90 main.F90 -o main
+make
+```
+
+Uso: 
+
+``` console
+  ./main [nsim] [ea] [ee] [eM] [ew] [eR] [args]
+   nsim: Número de simulación
+   ea  : Elemento a de la partícula
+   ee  : Elemento e de la partícula
+   eM  : Elemento M de la partícula
+   ew  : Elemento w de la partícula
+   eR  : Elemento R de la partícula
+   --nodata   : No guardar datos
+   -datafile  : Guardar datos en el archivo que sigue
+   --noinfo   : No guardar información
+   -infofile  : Guardar información en el archivo que sigue
+   --nochaos  : No guardar caos
+   -chaosfile : Guardar caos en el archivo que sigue
+   --screen   : Imprimir información en pantalla
+   --noscreen : No imprimir en pantalla
+   --perc     : Imprimir porcentaje de integración
+   --noperc   : No imprimir porcentaje de integración
+   --datascr  : Imprimir datos en pantalla
+   --nodatascr: No imprimir datos en pantalla
+   --nomap    : No guardar mapas de potencial
+   -mapfile   : Guardar mapas de potencial en el archivo que sigue
+   --noexact  : No usar método exacto
+   --exact    : Usar método exacto
+   --elem     : Imprimir elementos orbitales (solo partícula)
+   --noelem   : Imprimir coordenadas baricéntricas
 ```
 
 PARTÍCULA INDIVIDUAL: 
