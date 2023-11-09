@@ -12,69 +12,110 @@
 
 ## IMPORTANTE!!!!
 # 1) Todos los archivos deben estar en la misma carpeta
-# 2) El modo CHAOS debe estar ACTIVADO: [chaos = .TRUE.]
+# 2) El modo CHAOS debe estar ACTIVADO: [chaos = .TRUE.] (Ahora está automático en este script)
 # 3) El ejecutable Debe tener DESactivados:
-#   - El modo de salida pantalla: [screen = .FALSE.]
-#   - El modo de cálculo de mapa de potencial: [map_pot = .FALSE.]
+#   - El modo de salida pantalla: [screen = .FALSE.] (Ahora está automático en este script)
+#   - El modo de cálculo de mapa de potencial: [map_pot = .FALSE.] (Ahora está automático en este script)
 
 # En caso de dejar puesta la salida en archivo, se creará un archivo
 #  llamado salida[id].dat por cada partícula.
 
 # Finalmente se creará un archivo de caos llamado chaos[id].dat por cada partícula, 
 #  y se concatenarán todos los archivos en un solo archivo <outfile> con el siguiente formato:
-# id, bad?, tmax, x_0, y_0, vx_0, vy_0, R_0, t, da, de, a_0, e_0, M_0, w_0, R
+# id, bad?, tmax, x_0, y_0, vx_0, vy_0, R_0, t, a_f, e_f, M_f, w_f, R_f, da, de
 
 # Excepto <outfile>, todos los otros archivos se encontrarán en carpetas creadas con el nombre
 # dpy[pid], donde pid es el ID del procesador que ejecutó el sistema. El máximo de carpetas
 # creadas será igual al MAX(número de procesadores disponibles en el sistema , workers).
-# Si no son necesarias, se recomienda borrarlas luego de terminar la ejecución.
+
+# Si no son necesarias, se recomienda BORRAR las carpetas creadas luego de terminar la ejecución.
+## Esto puede hacerse con: $ rm -rf dpy*
+
+
 
 import os
 import subprocess
 from concurrent.futures import ProcessPoolExecutor as PPE
 
-particles = "fort.67"     # Nombre del archivo de partículas
-program = "main"          # Nombre del ejecutable
-chaosfile = "chaos.dat"   # Nombre de cada archivo de caos (chaosfile en el programa)
-datafile = ""   # Nombre de cada archivo de salida (datafile en el programa)  ["" si no se usa]
-workers = 5               # Número de procesadores a usar (workers)
-suffix = ""               # Suffix for the output files
-outfile = "sump.out"      # Output file name
-exact   = False           # Método: Exacto (cos, sin), o NO exacto (integra boulders y m0)
+particles = "particles.in"   # Nombre del archivo de partículas
+program = "main"             # Nombre del ejecutable
+chaosfile = "chaos.dat"      # Nombre de cada archivo de caos (chaosfile en el programa)
+datafile = ""                # Nombre de cada archivo de salida (datafile en el programa)  ["" si no se usa]
+workers = 5                  # Número de procesadores a usar (workers)
+suffix = ""                  # Suffix for the output files
+outfile = "sump.out"         # Final Summary Output file name
+exact = False                # Método: Exacto (cos, sin), o NO exacto (integra boulders y m0)
 
 
-# Iniciamos
+
+##### Iniciamos ####
+
 # Obtener el path actual y renombrar
 cwd = os.getcwd()
 oparticles = os.path.join(cwd, particles)
 oprogr = os.path.join(cwd, program)
-# Checkeamos los archivos
+
+## Checkeamos los archivos
 if not os.path.isfile(oparticles):
-    msg = "Particles file {} does not exist".format(oparticles)
+    msg = "Particles file {} does not exist.".format(oparticles)
     raise FileNotFoundError(msg)
 if not os.path.isfile(oprogr):
-    msg = "Executable file {} does not exist".format(oprogr)
+    msg = "Executable file {} does not exist.".format(oprogr)
     raise FileNotFoundError(msg)
+
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
     lines = f.readlines()
+
+# Obtener el número de líneas del archivo de partículas
 nsys = len(lines)
-# p = subprocess.run(["wc", "-l", oparticles], capture_output=True, check=True)
-# nsys = int(p.stdout.strip().split()[0])
-print("Number of particles: {}".format(nsys))
+if nsys == 0:
+    print("No hay partículas para integrar.")
+    exit(1)
+print("Cantidad total de partículas: {}".format(nsys))
+
+# Obtener los sistemas realizados
+if any([os.path.isdir(name) and name.startswith("dpy") for name in os.listdir(cwd)]):
+    print("Checkeando integraciones ya completadas.")
+    command = (
+        f"find dpy* -name 'chaos*{suffix}.dat' "
+        f"| sed -e 's/.*chaos\\([0-9]*\\){suffix}\\.dat/\\1/' "
+        f"| sort -n"
+        )
+    result = subprocess.run(command, shell=True,
+                            stdout=subprocess.PIPE, text=True)
+    if result.returncode == 0:
+        output_lines = result.stdout.splitlines()
+    else:
+        raise IOerror("Error al leer integraciones ya realizadas.")
+    done = set([int(cint) for cint in output_lines if cint!=''])
+    missing_lines = [x for x in range(nsys) if x not in done]
+    print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
+    nsys = len(missing_lines)
+    print("   Cantidad de sistemas a integrar: {}".format(nsys))
+else:
+    missing_lines = range(0, nsys)
+
+# Hay que hacer?
+if len(missing_lines) == 0:
+    print("Ya se han integrado todas las partículas.")
+    exit(1)
+
 # Obtener el número de workers
 workers = min(max(1, min(int(workers), len(os.sched_getaffinity(0)))), nsys)
 print("Workers: {}\n".format(workers))
 
+# Arreglamos por si hay "e" en vez de "d"
 for i in range(nsys):
     lines[i] = lines[i].replace("e", "d")
 
-# Función general
+## Argumentos. Estos son
 args = "--noinfo --noscreen --nomap --nodatascr --noperc"
 args += "%s"%(" -chaosfile %s"%chaosfile if chaosfile else "")
-args += "%s"%(" -datafile %s"%datafile if datafile else "")
+args += "%s"%(" -datafile %s"%datafile if datafile else " --nodata")
 args += "%s"%(" --exact" if exact else " --noexact")
 
+# Función general
 def integrate_n(i):
     # Get processor ID
     PID = os.getpid()
@@ -145,6 +186,10 @@ def make_sum(outfile, suffix=""):
 
 if __name__ == "__main__":
     with PPE(max_workers=workers) as executor:
-        results = executor.map(integrate_n, range(0, nsys))
+        results = executor.map(integrate_n, missing_lines)
     if outfile:
+        print("Creando archivo resumen {}".format(outfile))
+        if os.path.isfile(outfile):
+            print("WARNING: Se ha reemplazando archivo ya existente.")
         make_sum(outfile, suffix)
+    print("LISTO!")

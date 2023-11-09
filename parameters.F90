@@ -2,7 +2,7 @@ module parameters
     use const
     implicit none
     !!! Parámetros y auxiliares
-    integer(kind=4), parameter :: Nboul = 3, Npart = 1, Ntot = Npart + Nboul !!! Boulders, Particles, Total
+    integer(kind=4), parameter :: Nboul = 1, Npart = 1, Ntot = Npart + Nboul !!! Boulders, Particles, Total
     integer(kind=4), parameter :: neqs = 5 ! Número de eqs. a integrar (m, x, y, vx, vy) !! Omega va aparte
     integer(kind=4), parameter :: FP = Nboul+1 , NP = (Nboul+1) * neqs !! First particle, y posicion de primer partícula
     ! integer(kind=4) :: Nactive !Not used yet

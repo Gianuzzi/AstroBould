@@ -75,21 +75,25 @@ program main
 
     call init_vars() ! Inicializamos variables
  
-    !!! Definir parámetros:
+    !!! Definir parámetros: [RECORDAR CAMBIAR "Nboul" en parameters.F90 si es necesario]
+    !!!!! MASAS
     m(0)       = 6.3d18       ! Masa del cuerpo 0 [kg]
     mu(1)      = 1.d-7        ! Cociente de masas
-    mu(2)      = 1.d-6        ! Cociente de masas
-    mu(3)      = 1.d-4        ! Cociente de masas
+    ! mu(2)      = 1.d-6        ! Cociente de masas
+    ! mu(3)      = 1.d-4        ! Cociente de masas
     ! mu(4)      = 1.d-7        ! Cociente de masas
-    theta_a(1) = cero         ! Ángulo de fase respecto del origen angular [rad]
-    theta_a(2) = pi           ! Ángulo de fase [rad]
-    theta_a(3) = pi * uno3    ! Ángulo de fase [rad]
+    !!! ÁNGULOS DE FASE RESPECTO AL ORIGEN [rad]
+    theta_a(1) = cero
+    ! theta_a(2) = pi           ! Ángulo de fase [rad]
+    ! theta_a(3) = pi * uno3    ! Ángulo de fase [rad]
     ! theta_a(4) = 250 * rad    ! Ángulo de fase [rad]
+    !!! RADIOS
     radius(0)  = 129.d0       ! Radio del cuerpo 0 [km]
     radius(1)  = 2.5d0        ! Radio del boulder 1 [km]
-    radius(2)  = 1.5d0        ! Radio del boulder 2 [km]
-    radius(3)  = 3.5d0        ! Radio del boulder 3 [km]
+    ! radius(2)  = 1.5d0        ! Radio del boulder 2 [km]
+    ! radius(3)  = 3.5d0        ! Radio del boulder 3 [km]
     ! radius(4)  = 2.5d0        ! Radio del boulder 3 [km]
+    !!! ROTACIÓN
     ! Prot       = 7.004d0/24.d0  ! Periodo de rotación de los cuerpos [days]
     lambda     = 0.471d0      ! Cociente spin/wk
 
@@ -103,20 +107,20 @@ program main
     tf       = 5.d3            ! Final time [Prot]
     dt_min   = cero            ! Min timestep [Prot] ! Almost unused
     logsp    = .FALSE.         ! LogSpaced outputs
-    n_points = 100             ! Number of outputs (if logsp=.TRUE. or dt_out=0)
-    dt_out   = 1.d-1           ! Output timestep [Prot] (if logsp = .False.)
+    n_points = 1000            ! Number of outputs (if logsp=.TRUE. or dt_out=0)
+    dt_out   = 0.0d0           ! Output timestep [Prot] (if logsp = .False.)
     beta     = 0.85d0          ! [For adaptive step integrators] Learning rate
     e_tol    = 1.d-11          ! [For adaptive step integrators] Relative error
     rmax     = 1.d2*radius(0)  ! Max distance before escape [km]
     
 
-    !! Default
-    !!! Output ()"" or "no", if not used
+    !! ----------  Default -------------
+    !!! Output: "" or "no", if not used
     infofile  = ""
     datafile  = ""
     chaosfile = "chaos.dat"
     map_file  = ""
-
+    !! ----------  Default -------------
     !!!! Particle elements
     ea = cero                  ! Element a of the particle
     ee = cero !0.1d0           ! ecc
