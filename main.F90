@@ -626,8 +626,8 @@ program main
     de = emax - emin
     if (chaos) then
         open (3, file=trim(chaosfile), status='unknown', position='append')
-        ! numero simu, mala?, t total, a ini, e ini, M ini, w ini, Res ini, t integrado, da, de, a final, e final, M final, w final, R final 
-        write (3,*) nsim, bad, tf, xe0(1), xe0(2), xe0(4), xe0(5), Res0, t, da, de, ea, ee, eM, ew, eR        
+        ! numero simu, mala?, t total, a ini, e ini, M ini, w ini, Res ini, t integrado, a final, e final, M final, w final, R final, da, de 
+        write (3,*) nsim, bad, tf, xe0(1), xe0(2), xe0(4), xe0(5), Res0, t, ea, ee, eM, ew, eR, da, de
         close(3)
         if (screen) then
             write(*,*) "amin [km]:", amin, "amax [km]:", amax, "da [km]:", da
