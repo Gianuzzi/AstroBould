@@ -1,7 +1,7 @@
 # AstroBould
 Repositorio con programa para integrar partículas gravitatoriamente alrededor de un asteroide con boulders
 
-Los parámetros iniciales del sistema y la integración se modifican en [main.F90](./main.F90#L90#L122), entre las líneas 90 y 122.
+Los parámetros iniciales del sistema y la integración se modifican en [main.F90](./main.F90#L80#L125), entre las líneas 80 y 125.
 
 COMPILAR:
 ``` console
