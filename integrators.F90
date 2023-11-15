@@ -1166,10 +1166,11 @@ module integrators
         !   Call an RK (not embedded nor implicit) integrator
         !---------------------------------
 
-        subroutine integ_caller (t, y, dt_min, dydt, integ, dt, ynew)
+        subroutine integ_caller (t, y, dt_min, dydt, integ, dt, ynew, hexitptr)
             implicit none
             real(kind=8), intent(in)                       :: t, dt, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
+            logical, pointer, optional                     :: hexitptr
             procedure(dydt_tem)                            :: dydt
             procedure(integ_tem)                           :: integ
             real(kind=8), dimension(size (y)), intent(out) :: ynew
@@ -1181,6 +1182,9 @@ module integrators
             t_end   = time + dt
             dt_used = min (dt_min, dt)
             do while (time < t_end)
+                if (present(hexitptr)) then ! If Hard Exit pointer present
+                    if (hexitptr) return ! If Hard Exit is True, Exit subroutine
+                end if
                 yaux = ynew
                 call integ (time, yaux, dt_used, dydt, ynew)
                 time = time + dt_used
@@ -1191,10 +1195,11 @@ module integrators
         !   Call an embedded integrator
         !---------------------------------
         
-        subroutine embedded_caller (t, y, dt_adap, dydt, integ, e_tol, beta, dt_min, dt, ynew)
+        subroutine embedded_caller (t, y, dt_adap, dydt, integ, e_tol, beta, dt_min, dt, ynew, hexitptr)
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, beta, dt_min, dt
             real(kind=8), dimension(:), intent(in)         :: y
+            logical, pointer, optional                     :: hexitptr
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             procedure(embedded_tem)                        :: integ
@@ -1207,6 +1212,12 @@ module integrators
             t_end = time + dt
             dtmin = min (dt_min, dt)
             do while (time < t_end)
+                if (present(hexitptr)) then ! If Hard Exit pointer present
+                    if (hexitptr) then ! If Hard Exit is True
+                        dt_adap = time - t ! Replace dt_adap with actual dt used
+                        return ! Exit subroutine
+                    end if
+                end if
                 yaux  = ynew
                 dt_adap = min (dt_adap, t_end - time)
                 call solve_embed (time, yaux, dt_adap, dydt, integ, e_tol, beta, dtmin, dtused, ynew)
@@ -1218,10 +1229,11 @@ module integrators
         !   Call rk_half_step integrator
         !---------------------------------
 
-        subroutine rk_half_step_caller (t, y, dt_adap, dydt, integ, p, e_tol, beta, dt_min, dt, ynew)
+        subroutine rk_half_step_caller (t, y, dt_adap, dydt, integ, p, e_tol, beta, dt_min, dt, ynew, hexitptr)
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, beta, dt, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
+            logical, pointer, optional                     :: hexitptr
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             procedure(integ_tem)                           :: integ
@@ -1235,6 +1247,12 @@ module integrators
             t_end = time + dt
             dtmin = dt_min
             do while (time < t_end)
+                if (present(hexitptr)) then ! If Hard Exit pointer present
+                    if (hexitptr) then ! If Hard Exit is True
+                        dt_adap = time - t ! Replace dt_adap with actual dt used
+                        return ! Exit subroutine
+                    end if
+                end if
                 yaux  = ynew
                 dt_adap = min (dt_adap, t_end - time)
                 call rk_half_step (time, yaux, dt_adap, dydt, integ, p, e_tol, beta, dtmin, dtused, ynew)
@@ -1246,10 +1264,11 @@ module integrators
         !        Bulirsch_Stoer
         !---------------------------------
         
-        subroutine BStoer_caller (t, y, dt_adap, dydt, e_tol, dt, ynew) !, dt_min
+        subroutine BStoer_caller (t, y, dt_adap, dydt, e_tol, dt, ynew, hexitptr) !, dt_min
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, dt!, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
+            logical, pointer, optional                     :: hexitptr
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
@@ -1261,6 +1280,12 @@ module integrators
             t_end = time + dt
             ! dtmin = min (dt_min, dt)
             do while (time < t_end)
+                if (present(hexitptr)) then ! If Hard Exit pointer present
+                    if (hexitptr) then ! If Hard Exit is True
+                        dt_adap = time - t ! Replace dt_adap with actual dt used
+                        return ! Exit subroutine
+                    end if
+                end if
                 yaux  = ynew
                 dt_adap = min(dt_adap, t_end - time)
                 ! dt_adap = min(max(dt_adap, dt_min), t_end - time)

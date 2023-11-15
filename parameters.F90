@@ -23,6 +23,9 @@ module parameters
     real(kind=8) :: omega, wk, lambda, R0, Prot, a_corot
     real(kind=8) :: omega2, lambda2, fac_omega=uno, rmax=inf, rmin=cero
 
+    logical, target :: hexit = .False. !  Hard Exit logical
+    logical, pointer :: hexitptr ! pointer to Hard Exit
+
 
     contains
 

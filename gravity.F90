@@ -57,8 +57,10 @@ module gravity
             real(kind=8), intent(out) :: ab(2)
             real(kind=8) :: d 
             integer(kind=4) :: i
-            ab  = cero
-            do i = 0, Nboul
+            d = sqrt((rb(1)-rib(0,1))**2 + (rb(2)-rib(0,2))**2)
+            if (d < rmin) hexit = .True.
+            ab = - m(0) * (rb - rib(0,:)) / (d*d*d)
+            do i = 1, Nboul
                 d = sqrt((rb(1)-rib(i,1))**2 + (rb(2)-rib(i,2))**2)
                 ab = ab - m(i) * (rb - rib(i,:)) / (d*d*d)
             end do
@@ -71,10 +73,11 @@ module gravity
             real(kind=8), intent(out) :: aa(2)
             real(kind=8) :: d, omega2, mucm(1:Nboul)
             integer(kind=4) :: i
-            mucm   = m(1:Nboul) / m(0)
+            mucm = m(1:Nboul) / m(0)
             omega2 = omega * omega
             d      = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
-            aa     = - m(0) * ra / (d*d*d)
+            if (d < rmin) hexit = .True.
+            aa = - m(0) * ra / (d*d*d)
             ! aa = cero
             do i = 1, Nboul
                 d = sqrt((ra(1)-ria(i,1))**2 + (ra(2)-ria(i,2))**2)

@@ -60,7 +60,9 @@ module init
             chaos   = .True.  ! Archivo de caos
             exact   = .True.  ! Método exacto
             datas   = .False. ! Salida de datos en pantalla
-            eleout  = .False. ! Salida en elementos orbitales 
+            eleout  = .False. ! Salida en elementos orbitales
+
+            hexitptr => hexit ! Puntero a Hard Exit
         end subroutine init_vars
 
 end module init
@@ -78,7 +80,7 @@ program main
     !!! Definir parámetros: [RECORDAR CAMBIAR "Nboul" en parameters.F90 si es necesario]
     !!!!! MASAS
     m(0)       = 6.3d18       ! Masa del cuerpo 0 [kg]
-    mu(1)      = 1.d-7        ! Cociente de masas
+    mu(1)      = 1.d-1        ! Cociente de masas
     ! mu(2)      = 1.d-6        ! Cociente de masas
     ! mu(3)      = 1.d-4        ! Cociente de masas
     ! mu(4)      = 1.d-7        ! Cociente de masas
@@ -104,13 +106,14 @@ program main
 
     !!! Parámetros corrida
     t0       = cero            ! Initial time [Prot]
-    tf       = 5.d3            ! Final time [Prot]
+    tf       = 4.d3            ! Final time [Prot]
     dt_min   = cero            ! Min timestep [Prot] ! Almost unused
     logsp    = .FALSE.         ! LogSpaced outputs
     n_points = 1000            ! Number of outputs (if logsp=.TRUE. or dt_out=0)
-    dt_out   = 0.0d0           ! Output timestep [Prot] (if logsp = .False.)
+    dt_out   = cero            ! Output timestep [Prot] (if logsp = .False.)
     beta     = 0.85d0          ! [For adaptive step integrators] Learning rate
     e_tol    = 1.d-11          ! [For adaptive step integrators] Relative error
+    rmin     = cero            ! Min distance before impact [km] 0 = R0 + max(Rboul)
     rmax     = 1.d2*radius(0)  ! Max distance before escape [km]
     
 
@@ -302,7 +305,7 @@ program main
     !!!! Radio
     radius = radius * unit_r ! Unidades según G
     R0 = radius(0)
-    rmin = R0 + maxval(radius(1:)) ! Distancia mínima antes de impacto [km]
+    if (rmin < tini) rmin = R0 + maxval(radius(1:)) ! Distancia mínima antes de impacto [km]
 
     !!!! Masas
     do i = 1, Nboul
@@ -533,11 +536,11 @@ program main
         ra  = rb + rcm
         da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
         if (da0 < rmin) then
-            if (screen) write(*,*) ACHAR(10) // "Impacto en t = ", t
+            if (screen) write(*,*) ACHAR(10) // "Impacto en t = ", t, " con ra = ", da0, " < rmin = ", rmin
             bad = 1
             exit
         else if (da0 > rmax) then
-            if (screen) write(*,*) ACHAR(10) // "Escape en t = ", t
+            if (screen) write(*,*) ACHAR(10) // "Escape en t = ", t, " con ra = ", da0, " > rmax = ", rmax
             bad = 2
             exit
         end if
@@ -546,11 +549,15 @@ program main
         dt = t_out(j) - t
 
         !!! Execute an integration method (uncomment/edit one of theese)
-        ! call integ_caller (t, yb, dt_adap, dydt, Runge_Kutta4, dt, ybnew)
-        ! call rk_half_step_caller (t, yb, dt_adap, dydt, Runge_Kutta5, 5, e_tol, beta, dt_min, dt, ybnew)
-        ! call embedded_caller (t, yb, dt_adap, dydt, Dormand_Prince8_7, e_tol, beta, dt_min, dt, ybnew)
-        call BStoer_caller (t, yb, dt_adap, dydt, e_tol, dt, ybnew)
+        ! call integ_caller (t, yb, dt_adap, dydt, Runge_Kutta4, dt, ybnew, hexitptr)
+        ! call rk_half_step_caller (t, yb, dt_adap, dydt, Runge_Kutta5, 5, e_tol, beta, dt_min, dt, ybnew, hexitptr)
+        ! call embedded_caller (t, yb, dt_adap, dydt, Dormand_Prince8_7, e_tol, beta, dt_min, dt, ybnew, hexitptr)
+        call BStoer_caller (t, yb, dt_adap, dydt, e_tol, dt, ybnew, hexitptr)
         !!! call BStoer_caller2 (t, yb, dt_adap, dydt, e_tol, dt, ybnew) !! Este no sirve para este caso
+
+        ! Check if Hard Exit
+        !! If so, the dt used is in dt_adap
+        if (hexit) dt = dt_adap
         
         ! Update parameters
         t  = t + dt
