@@ -22,7 +22,10 @@
 
 # Finalmente se creará un archivo de caos llamado chaos[id].dat por cada partícula, 
 #  y se concatenarán todos los archivos en un solo archivo <outfile> con el siguiente formato:
-# id, bad?, tmax, x_0, y_0, vx_0, vy_0, R_0, t, a_f, e_f, M_f, w_f, R_f, da, de
+## numero simu, mala?, mom ang asteroide,
+## t total, a ini, e ini, M ini, w ini, Res ini, mom ang ini part x unid de masa,
+## t integrado, a final, e final, M final, w final, R final, mom ang fin part x unid de masa,
+## da, de 
 
 # Excepto <outfile>, todos los otros archivos se encontrarán en carpetas creadas con el nombre
 # dpy[pid], donde pid es el ID del procesador que ejecutó el sistema. El máximo de carpetas
@@ -87,7 +90,7 @@ if any([os.path.isdir(name) and name.startswith("dpy") for name in os.listdir(cw
     if result.returncode == 0:
         output_lines = result.stdout.splitlines()
     else:
-        raise IOerror("Error al leer integraciones ya realizadas.")
+        raise IOError("Error al leer integraciones ya realizadas.")
     done = set([int(cint) for cint in output_lines if cint!=''])
     missing_lines = [x for x in range(nsys) if x not in done]
     print("   Cantidad de sistemas ya integrados: {}".format(len(done)))

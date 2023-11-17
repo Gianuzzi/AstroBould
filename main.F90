@@ -2,136 +2,92 @@
 !!! Compilación:
 !!! gfortran -O2 const.F90 run.F90 parameters.F90 integrators.F90 stokes.F90 gravity.F90 derivates.F90 main.F90 -o main
 
-module init
-    use run
-    use integrators
-    use derivates ! Incluye const, gravity, extern
-
-    implicit none
-
-    integer(kind=4) :: i, j, nin, nsim, bad, ineqs
-    integer(kind=4) :: ngx, ngy 
-    real(kind=8)    :: xmin, xmax, ymin, ymax 
-    character(30)   :: chn, cha, che, chM, chw, chR, datafile, chaosfile, infofile, map_file
-    integer(kind=4) :: auxin
-    character(30)   :: auxch
-    character(1)    :: auxch1
-    character(2)    :: auxch2
-    logical         :: auxlo, is_number
-    logical         :: screen, perc, datas, eleout
-    logical         :: map_pot, infoo, datao, chaos
-    logical         :: exact
-    real(kind=8)    :: ang_mom
-
-    contains
-
-        subroutine init_vars()
-            !!! Inicializamos (Variables default)
-            nsim = 0    ; bad = 0
-            m    = cero ; mu  = cero ; GM = cero ; mcm = cero ; Gm = cero
-            mucm = cero
-            radius = cero
-            rib = cero ; ria = cero ; rcm = cero
-            vib = cero ; via = cero ; vcm = cero
-            aib = cero ; aia = cero ; acm = cero
-            rb = cero  ; vb = cero  ; ab = cero
-            ra = cero  ; va = cero  ; aa = cero
-            Prot = uno ; R0 = uno   ; theta_a = cero ; lambda = cero
-            r_b = cero ; theta_b = cero
-            omega = cero ; wk = cero   ; lambda2 = cero ; omega2 = cero 
-            yb = cero ; ybnew = cero ; ya = cero ; yanew = cero
-            xc = cero ; xe = cero  ; xc0 = cero  ; xe0 = cero
-            Res0 = cero
-            ea = cero ; ee = cero  ; ei = cero   ; eM = cero 
-            ew = cero ; eO = cero  ; eR = cero
-            da = cero ; de = cero  ; amax = cero ; amin = inf
-            emax = cero ; emin = inf
-            tau_a = inf  ; tau_e = inf ; t_stokes = cero
-            t0 = cero    ; tf = cero   ; dt_min = cero
-            dt_out = cero ; n_points = 1
-            logsp = .FALSE.
-            beta = 0.9d0 ; e_tol = 1.d-12
-            ngx = 500   ; ngy = 500
-            xmin = -300 ; xmax = 300 ; ymin = -300 ; ymax = 300
-            screen  = .False. ; perc = .False. !Pantalla, porcentaje
-            map_pot = .False. ! Mapa de potencial
-            infoo   = .False. ! Archivo de info
-            datao   = .False. ! Archivo de datos
-            chaos   = .True.  ! Archivo de caos
-            exact   = .True.  ! Método exacto
-            datas   = .False. ! Salida de datos en pantalla
-            eleout  = .False. ! Salida en elementos orbitales
-
-            hexitptr => hexit ! Puntero a Hard Exit
-        end subroutine init_vars
-
-end module init
-
 program main
-    use init
     use run
     use integrators
+    use parameters
     use derivates ! Incluye const, gravity, extern
 
     implicit none
 
-    call init_vars() ! Inicializamos variables
- 
-    !!! Definir parámetros: [RECORDAR CAMBIAR "Nboul" en parameters.F90 si es necesario]
-    !!!!! MASAS
-    m(0)       = 6.3d18       ! Masa del cuerpo 0 [kg]
-    mu(1)      = 1.d-1        ! Cociente de masas
-    ! mu(2)      = 1.d-6        ! Cociente de masas
-    ! mu(3)      = 1.d-4        ! Cociente de masas
-    ! mu(4)      = 1.d-7        ! Cociente de masas
-    !!! ÁNGULOS DE FASE RESPECTO AL ORIGEN [rad]
-    theta_a(1) = cero
-    ! theta_a(2) = pi           ! Ángulo de fase [rad]
-    ! theta_a(3) = pi * uno3    ! Ángulo de fase [rad]
-    ! theta_a(4) = 250 * rad    ! Ángulo de fase [rad]
-    !!! RADIOS
-    radius(0)  = 129.d0       ! Radio del cuerpo 0 [km]
-    radius(1)  = 2.5d0        ! Radio del boulder 1 [km]
-    ! radius(2)  = 1.5d0        ! Radio del boulder 2 [km]
-    ! radius(3)  = 3.5d0        ! Radio del boulder 3 [km]
-    ! radius(4)  = 2.5d0        ! Radio del boulder 3 [km]
-    !!! ROTACIÓN
-    ! Prot       = 7.004d0/24.d0  ! Periodo de rotación de los cuerpos [days]
-    lambda     = 0.471d0      ! Cociente spin/wk
+    call init_times_default()   ! Inicializamos tiempos
 
-    !!!! Stokes
-    tau_a = inf           ! [Prot]
-    tau_e = tau_a / 1.d2  ! [Prot]
-    t_stokes = cero       ! [Prot] Tiempo que actua stokes
+    call init_params_default()  ! Inicializamos parámetros
 
-    !!! Parámetros corrida
-    t0       = cero            ! Initial time [Prot]
-    tf       = 4.d3            ! Final time [Prot]
-    dt_min   = cero            ! Min timestep [Prot] ! Almost unused
-    logsp    = .FALSE.         ! LogSpaced outputs
-    n_points = 1000            ! Number of outputs (if logsp=.TRUE. or dt_out=0)
-    dt_out   = cero            ! Output timestep [Prot] (if logsp = .False.)
-    beta     = 0.85d0          ! [For adaptive step integrators] Learning rate
-    e_tol    = 1.d-11          ! [For adaptive step integrators] Relative error
-    rmin     = cero            ! Min distance before impact [km] 0 = R0 + max(Rboul)
-    rmax     = 1.d2*radius(0)  ! Max distance before escape [km]
+    call read_conf_file("config.ini", auxlo) ! Leemos archivo de configuración
+
+    if (.not. auxlo) then ! Usaremos parámetros por defecto
+        print*, "WARNING: No se pudo leer el archivo de configuración."
+        
+        !! Asteroide central
+        m0 = 6.3d18 ! Masa del cuerpo 0 [kg]
+        R0 = 129.d0 ! Radio del cuerpo 0 [km]
+        !!! ROTACIÓN
+        ! Prot       = 7.004d0/24.d0  ! Periodo de rotación [days]
+        lambda     = 0.471d0      ! Cociente spin/wk
+
+
+        !! Boulders        
+        Nboul = 1 ! Número de boulders
+        
+        !! Alocamos
+        call allocate_all(Nboul)
+
+        !!!!! COCIENTE DE MASAS
+        mu(1)      = 1.d-1        ! Cociente de masas
+        ! mu(2)      = 1.d-6        ! Cociente de masas
+        ! mu(3)      = 1.d-4        ! Cociente de masas
+        ! mu(4)      = 1.d-7        ! Cociente de masas
+
+        !!! ÁNGULOS DE FASE RESPECTO AL ORIGEN [deg]
+        theta_a(1) = cero
+        ! theta_a(2) = 90     ! Ángulo de fase [deg]
+        ! theta_a(3) = 180    ! Ángulo de fase [deg]
+        ! theta_a(4) = 270    ! Ángulo de fase [deg]
+
+        !!! RADIOS
+        radius(1)  = 2.5d0        ! Radio del boulder 1 [km]
+        ! radius(2)  = 1.5d0        ! Radio del boulder 2 [km]
+        ! radius(3)  = 3.5d0        ! Radio del boulder 3 [km]
+        ! radius(4)  = 2.5d0        ! Radio del boulder 3 [km]
+
+        !!!! Stokes
+        stokesl = .False.
+        tau_a = inf           ! [days]
+        tau_e = tau_a / 1.d2  ! [days]
+        t_stokes = cero       ! [days] Tiempo que actua stokes
+
+        !!! Parámetros corrida
+        t0       = cero            ! Initial time [days]
+        tf       = 4.d6            ! Final time [days]
+        dt_min   = cero            ! Min timestep [days] ! Almost unused
+        logsp    = .FALSE.         ! LogSpaced outputs
+        n_points = 1000            ! Number of outputs (if logsp=.TRUE. or dt_out=0)
+        dt_out   = cero            ! Output timestep [days] (if logsp = .False.)
+        beta     = 0.85d0          ! [For adaptive step integrators] Learning rate
+        e_tol    = 1.d-11          ! [For adaptive step integrators] Relative error
+        rmin     = cero            ! Min distance before impact [km] 0 = R0 + max(Rboul)
+        rmax     = 1.d2*radius(0)  ! Max distance before escape [km]
+        
+
+        !! ----------  Default -------------
+        !!! Output: "" or "no", if not used
+        infofile  = ""
+        datafile  = ""
+        chaosfile = "chaos.dat"
+        map_file  = ""
+        !! ----------  Default -------------
+        !!!! Particle elements
+        ea = cero                  ! Element a of the particle (km)
+        ee = cero !0.1d0           ! ecc
+        eM = cero                  ! Mean anomaly (deg)
+        ew = cero                  ! Pericenter argument (deg)
+        eR = cero !1.001d0 !3.3d0  ! resonancia nominal correspondiente
+
+    end if
     
+    call set_derived_params()
 
-    !! ----------  Default -------------
-    !!! Output: "" or "no", if not used
-    infofile  = ""
-    datafile  = ""
-    chaosfile = "chaos.dat"
-    map_file  = ""
-    !! ----------  Default -------------
-    !!!! Particle elements
-    ea = cero                  ! Element a of the particle
-    ee = cero !0.1d0           ! ecc
-    eM = cero                  ! Mean anomaly
-    ew = cero                  ! Pericenter argument
-    eR = cero !1.001d0 !3.3d0  ! resonancia nominal correspondiente
-
-    
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
      !Leemos de la línea de comandos
     nin = command_argument_count()
@@ -193,15 +149,15 @@ program main
             case ("--elem")
                 eleout = .True.
             case ("--noelem")
-                eleout = .True.
+                eleout = .False.
             case ("--help")
                 call get_command_argument(0, auxch)
                 write(*,*) "Uso: " // trim(auxch) // " [nsim] [ea] [ee] [eM] [ew] [eR]"
                 write(*,*) "    nsim: Número de simulación"
-                write(*,*) "    ea  : Elemento a de la partícula"
+                write(*,*) "    ea  : Elemento a de la partícula (km)"
                 write(*,*) "    ee  : Elemento e de la partícula"
-                write(*,*) "    eM  : Elemento M de la partícula"
-                write(*,*) "    ew  : Elemento w de la partícula"
+                write(*,*) "    eM  : Elemento M de la partícula (deg)"
+                write(*,*) "    ew  : Elemento w de la partícula (deg)"
                 write(*,*) "    eR  : Elemento R de la partícula"
                 write(*,*) "    --nodata   : No guardar datos"
                 write(*,*) "    -datafile  : Guardar datos en el archivo que sigue"
@@ -303,40 +259,46 @@ program main
 
     !!! Calcular variables:
     !!!! Radio
-    radius = radius * unit_r ! Unidades según G
-    R0 = radius(0)
+    radius = radius*unit_r ! Unidades según G
     if (rmin < tini) rmin = R0 + maxval(radius(1:)) ! Distancia mínima antes de impacto [km]
 
     !!!! Masas
     do i = 1, Nboul
         m(i) = mu(i) * m(0) ! Masa del boulder i
     end do
-    m = m * unit_m ! Unidades según G
+    m = m*unit_m ! Unidades según G
     mcm  = sum(m)  ! Masa del sistema
     mucm = m / mcm ! Mues respecto a mcm
     Gmi  = G * m
     GM   = G * mcm
 
     !!!! Rotaciones
-    wk = sqrt(GM / R0**3) / unit_t     ! Movimiento medio (kepleriano) que tendrían los boulder
+    theta_a = theta_a*rad
+    wk = sqrt(GM / R0**3)/unit_t     ! Movimiento medio (kepleriano) que tendrían los boulder
     if (lambda > tini) then    
         omega = wk * lambda            ! Velocidad angular del cuerpo 0 [rad/days]
         Prot  = twopi / omega          ! Periodo de rotación del cuerpo 0 [days]
     else
-        omega  = twopi / Prot / unit_t ! Velocidad angular del cuerpo 0 (rad/days)    
+        omega  = (twopi / Prot)/unit_t ! Velocidad angular del cuerpo 0 (rad/days)    
         lambda = omega / wk            ! Cociente de velocidades
     end if
     omega2  = omega * omega
     lambda2 = omega2 * R0**3 / GM      ! Coeficiente de Sicardy y Madeira
     a_corot = (GM / omega2)**(1/3.)
     if (screen) then
-        write(*,*) "a_corot [km]:", a_corot/unit_r, "R0 [km]:", R0/unit_r
-        write(*,*) "omega [rad/days]:", omega*unit_t, "omega_kep [rad/days]:", wk*unit_t, "lambda:", lambda, &
-        & "Prot [hs]:", Prot*24*unit_t
+        write(*,*) "Rotación:"
+        write(*,*) "  a_corot  :", a_corot/unit_r, "[km]"
+        write(*,*) "  omega    :", omega*unit_t, "[rad/days]"
+        write(*,*) "  omega_kep:", wk*unit_t, "[rad/days]"
+        write(*,*) "  lambda   :", lambda
+        write(*,*) "  Prot     :", Prot*24*unit_t, "[hs]"
     end if
 
     !!!! Coordenadas
-    if (screen) write(*,*) "Masa cuerpo central [kg]:", m(0) / unit_m
+    if (screen) then
+        write(*,*) "Masa cuerpo central    :", m0/unit_m, "[kg]"
+        write(*,*) "Radio de cuerpo central:", R0/unit_r, "[km]"
+    end if
 
     !!!!! Astrocentricas
     do i = 1, Nboul
@@ -350,7 +312,7 @@ program main
     if (screen) then
         write(*,*) "Astrocentricas:"
         do i = 1, Nboul
-            write(*,*) i, ria(i,:)/unit_r, via(i,:)/unit_v, aia(i,:)/unit_a, mu(i), theta_a(i)
+            write(*,*) i, ria(i,:)/unit_r, via(i,:)/unit_v, aia(i,:)/unit_a, mu(i), theta_a(i)/rad
         end do
     end if
 
@@ -384,7 +346,7 @@ program main
 
     !!!!! Momento angular
     call ang_mom_bar(rib, vib, m, radius, omega, ang_mom)
-    if (screen) write(*,*) "Momento angular:", ang_mom, "kg km^2 / s"
+    if (screen) write(*,*) "Momento angular:", ang_mom/unit_m/(unit_r**2)*unit_t, "[kg km^2 / days]"
     
 
     !!!! MAPAS Potenciales y Aceleraciones
@@ -395,7 +357,9 @@ program main
     end if
  
     !! Configuramos partícula
-    ea = ea * unit_r
+    ea = ea*unit_r
+    eM = eM*rad
+    eW = eW*rad
     if (eR > tini) then
         ea = eR**(2/3.) * a_corot
     else
@@ -415,24 +379,49 @@ program main
     !!! INTEGRACIÓN
 
     !!!! Set Stokes
-    tau_a = tau_a*Prot ; tau_e = tau_e*Prot ; t_stokes = t_stokes*Prot
-    call Candalpha(tau_a, tau_e, C_stk, a_stk)
-
-    if (screen) then
-        write(*,*) "Stokes:"
-        write(*,*) "    t_stokes [Prot]:", t_stokes, "C    : ", C_stk,  "alpha: ", a_stk
+    if (stokesl) then
+        call set_C_and_Alpha(tau_a,tau_e,C_stk,a_stk)
+        tau_a = tau_a*unit_t
+        tau_e = tau_e*unit_t
+        t_stokes = t_stokes*unit_t
+        if (screen) then
+            write(*,*) "Stokes:"
+            write(*,*) "    t_stokes:", t_stokes/Prot, "[Prot]"
+            write(*,*) "    C       : ", C_stk
+            write(*,*) "    alpha   : ", a_stk
+        end if
+    else ! Just to be sure
+        tau_a = inf
+        tau_e = inf
+        t_stokes = cero
     end if
     
-    if (exact) then
-        if ((tau_m < inf) .or. (tau_o < inf)) then
-            write(*,*) "Error: No se puede usar el método exacto con tau_m o tau_o finitos."
-            if (screen) then
-                if (tau_m < inf) write(*,*) "tau_m [units by G]:", tau_m
-                if (tau_o < inf) write(*,*) "tau_o [units by G]:", tau_o
-            end if
+
+    !! Set breaking
+    if ((abs(tau_m) > tini) .and. (tau_m < inf)) then
+        if (exact) then
+            write(*,*) "Error: No se puede usar el método exacto con tau_m finito."
+            write(*,*) "tau_m [Prot]:", tau_m*unit_t/Prot
             stop 1
         end if
+        tau_m = tau_m*unit_t
+        if (screen) write(*,*) "tau_m [Prot]:", tau_m/Prot
+    else
+        tau_m = inf
     end if
+    if ((abs(tau_o) > tini) .and. (tau_o < inf)) then
+        if (exact) then
+            write(*,*) "Error: No se puede usar el método exacto con tau_o finito."
+            write(*,*) "tau_o [Prot]:", tau_o*unit_t/Prot
+            stop 1
+        end if
+        tau_o = tau_o*unit_t
+        if (screen) write(*,*) "tau_o [Prot]:", tau_o/Prot
+    else
+        tau_o = inf
+    end if
+    
+    !!! Preparamos integracion
     if (screen) write(*,*) "Preparando integración..."
     
     !!!! Yb[aricentric]
@@ -466,16 +455,31 @@ program main
     
 
     !!!! Set times
-    t0 = t0 * Prot ; tf = tf * Prot ; dt_out = dt_out * Prot ; dt_min = dt_min * Prot
+    t0 = t0*unit_t
+    tf = tf*unit_t
+    dt_out = dt_out*unit_t
+    dt_min = dt_min*unit_t
+    ! t0 = t0 * Prot ; tf = tf * Prot ; dt_out = dt_out * Prot ; dt_min = dt_min * Prot
     call get_t_outs (t0, tf, n_points, dt_out, logsp, t_out) ! Get LOOP checkpoints
     t       = t0                                             ! Init time
     dt      = t_out(1) - t0                                  ! This should be == 0
     dt_min  = max(min(dt_min, dt_out), tini)                 ! Min timestep (almost unused)
     dt_adap = dt_min                                         ! For adaptive step
 
-    if (screen) write(*,*) "    t0 [Prot]: ", t0/Prot, " tf [Prot]: ", tf/Prot, " dt_out [Prot]: ", dt_out/Prot, &
-        &" dt_min [Prot]: ", dt_min/Prot, "n_points: ", n_points
+    if (screen) then
+        write(*,*) "Tiempos:"
+        write(*,*) "    t0      : ", t0/Prot, "[Prot]"
+        write(*,*) "    tf      : ", tf/Prot, "[Prot]"
+        write(*,*) "    dt_out  : ", dt_out/Prot, "[Prot]"
+        write(*,*) "    dt_min  : ", dt_min/Prot, "[Prot]"
+        write(*,*) "    n_points: ", n_points
+    end if
 
+    if (screen) then
+        write(*,*) "Condición escape/colisión:"
+        write(*,*) "    rmin    : ", rmin/unit_r, "[km]"
+        write(*,*) "    rmax    : ", rmax/unit_r, "[km]"
+    end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  INFO FILE  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     if (infoo) then
@@ -499,15 +503,15 @@ program main
                 if (screen) write(*,*) "Se guardará el resumen en el archivo: ", trim(infofile)//"_"//trim(auxch2)
                 open(unit=1, file=trim(infofile)//"_"//trim(auxch2), status="new", action="write")
             end if
-            write(1,*) "Nboul,m0,mu,theta,R0,Prot,tau_a,tau_e,t_stokes,tf,dt_out"
-            write(1,*) Nboul,m(0),mu,theta_a,R0,Prot,tau_a,tau_e,t_stokes,tf,dt_out
+            write(1,*) "Nboul,m0,mu,theta,R0,Prot,tf,dt_out,ang_mom"
+            write(1,*) Nboul,m0,mu,theta_a,R0,Prot,tf,dt_out,ang_mom
             close(1)
         end if
     end if
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
     if (screen) write(*,*) "Integrando..."
+    
 
     if (datao) open(unit=2, file=trim(datafile), status='unknown', action='write', access="append")
     !!! t, x, y, vx, vy, ax, ay, a, e, w
@@ -518,29 +522,37 @@ program main
         dydt => dydt_bar_im
     end if
     !!! BARYCENTRIC
-    if (datas .and. .not. perc) write(*,*) t, ea, ee, ew, eR
+    if (datas .and. .not. perc) write(*,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
     if (datao) then
         if (eleout) then
-            write(2,*) t, ea, ee, eM, ew, eR
+            write(2,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
         else
             do i = 0, Nboul
-                write(2,*) i, t, rib(i,:), vib(i,:), aib(i,:), m(i), radius(i)
+                write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
             end do
             call accbar(m(0:Nboul), rb, rib, ab)   ! Este lo setea a 0 al principio
-            call accsto(t, rb, vb, ab) ! Este suma aceleración
-            write(2,*) FP, t, rb, vb, ab, cero, cero
+            call accsto(t, rb, vb, ab, GM) ! Este suma aceleración
+            write(2,*) FP, t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
         end if
     end if
     ! MAIN LOOP
     do j = 2, n_points ! From 2 because 1 is the IC (t0)
         ra  = rb + rcm
         da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
-        if (da0 < rmin) then
-            if (screen) write(*,*) ACHAR(10) // "Impacto en t = ", t, " con ra = ", da0, " < rmin = ", rmin
+        if ((da0 < rmin) .or. hexit) then
+            if (screen) then
+                write(*,*) ACHAR(10) 
+                write(*,*) "Impacto en t = ", t/unit_t, "[días]"
+                ! write(*,*) "      con ra = ", da0/unit_r, "[km]"
+            end if
             bad = 1
             exit
         else if (da0 > rmax) then
-            if (screen) write(*,*) ACHAR(10) // "Escape en t = ", t, " con ra = ", da0, " > rmax = ", rmax
+            if (screen) then
+                write(*,*) ACHAR(10) 
+                write(*,*) "Escape en t = ", t/unit_t, "[días]"
+                ! write(*,*) "     con ra = ", da0/unit_r, "[km]"
+            end if
             bad = 2
             exit
         end if
@@ -571,17 +583,17 @@ program main
                 ineqs = i * neqs
                 rib(i,1) = cos(omega * t + theta_b(i)) * r_b(i)
                 rib(i,2) = sin(omega * t + theta_b(i)) * r_b(i)
-                vib(i,1)   = - omega * rib(i,2)
-                vib(i,2)   =   omega * rib(i,1)
+                vib(i,1) = - omega * rib(i,2)
+                vib(i,2) =   omega * rib(i,1)
             end do
         else
             omega  = yb(1)
             omega2 = omega * omega
             do i = 0, Nboul
                 ineqs = i * neqs
-                m(i)      = yb(ineqs+2)
-                rib(i,:)  = yb(ineqs+3 : ineqs+4)
-                vib(i,:)  = yb(ineqs+5 : ineqs+6)
+                m(i) = yb(ineqs+2)
+                rib(i,:) = yb(ineqs+3 : ineqs+4)
+                vib(i,:) = yb(ineqs+5 : ineqs+6)
             end do
             a_corot = (GM / omega2)**(1/3.)
         end if
@@ -596,7 +608,7 @@ program main
         rb = yb(NP+3 : NP+4)
         vb = yb(NP+5 : NP+6)
         call accbar(m(0:Nboul), rb, rib(0:Nboul,:2), ab) ! Este lo setea a 0 al principio
-        call accsto(t, rb, vb, ab)  ! Este suma aceleración
+        call accsto(t, rb, vb, ab, GM)  ! Este suma aceleración
         rib(FP,:) = rb
         vib(FP,:) = vb
         aib(FP,:) = ab
@@ -610,15 +622,15 @@ program main
         call chaosvals(ea, ee, amax, amin, emax, emin)
 
         ! Output
-        if (datas .and. .not. perc) write(*,*) t, ea, ee, ew, eR
+        if (datas .and. .not. perc) write(*,*) t, ea/unit_r, ee, eM/rad, ew/rad, eR
         if (datao) then
             if (eleout) then
-                write(2,*) t, ea, ee, eM, ew, eR
+                write(2,*) t, ea/unit_r, ee, eM/rad, ew/rad, eR
             else
                 do i = 0, Nboul
-                    write(2,*) i, t, rib(i,:), vib(i,:), aib(i,:), m(i), radius(i)
+                    write(2,*) i, t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
                 end do
-                write(2,*) FP, t, rb, vb, ab, cero, cero
+                write(2,*) FP, t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
             end if
         end if
         if (perc) call percentage(t, tf)
@@ -634,14 +646,21 @@ program main
     if (chaos) then
         open (3, file=trim(chaosfile), status='unknown', position='append')
         ! numero simu, mala?, t total, a ini, e ini, M ini, w ini, Res ini, t integrado, a final, e final, M final, w final, R final, da, de 
-        write (3,*) nsim, bad, tf, xe0(1), xe0(2), xe0(4), xe0(5), Res0, t, ea, ee, eM, ew, eR, da, de
+        write (3,*) nsim, bad, ang_mom/(unit_m*unit_r*unit_v), &
+                    & tf/unit_t, xe0(1)/unit_r, xe0(2), xe0(4)/rad, xe0(5)/rad, Res0, &
+                    & (xc0(1) * xc0(5) - xc0(2) * xc0(4))/(unit_r*unit_v), &
+                    & t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR, &
+                    & (xc(1) * xc(5) - xc(2) * xc(4))/(unit_r*unit_v), &
+                    & da/unit_r, de
         close(3)
         if (screen) then
-            write(*,*) "amin [km]:", amin, "amax [km]:", amax, "da [km]:", da
-            write(*,*) "emin     :", emin, "emax     :", emax, "de     :", de
+            write(*,*) "amin:", amin/unit_r, "[km] ; amax:", amax/unit_r, "[km] ; da:", da/unit_r, "[km]"
+            write(*,*) "emin:", emin, "     ; emax:", emax, "     ; de:", de
             write(*,*) "Se guardó el caos en el archivo: ", trim(chaosfile)
         end if
     end if
+
+    call deallocate_all()
 
 end program main
 
@@ -694,7 +713,8 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
 end subroutine mapas_pot
 
 subroutine coord(msum, a, e, inc, capm, omega, capom, xc)
-    use const, only: G, uno
+    use const, only: uno
+    use parameters, only: G
     implicit none
     real(kind=8), intent(in)  :: msum, a, e, inc, capm, omega, capom
     real(kind=8), intent(out) :: xc(6)
@@ -758,6 +778,7 @@ end subroutine aver
 
 subroutine elem(msum, xc, a, e, inc, capm, omega, capom)
     use const
+    use parameters, only: G
     implicit none
     real(kind=8), intent(in)  :: msum, xc(6)
     real(kind=8), intent(out) :: a, e, inc, capm, omega, capom

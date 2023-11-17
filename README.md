@@ -1,7 +1,9 @@
 # AstroBould
 Repositorio con programa para integrar partículas gravitatoriamente alrededor de un asteroide con boulders
 
-Los parámetros iniciales del sistema y la integración se modifican en [main.F90](./main.F90#L80#L125), entre las líneas 80 y 125.
+Los parámetros iniciales del sistema y la integración se modifican en el archivo: [config.ini]
+
+En caso de no utilizarlo, se usan los parámtros definidos en [main.F90](./main.F90#21#86), entre las líneas 21 y 86.
 
 COMPILAR:
 ``` console
@@ -40,7 +42,7 @@ Uso:
 
 PARTÍCULA INDIVIDUAL: 
 ``` console
-$ ./main 0 a e M w R
+$ ./main 0 a e M w R [args]
 ```
 0 (o cualquier otro "int") es obligatorio
 
@@ -49,7 +51,7 @@ $ ./main 0 a e M w R
 R es opcional. En caso de usarlo, calcula y reemplaza el valor de a.
 
 PARALELO: (Recordar estar en algún entorno)
-En este caso se debe tener un archivo con los datos de las partículas. La info está al inicio del archivo [parallel.py](./parallel.py#L3#L30))
+En este caso se debe tener un archivo con los datos de las partículas. La info está al inicio del archivo [parallel.py](./parallel.py#L3#L35)
 ``` console
 $ python parallel.py
 ```

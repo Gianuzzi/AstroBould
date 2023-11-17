@@ -5,12 +5,6 @@ module derivates
     use stokes
     implicit none
     !y = /omega, mi, xi, yi, vxi, vyi, .../
-    real(kind=8) :: yb(1 + neqs * (Ntot+1)), ybnew(1 + neqs * (Ntot+1))
-    real(kind=8) :: ya(1 + neqs * (Ntot+1)), yanew(1 + neqs * (Ntot+1))
-
-    !! Dampings
-    real(kind=8), parameter :: tau_o = inf ! Omega
-    real(kind=8), parameter :: tau_m = inf ! M0
 
     procedure (dydt_temp), pointer :: dydt => null ()
     type dydt_ptr
@@ -72,7 +66,7 @@ module derivates
                 rb = y(ineqs+3 : ineqs+4)
                 vb = y(ineqs+5 : ineqs+6)
                 call accbar(m(0:Nboul), rb, rib, ab)
-                call accsto(t, rb, vb, ab)
+                call accsto(t, rb, vb, ab, GM)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do
@@ -107,7 +101,7 @@ module derivates
                 rb   = y(ineqs+3 : ineqs+4)
                 vb   = y(ineqs+5 : ineqs+6)
                 call accbar(m(0:Nboul), rb, rib, ab)
-                call accsto(t, rb, vb, ab)
+                call accsto(t, rb, vb, ab, GM)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do
