@@ -1,7 +1,7 @@
 # AstroBould
 Repositorio con programa para integrar partículas gravitatoriamente alrededor de un asteroide con boulders
 
-Los parámetros iniciales del sistema y la integración se modifican en el archivo: [config.ini]
+Los parámetros iniciales del sistema y la integración se modifican en el archivo: [config.ini].(./config.ini)
 
 En caso de no utilizarlo, se usan los parámtros definidos en [main.F90](./main.F90#21#86), entre las líneas 21 y 86.
 
