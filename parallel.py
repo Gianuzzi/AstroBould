@@ -22,7 +22,16 @@
 
 # Finalmente se creará un archivo de caos llamado chaos[id].dat por cada partícula, 
 #  y se concatenarán todos los archivos en un solo archivo <outfile> con el siguiente formato:
-# id, bad?, tmax, x_0, y_0, vx_0, vy_0, R_0, t, a_f, e_f, M_f, w_f, R_f, da, de
+## 1    : numero simu
+## 2    : mala? (0 == OK, 1 == Colisión, 2 == Escape)
+## 3    : Momento angular total
+## 4    : t total
+## 5-9  : a ini, e ini, M ini, w ini, Res ini
+## 10   : Momento angular inicial de partícula por unidad de masa
+## 11   : t integrado
+## 12-16: a final, e final, M final, w final, R final
+## 17   : Momento angular final de partícula por unidad de masa
+## 18-19: da, de 
 
 # Excepto <outfile>, todos los otros archivos se encontrarán en carpetas creadas con el nombre
 # dpy[pid], donde pid es el ID del procesador que ejecutó el sistema. El máximo de carpetas
@@ -54,6 +63,7 @@ exact = False                # Método: Exacto (cos, sin), o NO exacto (integra 
 cwd = os.getcwd()
 oparticles = os.path.join(cwd, particles)
 oprogr = os.path.join(cwd, program)
+ocini = os.path.join(cwd, "config.ini")
 
 ## Checkeamos los archivos
 if not os.path.isfile(oparticles):
@@ -62,6 +72,16 @@ if not os.path.isfile(oparticles):
 if not os.path.isfile(oprogr):
     msg = "Executable file {} does not exist.".format(oprogr)
     raise FileNotFoundError(msg)
+existe_ocini = os.path.isfile(ocini)
+if not existe_ocini:
+    print("WARNING: Configuration file {} does not exist.".format(ocini))
+    print("         Se utilizarán los parámetros explicitados en el código, ")
+    print("          en vez de los de algún archivo de parámetros. ")
+    yes_no = input("¿Desea continuar? [y/n]")
+    if yes_no.lower() not in ["y", "yes"]:
+        print("Saliendo.")
+        exit(1)
+    
 
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
@@ -87,7 +107,7 @@ if any([os.path.isdir(name) and name.startswith("dpy") for name in os.listdir(cw
     if result.returncode == 0:
         output_lines = result.stdout.splitlines()
     else:
-        raise IOerror("Error al leer integraciones ya realizadas.")
+        raise IOError("Error al leer integraciones ya realizadas.")
     done = set([int(cint) for cint in output_lines if cint!=''])
     missing_lines = [x for x in range(nsys) if x not in done]
     print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
@@ -121,9 +141,12 @@ def integrate_n(i):
     PID = os.getpid()
     dirp = os.path.join(cwd, "dpy%d"%PID)
     nprogr = os.path.join(dirp, program)
+    ncini = os.path.join(dirp, "config.ini")
     if not os.path.exists(dirp): # Si no existe el directorio
         subprocess.run(["mkdir", dirp], check=True)
         p = subprocess.run(["cp", oprogr, nprogr], check=True)
+        if existe_ocini:
+            p = subprocess.run(["cp", ocini, ncini], check=True)
     print("Running system %d\n"%(i))
     ### ESTO SE ESTÁ EJECUTANDO EN LA SHELL
     # print("Running: ./%s %s %d %s"%(program, args, i, lines[i]))

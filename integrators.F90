@@ -1278,7 +1278,6 @@ module integrators
             ynew  = y
             time  = t
             t_end = time + dt
-            ! dtmin = min (dt_min, dt)
             do while (time < t_end)
                 if (present(hexitptr)) then ! If Hard Exit pointer present
                     if (hexitptr) then ! If Hard Exit is True
@@ -1288,8 +1287,6 @@ module integrators
                 end if
                 yaux  = ynew
                 dt_adap = min(dt_adap, t_end - time)
-                ! dt_adap = min(max(dt_adap, dt_min), t_end - time)
-                ! if ((time + dt_adap) > (t_end - C1_2 * dt_min)) dt_adap = t_end - time
                 call Bulirsch_Stoer (time, yaux, dt_adap, dydt, e_tol, dtused, ynew)
                 time = time + dtused
             end do

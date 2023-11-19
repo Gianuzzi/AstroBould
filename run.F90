@@ -11,9 +11,16 @@ module run
     logical                                 :: logsp                          ! Logarithmic spacing
     real(kind=8)                            :: start_time, final_time         ! Excecution start and elapsed time
     real(kind=8), parameter                 :: MIN_VAL = 1.d-15                ! Avoid extremely low values
-    ! real(kind=8), parameter                 :: eps   = 1.0d-11                ! Precisión
 
     contains
+
+        subroutine init_times_default()
+            t = 0.d0 ; t0 = 0.d0 ; tf = 0.d0
+            dt = 0.d0 ; dt_adap = 0.d0 ; dt_min = 0.d0 ; dt_out = 0.d0 
+            t_add = 0.d0 ; logt = 0.d0 ; fixt = 0.d0
+            logsp = .FALSE.
+            start_time = 0.d0 ; final_time = 0.d0        
+        end subroutine init_times_default
 
         subroutine get_t_outs(t0, tf, n_points, dt_out, logsp, t_out)
             implicit none

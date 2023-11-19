@@ -27,13 +27,16 @@ integrators.o :
 main.o :  \
 	derivates.o \
 	integrators.o \
+	parameters.o \
 	run.o
 
 parameters.o :  \
-	const.o
+	const.o \
+	integrators.o \
+	run.o \
+	stokes.o
 
 run.o : 
 
 stokes.o :  \
-	const.o \
-	parameters.o
+	const.o
