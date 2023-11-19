@@ -14,10 +14,9 @@ program main
 
     call init_params_default()  ! Inicializamos parámetros
 
-    call read_conf_file("config.ini", auxlo) ! Leemos archivo de configuración
+    call read_conf_file("config.ini", loini) ! Leemos archivo de configuración
 
-    if (.not. auxlo) then ! Usaremos parámetros por defecto
-        print*, "WARNING: No se pudo leer el archivo de configuración."
+    if (.not. loini) then ! Usaremos parámetros por defecto
         
         !! Asteroide central
         m0 = 6.3d18 ! Masa del cuerpo 0 [kg]
@@ -30,12 +29,12 @@ program main
         !! Boulders        
         Nboul = 1 ! Número de boulders
         
-        !! Alocamos
+        !! Alocamos (No tocar)
         call allocate_all(Nboul)
 
         !!!!! COCIENTE DE MASAS
         mu(1)      = 1.d-1        ! Cociente de masas
-        ! mu(2)      = 1.d-6        ! Cociente de masas
+        mu(2)      = 1.d-6        ! Cociente de masas
         ! mu(3)      = 1.d-4        ! Cociente de masas
         ! mu(4)      = 1.d-7        ! Cociente de masas
 
@@ -65,9 +64,9 @@ program main
         n_points = 1000            ! Number of outputs (if logsp=.TRUE. or dt_out=0)
         dt_out   = cero            ! Output timestep [days] (if logsp = .False.)
         beta     = 0.85d0          ! [For adaptive step integrators] Learning rate
-        e_tol    = 1.d-11          ! [For adaptive step integrators] Relative error
-        rmin     = cero            ! Min distance before impact [km] 0 = R0 + max(Rboul)
-        rmax     = 1.d2*radius(0)  ! Max distance before escape [km]
+        dig_err  = 12              ! [For adaptive step integrators] Digits for relative error
+        rmin     = -1.5d0          ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
+        rmax     = -1.d2           ! Max distance before escape [km] ! -x => R0 * x
         
 
         !! ----------  Default -------------
@@ -86,10 +85,14 @@ program main
 
     end if
     
-    call set_derived_params()
+    call set_derived_params() ! Inicializamos parámetros derivados
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     !Leemos de la línea de comandos
+!!!!!!!!!!!!!!!!!!!!!!!!! No tocar de aquí a abajo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    
+    !Leemos de la línea de comandos
     nin = command_argument_count()
     !!!!! PARTÍCULA (en caso de entrada por terminal)
     auxlo = .False.
@@ -226,7 +229,7 @@ program main
     end if
 
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!    OUTPUT     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!    OUTPUT     !!!!!!!!!!
 
     if ((trim(infofile) /= "") .and. (trim(infofile) /= "no")) then
         infoo = .True.
@@ -253,6 +256,12 @@ program main
         write(*,*)  "EXITING: No se guardará ni imprimirá ninguna salida."
         stop 1
     end if
+    
+    ! Mensaje
+    if (screen .and. .not. loini) then
+        write(*,*) "WARNING: No se pudo leer el archivo de configuración: config.ini"
+        write(*,*) "         Se utilizan los parámetros dados en el código."
+    end if
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -260,7 +269,7 @@ program main
     !!! Calcular variables:
     !!!! Radio
     radius = radius*unit_r ! Unidades según G
-    if (rmin < tini) rmin = R0 + maxval(radius(1:)) ! Distancia mínima antes de impacto [km]
+    
 
     !!!! Masas
     do i = 1, Nboul
@@ -475,10 +484,24 @@ program main
         write(*,*) "    n_points: ", n_points
     end if
 
+    
+    !!! Escape/Colisión
+    if (rmin < cero) then
+        rmin = R0 * abs(rmin)
+    else if (rmin < tini) then
+        rmin = R0 + maxval(radius(1:))
+    else
+        rmin = rmin*unit_r
+    end if
+    if (rmax < cero) then
+        rmax = R0 * abs(rmax)
+    else 
+        rmax = rmax*unit_r
+    end if
     if (screen) then
         write(*,*) "Condición escape/colisión:"
-        write(*,*) "    rmin    : ", rmin/unit_r, "[km]"
-        write(*,*) "    rmax    : ", rmax/unit_r, "[km]"
+        write(*,*) "    rmin    : ", rmin/unit_r, "[km] =", rmin/R0, "[R0]"
+        write(*,*) "    rmax    : ", rmax/unit_r, "[km] =", rmax/R0, "[R0]"
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  INFO FILE  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -514,7 +537,6 @@ program main
     
 
     if (datao) open(unit=2, file=trim(datafile), status='unknown', action='write', access="append")
-    !!! t, x, y, vx, vy, ax, ay, a, e, w
     
     if (exact) then
         dydt => dydt_bar_ex
@@ -622,15 +644,15 @@ program main
         call chaosvals(ea, ee, amax, amin, emax, emin)
 
         ! Output
-        if (datas .and. .not. perc) write(*,*) t, ea/unit_r, ee, eM/rad, ew/rad, eR
+        if (datas .and. .not. perc) write(*,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
         if (datao) then
             if (eleout) then
-                write(2,*) t, ea/unit_r, ee, eM/rad, ew/rad, eR
+                write(2,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
             else
                 do i = 0, Nboul
-                    write(2,*) i, t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
+                    write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
                 end do
-                write(2,*) FP, t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
+                write(2,*) FP, t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
             end if
         end if
         if (perc) call percentage(t, tf)
@@ -645,7 +667,16 @@ program main
     de = emax - emin
     if (chaos) then
         open (3, file=trim(chaosfile), status='unknown', position='append')
-        ! numero simu, mala?, t total, a ini, e ini, M ini, w ini, Res ini, t integrado, a final, e final, M final, w final, R final, da, de 
+        ! 1    : numero simu
+        ! 2    : mala? (0 == OK, 1 == Colisión, 2 == Escape)
+        ! 3    : Momento angular total
+        ! 4    : t total
+        ! 5-9  : a ini, e ini, M ini, w ini, Res ini
+        ! 10   : Momento angular inicial de partícula por unidad de masa
+        ! 11   : t integrado
+        ! 12-16: a final, e final, M final, w final, R final
+        ! 17   : Momento angular final de partícula por unidad de masa
+        ! 18-19: da, de 
         write (3,*) nsim, bad, ang_mom/(unit_m*unit_r*unit_v), &
                     & tf/unit_t, xe0(1)/unit_r, xe0(2), xe0(4)/rad, xe0(5)/rad, Res0, &
                     & (xc0(1) * xc0(5) - xc0(2) * xc0(4))/(unit_r*unit_v), &
@@ -660,6 +691,7 @@ program main
         end if
     end if
 
+    ! De-alocamos memoria
     call deallocate_all()
 
 end program main

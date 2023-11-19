@@ -45,11 +45,12 @@ module parameters
     character(30)   :: auxch
     character(1)    :: auxch1
     character(2)    :: auxch2
-    logical         :: auxlo, is_number
+    logical         :: auxlo, is_number, loini
     logical         :: screen, perc, datas, eleout
     logical         :: map_pot, infoo, datao, chaos
     logical         :: exact
     real(kind=8)    :: ang_mom
+    integer(kind=4) :: dig_err
 
     !! Dampings (not stokes)
     real(kind=8) :: tau_o = inf ! Omega
@@ -61,8 +62,9 @@ module parameters
 
 
     contains
-
-        subroutine init_params_default()
+        
+        !Modificar algún valor si se quiere otro Default
+        subroutine init_params_default() 
             implicit none
 
             !!! Inicializamos (Variables default)
@@ -80,6 +82,7 @@ module parameters
             ew = cero ; eO = cero  ; eR = cero
             da = cero ; de = cero  ; amax = cero ; amin = inf
             emax = cero ; emin = inf
+            dig_err = 12 ! Dígitos de presición (error)
             
             ngx = 500   ; ngy = 500
             xmin = -300 ; xmax = 300 ; ymin = -300 ; ymax = 300
@@ -92,7 +95,7 @@ module parameters
             datas   = .False. ! Salida de datos en pantalla
             eleout  = .False. ! Salida en elementos orbitales
 
-            hexitptr => hexit ! Puntero a Hard Exit
+            hexitptr => hexit ! Puntero a Hard Exit (NO TOCAR)
         end subroutine init_params_default
 
         subroutine read_conf_file(file_name, existe)
@@ -107,7 +110,7 @@ module parameters
 
             inquire(file=trim(file_name), exist=existe)
             if (.not. existe) then
-                write(*,*) "El archivo ", trim(file_name), " no existe."
+                if (screen) write(*,*) "El archivo ", trim(file_name), " no existe."
                 return
             end if
             nlines = 0
@@ -148,8 +151,7 @@ module parameters
                                 logsp = .false.
                             end if
                         case("precision (digi")
-                            read(value_str, *) auxin
-                            e_tol = 10.0d0**(-auxin)
+                            read(value_str, *) dig_err
                         case("learning rate")
                             read(value_str, *) beta
                         case("mass of primary")
@@ -293,10 +295,15 @@ module parameters
             !! Indices
             FP = Nboul + 1
             NP = FP * neqs
+            
+            !! tau_m y tau_o
+            if ((abs(tau_m) < tini) .or. (tau_m < tini)) tau_m = cero
+            if ((abs(tau_o) < tini) .or. (tau_o < tini)) tau_o = cero
 
-            if ((abs(tau_m) < tini) .or. (tau_m < tini))tau_m = cero
-            if ((abs(tau_o) < tini) .or. (tau_o < tini))tau_o = cero
-
+            !! Error
+            e_tol = 10.d0**(-dig_err)
+            
+            !! Cuerpo central
             m(0) = m0
             radius(0) = R0
             m0 = m0 * unit_m
