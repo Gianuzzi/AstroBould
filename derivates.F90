@@ -1,8 +1,7 @@
 module derivates
     use const
     use parameters
-    use gravity
-    use stokes
+    use forces
     implicit none
     !y = /omega, mi, xi, yi, vxi, vyi, .../
 
@@ -67,6 +66,7 @@ module derivates
                 vb = y(ineqs+5 : ineqs+6)
                 call accbar(m(0:Nboul), rb, rib, ab)
                 call accsto(t, rb, vb, ab, GM)
+                call accJ2(J2, ab)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do
@@ -102,6 +102,7 @@ module derivates
                 vb   = y(ineqs+5 : ineqs+6)
                 call accbar(m(0:Nboul), rb, rib, ab)
                 call accsto(t, rb, vb, ab, GM)
+                call accJ2(J2, ab)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do

@@ -2,59 +2,73 @@ module parameters
     use const
     use run
     use integrators
-    use stokes
     implicit none
 
     !!! Parámetros y auxiliares
     integer(kind=4), parameter :: Npart = 1
     integer(kind=4)  :: Nboul = 0, Ntot !!! Boulders, Particles, Total
     integer(kind=4), parameter :: neqs = 5 ! Número de eqs. a integrar (m, x, y, vx, vy) !! Omega va aparte
-    integer(kind=4)  :: FP, NP !! First particle, y posicion de primer partícula
+    integer(kind=4)  :: FP = 0, NP = 0 !! First particle, y posicion de primer partícula
     
     !!! Variables
     real(kind=8), allocatable :: m(:), mu(:), Gmi(:), mucm(:)
-    real(kind=8) :: GM, mcm, m0, R0
+    real(kind=8) :: GM = cero, mcm = cero
+    real(kind=8) :: m0 = cero, R0 = cero, GM0 = cero
     real(kind=8), allocatable :: radius(:)
     real(kind=8), allocatable :: rib(:,:), ria(:,:)
     real(kind=8), allocatable :: vib(:,:), via(:,:)
     real(kind=8), allocatable :: aib(:,:), aia(:,:)
-    real(kind=8) :: rcm(2), vcm(2), acm(2)
-    real(kind=8) :: rb(2), ra(2)
-    real(kind=8) :: vb(2), va(2)
-    real(kind=8) :: ab(2), aa(2)
-    real(kind=8) :: da0
-    real(kind=8) :: da, de, amax, amin, emax, emin
-    real(kind=8) :: xc(6), xe(6), xc0(6), xe0(6), Res0
-    real(kind=8) :: ea, ee, ei, eM, ew, eO, eR
+    real(kind=8) :: rcm(2) = cero, vcm(2) = cero, acm(2) = cero
+    real(kind=8) :: rb(2) = cero, ra(2) = cero
+    real(kind=8) :: vb(2) = cero, va(2) = cero
+    real(kind=8) :: ab(2) = cero, aa(2) = cero
+    real(kind=8) :: db0 = cero, da0 = cero
+    real(kind=8) :: da = cero, de = cero, amax = cero, amin = inf, emax = cero, emin = inf
+    real(kind=8) :: xc(6) = cero, xe(6) = cero, xc0(6) = cero, xe0(6) = cero, Res0 = cero
+    real(kind=8) :: ea = cero, ee = cero, ei = cero, eM = cero, ew = cero, eO = cero, eR = cero
     real(kind=8), allocatable :: theta_a(:)
-    real(kind=8) :: theta_acm
+    real(kind=8) :: theta_acm = cero
     real(kind=8), allocatable :: r_b(:), theta_b(:)
-    real(kind=8) :: omega, wk, lambda, Prot, a_corot
-    real(kind=8) :: omega2, lambda2, fac_omega=uno, rmax=inf, rmin=cero
-
-    !!! Punteros
-    logical, target :: hexit = .False. !  Hard Exit logical
-    logical, pointer :: hexitptr ! pointer to Hard Exit
+    real(kind=8) :: lambda = cero, Prot = cero
+    real(kind=8) :: omega = cero, wk = cero, a_corot = cero, omega2 = cero, lambda2 = cero
+    real(kind=8) :: ang_mom = cero
+    real(kind=8) :: rmax = cero, rmin = inf
 
     !! Parámetros de main
-    integer(kind=4) :: i, j, nin, nsim, bad, ineqs
-    integer(kind=4) :: ngx, ngy 
-    real(kind=8)    :: xmin, xmax, ymin, ymax 
-    character(30)   :: chn, cha, che, chM, chw, chR, datafile, chaosfile, infofile, map_file
+    integer(kind=4) :: i = 0, j = 0, ineqs = 0
+    integer(kind=4) :: nin = 0, nsim = 0, bad = 0
+    integer(kind=4) :: ngx = 0, ngy = 0
+    real(kind=8)    :: xmin = inf, xmax = -inf, ymin = inf, ymax = -inf
+    character(30)   :: chn, cha, che, chM, chw, chR
+    character(30)   :: datafile, chaosfile, infofile, map_file
     integer(kind=4) :: auxin
     character(30)   :: auxch
     character(1)    :: auxch1
     character(2)    :: auxch2
     logical         :: auxlo, is_number, loini
-    logical         :: screen, perc, datas, eleout
-    logical         :: map_pot, infoo, datao, chaos
-    logical         :: exact
-    real(kind=8)    :: ang_mom
-    integer(kind=4) :: dig_err
+    logical         :: screen = .True., perc = .False., datas = .False., eleout = .False.
+    logical         :: map_pot = .False., infoo = .False., datao = .False., chaos = .False.
+    logical         :: exact = .True. 
+    integer(kind=4) :: dig_err = 13
 
+
+    !!!! FORCES
+    !!! Stokes
+    logical :: lostokes = .false.
+    real(kind=8) :: t_stokes = cero, f_stk = uno
+    real(kind=8) :: tau_a = inf, tau_e = inf, C_stk = cero, a_stk = uno
     !! Dampings (not stokes)
     real(kind=8) :: tau_o = inf ! Omega
     real(kind=8) :: tau_m = inf ! M0
+    !! Geo-Potential
+    logical :: loJ2 = .False.
+    real(kind=8) :: raux(2) = cero ! rb - rb0
+    real(kind=8) :: J2 = cero
+
+
+    !!! Punteros
+    logical, target :: hexit = .False. !  Hard Exit logical
+    logical, pointer :: hexitptr ! pointer to Hard Exit
 
     !! Vectores
     !y = /omega, mi, xi, yi, vxi, vyi, .../
@@ -63,39 +77,55 @@ module parameters
 
     contains
         
-        !Modificar algún valor si se quiere otro Default
+        !! Modificar algún valor si se quiere otro Default
         subroutine init_params_default() 
             implicit none
-
-            !!! Inicializamos (Variables default)
-            nsim = 0    ; bad = 0
-            rcm = cero
-            vcm = cero
-            acm = cero
-            rb = cero  ; vb = cero  ; ab = cero
-            ra = cero  ; va = cero  ; aa = cero
-            Prot = uno ; R0 = uno   ; lambda = cero
-            omega = cero ; wk = cero   ; lambda2 = cero ; omega2 = cero
-            xc = cero ; xe = cero  ; xc0 = cero  ; xe0 = cero
-            Res0 = cero
-            ea = cero ; ee = cero  ; ei = cero   ; eM = cero 
-            ew = cero ; eO = cero  ; eR = cero
-            da = cero ; de = cero  ; amax = cero ; amin = inf
-            emax = cero ; emin = inf
+            !!!! Particles
+            nsim = 0
+            ea = cero ; ee = cero ; eM = cero ; ew = cero ; eR = cero
+            !!!! Rotation
+            Prot = cero
+            lambda = cero
+            !!!! Asteroid
+            m0 = cero
+            R0 = cero
+            !!!! Integración
             dig_err = 12 ! Dígitos de presición (error)
-            
-            ngx = 500   ; ngy = 500
-            xmin = -300 ; xmax = 300 ; ymin = -300 ; ymax = 300
-            screen  = .False. ; perc = .False. !Pantalla, porcentaje
-            map_pot = .False. ! Mapa de potencial
-            infoo   = .False. ! Archivo de info
-            datao   = .False. ! Archivo de datos
-            chaos   = .True.  ! Archivo de caos
-            exact   = .True.  ! Método exacto
+            exact   = .True.  ! Método exacto (sin | cos)
+            !!!! Forces
+            !! Stokes
+            lostokes = .False.
+            t_stokes = cero
+            tau_a = inf
+            tau_e = inf
+            !! Geo-Potential
+            loJ2 = .False.
+            J2 = cero
+            !!!! Times
+            t0       = cero    ! Initial time [days]
+            tf       = cero    ! Final time [days]
+            dt_min   = cero    ! Min timestep [days] ! Almost unused
+            logsp    = .FALSE. ! LogSpaced outputs
+            n_points = 0       ! Number of outputs (if logsp=.TRUE. or dt_out=0)
+            dt_out   = cero    ! Output timestep [days] (if logsp = .False.)
+            !!!! Salida
+            screen  = .False. ; perc = .False. ! Pantalla, porcentaje
             datas   = .False. ! Salida de datos en pantalla
             eleout  = .False. ! Salida en elementos orbitales
-
-            hexitptr => hexit ! Puntero a Hard Exit (NO TOCAR)
+            !!!!!! Información (Poner "" o "no" para no crear archivo)
+            infofile = "" ! Archivo de info
+            datafile = ""! Archivo de datos
+            chaosfile = "chaos.dat" ! Archivo de datos
+            !!!! Mapa de potencial
+            map_file = "" ! Archivo de mapas
+            ngx = 500   ; ngy = 500
+            xmin = -300 ; xmax = 300 ; ymin = -300 ; ymax = 300
+            !!!! Particle elements
+            ea = cero                  ! Element a of the particle (km)
+            ee = cero !0.1d0           ! ecc
+            eM = cero                  ! Mean anomaly (deg)
+            ew = cero                  ! Pericenter argument (deg)
+            eR = cero !1.001d0 !3.3d0  ! resonancia nominal correspondiente
         end subroutine init_params_default
 
         subroutine read_conf_file(file_name, existe)
@@ -106,7 +136,6 @@ module parameters
             integer :: colonPos
             integer :: commentPos
             integer(kind=4) :: nlines, io, len_val
-            logical :: isEmpty
 
             inquire(file=trim(file_name), exist=existe)
             if (.not. existe) then
@@ -117,12 +146,10 @@ module parameters
             open(1, file=trim(file_name), status='old', action='read')
             do
                 ! Read the line from the file
-                read(1, '(A)', iostat=io) line
-                if (io /= 0) exit
+                read(1, '(A)', END=98) line
                 nlines = nlines + 1
 
-                isEmpty = len_trim(line) == 0
-                if (isEmpty) cycle
+                if ((len_trim(line) == 0) .or. (auxch15(:2) == "c ") .or. (auxch15(:2) == "! ")) cycle
 
                 colonPos = index(line, ':') !this should be 50
 
@@ -171,12 +198,16 @@ module parameters
                             !! Parámetros y auxiliares
                             Ntot = Nboul + Npart
                             !! Allocamos
-                            call allocate_all(Nboul)
+                            if (.not. allocated(m)) then
+                                call allocate_all(Nboul)
+                            else 
+                                write(*,*) "ERROR: Redefinido."
+                            end if
                         case("include stokes-")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                                stokesl = .true.
+                                lostokes = .true.
                             else
-                                stokesl = .false.
+                                lostokes = .false.
                             end if
                         case("a damping chara")
                             read(value_str, *) tau_a
@@ -188,6 +219,8 @@ module parameters
                             read(value_str, *) tau_m
                         case("rotation dampin")
                             read(value_str, *) tau_O
+                        case("geo-potential J")
+                            read(value_str, *) J2
                         case("min distance fr")
                             read(value_str, *) rmin
                         case("max distance fr")
@@ -272,42 +305,84 @@ module parameters
                         case("upper y bound (")
                             read(value_str, *) ymax
                         case default
-                            write(*,*) "Parámetro no reconocido: ", trim(param_str)
+                            write(*,*) "WARNING: Parámetro no reconocido: ", trim(param_str)
                     end select
                 else
                     param_str = trim(adjustl(line)) 
                     if (param_str(1:7) .eq. "mass_m0") then
                         if (Nboul < 1) then
-                            write(*,*) "El número de boulders debe especificarse antes que los parametros."
+                            write(*,*) "ERROR: El número de boulders debe especificarse antes que los parametros."
                             stop 1
                         end if
                         do j = 1, Nboul
-                            read(1, *) mu(j), radius(j), theta_a(j)
+                            io = 0
+                            check: do while (io == 0)
+                                nlines = nlines + 1
+                                read(1, '(A)') line
+                                if ((len_trim(line) == 0) .or. (line(:2) == "c ") .or. (line(:2) == "! ")) cycle
+                                backspace(1)
+                                read(1, *, iostat=io) mu(j), radius(j), theta_a(j)
+                                print*, mu(j), radius(j), theta_a(j)
+                                if (io /= 0) then
+                                    write(*,*) "ERROR: Al leer boulder. Línea: ", nlines
+                                    stop 1
+                                end if
+                                io = 1
+                            end do check
                         end do
                     end if
                 end if
             end do
-            close(1)
-
+            98 close(1)
         end subroutine read_conf_file
 
         subroutine set_derived_params()
+            if (Nboul < 1) then
+                write(*,*) "ERROR: Nboul < 1"
+                stop 1
+            end if
             !! Indices
             FP = Nboul + 1
             NP = FP * neqs
             
-            !! tau_m y tau_o
-            if ((abs(tau_m) < tini) .or. (tau_m < tini)) tau_m = cero
-            if ((abs(tau_o) < tini) .or. (tau_o < tini)) tau_o = cero
+            !! Forces
+            !!! tau_m y tau_o
+            if (abs(tau_m) < tini) tau_m = cero
+            if (abs(tau_o) < tini) tau_o = cero
+            !!! tau_a y tau_e
+            if ((abs(tau_a) < tini)) tau_a = cero
+            if ((abs(tau_e) < tini)) tau_e = cero
+            if ((abs(t_stokes) < tini)) t_stokes = cero
+            if (((abs(tau_a) < tini) .and. (abs(tau_e) < tini)) .or. (abs(t_stokes) < tini)) lostokes = .False.
+            !!! Geo-Potential
+            if (abs(J2) > tini) loJ2 = .True.
 
             !! Error
+            if (dig_err < 1) then
+                write(*,*) "ERROR: El número de dígitos de presición debe ser mayor que 0."
+                stop 1
+            end if
             e_tol = 10.d0**(-dig_err)
             
             !! Cuerpo central
+            !!!! Masa
+            if (m0 <= 0) then
+                write(*,*) "ERROR: La masa del cuerpo central debe ser positiva."
+                stop 1
+            end if
             m(0) = m0
-            radius(0) = R0
             m0 = m0 * unit_m
+            !!!! Radio
+            if (R0 <= 0) then
+                write(*,*) "ERROR: El radio del cuerpo central debe ser positivo."
+                stop 1
+            end if
+            radius(0) = R0
             R0 = R0 * unit_r
+            !!! GM0
+            GM0 = G * m0
+            !! NO TOCAR
+            hexitptr => hexit ! Puntero a Hard Exit (NO TOCAR)
         end subroutine set_derived_params
 
         subroutine allocate_all(Nboul)

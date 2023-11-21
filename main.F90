@@ -3,14 +3,11 @@
 !!! gfortran -O2 const.F90 run.F90 parameters.F90 integrators.F90 stokes.F90 gravity.F90 derivates.F90 main.F90 -o main
 
 program main
-    use run
+    use parameters ! incluye const y run
+    use derivates
     use integrators
-    use parameters
-    use derivates ! Incluye const, gravity, extern
 
     implicit none
-
-    call init_times_default()   ! Inicializamos tiempos
 
     call init_params_default()  ! Inicializamos parámetros
 
@@ -24,7 +21,6 @@ program main
         !!! ROTACIÓN
         ! Prot       = 7.004d0/24.d0  ! Periodo de rotación [days]
         lambda     = 0.471d0      ! Cociente spin/wk
-
 
         !! Boulders        
         Nboul = 1 ! Número de boulders
@@ -51,10 +47,14 @@ program main
         ! radius(4)  = 2.5d0        ! Radio del boulder 3 [km]
 
         !!!! Stokes
-        stokesl = .False.
+        lostokes = .False.
         tau_a = inf           ! [days]
         tau_e = tau_a / 1.d2  ! [days]
         t_stokes = cero       ! [days] Tiempo que actua stokes
+
+        !!!! Geo-Potential (J2)
+        loJ2 = .False.
+        J2 = cero
 
         !!! Parámetros corrida
         t0       = cero            ! Initial time [days]
@@ -191,7 +191,7 @@ program main
                     end if
                 end do
                 if (.not. is_number) then ! No es un número
-                    write(*, '(A, I0, A, A)') "Error: No se reconoce el argumento ", i, ": ", trim(auxch)
+                    write(*, '(A, I0, A, A)') "ERROR: No se reconoce el argumento ", i, ": ", trim(auxch)
                     call get_command_argument(0, auxch)
                     write(*,*) "Para ayuda, ejecute: ", trim(auxch), " --help"
                     write(*,*) "Saliendo."
@@ -199,7 +199,7 @@ program main
                 end if
                 if (.not. auxlo)  then! No leí los parámetros aún
                     if (nin < i+4) then
-                        write(*,*) "Error: Error al intentar leer 'nsim'."
+                        write(*,*) "ERROR: No se pudo leer 'nsim'."
                         write(*,*) "Se requieren al menos 5 argumentos más de línea de comandos"
                         write(*,*) "Saliendo."
                         stop 1
@@ -225,7 +225,7 @@ program main
             end select
         end do
     else
-        print*, "WARNING: Se utilizan los parámetros del código."
+        print*, "WARNING: Se utilizan los parámetros de partículas del código."
     end if
 
 
@@ -265,11 +265,9 @@ program main
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
     !!! Calcular variables:
     !!!! Radio
-    radius = radius*unit_r ! Unidades según G
-    
+    radius = radius*unit_r ! Unidades según G    
 
     !!!! Masas
     do i = 1, Nboul
@@ -388,7 +386,7 @@ program main
     !!! INTEGRACIÓN
 
     !!!! Set Stokes
-    if (stokesl) then
+    if (lostokes) then
         call set_C_and_Alpha(tau_a,tau_e,C_stk,a_stk)
         tau_a = tau_a*unit_t
         tau_e = tau_e*unit_t
@@ -409,7 +407,7 @@ program main
     !! Set breaking
     if ((abs(tau_m) > tini) .and. (tau_m < inf)) then
         if (exact) then
-            write(*,*) "Error: No se puede usar el método exacto con tau_m finito."
+            write(*,*) "ERROR: No se puede usar el método exacto con tau_m finito."
             write(*,*) "tau_m [Prot]:", tau_m*unit_t/Prot
             stop 1
         end if
@@ -420,7 +418,7 @@ program main
     end if
     if ((abs(tau_o) > tini) .and. (tau_o < inf)) then
         if (exact) then
-            write(*,*) "Error: No se puede usar el método exacto con tau_o finito."
+            write(*,*) "ERROR: No se puede usar el método exacto con tau_o finito."
             write(*,*) "tau_o [Prot]:", tau_o*unit_t/Prot
             stop 1
         end if
@@ -465,10 +463,13 @@ program main
 
     !!!! Set times
     t0 = t0*unit_t
-    tf = tf*unit_t
+    if (tf < cero) then
+        tf = abs(tf) * Prot
+    else
+        tf = tf*unit_t
+    end if
     dt_out = dt_out*unit_t
     dt_min = dt_min*unit_t
-    ! t0 = t0 * Prot ; tf = tf * Prot ; dt_out = dt_out * Prot ; dt_min = dt_min * Prot
     call get_t_outs (t0, tf, n_points, dt_out, logsp, t_out) ! Get LOOP checkpoints
     t       = t0                                             ! Init time
     dt      = t_out(1) - t0                                  ! This should be == 0
@@ -498,6 +499,10 @@ program main
     else 
         rmax = rmax*unit_r
     end if
+    if (rmax <= rmin) then
+        write(*,*) "ERROR: rmax <= rmin"
+        stop 1
+    end if
     if (screen) then
         write(*,*) "Condición escape/colisión:"
         write(*,*) "    rmin    : ", rmin/unit_r, "[km] =", rmin/R0, "[R0]"
@@ -511,7 +516,7 @@ program main
         do while (auxlo)
             i = i + 1
             if (i > 10) then
-                if (screen) write(*,*) "Error: No se pudo crear el archivo de resumen."
+                if (screen) write(*,*) "ERROR: No se pudo crear el archivo de resumen."
                 i = -1
                 exit
             end if
@@ -533,8 +538,10 @@ program main
     end if
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    if (screen) write(*,*) "Integrando..."
-    
+    if (screen) then
+        write(*,*) "Integrando..."
+        if (e_tol <= 1.d-16) write(*,*) " WARNING: e_tol might be too low <= 1.d-16"
+    end if
 
     if (datao) open(unit=2, file=trim(datafile), status='unknown', action='write', access="append")
     
@@ -697,9 +704,9 @@ program main
 end program main
 
 subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
-    use gravity, only: potast, potbar, potrot, accbar, accast, accrot
+    use forces, only: potast, potbar, potrot, accbar, accast, accrot
     implicit none
-    integer(kind=4), intent(in) :: N,ngx, ngy
+    integer(kind=4), intent(in) :: N, ngx, ngy
     real(kind=8), intent(in)    :: xmin, xmax, ymin, ymax, rib(0:N,2), m(0:N), omega
     real(kind=8) :: xyb(ngx,ngy), xya(ngx,ngy), xyr(ngx,ngy)
     real(kind=8) :: acb(ngx,ngy,2), aca(ngx,ngy,2), acr(ngx,ngy,2)
@@ -708,6 +715,15 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
     integer(kind=4) :: i,j
     character(len=*) :: map_file
 
+    !!! Check
+    if ((ngx < 2) .or. (ngy < 2)) then
+        write(*,*) "ERROR: Verificar que ngx > 2 y ngy > 2"
+        stop 1
+    end if
+    if ((xmin >= xmax) .or. (ymin >= ymax)) then
+        write(*,*) "ERROR: Verificar que xmin < xmax y ymin < ymax"
+        stop 1
+    end if
     !! Mapa de potencial
     rcm(1) = -rib(0,1)
     rcm(2) = -rib(0,2)

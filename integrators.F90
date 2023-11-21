@@ -9,7 +9,7 @@ module integrators
 
     ! For adaptive step and implicit (might be overwritten)
     integer(kind=4)         :: MAX_N_ITER = 100
-    real(kind=8), parameter :: MAX_DT_FAC = 5.0d0, SAFE_LOW = 1.d-25
+    real(kind=8), parameter :: MAX_DT_FAC = 5.0d0, SAFE_LOW = 1.d-40
     real(kind=8)            :: BETA = 0.9d0, E_TOL = 1.d-13
 
     ! Aux Constants
@@ -1376,7 +1376,7 @@ module integrators
                 do k = 1, kmax ! Evaluate the sequence of modiﬁed midpoint integrations.
                     xnew = x + h
                     if (abs(xnew - x) .lt. SAFE_LOW) then !E_TOL?
-                        write(*,*) "Step size underflow in bstep"
+                        write(*,*) "Step size underflow in bstep", abs(xnew - x)
                         return
                     end if
                     call mmid (ysav, der, sizey, x, h, nseq(k), yseq, dydt)
