@@ -3,22 +3,20 @@
 main :  \
 	const.o \
 	derivates.o \
-	gravity.o \
+	forces.o \
 	integrators.o \
 	main.o \
 	parameters.o \
-	run.o \
-	stokes.o
+	run.o
 
 const.o : 
 
 derivates.o :  \
 	const.o \
-	gravity.o \
-	parameters.o \
-	stokes.o
+	forces.o \
+	parameters.o
 
-gravity.o :  \
+forces.o :  \
 	const.o \
 	parameters.o
 
@@ -27,16 +25,12 @@ integrators.o :
 main.o :  \
 	derivates.o \
 	integrators.o \
-	parameters.o \
-	run.o
+	parameters.o
 
 parameters.o :  \
 	const.o \
 	integrators.o \
-	run.o \
-	stokes.o
+	run.o
 
-run.o : 
-
-stokes.o :  \
+run.o :  \
 	const.o

@@ -1,26 +1,16 @@
 module run
+    use const, only: cero, inf
     
     implicit none
-    integer(kind=4)                         :: n_iter                         ! N_iterations
-    integer(kind=4)                         :: n_points                       ! N_outputs
-    real(kind=8)                            :: t, t0, tf                      ! Times
-    real(kind=8)                            :: dt, dt_adap, dt_min, dt_out    ! dTimes
-    real(kind=8)                            :: t_add, logt, fixt              ! Times [output]
-    real(kind=8), dimension(:), allocatable :: t_out                          ! Times [output]
-    logical, parameter                      :: TRUE = .true., FALSE = .false. ! True | False
-    logical                                 :: logsp                          ! Logarithmic spacing
-    real(kind=8)                            :: start_time, final_time         ! Excecution start and elapsed time
-    real(kind=8), parameter                 :: MIN_VAL = 1.d-15                ! Avoid extremely low values
+    integer(kind=4) :: n_iter = 0                                              ! N_iterations
+    integer(kind=4) :: n_points = 0                                            ! N_outputs
+    real(kind=8) :: t = cero, t0 = inf, tf = cero                              ! Times
+    real(kind=8) :: dt = cero, dt_adap = cero, dt_min = cero, dt_out = cero    ! dTimes
+    real(kind=8) :: t_add = cero, logt = cero, fixt = cero                     ! Times [output]
+    real(kind=8), dimension(:), allocatable :: t_out                           ! Times [output]
+    logical :: logsp = .False.                                                 ! Logarithmic spacing
 
     contains
-
-        subroutine init_times_default()
-            t = 0.d0 ; t0 = 0.d0 ; tf = 0.d0
-            dt = 0.d0 ; dt_adap = 0.d0 ; dt_min = 0.d0 ; dt_out = 0.d0 
-            t_add = 0.d0 ; logt = 0.d0 ; fixt = 0.d0
-            logsp = .FALSE.
-            start_time = 0.d0 ; final_time = 0.d0        
-        end subroutine init_times_default
 
         subroutine get_t_outs(t0, tf, n_points, dt_out, logsp, t_out)
             implicit none
@@ -33,9 +23,13 @@ module run
             integer(kind=4)                          :: i
             real(kind=8)                             :: npointsr
 
+            if (t0 >= tf) then
+                write(*,*) "ERROR: t0 >= tf"
+                stop 1
+            end if
             if (dt_out > 0.d0) then
                 if (dt_out > tf - t0) then
-                    write(*,*) "dt_out should be less than tf - t0."
+                    write(*,*) "ERROR: dt_out >= (tf - t0)"
                     stop 1
                 end if
                 n_points = int((tf - t0) / dt_out) + 1
@@ -45,12 +39,12 @@ module run
                 dt_out = (tf - t0) / (npointsr - 1.d0)
             end if
             if (n_points < 2) then
-                write(*,*) "n_points should be greater than 2."
+                write(*,*) "ERROR: n_points < 2"
                 stop 1
             end if
             allocate (t_out(n_points))
             t_out(1) = t0
-            if (logsp .eqv. .TRUE.) then
+            if (logsp .eqv. .True.) then
                 t_aux = exp (log (tf - t0 + 1.) / npointsr)
                 t_add = t_aux
                 do i = 2, n_points - 1
