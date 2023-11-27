@@ -1288,7 +1288,7 @@ module integrators
                 yaux  = ynew
                 dt_adap = min(dt_adap, t_end - time)
                 call Bulirsch_Stoer (time, yaux, dt_adap, dydt, e_tol, dtused, ynew)
-                time = time + dtused
+                time = time + dtused    
             end do
         end subroutine BStoer_caller
 

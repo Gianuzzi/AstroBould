@@ -278,7 +278,6 @@ program main
     mucm = m / mcm ! Mues respecto a mcm
     Gmi = G * m
     GM = G * mcm
-    GM0 = G * m0
 
     !!!! Rotaciones
     !theta = cero ! Ángulo de fase del cuerpo 0 [rad]
@@ -561,8 +560,7 @@ program main
             do i = 0, Nboul
                 write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
             end do
-            call accbar(m(0:Nboul), rb, rib, ab)   ! Este lo setea a 0 al principio
-            call accsto(t, rb, vb, ab, GM)         ! Este suma aceleración
+            call apply_force(t, m, rb, vb, rib, ab)
             write(2,*) FP, t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
         end if
     end if
@@ -638,8 +636,7 @@ program main
         !! Particle
         rb = yb(NP+3 : NP+4)
         vb = yb(NP+5 : NP+6)
-        call accbar(m(0:Nboul), rb, rib(0:Nboul,:2), ab) ! Este lo setea a 0 al principio
-        call accsto(t, rb, vb, ab, GM)                   ! Este suma aceleración
+        call apply_force(t, m, rb, vb, rib, ab)
         rib(FP,:) = rb
         vib(FP,:) = vb
         aib(FP,:) = ab
@@ -706,13 +703,16 @@ program main
 end program main
 
 subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
-    use forces, only: potast, potbar, potrot, accbar, accast, accrot
+    use forces, only: potast, potbar, potrot, apply_force, accast, accrot
     implicit none
     integer(kind=4), intent(in) :: N, ngx, ngy
     real(kind=8), intent(in)    :: xmin, xmax, ymin, ymax, rib(0:N,2), m(0:N), omega
     real(kind=8) :: xyb(ngx,ngy), xya(ngx,ngy), xyr(ngx,ngy)
     real(kind=8) :: acb(ngx,ngy,2), aca(ngx,ngy,2), acr(ngx,ngy,2)
-    real(kind=8) :: rcm(2), rb(2), ra(2), va(2), ab(2), aa(2), ar(2)
+    real(kind=8) :: rcm(2)
+    real(kind=8) :: rb(2), vb(2), ab(2)
+    real(kind=8) :: ra(2), va(2), aa(2)
+    real(kind=8) :: ar(2)
     real(kind=8) :: ria(N,2)
     integer(kind=4) :: i,j
     character(len=*) :: map_file
@@ -735,6 +735,7 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
         write(*,*) rcm, rib(i,:), ria(i,:)
     end do
     va = 0.d0
+    vb = 0.d0
     do i = 1, ngx
         do j = 1, ngy
             rb(1) = xmin + i * (xmax-xmin)/ngx
@@ -743,7 +744,7 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
             ra = rb + rcm
             xya(i,j) = potast(ra, ria)
             xyr(i,j) = potrot(ra, ria)
-            call accbar(m, rb, rib, ab)
+            call apply_force(0.d0, m, rb, vb, rib, ab)
             acb(i,j,:) = ab
             call accast(omega, m, ra, ria, aa)
             aca(i,j,:) = aa

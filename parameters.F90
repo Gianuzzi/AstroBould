@@ -53,6 +53,7 @@ module parameters
 
 
     !!!! FORCES
+    real(kind=8) :: raux(2) = cero ! rb - rb0
     !!! Stokes
     logical :: lostokes = .false.
     real(kind=8) :: t_stokes = cero, f_stk = uno
@@ -62,8 +63,11 @@ module parameters
     real(kind=8) :: tau_m = inf ! M0
     !! Geo-Potential
     logical :: loJ2 = .False.
-    real(kind=8) :: raux(2) = cero ! rb - rb0
     real(kind=8) :: J2 = cero
+    ! !! TriAxial
+    ! logical :: loTriAx = .False.
+    ! real(kind=8) :: tria = cero, trib = cero, tric = cero
+    ! real(kind=8) :: C20 = cero, C22 = cero, Re = cero
 
 
     !!! Punteros
@@ -205,9 +209,9 @@ module parameters
                             end if
                         case("include stokes-")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                                lostokes = .true.
+                                lostokes = .True.
                             else
-                                lostokes = .false.
+                                lostokes = .False.
                             end if
                         case("a damping chara")
                             read(value_str, *) tau_a
@@ -221,6 +225,18 @@ module parameters
                             read(value_str, *) tau_O
                         case("geo-potential J")
                             read(value_str, *) J2
+                        ! case("include tri-axi")
+                        !     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        !         loTriAx = .True.
+                        !     else
+                        !         loTriAx = .False.
+                        !     end if
+                        ! case("first ellipsoid")
+                        !     read(value_str, *) tria
+                        ! case("second ellipsoi")
+                        !     read(value_str, *) trib
+                        ! case("third ellipsoid")
+                        !     read(value_str, *) tric
                         case("min distance fr")
                             read(value_str, *) rmin
                         case("max distance fr")
@@ -322,7 +338,6 @@ module parameters
                                 if ((len_trim(line) == 0) .or. (line(:2) == "c ") .or. (line(:2) == "! ")) cycle
                                 backspace(1)
                                 read(1, *, iostat=io) mu(j), radius(j), theta_a(j)
-                                print*, mu(j), radius(j), theta_a(j)
                                 if (io /= 0) then
                                     write(*,*) "ERROR: Al leer boulder. Línea: ", nlines
                                     stop 1
@@ -350,12 +365,22 @@ module parameters
             if (abs(tau_m) < tini) tau_m = cero
             if (abs(tau_o) < tini) tau_o = cero
             !!! tau_a y tau_e
-            if ((abs(tau_a) < tini)) tau_a = cero
-            if ((abs(tau_e) < tini)) tau_e = cero
-            if ((abs(t_stokes) < tini)) t_stokes = cero
+            if ((abs(tau_a) < tini) .or. .not. lostokes) tau_a = cero
+            if ((abs(tau_e) < tini) .or. .not. lostokes) tau_e = cero
+            if ((abs(t_stokes) < tini) .or. .not. lostokes) t_stokes = cero
             if (((abs(tau_a) < tini) .and. (abs(tau_e) < tini)) .or. (abs(t_stokes) < tini)) lostokes = .False.
             !!! Geo-Potential
             if (abs(J2) > tini) loJ2 = .True.
+            ! !!! Triaxial
+            ! if ((tria < tini) .or. .not. loTriAx) tria = cero
+            ! if ((trib < tini) .or. .not. loTriAx) trib = cero
+            ! if ((tric < tini) .or. .not. loTriAx) tric = cero
+            ! if ((abs(tria) < tini) .or. (abs(trib) < tini) .or. (abs(tric) < tini)) loTriAx = .False.
+
+            ! if (loTriAx .and. (Nboul > 0)) then
+            !     write(*,*) "ERROR: No se puede usar triaxialidad con boulders."
+            !     stop 1
+            ! end if
 
             !! Error
             if (dig_err < 1) then

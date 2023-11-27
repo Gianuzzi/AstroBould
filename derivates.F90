@@ -64,9 +64,7 @@ module derivates
                 ineqs = i*neqs
                 rb = y(ineqs+3 : ineqs+4)
                 vb = y(ineqs+5 : ineqs+6)
-                call accbar(m(0:Nboul), rb, rib, ab)
-                call accsto(t, rb, vb, ab, GM)
-                call accJ2(J2, ab)
+                call apply_force(t, m, rb, vb, rib, ab)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do
@@ -100,9 +98,7 @@ module derivates
                 ineqs = i * neqs
                 rb   = y(ineqs+3 : ineqs+4)
                 vb   = y(ineqs+5 : ineqs+6)
-                call accbar(m(0:Nboul), rb, rib, ab)
-                call accsto(t, rb, vb, ab, GM)
-                call accJ2(J2, ab)
+                call apply_force(t, m, rb, vb, rib, ab)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do
