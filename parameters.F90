@@ -67,8 +67,8 @@ module parameters
 
 
     !!! Punteros
-    logical, target :: hexit = .False. !  Hard Exit logical
-    logical, pointer :: hexitptr ! pointer to Hard Exit
+    integer, target :: hexit = 0 !  Hard Exit integer
+    integer, pointer :: hexitptr ! pointer to Hard Exit
 
     !! Vectores
     !y = /omega, mi, xi, yi, vxi, vyi, .../

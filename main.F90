@@ -1,4 +1,4 @@
-!!! Versión 5.0
+!!! Versión 6.0
 !!! Compilación:
 !!! gfortran -O2 const.F90 run.F90 parameters.F90 integrators.F90 stokes.F90 gravity.F90 derivates.F90 main.F90 -o main
 
@@ -19,8 +19,8 @@ program main
         m0 = 6.3d18 ! Masa del cuerpo 0 [kg]
         R0 = 129.d0 ! Radio del cuerpo 0 [km]
         !!! ROTACIÓN
-        ! Prot       = 7.004d0/24.d0  ! Periodo de rotación [days]
-        lambda     = 0.471d0      ! Cociente spin/wk
+        ! Prot = 7.004d0/24.d0  ! Periodo de rotación [days]
+        lambda = 0.471d0      ! Cociente spin/wk
 
         !! Boulders        
         Nboul = 1 ! Número de boulders
@@ -29,10 +29,10 @@ program main
         call allocate_all(Nboul)
 
         !!!!! COCIENTE DE MASAS
-        mu(1)      = 1.d-1        ! Cociente de masas
-        mu(2)      = 1.d-6        ! Cociente de masas
-        ! mu(3)      = 1.d-4        ! Cociente de masas
-        ! mu(4)      = 1.d-7        ! Cociente de masas
+        mu(1) = 1.d-1        ! Cociente de masas
+        ! mu(2) = 1.d-6        ! Cociente de masas
+        ! mu(3) = 1.d-4        ! Cociente de masas
+        ! mu(4) = 1.d-7        ! Cociente de masas
 
         !!! ÁNGULOS DE FASE RESPECTO AL ORIGEN [deg]
         theta_a(1) = cero
@@ -41,10 +41,10 @@ program main
         ! theta_a(4) = 270    ! Ángulo de fase [deg]
 
         !!! RADIOS
-        radius(1)  = 2.5d0        ! Radio del boulder 1 [km]
-        ! radius(2)  = 1.5d0        ! Radio del boulder 2 [km]
-        ! radius(3)  = 3.5d0        ! Radio del boulder 3 [km]
-        ! radius(4)  = 2.5d0        ! Radio del boulder 3 [km]
+        radius(1) = 2.5d0        ! Radio del boulder 1 [km]
+        ! radius(2) = 1.5d0        ! Radio del boulder 2 [km]
+        ! radius(3) = 3.5d0        ! Radio del boulder 3 [km]
+        ! radius(4) = 2.5d0        ! Radio del boulder 3 [km]
 
         !!!! Stokes
         lostokes = .False.
@@ -57,24 +57,24 @@ program main
         J2 = cero
 
         !!! Parámetros corrida
-        t0       = cero            ! Initial time [days]
-        tf       = 4.d6            ! Final time [days]
-        dt_min   = cero            ! Min timestep [days] ! Almost unused
-        logsp    = .FALSE.         ! LogSpaced outputs
-        n_points = 1000            ! Number of outputs (if logsp=.TRUE. or dt_out=0)
-        dt_out   = cero            ! Output timestep [days] (if logsp = .False.)
-        beta     = 0.85d0          ! [For adaptive step integrators] Learning rate
-        dig_err  = 12              ! [For adaptive step integrators] Digits for relative error
-        rmin     = -1.5d0          ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
-        rmax     = -1.d2           ! Max distance before escape [km] ! -x => R0 * x
+        t0 = cero            ! Initial time [days]
+        tf = 4.d6            ! Final time [days]
+        dt_min = cero        ! Min timestep [days] ! Almost unused
+        logsp = .FALSE.      ! LogSpaced outputs
+        n_points = 1000      ! Number of outputs (if logsp=.TRUE. or dt_out=0)
+        dt_out = cero        ! Output timestep [days] (if logsp = .False.)
+        beta = 0.85d0        ! [For adaptive step integrators] Learning rate
+        dig_err = 12         ! [For adaptive step integrators] Digits for relative error
+        rmin = -1.5d0        ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
+        rmax = -1.d2         ! Max distance before escape [km] ! -x => R0 * x
         
 
         !! ----------  Default -------------
         !!! Output: "" or "no", if not used
-        infofile  = ""
-        datafile  = ""
+        infofile = ""
+        datafile = ""
         chaosfile = "chaos.dat"
-        map_file  = ""
+        map_file = ""
         !! ----------  Default -------------
         !!!! Particle elements
         ea = cero                  ! Element a of the particle (km)
@@ -106,24 +106,24 @@ program main
             call get_command_argument(i, auxch)
             select case (trim(auxch))
             case ("--nodata")
-                datao    = .False.
+                datao = .False.
                 datafile = ""
             case ("-datafile")
-                datao    = .True.
+                datao = .True.
                 call get_command_argument(i+1, datafile)
                 auxin = 1
             case ("--noinfo")
-                infoo    = .False.
+                infoo = .False.
                 infofile = ""
             case ("-infofile")
-                infoo    = .True.
+                infoo = .True.
                 call get_command_argument(i+1, infofile)
                 auxin = 1
             case ("--nochaos")
-                chaos    = .False.
+                chaos = .False.
                 chaosfile = ""
             case ("-chaosfile")
-                chaos    = .True.
+                chaos = .True.
                 call get_command_argument(i+1, chaosfile)
                 auxin = 1
             case ("--screen")
@@ -139,10 +139,10 @@ program main
             case ( "--nodatascr")
                 datas = .False.
             case ("--nomap")
-                map_pot  = .False.
+                map_pot = .False.
                 map_file = ""
             case ("-mapfile")
-                map_pot  = .True.
+                map_pot = .True.
                 call get_command_argument(i+1, map_file)
                 auxin = 1
             case ("--noexact")
@@ -274,22 +274,24 @@ program main
         m(i) = mu(i) * m(0) ! Masa del boulder i
     end do
     m = m*unit_m ! Unidades según G
-    mcm  = sum(m)  ! Masa del sistema
+    mcm = sum(m)  ! Masa del sistema
     mucm = m / mcm ! Mues respecto a mcm
-    Gmi  = G * m
-    GM   = G * mcm
+    Gmi = G * m
+    GM = G * mcm
+    GM0 = G * m0
 
     !!!! Rotaciones
-    theta_a = theta_a*rad
-    wk = sqrt(GM / R0**3)/unit_t     ! Movimiento medio (kepleriano) que tendrían los boulder
+    !theta = cero ! Ángulo de fase del cuerpo 0 [rad]
+    theta_a = theta_a*rad ! Ángulos de fase de los boulders [rad]
+    wk = sqrt(GM / R0**3)/unit_t       ! Movimiento medio (kepleriano) que tendrían los boulder
     if (lambda > tini) then    
         omega = wk * lambda            ! Velocidad angular del cuerpo 0 [rad/days]
-        Prot  = twopi / omega          ! Periodo de rotación del cuerpo 0 [days]
+        Prot = twopi / omega           ! Periodo de rotación del cuerpo 0 [days]
     else
-        omega  = (twopi / Prot)/unit_t ! Velocidad angular del cuerpo 0 (rad/days)    
+        omega = (twopi / Prot)/unit_t  ! Velocidad angular del cuerpo 0 (rad/days)    
         lambda = omega / wk            ! Cociente de velocidades
     end if
-    omega2  = omega * omega
+    omega2 = omega * omega
     lambda2 = omega2 * R0**3 / GM      ! Coeficiente de Sicardy y Madeira
     a_corot = (GM / omega2)**(1/3.)
     if (screen) then
@@ -335,13 +337,13 @@ program main
     rib(0,:) = -rcm
     vib(0,:) = -vcm
     aib(0,:) = -acm
-    r_b(0)     = sqrt(rib(0,1)*rib(0,1) + rib(0,2)*rib(0,2))
+    r_b(0) = sqrt(rib(0,1)*rib(0,1) + rib(0,2)*rib(0,2))
     theta_b(0) = atan2(rib(0,2), rib(0,1))
     do i = 1, Nboul
-        rib(i,:)   = ria(i,:) - rcm
-        vib(i,:)   = via(i,:) - vcm
-        aib(i,:)   = aia(i,:) - acm
-        r_b(i)     = sqrt(rib(i,1)*rib(i,1) + rib(i,2)*rib(i,2))
+        rib(i,:) = ria(i,:) - rcm
+        vib(i,:) = via(i,:) - vcm
+        aib(i,:) = aia(i,:) - acm
+        r_b(i) = sqrt(rib(i,1)*rib(i,1) + rib(i,2)*rib(i,2))
         theta_b(i) = atan2(rib(i,2), rib(i,1))
     end do
     if (screen) then
@@ -373,11 +375,11 @@ program main
         eR = (ea/a_corot)**(1.5)
     end if
     !! Set initial vectors
-    xe0  = (/ea, ee, ei, eM, ew, eO/)
-    xe   = xe0
+    xe0 = (/ea, ee, ei, eM, ew, eO/)
+    xe = xe0
     call coord(mcm, ea, ee, ei, eM, ew, eO, xc0)
     call chaosvals(ea, ee, amax, amin, emax, emin)
-    xc   = xc0
+    xc = xc0
     Res0 = eR
 
     rb = xc(1:2)
@@ -436,27 +438,27 @@ program main
     yb(1) = omega
     do i = 0, Nboul
         ineqs = i * neqs
-        yb(ineqs+2)           = m(i)
+        yb(ineqs+2) = m(i)
         yb(ineqs+3 : ineqs+4) = rib(i,:)
         yb(ineqs+5 : ineqs+6) = vib(i,:)
     end do
-    yb(NP+2)        = m(FP)
+    yb(NP+2) = m(FP)
     yb(NP+3 : NP+4) = rb
     yb(NP+5 : NP+6) = vb
     
     !!!! Ya[strocentric]
-    ya(1)   = omega
-    ya(2)   = m(0)
-    ya(3)   = radius(0)
+    ya(1) = omega
+    ya(2) = m(0)
+    ya(3) = radius(0)
     ya(4:6) = cero
     do i = 1, Nboul
         ineqs = i * neqs
-        ya(ineqs+2)           = m(i)
+        ya(ineqs+2) = m(i)
         ya(ineqs+3 : ineqs+4) = ria(i,:)
         ya(ineqs+5 : ineqs+6) = via(i,:)
     end do
     call bar2ast(rb, vb, ab, rcm, vcm, acm, ra, va, aa)
-    ya(NP+2)        = m(FP)
+    ya(NP+2) = m(FP)
     ya(NP+3 : NP+4) = ra
     ya(NP+5 : NP+6) = va
     
@@ -471,9 +473,9 @@ program main
     dt_out = dt_out*unit_t
     dt_min = dt_min*unit_t
     call get_t_outs (t0, tf, n_points, dt_out, logsp, t_out) ! Get LOOP checkpoints
-    t       = t0                                             ! Init time
-    dt      = t_out(1) - t0                                  ! This should be == 0
-    dt_min  = max(min(dt_min, dt_out), tini)                 ! Min timestep (almost unused)
+    t = t0                                                   ! Init time
+    dt = t_out(1) - t0                                       ! This should be == 0
+    dt_min = max(min(dt_min, dt_out), tini)                  ! Min timestep (almost unused)
     dt_adap = dt_min                                         ! For adaptive step
 
     if (screen) then
@@ -560,15 +562,15 @@ program main
                 write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
             end do
             call accbar(m(0:Nboul), rb, rib, ab)   ! Este lo setea a 0 al principio
-            call accsto(t, rb, vb, ab, GM) ! Este suma aceleración
+            call accsto(t, rb, vb, ab, GM)         ! Este suma aceleración
             write(2,*) FP, t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
         end if
     end if
     ! MAIN LOOP
     do j = 2, n_points ! From 2 because 1 is the IC (t0)
-        ra  = rb + rcm
+        ra = rb + rcm
         da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
-        if ((da0 < rmin) .or. hexit) then
+        if ((da0 < rmin) .or. (hexit == 1)) then
             if (screen) then
                 write(*,*) ACHAR(10) 
                 write(*,*) "Impacto en t = ", t/unit_t, "[días]"
@@ -576,7 +578,7 @@ program main
             end if
             bad = 1
             exit
-        else if (da0 > rmax) then
+        else if ((da0 > rmax) .or. (hexit == 2)) then
             if (screen) then
                 write(*,*) ACHAR(10) 
                 write(*,*) "Escape en t = ", t/unit_t, "[días]"
@@ -598,10 +600,10 @@ program main
 
         ! Check if Hard Exit
         !! If so, the dt used is in dt_adap
-        if (hexit) dt = dt_adap
+        if (hexit .ne. 0) dt = dt_adap
         
         ! Update parameters
-        t  = t + dt
+        t = t + dt
         yb = ybnew
 
         ybnew = dydt(t, yb)
@@ -616,7 +618,7 @@ program main
                 vib(i,2) =   omega * rib(i,1)
             end do
         else
-            omega  = yb(1)
+            omega = yb(1)
             omega2 = omega * omega
             do i = 0, Nboul
                 ineqs = i * neqs
@@ -637,7 +639,7 @@ program main
         rb = yb(NP+3 : NP+4)
         vb = yb(NP+5 : NP+6)
         call accbar(m(0:Nboul), rb, rib(0:Nboul,:2), ab) ! Este lo setea a 0 al principio
-        call accsto(t, rb, vb, ab, GM)  ! Este suma aceleración
+        call accsto(t, rb, vb, ab, GM)                   ! Este suma aceleración
         rib(FP,:) = rb
         vib(FP,:) = vb
         aib(FP,:) = ab
@@ -908,16 +910,16 @@ subroutine elem(msum, xc, a, e, inc, capm, omega, capom)
             end if
             cw = (cos(cape) - e) / (uno - e * cos(cape))
             sw = sqrt(uno - e * e) * sin(cape) / (uno - e * cos(cape))
-            w  = atan2(sw, cw)
+            w = atan2(sw, cw)
             if (w < cero) then
                 w = w + twopi
             end if
         else
-            e    = cero
-            w    = u
+            e = cero
+            w = u
             cape = u
         end if
-        capm  = cape - e * sin(cape)
+        capm = cape - e * sin(cape)
         omega = u - w
         if (omega < cero) then
             omega = omega + twopi
@@ -941,7 +943,7 @@ subroutine elem(msum, xc, a, e, inc, capm, omega, capom)
             end if
             cw = (e - cosh(capf)) / (e * cosh(capf) - uno)
             sw = sqrt(e * e - uno) * sinh(capf) / (e * cosh(capf) - uno)
-            w  = atan2(sw, cw)
+            w = atan2(sw, cw)
             if (w < cero) then
                 w = w + twopi
             end if

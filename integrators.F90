@@ -1170,7 +1170,7 @@ module integrators
             implicit none
             real(kind=8), intent(in)                       :: t, dt, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
-            logical, pointer, optional                     :: hexitptr
+            integer, pointer, optional                     :: hexitptr
             procedure(dydt_tem)                            :: dydt
             procedure(integ_tem)                           :: integ
             real(kind=8), dimension(size (y)), intent(out) :: ynew
@@ -1183,7 +1183,7 @@ module integrators
             dt_used = min (dt_min, dt)
             do while (time < t_end)
                 if (present(hexitptr)) then ! If Hard Exit pointer present
-                    if (hexitptr) return ! If Hard Exit is True, Exit subroutine
+                    if (hexitptr .ne. 0) return ! If Hard Exit is True, Exit subroutine
                 end if
                 yaux = ynew
                 call integ (time, yaux, dt_used, dydt, ynew)
@@ -1199,7 +1199,7 @@ module integrators
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, beta, dt_min, dt
             real(kind=8), dimension(:), intent(in)         :: y
-            logical, pointer, optional                     :: hexitptr
+            integer, pointer, optional                     :: hexitptr
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             procedure(embedded_tem)                        :: integ
@@ -1213,7 +1213,7 @@ module integrators
             dtmin = min (dt_min, dt)
             do while (time < t_end)
                 if (present(hexitptr)) then ! If Hard Exit pointer present
-                    if (hexitptr) then ! If Hard Exit is True
+                    if (hexitptr .ne. 0) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
                         return ! Exit subroutine
                     end if
@@ -1233,7 +1233,7 @@ module integrators
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, beta, dt, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
-            logical, pointer, optional                     :: hexitptr
+            integer, pointer, optional                     :: hexitptr
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             procedure(integ_tem)                           :: integ
@@ -1248,12 +1248,12 @@ module integrators
             dtmin = dt_min
             do while (time < t_end)
                 if (present(hexitptr)) then ! If Hard Exit pointer present
-                    if (hexitptr) then ! If Hard Exit is True
+                    if (hexitptr .ne. 0) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
                         return ! Exit subroutine
                     end if
                 end if
-                yaux  = ynew
+                yaux = ynew
                 dt_adap = min (dt_adap, t_end - time)
                 call rk_half_step (time, yaux, dt_adap, dydt, integ, p, e_tol, beta, dtmin, dtused, ynew)
                 time = time + dtused
@@ -1268,7 +1268,7 @@ module integrators
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, dt!, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
-            logical, pointer, optional                     :: hexitptr
+            integer, pointer, optional                     :: hexitptr
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
@@ -1280,7 +1280,7 @@ module integrators
             t_end = time + dt
             do while (time < t_end)
                 if (present(hexitptr)) then ! If Hard Exit pointer present
-                    if (hexitptr) then ! If Hard Exit is True
+                    if (hexitptr .ne. 0) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
                         return ! Exit subroutine
                     end if

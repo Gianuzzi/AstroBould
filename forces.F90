@@ -83,7 +83,8 @@ module forces
             real(kind=8) :: d 
             integer(kind=4) :: i
             call set_da0(rb, rib(0,:), raux, da0)
-            if (da0 < rmin) hexit = .True.
+            if (da0 < rmin) hexit = 1
+            if (da0 > rmax) hexit = 2
             ab = - m(0) * raux / (da0*da0*da0)
             do i = 1, Nboul
                 d = sqrt((rb(1)-rib(i,1))**2 + (rb(2)-rib(i,2))**2)
@@ -101,7 +102,8 @@ module forces
             mucm = m(1:Nboul) / m(0)
             omega2 = omega * omega
             d = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
-            if (d < rmin) hexit = .True.
+            if (d < rmin) hexit = 1
+            if (d > rmax) hexit = 2
             aa = - m(0) * ra / (d*d*d)
             ! aa = cero
             do i = 1, Nboul
