@@ -27,7 +27,7 @@ module forces
 
         !! Potencial
             
-        real(kind=8) function potbar(rb,rib) result(p)
+        real(kind=8) function potbar(rb, rib) result(p)
             implicit none
             real(kind=8), intent(in) :: rb(2), rib(0:Nboul,2)
             real(kind=8) :: d
@@ -46,7 +46,7 @@ module forces
             end do
         end function potbar
 
-        real(kind=8) function potast(ra,ria) result(p)
+        real(kind=8) function potast(ra, ria) result(p)
             implicit none
             real(kind=8), intent(in) :: ra(2), ria(1:Nboul,2)
             real(kind=8) :: d
@@ -65,7 +65,7 @@ module forces
             end do
         end function potast
 
-        real(kind=8) function potrot(rr,ria) result(p)
+        real(kind=8) function potrot(rr, ria) result(p)
             implicit none
             real(kind=8), intent(in) :: rr(2), ria(1:Nboul,2)
             
@@ -76,9 +76,9 @@ module forces
 
         !!! Acceleration
 
-        subroutine accbar(m,rb,rib,ab)
+        subroutine accbar(m, rb, rib, ab)
             implicit none
-            real(kind=8), intent(in)  :: m(0:Nboul), rb(2), rib(0:Nboul,2)
+            real(kind=8), intent(in) :: m(0:Nboul), rb(2), rib(0:Nboul,2)
             real(kind=8), intent(out) :: ab(2)
             real(kind=8) :: d 
             integer(kind=4) :: i
@@ -93,9 +93,9 @@ module forces
             ab = ab * G
         end subroutine accbar
 
-        subroutine accast(omega,m,ra,ria,aa)
+        subroutine accast(omega, m, ra, ria, aa)
             implicit none
-            real(kind=8), intent(in)  :: m(0:Nboul), ra(2), ria(1:Nboul,2), omega
+            real(kind=8), intent(in) :: m(0:Nboul), ra(2), ria(1:Nboul,2), omega
             real(kind=8), intent(out) :: aa(2)
             real(kind=8) :: d, omega2, mucm(1:Nboul)
             integer(kind=4) :: i
@@ -113,9 +113,9 @@ module forces
             aa = aa * G
         end subroutine accast
 
-        subroutine accrot(omega,m,rr,vr,ria,ar)
+        subroutine accrot(omega, m, rr, vr, ria, ar)
             implicit none
-            real(kind=8), intent(in)  :: m(0:Nboul), rr(2), vr(2), ria(1:Nboul,2), omega
+            real(kind=8), intent(in) :: m(0:Nboul), rr(2), vr(2), ria(1:Nboul,2), omega
             real(kind=8), intent(out) :: ar(2)   
             call accast(omega, m, rr, ria, ar)
             ar = ar +  omega * omega * rr             ! Centrifugal (+ w^2 * r)
@@ -129,9 +129,9 @@ module forces
 
         !!! Parameters
 
-        subroutine set_C_and_Alpha(tau_a,tau_e,C,alpha)
+        subroutine set_C_and_Alpha(tau_a, tau_e, C, alpha)
             implicit none
-            real(kind=8), intent(in)  :: tau_a, tau_e
+            real(kind=8), intent(in) :: tau_a, tau_e
             real(kind=8), intent(out) :: C, alpha
             C = uno / (dos * tau_a) + uno / tau_e
             alpha = (dos * tau_a) / ((dos * tau_a) + tau_e)
@@ -139,14 +139,14 @@ module forces
 
         subroutine getfact_stok(t,f_stk)
             implicit none
-            real(kind=8), intent(in)    :: t
+            real(kind=8), intent(in) :: t
             real(kind=8), intent(out) :: f_stk
             f_stk = uno2 * (uno + tanh(1.d1 * (uno - t / t_stokes)))
         end subroutine getfact_stok
 
         !!! Acceleration
 
-        subroutine accsto(t,rb,vb,rdd, GM)
+        subroutine accsto(t, rb, vb, rdd, GM)
             implicit none
             real(kind=8), intent(in) :: t, rb(2), vb(2)
             real(kind=8), intent(in) :: GM
