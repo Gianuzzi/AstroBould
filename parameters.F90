@@ -449,10 +449,10 @@ module parameters
 
         subroutine rcmfromast(ria,via,aia,m,rcm,vcm,acm)
             implicit none
-            real(kind=8), intent(in)  :: ria(1:Nboul,2), via(1:Nboul,2), aia(1:Nboul,2)
+            real(kind=8), intent(in)  :: ria(Nboul,2), via(Nboul,2), aia(Nboul,2)
             real(kind=8), intent(in)  :: m(0:Nboul)
             real(kind=8), intent(out) :: rcm(2), vcm(2), acm(2)
-            real(kind=8) :: mucm(1:Nboul)
+            real(kind=8) :: mucm(Nboul)
             integer(kind=4) :: i
 
             rcm = cero ; vcm = cero ; acm = cero

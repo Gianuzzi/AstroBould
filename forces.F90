@@ -14,6 +14,7 @@ module forces
 
         !! Get distances
         subroutine set_db0(rb, db0)
+            implicit none
             real(kind=8), intent(in) :: rb(2)
             real(kind=8), intent(out) :: db0
 
@@ -22,6 +23,7 @@ module forces
         end subroutine set_db0
 
         subroutine set_da0(rb, rb0, raux, da0)
+            implicit none
             real(kind=8), intent(in) :: rb(2), rb0(2)
             real(kind=8), intent(out) :: raux(2), da0
 
@@ -31,15 +33,15 @@ module forces
             if (da0 > rmax) hexit = 2
             da03 = da0 * da0 * da0
             da05 = da03 * da0 * da0
-            da07 = da05 * da0 * da0
+            ! da07 = da05 * da0 * da0
         end subroutine set_da0
 
         subroutine apply_force(t, m, rb, vb, rib, rdd)
             implicit none
-            real(kind=8), intent(in) :: t, m(0:Nboul), rb(2), vb(2), rib(0:Nboul,2)
+            real(kind=8), intent(in) :: t, m(0:), rb(2), vb(2), rib(0:,:)
             real(kind=8), intent(inout) :: rdd(2)
-
-            call set_da0(rb, rib(0,:), raux, da0)
+            
+            call set_da0(rb, rib(0,:2), raux, da0)
             call accbar(m, rb, rib, rdd)
             if (lostokes) then
                 call set_db0(rb, db0)
@@ -57,7 +59,7 @@ module forces
             
         real(kind=8) function potbar(rb, rib) result(p)
             implicit none
-            real(kind=8), intent(in) :: rb(2), rib(0:Nboul,2)
+            real(kind=8), intent(in) :: rb(2), rib(0:,:)
             real(kind=8) :: d
             integer(kind=4) :: i
 
@@ -76,7 +78,7 @@ module forces
 
         real(kind=8) function potast(ra, ria) result(p)
             implicit none
-            real(kind=8), intent(in) :: ra(2), ria(1:Nboul,2)
+            real(kind=8), intent(in) :: ra(2), ria(Nboul,2)
             real(kind=8) :: d
             integer(kind=4) :: i
             
@@ -95,7 +97,7 @@ module forces
 
         real(kind=8) function potrot(rr, ria) result(p)
             implicit none
-            real(kind=8), intent(in) :: rr(2), ria(1:Nboul,2)
+            real(kind=8), intent(in) :: rr(2), ria(Nboul,2)
             
             p = potast(rr, ria)
             p = p - omega2 * (rr(1)*rr(1) + rr(2)*rr(2)) * uno2 ! - w^2 * r^2 / 2
@@ -106,7 +108,7 @@ module forces
 
         subroutine accbar(m, rb, rib, ab)
             implicit none
-            real(kind=8), intent(in) :: m(0:Nboul), rb(2), rib(0:Nboul,2)
+            real(kind=8), intent(in) :: m(0:), rb(2), rib(0:,:)
             real(kind=8), intent(out) :: ab(2)
             real(kind=8) :: d 
             integer(kind=4) :: i
@@ -120,9 +122,9 @@ module forces
 
         subroutine accast(omega, m, ra, ria, aa)
             implicit none
-            real(kind=8), intent(in) :: m(0:Nboul), ra(2), ria(1:Nboul,2), omega
+            real(kind=8), intent(in) :: m(0:), ra(2), ria(Nboul,2), omega
             real(kind=8), intent(out) :: aa(2)
-            real(kind=8) :: d, omega2, mucm(1:Nboul)
+            real(kind=8) :: d, omega2, mucm(Nboul)
             integer(kind=4) :: i
             mucm = m(1:Nboul) / m(0)
             omega2 = omega * omega
@@ -140,7 +142,7 @@ module forces
 
         subroutine accrot(omega, m, rr, vr, ria, ar)
             implicit none
-            real(kind=8), intent(in) :: m(0:Nboul), rr(2), vr(2), ria(1:Nboul,2), omega
+            real(kind=8), intent(in) :: m(0:), rr(2), vr(2), ria(Nboul,2), omega
             real(kind=8), intent(out) :: ar(2)   
             call accast(omega, m, rr, ria, ar)
             ar = ar +  omega * omega * rr             ! Centrifugal (+ w^2 * r)

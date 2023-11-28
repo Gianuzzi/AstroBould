@@ -1,7 +1,7 @@
 FC = gfortran -g
-MYFFLAGS = -ffinite-math-only -funsafe-math-optimizations -funroll-loops
+MYFFLAGS = -ffinite-math-only -funsafe-math-optimizations -funroll-loops #-fcheck=all
 FFLAGS = -Wall -Wextra -march=native $(MYFFLAGS)
-MYLDFLAGS = -O2 
+MYLDFLAGS = -O2
 LDFLAGS = $(MYLDFLAGS)
 
 TARGETS = main

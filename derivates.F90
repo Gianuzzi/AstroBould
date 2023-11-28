@@ -76,7 +76,7 @@ module derivates
             real(kind=8), dimension(:), intent(in) :: y
             real(kind=8), dimension(size(y))       :: dydt
             real(kind=8) :: rib(0:Nboul,2), vib(0:Nboul,2), rb(2), vb(2), ab(2)
-            real(kind=8) :: m(0:Ntot), omega2!, radius(0:Nboul)
+            real(kind=8) :: m(0:Nboul), omega2!, radius(0:)
             integer(kind=4) :: i, ineqs
 
             !y = /omega, mi, xi, yi, vxi, vyi, .../

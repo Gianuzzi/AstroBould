@@ -325,7 +325,7 @@ program main
     end if
 
     !!!!! Centro de masas
-    call rcmfromast(ria(1:Nboul,:), via(1:Nboul,:), aia(1:Nboul,:), m(0:Nboul), rcm, vcm, acm)
+    call rcmfromast(ria(:Nboul,:), via(:Nboul,:), aia(:Nboul,:), m(0:Nboul), rcm, vcm, acm)
     theta_acm = atan2(rcm(2), rcm(1))
     if (screen) then
         write(*,*) "Centro de masas:"
@@ -565,14 +565,14 @@ program main
         end if
     end if
     ! MAIN LOOP
-    do j = 2, n_points ! From 2 because 1 is the IC (t0)
+    do j = 2, n_points + 1 ! From 2 because 1 is the IC (t0) !! +1 por si hay HardExit en el último
         ra = rb + rcm
         da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
         if ((da0 < rmin) .or. (hexit == 1)) then
             if (screen) then
                 write(*,*) ACHAR(10) 
                 write(*,*) "Impacto en t = ", t/unit_t, "[días]"
-                ! write(*,*) "      con ra = ", da0/unit_r, "[km]"
+                write(*,*) "      con ra = ", da0/unit_r, "[km]"
             end if
             bad = 1
             exit
@@ -580,9 +580,19 @@ program main
             if (screen) then
                 write(*,*) ACHAR(10) 
                 write(*,*) "Escape en t = ", t/unit_t, "[días]"
-                ! write(*,*) "     con ra = ", da0/unit_r, "[km]"
+                write(*,*) "     con ra = ", da0/unit_r, "[km]"
             end if
             bad = 2
+            exit
+        end if
+
+        if (j == n_points + 1) then
+            if (screen) then
+                write(*,*) ACHAR(10) 
+                write(*,*) "Finalizó la integración en t = ", t/unit_t, "[días]"
+                write(*,*) "      con ra = ", da0/unit_r, "[km]"
+            end if
+            bad = 0
             exit
         end if
 
