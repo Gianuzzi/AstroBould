@@ -265,6 +265,31 @@ program main
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    !!!! Set times
+    t0 = t0*unit_t
+    if (tf < cero) then
+        tf = abs(tf) * Prot
+    else
+        tf = tf*unit_t
+    end if
+    dt_out = dt_out*unit_t
+    dt_min = dt_min*unit_t
+    call get_t_outs (t0, tf, n_points, dt_out, logsp, t_out, omega_out, "pape") ! Get LOOP checkpoints
+    t = t0                                                   ! Init time
+    dt = t_out(1) - t0                                       ! This should be == 0
+    dt_min = max(min(dt_min, dt_out), tini)                  ! Min timestep (almost unused)
+    dt_adap = dt_min                                         ! For adaptive step
+
+    if (screen) then
+        write(*,*) "Tiempos:"
+        write(*,*) "    t0      : ", t0/Prot, "[Prot]"
+        write(*,*) "    tf      : ", tf/Prot, "[Prot]"
+        write(*,*) "    dt_out  : ", dt_out/Prot, "[Prot]"
+        write(*,*) "    dt_min  : ", dt_min/Prot, "[Prot]"
+        write(*,*) "    n_points: ", n_points
+    end if
+
+
     !!! Calcular variables:
     !!!! Radio
     radius = radius*unit_r ! Unidades según G    
@@ -301,6 +326,7 @@ program main
         write(*,*) "  lambda   :", lambda
         write(*,*) "  Prot     :", Prot*24*unit_t, "[hs]"
     end if
+    if (allocated(omega_out)) omega_out(1) = omega
 
     !!!! Coordenadas
     if (screen) then
@@ -461,31 +487,6 @@ program main
     ya(NP+3 : NP+4) = ra
     ya(NP+5 : NP+6) = va
     
-
-    !!!! Set times
-    t0 = t0*unit_t
-    if (tf < cero) then
-        tf = abs(tf) * Prot
-    else
-        tf = tf*unit_t
-    end if
-    dt_out = dt_out*unit_t
-    dt_min = dt_min*unit_t
-    call get_t_outs (t0, tf, n_points, dt_out, logsp, t_out) ! Get LOOP checkpoints
-    t = t0                                                   ! Init time
-    dt = t_out(1) - t0                                       ! This should be == 0
-    dt_min = max(min(dt_min, dt_out), tini)                  ! Min timestep (almost unused)
-    dt_adap = dt_min                                         ! For adaptive step
-
-    if (screen) then
-        write(*,*) "Tiempos:"
-        write(*,*) "    t0      : ", t0/Prot, "[Prot]"
-        write(*,*) "    tf      : ", tf/Prot, "[Prot]"
-        write(*,*) "    dt_out  : ", dt_out/Prot, "[Prot]"
-        write(*,*) "    dt_min  : ", dt_min/Prot, "[Prot]"
-        write(*,*) "    n_points: ", n_points
-    end if
-
     
     !!! Escape/Colisión
     if (rmin < cero) then
@@ -598,6 +599,11 @@ program main
 
         ! Update dt
         dt = t_out(j) - t
+        if (allocated(omega_out)) then
+            omega = omega_out(j-1)
+            omega2 = omega * omega
+            yb(1) = omega
+        end if
 
         !!! Execute an integration method (uncomment/edit one of theese)
         ! call integ_caller (t, yb, dt_adap, dydt, Runge_Kutta4, dt, ybnew, hexitptr)
@@ -660,7 +666,7 @@ program main
         call chaosvals(ea, ee, amax, amin, emax, emin)
 
         ! Output
-        if (datas .and. .not. perc) write(*,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
+        if (datas .and. .not. perc) write(*,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR, a_corot, yb(1)
         if (datao) then
             if (eleout) then
                 write(2,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
@@ -709,6 +715,7 @@ program main
 
     ! De-alocamos memoria
     call deallocate_all()
+    deallocate(t_out, omega_out)
 
 end program main
 
