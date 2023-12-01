@@ -55,7 +55,7 @@ suffix = ""                  # Suffix for the output files
 outfile = "sump.out"         # Final Summary Output file name
 exact = False                # Método: Exacto (cos, sin), o NO exacto (integra boulders y m0)
 
-
+tout_omega = "tout_omega.in" # Nombre del archivo de valores de t_i, y omega(t_i)
 
 ##### Iniciamos ####
 
@@ -64,6 +64,7 @@ cwd = os.getcwd()
 oparticles = os.path.join(cwd, particles)
 oprogr = os.path.join(cwd, program)
 ocini = os.path.join(cwd, "config.ini")
+otoutome = os.path.join(cwd, tout_omega)
 
 ## Checkeamos los archivos
 if not os.path.isfile(oparticles):
@@ -81,7 +82,7 @@ if not existe_ocini:
     if yes_no.lower() not in ["y", "yes"]:
         print("Saliendo.")
         exit(1)
-    
+existe_otoutome = os.path.isfile(otoutome)
 
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
@@ -142,11 +143,12 @@ def integrate_n(i):
     dirp = os.path.join(cwd, "dpy%d"%PID)
     nprogr = os.path.join(dirp, program)
     ncini = os.path.join(dirp, "config.ini")
+    ntoutome = os.path.join(dirp, tout_omega)
     if not os.path.exists(dirp): # Si no existe el directorio
         subprocess.run(["mkdir", dirp], check=True)
-        p = subprocess.run(["cp", oprogr, nprogr], check=True)
-        if existe_ocini:
-            p = subprocess.run(["cp", ocini, ncini], check=True)
+        subprocess.run(["cp", oprogr, nprogr], check=True)
+        if existe_ocini: subprocess.run(["cp", ocini, ncini], check=True)
+        if existe_otoutome: subprocess.run(["cp", otoutome, ntoutome], check=True)
     print("Running system %d\n"%(i))
     ### ESTO SE ESTÁ EJECUTANDO EN LA SHELL
     # print("Running: ./%s %s %d %s"%(program, args, i, lines[i]))
