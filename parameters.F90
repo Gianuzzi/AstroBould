@@ -586,7 +586,8 @@ module parameters
             if (ncols == 3) then
                 write(*,*) "WARNING: M0 modification not implemented yet."
                 write(*,*) "         Using m0 = constant."
-            else if (ncols == 1) then
+            end if
+            if (ncols == 1) then
                 do
                     read(10, *, iostat=io) t_out(i)
                     if ((io /= 0) .or. (t_out(i) > tf)) exit

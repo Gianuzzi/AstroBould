@@ -549,21 +549,19 @@ program main
     yb(NP+5 : NP+6) = vb
     
     !!!! Ya[strocentric]
+    call bar2ast(rb, vb, ab, rcm, vcm, acm, ra, va, aa)
     ya(1) = omega
-    ya(2) = m(0)
-    ya(3) = radius(0)
-    ya(4:6) = cero
+    ya(2) = m0
+    ya(3 : 6) = cero
     do i = 1, Nboul
         ineqs = i * neqs
         ya(ineqs+2) = m(i)
         ya(ineqs+3 : ineqs+4) = ria(i,:)
         ya(ineqs+5 : ineqs+6) = via(i,:)
     end do
-    call bar2ast(rb, vb, ab, rcm, vcm, acm, ra, va, aa)
     ya(NP+2) = m(FP)
     ya(NP+3 : NP+4) = ra
     ya(NP+5 : NP+6) = va
-    
 
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  INFO FILE  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
