@@ -60,8 +60,8 @@ program main
         t0 = cero            ! Initial time [days]
         tf = 4.d6            ! Final time [days]
         dt_min = cero        ! Min timestep [days] ! Almost unused
-        logsp = .FALSE.      ! LogSpaced outputs
-        n_points = 1000      ! Number of outputs (if logsp=.TRUE. or dt_out=0)
+        logsp = .False.      ! LogSpaced outputs
+        n_points = 1000      ! Number of outputs (if logsp=.True. or dt_out=0)
         dt_out = cero        ! Output timestep [days] (if logsp = .False.)
         beta = 0.85d0        ! [For adaptive step integrators] Learning rate
         dig_err = 12         ! [For adaptive step integrators] Digits for relative error
@@ -75,6 +75,7 @@ program main
         datafile = ""
         chaosfile = "chaos.dat"
         map_file = ""
+        tomfile = ""
         !! ----------  Default -------------
         !!!! Particle elements
         ea = cero                  ! Element a of the particle (km)
@@ -126,18 +127,18 @@ program main
                 chaos = .True.
                 call get_command_argument(i+1, chaosfile)
                 auxin = 1
-            case ("--screen")
-                screen = .True.
             case ("--noscreen")
                 screen = .False.
-            case ("--perc")
-                perc = .True.
+            case ("--screen")
+                screen = .True.
             case ( "--noperc")
                 perc = .False.
-            case ("--datascr")
-                datas = .True.
+            case ("--perc")
+                perc = .True.
             case ( "--nodatascr")
                 datas = .False.
+            case ("--datascr")
+                datas = .True.
             case ("--nomap")
                 map_pot = .False.
                 map_file = ""
@@ -149,10 +150,17 @@ program main
                 exact = .False.
             case ("--exact")
                 exact = .True.
-            case ("--elem")
-                eleout = .True.
             case ("--noelem")
                 eleout = .False.
+            case ("--elem")
+                eleout = .True.
+            case ("--notomfile")
+                tomf = .False.
+                tomfile = ""
+            case ("-tomfile")
+                tomf = .True.
+                call get_command_argument(i+1, tomfile)
+                auxin = 1
             case ("--help")
                 call get_command_argument(0, auxch)
                 write(*,*) "Uso: " // trim(auxch) // " [nsim] [ea] [ee] [eM] [ew] [eR]"
@@ -180,6 +188,8 @@ program main
                 write(*,*) "    --exact    : Usar método exacto"
                 write(*,*) "    --elem     : Imprimir elementos orbitales (solo partícula)"
                 write(*,*) "    --noelem   : Imprimir coordenadas baricéntricas"
+                write(*,*) "    -tomfile    : Utilizar archivo de tiempos que sigue"
+                write(*,*) "    --notomfile  : No utilizar archivo de tiempos"
                 stop 0
             case default
                 is_number = .False.
@@ -251,6 +261,11 @@ program main
     else 
         map_pot = .False.
     end if
+    if ((trim(tomfile) /= "") .and. (trim(tomfile) /= "no")) then
+        tomf = .True.
+    else 
+        tomf = .False.
+    end if
 
     if (.not. any((/screen, datao, chaos, map_pot/))) then ! No tiene sentido hacer nada
         write(*,*)  "EXITING: No se guardará ni imprimirá ninguna salida."
@@ -265,34 +280,11 @@ program main
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    !!!! Set times
-    t0 = t0*unit_t
-    if (tf < cero) then
-        tf = abs(tf) * Prot
-    else
-        tf = tf*unit_t
-    end if
-    dt_out = dt_out*unit_t
-    dt_min = dt_min*unit_t
-    call get_t_outs (t0, tf, n_points, dt_out, logsp, t_out, omega_out, "pape") ! Get LOOP checkpoints
-    t = t0                                                   ! Init time
-    dt = t_out(1) - t0                                       ! This should be == 0
-    dt_min = max(min(dt_min, dt_out), tini)                  ! Min timestep (almost unused)
-    dt_adap = dt_min                                         ! For adaptive step
+    !!!!!!!!!!!!!!!!!!!!!!!!!! Asteroide y Boulders !!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    if (screen) then
-        write(*,*) "Tiempos:"
-        write(*,*) "    t0      : ", t0/Prot, "[Prot]"
-        write(*,*) "    tf      : ", tf/Prot, "[Prot]"
-        write(*,*) "    dt_out  : ", dt_out/Prot, "[Prot]"
-        write(*,*) "    dt_min  : ", dt_min/Prot, "[Prot]"
-        write(*,*) "    n_points: ", n_points
-    end if
-
-
-    !!! Calcular variables:
     !!!! Radio
     radius = radius*unit_r ! Unidades según G    
+
 
     !!!! Masas
     do i = 1, Nboul
@@ -303,6 +295,7 @@ program main
     mucm = m / mcm ! Mues respecto a mcm
     Gmi = G * m
     GM = G * mcm
+
 
     !!!! Rotaciones
     !theta = cero ! Ángulo de fase del cuerpo 0 [rad]
@@ -326,7 +319,7 @@ program main
         write(*,*) "  lambda   :", lambda
         write(*,*) "  Prot     :", Prot*24*unit_t, "[hs]"
     end if
-    if (allocated(omega_out)) omega_out(1) = omega
+
 
     !!!! Coordenadas
     if (screen) then
@@ -378,7 +371,8 @@ program main
         end do
     end if
 
-    !!!!! Momento angular
+
+    !!!! Momento angular
     call ang_mom_bar(rib, vib, m, radius, omega, ang_mom)
     if (screen) write(*,*) "Momento angular:", ang_mom/unit_m/(unit_r**2)*unit_t, "[kg km^2 / days]"
     
@@ -389,49 +383,9 @@ program main
         call mapas_pot(Nboul,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
         if (screen) write(*,*) "Guardado en el archivo: ", trim(map_file)
     end if
- 
-    !! Configuramos partícula
-    ea = ea*unit_r
-    eM = eM*rad
-    eW = eW*rad
-    if (eR > tini) then
-        ea = eR**(2/3.) * a_corot
-    else
-        eR = (ea/a_corot)**(1.5)
-    end if
-    !! Set initial vectors
-    xe0 = (/ea, ee, ei, eM, ew, eO/)
-    xe = xe0
-    call coord(mcm, ea, ee, ei, eM, ew, eO, xc0)
-    call chaosvals(ea, ee, amax, amin, emax, emin)
-    xc = xc0
-    Res0 = eR
 
-    rb = xc(1:2)
-    vb = xc(4:5)
 
-    !!! INTEGRACIÓN
-
-    !!!! Set Stokes
-    if (lostokes) then
-        call set_C_and_Alpha(tau_a,tau_e,C_stk,a_stk)
-        tau_a = tau_a*unit_t
-        tau_e = tau_e*unit_t
-        t_stokes = t_stokes*unit_t
-        if (screen) then
-            write(*,*) "Stokes:"
-            write(*,*) "    t_stokes:", t_stokes/Prot, "[Prot]"
-            write(*,*) "    C       : ", C_stk
-            write(*,*) "    alpha   : ", a_stk
-        end if
-    else ! Just to be sure
-        tau_a = inf
-        tau_e = inf
-        t_stokes = cero
-    end if
-    
-
-    !! Set breaking
+    !!!! Variación en masa o en omega (funciones del tiempo)
     if ((abs(tau_m) > tini) .and. (tau_m < inf)) then
         if (exact) then
             write(*,*) "ERROR: No se puede usar el método exacto con tau_m finito."
@@ -454,9 +408,132 @@ program main
     else
         tau_o = inf
     end if
+ 
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!! Partícula !!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !!!! Elementos orbitales
+    ea = ea*unit_r
+    eM = eM*rad
+    eW = eW*rad
+    if (eR > tini) then
+        ea = eR**(2/3.) * a_corot
+    else
+        eR = (ea/a_corot)**(1.5)
+    end if
+    xe0 = (/ea, ee, ei, eM, ew, eO/)
+    xe = xe0
+    Res0 = eR
+
+
+    !!!! Caos
+    call chaosvals(ea, ee, amax, amin, emax, emin)
+
+
+    !!!! Coordenadas y vectores
+    call coord(mcm, ea, ee, ei, eM, ew, eO, xc0)
+    xc = xc0
+    rb = xc(1:2)
+    vb = xc(4:5)
+
     
-    !!! Preparamos integracion
+    !!!! Fuerza de Stokes
+    if (lostokes) then
+        call set_C_and_Alpha(tau_a,tau_e,C_stk,a_stk)
+        tau_a = tau_a*unit_t
+        tau_e = tau_e*unit_t
+        t_stokes = t_stokes*unit_t
+        if (screen) then
+            write(*,*) "Stokes:"
+            write(*,*) "    t_stokes:", t_stokes/Prot, "[Prot]"
+            write(*,*) "    C       : ", C_stk
+            write(*,*) "    alpha   : ", a_stk
+        end if
+    else ! Just to be sure
+        tau_a = inf
+        tau_e = inf
+        t_stokes = cero
+    end if
+            
+    !!!! Escape/Colisión
+    if (rmin < cero) then
+        rmin = R0 * abs(rmin)
+    else if (rmin < tini) then
+        rmin = R0 + maxval(radius(1:))
+    else
+        rmin = rmin*unit_r
+    end if
+    if (rmax < cero) then
+        rmax = R0 * abs(rmax)
+    else 
+        rmax = rmax*unit_r
+    end if
+    if (rmax <= rmin) then
+        write(*,*) "ERROR: rmax <= rmin"
+        stop 1
+    end if
+    if (screen) then
+        write(*,*) "Condición escape/colisión:"
+        write(*,*) "    rmin    : ", rmin/unit_r, "[km] =", rmin/R0, "[R0]"
+        write(*,*) "    rmax    : ", rmax/unit_r, "[km] =", rmax/R0, "[R0]"
+    end if
+
+
+        
+    !!!!!!!!!!!!!!!!!!!!!!!!!! Preparamos integracion !!!!!!!!!!!!!!!!!!!!!!!!!!
     if (screen) write(*,*) "Preparando integración..."
+
+    !!!! Tiempos
+    t0 = t0*unit_t
+    if (tf < cero) then
+        tf = abs(tf) * Prot
+    else
+        tf = tf*unit_t
+    end if
+    if (t0 >= tf) then
+        write(*,*) "ERROR: t0 >= tf"
+        stop 1
+    end if
+    dt_out = dt_out*unit_t
+    dt_min = dt_min*unit_t
+    if (tomf) then
+        !! En este caso, leeremos los tiempos desde un archivo
+        if (screen) write(*,*) "Leyendo tiempos desde el archivo: ", trim(tomfile)
+        call read_tomf(t0, tf, n_points, t_out, omega_out, mass_out, tomfile) ! Read LOOP checkpoints
+        t_out(1) = t0
+        t_out(n_points) = tf
+        if (allocated(omega_out)) then
+            omega_out(1) = omega
+            omega_out(n_points) = omega_out(n_points-1)
+        end if
+        if (allocated(mass_out)) then
+            mass_out = mass_out * unit_m
+            mass_out(1) = m(0)
+            mass_out(n_points) = mass_out(n_points-1)
+        end if
+        if (screen) then
+            if (allocated(mass_out)) write(*,*) "  Se hay leído 3 columnas: t, omega, m"
+            if (allocated(omega_out) .and. (.not. allocated(mass_out))) write(*,*) "  Se hay leído 2 columnas: t, omega"
+            if ((.not. allocated(omega_out)) .and. (.not. allocated(mass_out))) write(*,*) "  Se hay leído 1 columna: t"
+        end if
+    else
+        call set_t_outs(t0, tf, n_points, dt_out, logsp, t_out) ! Calc LOOP checkpoints
+    end if
+
+    t = t0              ! Init time
+    dt = t_out(1) - t0  ! This should be == 0
+    dt_min = max(min(dt_min, dt_out), tini)                  ! Min timestep (almost unused)
+    dt_adap = dt_min                                         ! For adaptive step
+
+    if (screen) then
+        write(*,*) "Tiempos:"
+        write(*,*) "    t0      : ", t0/Prot, "[Prot]"
+        write(*,*) "    tf      : ", tf/Prot, "[Prot]"
+        write(*,*) "    dt_out  : ", dt_out/Prot, "[Prot]"
+        write(*,*) "    dt_min  : ", dt_min/Prot, "[Prot]"
+        write(*,*) "    n_points: ", n_points
+    end if
+
     
     !!!! Yb[aricentric]
     ! call ast2bar(ra, va, aa, rcm, vcm, acm, rb, vb, ab)
@@ -487,29 +564,7 @@ program main
     ya(NP+3 : NP+4) = ra
     ya(NP+5 : NP+6) = va
     
-    
-    !!! Escape/Colisión
-    if (rmin < cero) then
-        rmin = R0 * abs(rmin)
-    else if (rmin < tini) then
-        rmin = R0 + maxval(radius(1:))
-    else
-        rmin = rmin*unit_r
-    end if
-    if (rmax < cero) then
-        rmax = R0 * abs(rmax)
-    else 
-        rmax = rmax*unit_r
-    end if
-    if (rmax <= rmin) then
-        write(*,*) "ERROR: rmax <= rmin"
-        stop 1
-    end if
-    if (screen) then
-        write(*,*) "Condición escape/colisión:"
-        write(*,*) "    rmin    : ", rmin/unit_r, "[km] =", rmin/R0, "[R0]"
-        write(*,*) "    rmax    : ", rmax/unit_r, "[km] =", rmax/R0, "[R0]"
-    end if
+
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  INFO FILE  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     if (infoo) then
@@ -600,9 +655,28 @@ program main
         ! Update dt
         dt = t_out(j) - t
         if (allocated(omega_out)) then
-            omega = omega_out(j-1)
+            omega = omega_out(j)
             omega2 = omega * omega
             yb(1) = omega
+            if (exact) then
+                do i = 0, Nboul ! Los ángulos de fase de los boulder (usados en derivates)
+                    theta_b(i) = (omega_out(j-1) * t_out(j) + theta_b(i)) - (omega_out(j) * t_out(j))
+                end do
+            else
+                do i = 0, Nboul ! Modificamos velocidades de asteroide y boulder
+                    yb(ineqs+5 : ineqs+6) =  omega * (/-yb(ineqs+4), yb(ineqs+3)/)
+                end do
+            end if
+        end if
+        if (allocated(mass_out)) then
+            m0 = mass_out(j)
+            m(0) = m0
+            GM0 = G * m0
+            Gmi(0) = GM0
+            mcm = sum(m)
+            mucm = m / mcm
+            GM = G * mcm
+            yb(2) = m0
         end if
 
         !!! Execute an integration method (uncomment/edit one of theese)
@@ -715,7 +789,9 @@ program main
 
     ! De-alocamos memoria
     call deallocate_all()
-    deallocate(t_out, omega_out)
+    deallocate(t_out)
+    if (allocated(omega_out)) deallocate(omega_out)
+    if (allocated(mass_out)) deallocate(mass_out)
 
 end program main
 
@@ -724,6 +800,7 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
     implicit none
     integer(kind=4), intent(in) :: N, ngx, ngy
     real(kind=8), intent(in)    :: xmin, xmax, ymin, ymax, rib(0:N,2), m(0:N), omega
+    character(len=*), intent(in) :: map_file
     real(kind=8) :: xyb(ngx,ngy), xya(ngx,ngy), xyr(ngx,ngy)
     real(kind=8) :: acb(ngx,ngy,2), aca(ngx,ngy,2), acr(ngx,ngy,2)
     real(kind=8) :: rcm(2)
@@ -732,7 +809,6 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
     real(kind=8) :: ar(2)
     real(kind=8) :: ria(N,2)
     integer(kind=4) :: i,j
-    character(len=*) :: map_file
 
     !!! Check
     if ((ngx < 2) .or. (ngy < 2)) then

@@ -6,8 +6,7 @@ main :  \
 	forces.o \
 	integrators.o \
 	main.o \
-	parameters.o \
-	run.o
+	parameters.o
 
 const.o : 
 
@@ -29,8 +28,4 @@ main.o :  \
 
 parameters.o :  \
 	const.o \
-	integrators.o \
-	run.o
-
-run.o :  \
-	const.o
+	integrators.o

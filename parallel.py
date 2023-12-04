@@ -12,10 +12,10 @@
 
 ## IMPORTANTE!!!!
 # 1) Todos los archivos deben estar en la misma carpeta
-# 2) El modo CHAOS debe estar ACTIVADO: [chaos = .TRUE.] (Ahora está automático en este script)
+# 2) El modo CHAOS debe estar ACTIVADO: [chaos = .True.] (Ahora está automático en este script)
 # 3) El ejecutable Debe tener DESactivados:
-#   - El modo de salida pantalla: [screen = .FALSE.] (Ahora está automático en este script)
-#   - El modo de cálculo de mapa de potencial: [map_pot = .FALSE.] (Ahora está automático en este script)
+#   - El modo de salida pantalla: [screen = .False.] (Ahora está automático en este script)
+#   - El modo de cálculo de mapa de potencial: [map_pot = .False.] (Ahora está automático en este script)
 
 # En caso de dejar puesta la salida en archivo, se creará un archivo
 #  llamado salida[id].dat por cada partícula.
@@ -49,13 +49,14 @@ from concurrent.futures import ProcessPoolExecutor as PPE
 particles = "particles.in"   # Nombre del archivo de partículas
 program = "main"             # Nombre del ejecutable
 chaosfile = "chaos.dat"      # Nombre de cada archivo de caos (chaosfile en el programa)
-datafile = ""                # Nombre de cada archivo de salida (datafile en el programa)  ["" si no se usa]
+datafile = "salida.dat"      # Nombre de cada archivo de salida (datafile en el programa)  ["" si no se usa]
 workers = 5                  # Número de procesadores a usar (workers)
 suffix = ""                  # Suffix for the output files
 outfile = "sump.out"         # Final Summary Output file name
 exact = False                # Método: Exacto (cos, sin), o NO exacto (integra boulders y m0)
+elements = False            # Si se quiere devolver (en caso de que sí) los elementos orbitales
 
-tout_omega = "tout_omega.in" # Nombre del archivo de valores de t_i, y omega(t_i)
+tout_omega = "pape" # Nombre del archivo de valores de t_i, y omega(t_i)
 
 ##### Iniciamos ####
 
@@ -83,6 +84,17 @@ if not existe_ocini:
         print("Saliendo.")
         exit(1)
 existe_otoutome = os.path.isfile(otoutome)
+if existe_otoutome:
+    with open(otoutome, "r") as f:
+        line0 = f.readline()
+    ncols = len(line0.split())
+    if ncols == 3:
+        print("WARNING: El archivo {} tiene 3 columnas. [times omega mass],".format(otoutome))
+        print("         pero se usarán 2 porque aún no está implementado el uso de la masa.")
+        yes_no = input("¿Desea continuar? [y/n]")
+        if yes_no.lower() not in ["y", "yes"]:
+            print("Saliendo.")
+            exit(1)
 
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
@@ -135,6 +147,8 @@ args = "--noinfo --noscreen --nomap --nodatascr --noperc"
 args += "%s"%(" -chaosfile %s"%chaosfile if chaosfile else "")
 args += "%s"%(" -datafile %s"%datafile if datafile else " --nodata")
 args += "%s"%(" --exact" if exact else " --noexact")
+args += "%s"%(" -tomf %s"%tout_omega if tout_omega else " --notomf")
+args += "%s"%(" --elem" if elements else " --noelem")
 
 # Función general
 def integrate_n(i):
