@@ -1,9 +1,9 @@
 # AstroBould
 Repositorio con programa para integrar partículas gravitatoriamente alrededor de un asteroide con boulders
 
-Los parámetros iniciales del sistema y la integración se modifican en el archivo: [config.ini].(./config.ini)
+Los parámetros iniciales del sistema y la integración se modifican en el archivo: [config.ini](./config.ini)
 
-En caso de no utilizarlo, se usan los parámtros definidos en [main.F90](./main.F90#21#86), entre las líneas 21 y 86.
+En caso de no utilizarlo, se usan los parámtros definidos en [main.F90](./main.F90#18#85), entre las líneas 18 y 85.
 
 COMPILAR:
 ``` console
@@ -38,11 +38,13 @@ Uso:
    --exact    : Usar método exacto
    --elem     : Imprimir elementos orbitales (solo partícula)
    --noelem   : Imprimir coordenadas baricéntricas
+   -tomfile   : Utilizar archivo de tiempos y omega que sigue
+   --notomfile: No utilizar archivo de tiempos y omega
 ```
 
 PARTÍCULA INDIVIDUAL: 
 ``` console
-$ ./main 0 a e M w R [args]
+$ ./main 0 <a> <e> <M> <w> <R> [args]
 ```
 0 (o cualquier otro "int") es obligatorio
 
