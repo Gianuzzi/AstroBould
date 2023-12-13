@@ -508,7 +508,7 @@ program main
         end if
         if (allocated(mass_out)) then
             mass_out = mass_out * unit_m
-            mass_out(1) = m(0)
+            mass_out(1) = cero
             mass_out(n_points) = mass_out(n_points-1)
         end if
         if (screen) then
@@ -662,19 +662,24 @@ program main
                 end do
             else
                 do i = 0, Nboul ! Modificamos velocidades de asteroide y boulder
-                    yb(ineqs+5 : ineqs+6) =  omega * (/-yb(ineqs+4), yb(ineqs+3)/)
+                    yb(ineqs+5 : ineqs+6) = omega * (/-yb(ineqs+4), yb(ineqs+3)/)
                 end do
             end if
         end if
         if (allocated(mass_out)) then
-            m0 = mass_out(j)
-            m(0) = m0
+            growth = 1.d0 + (mass_out(j)/ mcm)
+            m0 = m0 * growth
+            m = m * growth
             GM0 = G * m0
-            Gmi(0) = GM0
+            Gmi = G * m
             mcm = sum(m)
             mucm = m / mcm
             GM = G * mcm
-            yb(2) = m0
+            do i = 0, Nboul
+                ineqs = i * neqs
+                yb(ineqs+2) = m(i)
+            end do
+            growth = cero
         end if
 
         !!! Execute an integration method (uncomment/edit one of theese)

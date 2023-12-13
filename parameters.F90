@@ -16,6 +16,7 @@ module parameters
     real(kind=8) :: m0 = cero, R0 = cero, GM0 = cero
     real(kind=8), allocatable :: radius(:)
     real(kind=8), dimension(:), allocatable :: mass_out
+    real(kind=8) :: growth = cero ! Aumento de masa
 
     !! Vectores de posiciones, velocidades y aceleraciones
     real(kind=8), allocatable :: rib(:,:), ria(:,:)
@@ -583,10 +584,6 @@ module parameters
 
             ! Read data
             i = 2
-            if (ncols == 3) then
-                write(*,*) "WARNING: M0 modification not implemented yet."
-                write(*,*) "         Using m0 = constant."
-            end if
             if (ncols == 1) then
                 do
                     read(10, *, iostat=io) t_out(i)
@@ -594,19 +591,20 @@ module parameters
                     if (t_out(i) < t0) cycle
                     i = i + 1
                 end do
-            else
+            else if (ncols == 2) then
                 do
                     read(10, *, iostat=io) t_out(i), omega_out(i)
                     if ((io /= 0) .or. (t_out(i) > tf)) exit
                     if (t_out(i) < t0) cycle
                     i = i + 1
                 end do
-                ! do
-                !     read(10, *, iostat=io) t_out(i), omega_out(i), mass_out(i)
-                !     if ((io /= 0) .or. (t_out(i) > tf)) exit
-                !     if (t_out(i) < t0) cycle
-                !     i = i + 1
-                ! end do
+            else 
+                do
+                    read(10, *, iostat=io) t_out(i), omega_out(i), mass_out(i)
+                    if ((io /= 0) .or. (t_out(i) > tf)) exit
+                    if (t_out(i) < t0) cycle
+                    i = i + 1
+                end do
             end if
 
             close(10)
