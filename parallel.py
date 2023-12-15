@@ -147,7 +147,7 @@ args = "--noinfo --noscreen --nomap --nodatascr --noperc"
 args += "%s"%(" -chaosfile %s"%chaosfile if chaosfile else "")
 args += "%s"%(" -datafile %s"%datafile if datafile else " --nodata")
 args += "%s"%(" --exact" if exact else " --noexact")
-args += "%s"%(" -tomf %s"%tout_omega if tout_omega else " --notomf")
+args += "%s"%(" -tomfile %s"%tout_omega if tout_omega else " --notomfile")
 args += "%s"%(" --elem" if elements else " --noelem")
 
 # Función general
