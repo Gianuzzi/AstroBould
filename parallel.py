@@ -1,4 +1,4 @@
-# Version: 5.0
+# Version: 6.0
 
 # Este programa integra cada sistema en un archivo de partículas
 # y luego concatena los archivos de salida en un solo archivo.
@@ -40,11 +40,7 @@
 # Si no son necesarias, se recomienda BORRAR las carpetas creadas luego de terminar la ejecución.
 ## Esto puede hacerse con: $ rm -rf dpy*
 
-
-
-import os
-import subprocess
-from concurrent.futures import ProcessPoolExecutor as PPE
+# Editar estas líneas según corresponda. Estos valores tienen privilegio ante los de config.ini.
 
 particles = "particles.in"   # Nombre del archivo de partículas
 program = "main"             # Nombre del ejecutable
@@ -52,11 +48,23 @@ chaosfile = "chaos.dat"      # Nombre de cada archivo de caos (chaosfile en el p
 datafile = "salida.dat"      # Nombre de cada archivo de salida (datafile en el programa)  ["" si no se usa]
 workers = 5                  # Número de procesadores a usar (workers)
 suffix = ""                  # Suffix for the output files
-outfile = "sump.out"         # Final Summary Output file name
-exact = False                # Método: Exacto (cos, sin), o NO exacto (integra boulders y m0)
-elements = False            # Si se quiere devolver (en caso de que sí) los elementos orbitales
+outfile = "sump.out"         # Final Chaos Summary Output file name
+explicit = False             # Método: Explícito (cos, sin), o NO explícito (implícito; integra boulders y m0)
+elements = False             # Si se quiere devolver (en caso de que sí) los elementos orbitales
 
-tout_omega = "pape" # Nombre del archivo de valores de t_i, y omega(t_i)
+tomfile = "" # Nombre del archivo de valores de t_i, omega(t_i), y masa_agregada(t_i) ["" si no se usa]
+
+
+
+################################################################################################################
+################################################################################################################
+
+#### Importamos ####
+
+import os
+import subprocess
+from concurrent.futures import ProcessPoolExecutor as PPE
+
 
 ##### Iniciamos ####
 
@@ -65,7 +73,7 @@ cwd = os.getcwd()
 oparticles = os.path.join(cwd, particles)
 oprogr = os.path.join(cwd, program)
 ocini = os.path.join(cwd, "config.ini")
-otoutome = os.path.join(cwd, tout_omega)
+otom = os.path.join(cwd, tomfile)
 
 ## Checkeamos los archivos
 if not os.path.isfile(oparticles):
@@ -83,18 +91,11 @@ if not existe_ocini:
     if yes_no.lower() not in ["y", "yes"]:
         print("Saliendo.")
         exit(1)
-existe_otoutome = os.path.isfile(otoutome)
-if existe_otoutome:
-    with open(otoutome, "r") as f:
-        line0 = f.readline()
-    ncols = len(line0.split())
-    if ncols == 3:
-        print("WARNING: El archivo {} tiene 3 columnas. [times omega mass],".format(otoutome))
-        print("         pero se usarán 2 porque aún no está implementado el uso de la masa.")
-        yes_no = input("¿Desea continuar? [y/n]")
-        if yes_no.lower() not in ["y", "yes"]:
-            print("Saliendo.")
-            exit(1)
+existe_otom = os.path.isfile(otom)
+if (tomfile and (not existe_otom)):
+    print("ERROR: Tau-Omega-Mass file {} does not exist.".format(otom))
+    print("Saliendo.")
+    exit(1)
 
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
@@ -146,8 +147,8 @@ for i in range(nsys):
 args = "--noinfo --noscreen --nomap --nodatascr --noperc"
 args += "%s"%(" -chaosfile %s"%chaosfile if chaosfile else "")
 args += "%s"%(" -datafile %s"%datafile if datafile else " --nodata")
-args += "%s"%(" --exact" if exact else " --noexact")
-args += "%s"%(" -tomfile %s"%tout_omega if tout_omega else " --notomfile")
+args += "%s"%(" --explicit" if explicit else " --implicit")
+args += "%s"%(" -tomfile %s"%tomfile if tomfile else " --notomfile")
 args += "%s"%(" --elem" if elements else " --noelem")
 
 # Función general
@@ -157,12 +158,12 @@ def integrate_n(i):
     dirp = os.path.join(cwd, "dpy%d"%PID)
     nprogr = os.path.join(dirp, program)
     ncini = os.path.join(dirp, "config.ini")
-    ntoutome = os.path.join(dirp, tout_omega)
+    ntom = os.path.join(dirp, tomfile)
     if not os.path.exists(dirp): # Si no existe el directorio
         subprocess.run(["mkdir", dirp], check=True)
         subprocess.run(["cp", oprogr, nprogr], check=True)
         if existe_ocini: subprocess.run(["cp", ocini, ncini], check=True)
-        if existe_otoutome: subprocess.run(["cp", otoutome, ntoutome], check=True)
+        if existe_otom: subprocess.run(["cp", otom, ntom], check=True)
     print("Running system %d\n"%(i))
     ### ESTO SE ESTÁ EJECUTANDO EN LA SHELL
     # print("Running: ./%s %s %d %s"%(program, args, i, lines[i]))

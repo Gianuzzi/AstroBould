@@ -81,7 +81,7 @@ module parameters
     logical         :: auxlo, is_number, loini
     logical         :: screen = .True., perc = .False., datas = .False., eleout = .False.
     logical         :: map_pot = .False., infoo = .False., datao = .False., chaos = .False., tomf = .False.
-    logical         :: exact = .True. 
+    logical         :: explicit = .True. 
     integer(kind=4) :: dig_err = 13
 
 
@@ -127,7 +127,7 @@ module parameters
             R0 = cero
             !!!! Integración
             dig_err = 12 ! Dígitos de presición (error)
-            exact   = .True.  ! Método exacto (sin | cos)
+            explicit = .True.  ! Método explícito (sin | cos)
             !!!! Forces
             !! Stokes
             lostokes = .False.

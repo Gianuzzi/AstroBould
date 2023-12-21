@@ -14,46 +14,46 @@ Uso:
 
 ``` console
   ./main [nsim] [ea] [ee] [eM] [ew] [eR] [args]
-   nsim: Número de simulación
-   ea  : Elemento a de la partícula
-   ee  : Elemento e de la partícula
-   eM  : Elemento M de la partícula
-   ew  : Elemento w de la partícula
-   eR  : Elemento R de la partícula
-   --nodata   : No guardar datos
-   -datafile  : Guardar datos en el archivo que sigue
-   --noinfo   : No guardar información
-   -infofile  : Guardar información en el archivo que sigue
-   --nochaos  : No guardar caos
-   -chaosfile : Guardar caos en el archivo que sigue
-   --screen   : Imprimir información en pantalla
-   --noscreen : No imprimir en pantalla
-   --perc     : Imprimir porcentaje de integración
-   --noperc   : No imprimir porcentaje de integración
-   --datascr  : Imprimir datos en pantalla
-   --nodatascr: No imprimir datos en pantalla
-   --nomap    : No guardar mapas de potencial
-   -mapfile   : Guardar mapas de potencial en el archivo que sigue
-   --noexact  : No usar método exacto
-   --exact    : Usar método exacto
-   --elem     : Imprimir elementos orbitales (solo partícula)
-   --noelem   : Imprimir coordenadas baricéntricas
-   -tomfile   : Utilizar archivo de tiempos y omega que sigue
-   --notomfile: No utilizar archivo de tiempos y omega
+  nsim : Número de simulación"
+  ea   : Elemento a de la partícula (km)"
+  ee   : Elemento e de la partícula"
+  eM   : Elemento M de la partícula (deg)"
+  ew   : Elemento w de la partícula (deg)"
+  eR   : Elemento R de la partícula"
+  --nodata    : No guardar datos"
+  -datafile   : Guardar datos en el archivo que sigue"
+  --noinfo    : No guardar información"
+  -infofile   : Guardar información en el archivo que sigue"
+  --nochaos   : No guardar caos"
+  -chaosfile  : Guardar caos en el archivo que sigue"
+  --screen    : Imprimir información en pantalla"
+  --noscreen  : No imprimir en pantalla"
+  --perc      : Imprimir porcentaje de integración"
+  --noperc    : No imprimir porcentaje de integración"
+  --datascr   : Imprimir datos en pantalla"
+  --nodatascr : No imprimir datos en pantalla"
+  --nomap     : No guardar mapas de potencial"
+  -mapfile    : Guardar mapas de potencial en el archivo que sigue"
+  --implicit  : Usar método implícito (integra boulders)"
+  --explicit  : Usar método explícito (cos, sen)"
+  --elem      : Imprimir elementos orbitales (solo partícula)"
+  --noelem    : Imprimir coordenadas baricéntricas"
+  -tomfile    : Utilizar archivo de (t)iempos|omega|masa que sigue"
+  --notomfile : No utilizar archivo de (t)iempos|omega|masa"
 ```
 
 PARTÍCULA INDIVIDUAL: 
 ``` console
 $ ./main 0 <a> <e> <M> <w> <R> [args]
 ```
-0 (o cualquier otro "int") es obligatorio
+El primer 0 (o cualquier otro "int") es obligatorio
 
 "a, e, M, w" son los elementos orbitales.
 
 R es opcional. En caso de usarlo, calcula y reemplaza el valor de a.
 
-PARALELO: (Recordar estar en algún entorno)
-En este caso se debe tener un archivo con los datos de las partículas. La info está al inicio del archivo [parallel.py](./parallel.py#L3#L35)
+PARALELO: (Recordar estar en algún entorno de python)
+En este caso se debe tener un archivo con los datos de las partículas. La info está al inicio del archivo [parallel.py](./parallel.py#L2#L55)
 ``` console
 $ python parallel.py
 ```

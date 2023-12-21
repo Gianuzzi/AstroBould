@@ -146,10 +146,10 @@ program main
                 map_pot = .True.
                 call get_command_argument(i+1, map_file)
                 auxin = 1
-            case ("--noexact")
-                exact = .False.
-            case ("--exact")
-                exact = .True.
+            case ("--implicit")
+                explicit = .False.
+            case ("--explicit")
+                explicit = .True.
             case ("--noelem")
                 eleout = .False.
             case ("--elem")
@@ -170,26 +170,26 @@ program main
                 write(*,*) "    eM  : Elemento M de la partícula (deg)"
                 write(*,*) "    ew  : Elemento w de la partícula (deg)"
                 write(*,*) "    eR  : Elemento R de la partícula"
-                write(*,*) "    --nodata   : No guardar datos"
-                write(*,*) "    -datafile  : Guardar datos en el archivo que sigue"
-                write(*,*) "    --noinfo   : No guardar información"
-                write(*,*) "    -infofile  : Guardar información en el archivo que sigue"
-                write(*,*) "    --nochaos  : No guardar caos"
-                write(*,*) "    -chaosfile : Guardar caos en el archivo que sigue"
-                write(*,*) "    --screen   : Imprimir información en pantalla"
-                write(*,*) "    --noscreen : No imprimir en pantalla"
-                write(*,*) "    --perc     : Imprimir porcentaje de integración"
-                write(*,*) "    --noperc   : No imprimir porcentaje de integración"
-                write(*,*) "    --datascr  : Imprimir datos en pantalla"
-                write(*,*) "    --nodatascr: No imprimir datos en pantalla"
-                write(*,*) "    --nomap    : No guardar mapas de potencial"
-                write(*,*) "    -mapfile   : Guardar mapas de potencial en el archivo que sigue"
-                write(*,*) "    --noexact  : No usar método exacto"
-                write(*,*) "    --exact    : Usar método exacto"
-                write(*,*) "    --elem     : Imprimir elementos orbitales (solo partícula)"
-                write(*,*) "    --noelem   : Imprimir coordenadas baricéntricas"
-                write(*,*) "    -tomfile    : Utilizar archivo de tiempos que sigue"
-                write(*,*) "    --notomfile  : No utilizar archivo de tiempos"
+                write(*,*) "    --nodata    : No guardar datos"
+                write(*,*) "    -datafile   : Guardar datos en el archivo que sigue"
+                write(*,*) "    --noinfo    : No guardar información"
+                write(*,*) "    -infofile   : Guardar información en el archivo que sigue"
+                write(*,*) "    --nochaos   : No guardar caos"
+                write(*,*) "    -chaosfile  : Guardar caos en el archivo que sigue"
+                write(*,*) "    --screen    : Imprimir información en pantalla"
+                write(*,*) "    --noscreen  : No imprimir en pantalla"
+                write(*,*) "    --perc      : Imprimir porcentaje de integración"
+                write(*,*) "    --noperc    : No imprimir porcentaje de integración"
+                write(*,*) "    --datascr   : Imprimir datos en pantalla"
+                write(*,*) "    --nodatascr : No imprimir datos en pantalla"
+                write(*,*) "    --nomap     : No guardar mapas de potencial"
+                write(*,*) "    -mapfile    : Guardar mapas de potencial en el archivo que sigue"
+                write(*,*) "    --implicit  : Usar método implícito (integra boulders)"
+                write(*,*) "    --explicit  : Usar método explícito (cos, sen)"
+                write(*,*) "    --elem      : Imprimir elementos orbitales (solo partícula)"
+                write(*,*) "    --noelem    : Imprimir coordenadas baricéntricas"
+                write(*,*) "    -tomfile    : Utilizar archivo de (t)iempos|omega|masa que sigue"
+                write(*,*) "    --notomfile : No utilizar archivo de (t)iempos|omega|masa"
                 stop 0
             case default
                 is_number = .False.
@@ -387,8 +387,8 @@ program main
 
     !!!! Variación en masa o en omega (funciones del tiempo)
     if ((abs(tau_m) > tini) .and. (tau_m < inf)) then
-        if (exact) then
-            write(*,*) "ERROR: No se puede usar el método exacto con tau_m finito."
+        if (explicit) then
+            write(*,*) "ERROR: No se puede usar el método explícito con tau_m finito."
             write(*,*) "tau_m [Prot]:", tau_m*unit_t/Prot
             stop 1
         end if
@@ -398,8 +398,8 @@ program main
         tau_m = inf
     end if
     if ((abs(tau_o) > tini) .and. (tau_o < inf)) then
-        if (exact) then
-            write(*,*) "ERROR: No se puede usar el método exacto con tau_o finito."
+        if (explicit) then
+            write(*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
             write(*,*) "tau_o [Prot]:", tau_o*unit_t/Prot
             stop 1
         end if
@@ -600,7 +600,7 @@ program main
 
     if (datao) open(unit=2, file=trim(datafile), status='unknown', action='write', access="append")
     
-    if (exact) then
+    if (explicit) then
         dydt => dydt_bar_ex
     else
         dydt => dydt_bar_im
@@ -656,7 +656,7 @@ program main
             omega = omega_out(j)
             omega2 = omega * omega
             yb(1) = omega
-            if (exact) then
+            if (explicit) then
                 do i = 0, Nboul ! Los ángulos de fase de los boulder (usados en derivates)
                     theta_b(i) = (omega_out(j-1) * t_out(j) + theta_b(i)) - (omega_out(j) * t_out(j))
                 end do
@@ -700,7 +700,7 @@ program main
         ybnew = dydt(t, yb)
 
         ! Asteroid and boulders
-        if (exact) then
+        if (explicit) then
             do i = 0, Nboul
                 ineqs = i * neqs
                 rib(i,1) = cos(omega * t + theta_b(i)) * r_b(i)
