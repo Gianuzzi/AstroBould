@@ -9,7 +9,7 @@
 
 # El archivo de partículas a introducir debe tener formato:
 # a e M w
-# Pero también se puede introducir una última columna con el valor de R, 
+# Pero también se puede introducir una última columna con el valor de R,
 #  el cual reemplaza a a: [a = R**(2/3.) * a_corot]. Entonces quedaría:
 # a e M w R
 
@@ -23,7 +23,7 @@
 # En caso de dejar puesta la salida en archivo, se creará un archivo
 #  llamado salida[id].dat por cada partícula.
 
-# Finalmente se creará un archivo de caos llamado chaos[id].dat por cada partícula, 
+# Finalmente se creará un archivo de caos llamado chaos[id].dat por cada partícula,
 #  y se concatenarán todos los archivos en un solo archivo <outfile> con el siguiente formato:
 ## 1    : numero simu
 ## 2    : mala? (0 == OK, 1 == Colisión, 2 == Escape)
@@ -45,18 +45,17 @@
 
 # Editar estas líneas según corresponda. Estos valores tienen privilegio ante los de config.ini.
 
-particles = "particles.in"   # Nombre del archivo de partículas
-program = "main"             # Nombre del ejecutable
-chaosfile = "chaos.dat"      # Nombre de cada archivo de caos (chaosfile en el programa)
-datafile = "salida.dat"      # Nombre de cada archivo de salida (datafile en el programa)  ["" si no se usa]
-workers = 5                  # Número de procesadores a usar (workers)
-suffix = ""                  # Suffix for the output files
-outfile = "sump.out"         # Final Chaos Summary Output file name
-explicit = False             # Método: Explícito (cos, sin), o NO explícito (implícito; integra boulders y m0)
-elements = True              # Si se quiere devolver (en caso de que sí) los elementos orbitales
+particles = "particles.in"  # Nombre del archivo de partículas
+program = "main"  # Nombre del ejecutable
+chaosfile = "chaos.dat"  # Nombre de cada archivo de caos (chaosfile en el programa)
+datafile = "salida.dat"  # Nombre de cada archivo de salida (datafile en el programa)  ["" si no se usa]
+workers = 5  # Número de procesadores a usar (workers)
+suffix = ""  # Suffix for the output files
+outfile = "sump.out"  # Final Chaos Summary Output file name
+explicit = False  # Método: Explícito (cos, sin), o NO explícito (implícito; integra boulders y m0)
+elements = True  # Si se quiere devolver (en caso de que sí) los elementos orbitales
 
-tomfile = "" # Nombre del archivo de valores de t_i, omega(t_i), y masa_agregada(t_i) ["" si no se usa]
-
+tomfile = ""  # Nombre del archivo de valores de t_i, omega(t_i), y masa_agregada(t_i) ["" si no se usa]
 
 
 ################################################################################################################
@@ -95,7 +94,7 @@ if not existe_ocini:
         print("Saliendo.")
         exit(1)
 existe_otom = os.path.isfile(otom)
-if (tomfile and (not existe_otom)):
+if tomfile and (not existe_otom):
     print("ERROR: Tau-Omega-Mass file {} does not exist.".format(otom))
     print("Saliendo.")
     exit(1)
@@ -118,14 +117,13 @@ if any([os.path.isdir(name) and name.startswith("dpy") for name in os.listdir(cw
         f"find dpy* -name 'chaos*{suffix}.dat' "
         f"| sed -e 's/.*chaos\\([0-9]*\\){suffix}\\.dat/\\1/' "
         f"| sort -n"
-        )
-    result = subprocess.run(command, shell=True,
-                            stdout=subprocess.PIPE, text=True)
+    )
+    result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, text=True)
     if result.returncode == 0:
         output_lines = result.stdout.splitlines()
     else:
         raise IOError("Error al leer integraciones ya realizadas.")
-    done = set([int(cint) for cint in output_lines if cint!=''])
+    done = set([int(cint) for cint in output_lines if cint != ""])
     missing_lines = [x for x in range(nsys) if x not in done]
     print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
     nsys = len(missing_lines)
@@ -148,42 +146,60 @@ for i in range(nsys):
 
 ## Argumentos. Estos son
 args = "--noinfo --noscreen --nomap --nodatascr --noperc"
-args += "%s"%(" -chaosfile %s"%chaosfile if chaosfile else "")
-args += "%s"%(" -datafile %s"%datafile if datafile else " --nodata")
-args += "%s"%(" --explicit" if explicit else " --implicit")
-args += "%s"%(" -tomfile %s"%tomfile if tomfile else " --notomfile")
-args += "%s"%(" --elem" if elements else " --noelem")
+args += "%s" % (" -chaosfile %s" % chaosfile if chaosfile else "")
+args += "%s" % (" -datafile %s" % datafile if datafile else " --nodata")
+args += "%s" % (" --explicit" if explicit else " --implicit")
+args += "%s" % (" -tomfile %s" % tomfile if tomfile else " --notomfile")
+args += "%s" % (" --elem" if elements else " --noelem")
+
 
 # Función general
 def integrate_n(i):
     # Get processor ID
     PID = os.getpid()
-    dirp = os.path.join(cwd, "dpy%d"%PID)
+    dirp = os.path.join(cwd, "dpy%d" % PID)
     nprogr = os.path.join(dirp, program)
     ncini = os.path.join(dirp, "config.ini")
     ntom = os.path.join(dirp, tomfile)
-    if not os.path.exists(dirp): # Si no existe el directorio
+    if not os.path.exists(dirp):  # Si no existe el directorio
         subprocess.run(["mkdir", dirp], check=True)
         subprocess.run(["cp", oprogr, nprogr], check=True)
-        if existe_ocini: subprocess.run(["cp", ocini, ncini], check=True)
-        if existe_otom: subprocess.run(["cp", otom, ntom], check=True)
-    print("Running system %d\n"%(i))
+        if existe_ocini:
+            subprocess.run(["cp", ocini, ncini], check=True)
+        if existe_otom:
+            subprocess.run(["cp", otom, ntom], check=True)
+    print("Running system %d\n" % (i))
     ### ESTO SE ESTÁ EJECUTANDO EN LA SHELL
     # print("Running: ./%s %s %d %s"%(program, args, i, lines[i]))
-    p = subprocess.run(["./%s %s %d %s"%(program, args, i, lines[i])],
-                         cwd=dirp, check=True, shell=True)
+    p = subprocess.run(
+        ["./%s %s %d %s" % (program, args, i, lines[i])],
+        cwd=dirp,
+        check=True,
+        shell=True,
+    )
     if p.returncode != 0:
-        print("The system %d has failed."%i)
+        print("The system %d has failed." % i)
         return
-    subprocess.run(["mv", "-f",
-                    os.path.join(dirp, chaosfile),
-                    os.path.join(dirp, "chaos%d%s.dat"%(i, suffix))])
+    subprocess.run(
+        [
+            "mv",
+            "-f",
+            os.path.join(dirp, chaosfile),
+            os.path.join(dirp, "chaos%d%s.dat" % (i, suffix)),
+        ]
+    )
     if datafile != "":
-        subprocess.run(["mv", "-f",
-                        os.path.join(dirp, datafile),
-                        os.path.join(dirp, "salida%d%s.dat"%(i, suffix))])
-    print("System %d has been integrated."%i)
+        subprocess.run(
+            [
+                "mv",
+                "-f",
+                os.path.join(dirp, datafile),
+                os.path.join(dirp, "salida%d%s.dat" % (i, suffix)),
+            ]
+        )
+    print("System %d has been integrated." % i)
     return
+
 
 def make_sum(outfile, suffix=""):
     # Ruta a la carpeta raíz que contiene las subcarpetas con los archivos
@@ -200,16 +216,24 @@ def make_sum(outfile, suffix=""):
             # Recorre todos los archivos en la subcarpeta
             for filename in os.listdir(subdir_path):
                 # Verifica si el nombre del archivo comienza con "chaos" y termina con ".dat"
-                if filename.startswith("chaos") and filename.endswith(".dat") and (suffix in filename):
+                if (
+                    filename.startswith("chaos")
+                    and filename.endswith(".dat")
+                    and (suffix in filename)
+                ):
                     filepath = os.path.join(subdir_path, filename)
                     file_list.append(filepath)
 
-
     # Ordena los nombres de los archivos por el valor de i en "chaos%d%s.dat"
     if suffix == "":
-        file_list = sorted(file_list, key=lambda x: int(x.split("chaos")[1].split(".dat")[0]))
+        file_list = sorted(
+            file_list, key=lambda x: int(x.split("chaos")[1].split(".dat")[0])
+        )
     else:
-        file_list = sorted(file_list, key=lambda x: int(x.split("chaos")[1].split(".dat")[0].split(suffix)[0]))
+        file_list = sorted(
+            file_list,
+            key=lambda x: int(x.split("chaos")[1].split(".dat")[0].split(suffix)[0]),
+        )
 
     # Concatena los archivos en el archivo de salida utilizando el comando 'cat' de Unix
     outs = outfile.split(".")
