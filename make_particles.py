@@ -1,7 +1,7 @@
-import os
-import numpy as np
 import itertools
+import os
 
+import numpy as np
 
 # ---------------------------------------------------------------------
 # Constantes y conversiones -> Ms | AU | yr | deg
@@ -58,14 +58,14 @@ type_gen = type(rndm())
 # INPUT
 # -----------------
 
-## UNIDADES
+# UNIDADES
 unit_dist = AU
 unit_angle = deg
 
-## Data
+# Data
 data_in = {}
 names = ["a", "e", "M", "w", "R"]
-## PARÁMETROS A VARIAR (Poner unidades de ser necesario)
+# PARÁMETROS A VARIAR (Poner unidades de ser necesario)
 data_in["a"] = [0.0]
 data_in["e"] = [0.0]
 data_in["M"] = [rndm(0.0, 360.0)]
@@ -76,13 +76,13 @@ data_in["R"] = [n_steps(0.9, 7.5, 3000)]
 # OUTPUT
 # -----------------
 
-## ARCHIVO DE SALIDA
+# ARCHIVO DE SALIDA
 filename = "particles.in"
 
 # OUTPUT FORMAT:
 fmt = "%.11e"
 
-## Shuffle
+# Shuffle
 shuffle = False
 
 
@@ -160,7 +160,8 @@ def check_continue(outfile):
         q = input()
         ntry = 3
         while q.lower() not in ["y", "yes", "s", "si", "n", "no"]:
-            print("{} is not a valid answer ({} attempts left)".format(q, ntry))
+            print("{} is not a valid answer.".format(q))
+            print(" ({} attempts left)".format(ntry))
             print("Do yo want to overwrite it? Y/[N]")
             q = input()
             ntry -= 1
@@ -186,13 +187,6 @@ def shuffle_matrix(matrix):
 
 # ---------------------------------------------------------------------
 # ---------------------------------------------------------------------
-
-
-def read_IC(path):
-    IC = pd.read_csv(
-        path, delim_whitespace=True, header=None, names=["a", "e", "M", "w", "R"]
-    )
-    return IC
 
 
 # MAIN PROGRAM
