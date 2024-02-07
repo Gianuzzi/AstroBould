@@ -33,7 +33,7 @@ module forces
             if (da0 > rmax) hexit = 2
             da03 = da0 * da0 * da0
             da05 = da03 * da0 * da0
-            ! da07 = da05 * da0 * da0
+            da07 = da05 * da0 * da0
         end subroutine set_da0
 
         subroutine apply_force(t, m, rb, vb, rib, rdd)
@@ -180,9 +180,7 @@ module forces
             real(kind=8), intent(inout) :: rdd(2)
             real(kind=8) :: vc(2)
 
-            ! if (.not. loStokes) return
             call getfact_stok(t,f_stk)
-            ! call set_db0(rb, db0) !! Se supone que ya está calculado
             vc  = sqrt(GM / db03) * (/-rb(2),rb(1)/)
             rdd = rdd - C_stk * (vb - a_stk * vc) * f_stk ! -C(v * - alpha*vc)
         end subroutine accsto
@@ -205,9 +203,7 @@ module forces
             implicit none
             real(kind=8), intent(in) :: GM0
             real(kind=8), intent(inout) :: rdd(2)
-
-            ! call set_da0(rb, rb0, raux, da0) !! Se supone que ya está calculado
-            ! if (.not. loJ2) return
+            
             rdd = rdd - GM0 * J2coef * raux / da05
         end subroutine accJ2
 
@@ -231,7 +227,7 @@ module forces
         !     Re = (a * b * c)**(uno3)
         !     Re2 = Re * Re
         !     C20 = (dos * c*c - a*a - b*b) / (10.d0 * Re2)
-        !     C22 = (a*a  - b*b) / (20.d0 * Re2)
+        !     C22 = (a*a - b*b) / (20.d0 * Re2)
         
         !     ReC20coe = Re2 * C20 * 1.5d0
         !     ReC22coe = Re2 * C22 * 3.0d0
@@ -245,17 +241,16 @@ module forces
         !     real(kind=8), intent(inout) :: rdd(2)
         !     real(kind=8) :: ac_rot(2) = cero
         !     real(kind=8) :: fac1, fac2, xx, yy, co, se
-
-        !     ! call set_da0(rb, rb0, raux, da0) !! Se supone que ya está calculado
-        !     ! if (.not. loTriAx) return
+            
         !     xx = raux(1) * raux(1)
         !     yy = raux(2) * raux(2)
         !     fac1 = -3.d0 * xx + 7.d0 * yy
         !     fac2 = -7.d0 * xx + 3.d0 * yy
 
-        !     ac_rot(1) = ac_rot(1) + raux(1) * ((ReC20coe / da05) + (ReC22coe * fac1 / da07))
-        !     ac_rot(2) = ac_rot(2) + raux(2) * ((ReC20coe / da05) + (ReC22coe * fac2 / da07))
+        !     ac_rot(1) = raux(1) * ((ReC20coe / da05) + (ReC22coe * fac1 / da07))
+        !     ac_rot(2) = raux(2) * ((ReC20coe / da05) + (ReC22coe * fac2 / da07))
         !     ac_rot = ac_rot * GM0
+            
         !     !! Ahora hay que rotarlo
         !     co = cos(omega * t)
         !     se = sin(omega * t)

@@ -1,10 +1,13 @@
 # Version: 6.0
 
-# Este programa integra cada sistema en un archivo de partículas
-# y luego concatena los archivos de salida en un solo archivo.
+# DENTRO DE UN ENTORNO PYTHON
+# Ejecución: $ python parallel.py
 
 
-# El archivo de partículas tiene formato:
+# Este programa integra cada sistema (condición inicial) en un archivo independiente,
+# y luego concatena los archivos de caos en un solo archivo.
+
+# El archivo de partículas a introducir debe tener formato:
 # a e M w
 # Pero también se puede introducir una última columna con el valor de R, 
 #  el cual reemplaza a a: [a = R**(2/3.) * a_corot]. Entonces quedaría:
@@ -31,11 +34,11 @@
 ## 11   : t integrado
 ## 12-16: a final, e final, M final, w final, R final
 ## 17   : Momento angular final de partícula por unidad de masa
-## 18-19: da, de 
+## 18-19: da, de
 
 # Excepto <outfile>, todos los otros archivos se encontrarán en carpetas creadas con el nombre
 # dpy[pid], donde pid es el ID del procesador que ejecutó el sistema. El máximo de carpetas
-# creadas será igual al MAX(número de procesadores disponibles en el sistema , workers).
+# creadas será igual al MAX(número de procesadores disponibles en el sistema, workers).
 
 # Si no son necesarias, se recomienda BORRAR las carpetas creadas luego de terminar la ejecución.
 ## Esto puede hacerse con: $ rm -rf dpy*
@@ -50,7 +53,7 @@ workers = 5                  # Número de procesadores a usar (workers)
 suffix = ""                  # Suffix for the output files
 outfile = "sump.out"         # Final Chaos Summary Output file name
 explicit = False             # Método: Explícito (cos, sin), o NO explícito (implícito; integra boulders y m0)
-elements = False             # Si se quiere devolver (en caso de que sí) los elementos orbitales
+elements = True              # Si se quiere devolver (en caso de que sí) los elementos orbitales
 
 tomfile = "" # Nombre del archivo de valores de t_i, omega(t_i), y masa_agregada(t_i) ["" si no se usa]
 
@@ -169,6 +172,9 @@ def integrate_n(i):
     # print("Running: ./%s %s %d %s"%(program, args, i, lines[i]))
     p = subprocess.run(["./%s %s %d %s"%(program, args, i, lines[i])],
                          cwd=dirp, check=True, shell=True)
+    if p.returncode != 0:
+        print("The system %d has failed."%i)
+        return
     subprocess.run(["mv", "-f",
                     os.path.join(dirp, chaosfile),
                     os.path.join(dirp, "chaos%d%s.dat"%(i, suffix))])
@@ -176,6 +182,7 @@ def integrate_n(i):
         subprocess.run(["mv", "-f",
                         os.path.join(dirp, datafile),
                         os.path.join(dirp, "salida%d%s.dat"%(i, suffix))])
+    print("System %d has been integrated."%i)
     return
 
 def make_sum(outfile, suffix=""):
