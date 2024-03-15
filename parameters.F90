@@ -1,6 +1,5 @@
 module parameters
     use const
-    use run
     use integrators
     implicit none
 
@@ -10,52 +9,86 @@ module parameters
     integer(kind=4), parameter :: neqs = 5 ! Número de eqs. a integrar (m, x, y, vx, vy) !! Omega va aparte
     integer(kind=4)  :: FP = 0, NP = 0 !! First particle, y posicion de primer partícula
     
-    !!! Variables
+    !!!!! Variables
+    !! Masa y radios
     real(kind=8), allocatable :: m(:), mu(:), Gmi(:), mucm(:)
     real(kind=8) :: GM = cero, mcm = cero
     real(kind=8) :: m0 = cero, R0 = cero, GM0 = cero
     real(kind=8), allocatable :: radius(:)
+    real(kind=8), dimension(:), allocatable :: mass_out
+    real(kind=8) :: growth = cero ! Aumento de masa
+
+    !! Vectores de posiciones, velocidades y aceleraciones
     real(kind=8), allocatable :: rib(:,:), ria(:,:)
     real(kind=8), allocatable :: vib(:,:), via(:,:)
     real(kind=8), allocatable :: aib(:,:), aia(:,:)
+    !!! ... de centro de masas
     real(kind=8) :: rcm(2) = cero, vcm(2) = cero, acm(2) = cero
+    !!! ... de partícula
     real(kind=8) :: rb(2) = cero, ra(2) = cero
     real(kind=8) :: vb(2) = cero, va(2) = cero
     real(kind=8) :: ab(2) = cero, aa(2) = cero
+
+    !! Distancias
     real(kind=8) :: db0 = cero, da0 = cero
+
+    !! Caos
     real(kind=8) :: da = cero, de = cero, amax = cero, amin = inf, emax = cero, emin = inf
+
+    !! Coordenadas y elementos orbitales
     real(kind=8) :: xc(6) = cero, xe(6) = cero, xc0(6) = cero, xe0(6) = cero, Res0 = cero
     real(kind=8) :: ea = cero, ee = cero, ei = cero, eM = cero, ew = cero, eO = cero, eR = cero
+
+    !! Ángulos de rotacion
     real(kind=8), allocatable :: theta_a(:)
     real(kind=8) :: theta_acm = cero
+    !!! .. baricéntricos
     real(kind=8), allocatable :: r_b(:), theta_b(:)
     real(kind=8) :: lambda = cero, Prot = cero
+
+    !! Rotación
     real(kind=8) :: omega = cero, wk = cero, a_corot = cero, omega2 = cero, lambda2 = cero
+    real(kind=8), dimension(:), allocatable :: omega_out
+
+    !! Momento angular
     real(kind=8) :: ang_mom = cero
+
+    !! Rmax y Rmin
     real(kind=8) :: rmax = cero, rmin = inf
 
-    !! Parámetros de main
+    !!! Tiempos
+    integer(kind=4) :: n_iter = 0                                              ! N_iterations
+    integer(kind=4) :: n_points = 0                                            ! N_outputs
+    real(kind=8) :: t = cero, t0 = inf, tf = cero                              ! Times
+    real(kind=8) :: dt = cero, dt_adap = cero, dt_min = cero, dt_out = cero    ! dTimes
+    real(kind=8) :: t_add = cero, logt = cero                                  ! Times [output]
+    real(kind=8), dimension(:), allocatable :: t_out                           ! Times [output]
+    logical :: logsp = .False.                                                 ! Logarithmic spacing
+
+    !!! Parámetros de main
     integer(kind=4) :: i = 0, j = 0, ineqs = 0
     integer(kind=4) :: nin = 0, nsim = 0, bad = 0
     integer(kind=4) :: ngx = 0, ngy = 0
     real(kind=8)    :: xmin = inf, xmax = -inf, ymin = inf, ymax = -inf
     character(30)   :: chn, cha, che, chM, chw, chR
-    character(30)   :: datafile, chaosfile, infofile, map_file
+    character(30)   :: datafile, chaosfile, infofile, map_file, tomfile
+    integer(kind=4) :: ncols = 0 ! Del archivo de t_out
+    real(kind=8)    :: auxre
     integer(kind=4) :: auxin
     character(30)   :: auxch
     character(1)    :: auxch1
     character(2)    :: auxch2
     logical         :: auxlo, is_number, loini
     logical         :: screen = .True., perc = .False., datas = .False., eleout = .False.
-    logical         :: map_pot = .False., infoo = .False., datao = .False., chaos = .False.
-    logical         :: exact = .True. 
+    logical         :: map_pot = .False., infoo = .False., datao = .False., chaos = .False., tomf = .False.
+    logical         :: explicit = .True. 
     integer(kind=4) :: dig_err = 13
 
 
-    !!!! FORCES
+    !!!! Fuerzas
     real(kind=8) :: raux(2) = cero ! rb - rb0
     !!! Stokes
-    logical :: lostokes = .false.
+    logical :: lostokes = .False.
     real(kind=8) :: t_stokes = cero, f_stk = uno
     real(kind=8) :: tau_a = inf, tau_e = inf, C_stk = cero, a_stk = uno
     !! Dampings (not stokes)
@@ -69,12 +102,11 @@ module parameters
     ! real(kind=8) :: tria = cero, trib = cero, tric = cero
     ! real(kind=8) :: C20 = cero, C22 = cero, Re = cero
 
-
     !!! Punteros
     integer, target :: hexit = 0 !  Hard Exit integer
     integer, pointer :: hexitptr ! pointer to Hard Exit
 
-    !! Vectores
+    !! Vectores para integración
     !y = /omega, mi, xi, yi, vxi, vyi, .../
     real(kind=8), allocatable :: yb(:), ybnew(:), ya(:), yanew(:)
 
@@ -95,7 +127,7 @@ module parameters
             R0 = cero
             !!!! Integración
             dig_err = 12 ! Dígitos de presición (error)
-            exact   = .True.  ! Método exacto (sin | cos)
+            explicit = .True.  ! Método explícito (sin | cos)
             !!!! Forces
             !! Stokes
             lostokes = .False.
@@ -109,8 +141,8 @@ module parameters
             t0       = cero    ! Initial time [days]
             tf       = cero    ! Final time [days]
             dt_min   = cero    ! Min timestep [days] ! Almost unused
-            logsp    = .FALSE. ! LogSpaced outputs
-            n_points = 0       ! Number of outputs (if logsp=.TRUE. or dt_out=0)
+            logsp    = .False. ! LogSpaced outputs
+            n_points = 0       ! Number of outputs (if logsp=.True. or dt_out=0)
             dt_out   = cero    ! Output timestep [days] (if logsp = .False.)
             !!!! Salida
             screen  = .False. ; perc = .False. ! Pantalla, porcentaje
@@ -120,6 +152,8 @@ module parameters
             infofile = "" ! Archivo de info
             datafile = ""! Archivo de datos
             chaosfile = "chaos.dat" ! Archivo de datos
+            !!!! Tiempos, omegas, y masas
+            tomfile = "" ! Archivo de t_out, omega(t), m(t)
             !!!! Mapa de potencial
             map_file = "" ! Archivo de mapas
             ngx = 500   ; ngy = 500
@@ -177,9 +211,9 @@ module parameters
                             read(value_str, *) n_points
                         case("logspaced outpu")
                             if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                logsp = .true.
+                                logsp = .True.
                             else
-                                logsp = .false.
+                                logsp = .False.
                             end if
                         case("precision (digi")
                             read(value_str, *) dig_err
@@ -241,72 +275,86 @@ module parameters
                             read(value_str, *) rmin
                         case("max distance fr")
                             read(value_str, *) rmax
+                        case("input time-omeg")
+                            if (auxch2 == "no") then
+                                tomf = .False.
+                                tomfile = ""
+                            else
+                                tomf = .True.
+                                tomfile = trim(value_str)
+                            end if
+                            read(value_str, *) tomfile
+                            if (len_trim(tomfile) > 0) then
+                                tomf = .True.
+                            else
+                                tomf = .False.
+                            end if
                         case("information on ")
                             if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                screen = .true.
+                                screen = .True.
                             else
-                                screen = .false.
+                                screen = .False.
                             end if
                         case("information sum")
                             if (auxch2 == "no") then
-                                infoo    = .False.
+                                infoo = .False.
                                 infofile = ""
                             else if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                infoo = .true.
+                                infoo = .True.
                                 infofile = "info.dat"
                             else
-                                infoo = .true.
-                                infofile = trim(value_str)                            
+                                infoo = .True.
+                                infofile = trim(value_str)
                             end if
                         case("general output")
                             if (auxch2 == "no") then
-                                datao    = .False.
+                                datao = .False.
                                 datafile = ""
                             else if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                datao = .true.
+                                datao = .True.
                                 datafile = "salida.dat"
                             else
-                                datao = .true.
-                                datafile = trim(value_str)                            
+                                datao = .True.
+                                datafile = trim(value_str)
                             end if
                         case("chaos indicator")
                             if (auxch2 == "no") then
                                 chaos    = .False.
                                 chaosfile = ""
                             else if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                chaos = .true.
+                                chaos = .True.
                                 chaosfile = "chaos.dat"
                             else
-                                chaos = .true.
-                                chaosfile = trim(value_str)                            
+                                chaos = .True.
+                                chaosfile = trim(value_str)
                             end if
                         case("output on scree")
                             if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                datas = .true.
-                                perc = .false.
+                                datas = .True.
+                                perc = .False.
                             else if (auxch1 == "%") then
-                                datas = .true.
-                                perc = .true.
+                                datas = .True.
+                                perc = .True.
                             else
-                                datas = .false.
-                                perc = .false.
+                                datas = .False.
+                                perc = .False.
                             end if
                         case("output variable")
                             if (auxch1 == "c") then
-                                eleout = .false.
+                                eleout = .False.
                             else
-                                eleout = .true.
+                                eleout = .True.
                             end if
                         case("create map file")
                             if (auxch2 == "no") then
                                 map_pot    = .False.
                                 map_file = ""
                             else if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                map_pot = .true.
+                                map_pot = .True.
                                 map_file = "mapas.dat"
                             else
-                                map_pot = .true.
-                                map_file = trim(value_str)                            
+                                map_pot = .True.
+                                map_file = trim(value_str)
                             end if
                         case("number x cells")
                             read(value_str, *) ngx
@@ -396,14 +444,14 @@ module parameters
                 stop 1
             end if
             m(0) = m0
-            m0 = m0 * unit_m
+            m0 = m0*unit_m
             !!!! Radio
             if (R0 <= 0) then
                 write(*,*) "ERROR: El radio del cuerpo central debe ser positivo."
                 stop 1
             end if
             radius(0) = R0
-            R0 = R0 * unit_r
+            R0 = R0*unit_r
             !!! GM0
             GM0 = G * m0
             !! NO TOCAR
@@ -446,6 +494,121 @@ module parameters
             deallocate(yb, ybnew)
             deallocate(ya, yanew)
         end subroutine deallocate_all
+
+        subroutine set_t_outs(t0, tf, n_points, dt_out, logsp, t_out)
+            implicit none
+            real(kind=8), intent(in) :: t0, tf
+            integer(kind=4), intent(inout) :: n_points
+            real(kind=8), intent(inout) :: dt_out
+            logical, intent(in) :: logsp
+            real(kind=8), dimension(:), allocatable, intent(out) :: t_out
+            real(kind=8) :: t_aux, t_add
+            integer(kind=4) :: i
+            real(kind=8) :: npointsr
+
+            if (dt_out > 0.d0) then
+                if (dt_out > tf - t0) then
+                    write(*,*) "ERROR: dt_out >= (tf - t0)"
+                    stop 1
+                end if
+                n_points = int((tf - t0) / dt_out) + 1
+                npointsr = n_points * 1.d0
+            else
+                npointsr = n_points * 1.d0
+                dt_out = (tf - t0) / (npointsr - 1.d0)
+            end if
+            if (n_points < 2) then
+                write(*,*) "ERROR: n_points < 2"
+                stop 1
+            end if
+            allocate (t_out(n_points))
+            if (logsp .eqv. .True.) then
+                t_aux = exp (log (tf - t0 + 1.) / npointsr)
+                t_add = t_aux
+                do i = 2, n_points - 1
+                    t_add    = t_add * t_aux
+                    t_out(i) = t0 + t_add - 1.
+                end do
+            else
+                t_aux = (tf - t0) / (npointsr - 1.d0)
+                do i = 1, n_points - 1
+                    t_out(i + 1) = t0 + t_aux * i
+                end do
+            end if
+            t_out(1) = t0
+            t_out(n_points) = tf
+        end subroutine set_t_outs
+        
+        subroutine read_tomf(t0, tf, n_points, t_out, omega_out, mass_out, file_tout)
+            implicit none
+            real(kind=8), intent(in) :: t0, tf
+            integer(kind=4), intent(out) :: n_points
+            real(kind=8), dimension(:), allocatable, intent(out) :: t_out, omega_out, mass_out
+            character(LEN=*), intent(in) :: file_tout
+            integer(kind=4) :: i, j, io
+            integer(kind=4) :: ncols
+            real(kind=8) :: t_aux
+            character(80) :: auxstr
+
+            n_points = 2
+            
+            open(unit=10, file=file_tout, status="old", action="read")
+
+            !! Count number of columns
+            read(10, '(A)') auxstr
+            do i = 1,3   ! The very maximum that the string can contain: 3
+                read(auxstr, *, iostat=io) (t_aux, j=1,i)
+                if (io .ne. 0) exit
+            enddo
+            ncols = i - 1
+            rewind(10) ! Go to the beginning of the file
+            do ! Count number of (valid) lines 
+                read(10, *, iostat=io) t_aux
+                if ((io /= 0) .or. (t_aux > tf)) exit
+                if (t_aux < t0) cycle
+                n_points = n_points + 1
+            end do
+            
+            ! Allocate arrays
+            allocate (t_out(n_points))
+            t_out = -1.d0
+            if (ncols > 1) then
+                allocate (omega_out(n_points))
+                omega_out = -1.d0
+            end if
+            if (ncols > 2) then
+                allocate (mass_out(n_points))
+                mass_out = -1.d0
+            end if
+            rewind(10) ! Go to the beginning of the file
+
+            ! Read data
+            i = 2
+            if (ncols == 1) then
+                do
+                    read(10, *, iostat=io) t_out(i)
+                    if ((io /= 0) .or. (t_out(i) > tf)) exit
+                    if (t_out(i) < t0) cycle
+                    i = i + 1
+                end do
+            else if (ncols == 2) then
+                do
+                    read(10, *, iostat=io) t_out(i), omega_out(i)
+                    if ((io /= 0) .or. (t_out(i) > tf)) exit
+                    if (t_out(i) < t0) cycle
+                    i = i + 1
+                end do
+            else 
+                do
+                    read(10, *, iostat=io) t_out(i), omega_out(i), mass_out(i)
+                    if ((io /= 0) .or. (t_out(i) > tf)) exit
+                    if (t_out(i) < t0) cycle
+                    i = i + 1
+                end do
+            end if
+
+            close(10)
+        end subroutine read_tomf
 
         subroutine rcmfromast(ria,via,aia,m,rcm,vcm,acm)
             implicit none

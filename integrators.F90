@@ -1335,7 +1335,7 @@ module integrators
             real(kind=8)                   :: eps1, errmax, fact, h, red, scala, wrkmin, xest
             real(kind=8), dimension(sizey) :: yerr, ysav, yseq, der, yscal
             logical       :: reduct
-            logical, save :: first = .true.
+            logical, save :: first = .True.
 
             real(kind=8), dimension(kmaxx * 2)        :: xpz
             real(kind=8), dimension(sizey, kmaxx * 2) :: qcolpz
@@ -1368,10 +1368,10 @@ module integrators
             h = htry
             ysav = y
             if ((abs(h - hnext) .gt. SAFE_LOW) .or. (abs(x - xnew) .gt. SAFE_LOW)) then !E_TOL? ! A new stepsize or a new integration: Reestablish the order window.
-                first = .true.
+                first = .True.
                 kopt = kmax
             end if
-            reduct = .false.
+            reduct = .False.
             main_loop: do
                 do k = 1, kmax ! Evaluate the sequence of modiﬁed midpoint integrations.
                     xnew = x + h
@@ -1415,11 +1415,11 @@ module integrators
                 end do
                 red = max(min(red, redmin), redmax)
                 h = h * red
-                reduct = .true.
+                reduct = .True.
             end do main_loop
             x = xnew
             hdid = h
-            first = .false.
+            first = .False.
             wrkmin = 1.e35
             do kk = 1, km
                 fact = max (err(kk), scalmx)
