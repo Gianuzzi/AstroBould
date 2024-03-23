@@ -3,7 +3,7 @@ Repositorio con programa para integrar partículas gravitatoriamente alrededor d
 
 Los parámetros iniciales del sistema y la integración se modifican en el archivo: [config.ini](./config.ini)
 
-En caso de no utilizarlo, se usan los parámtros definidos en [main.F90](./main.F90#18#85), entre las líneas 18 y 85.
+En caso de no utilizarlo, se usan los parámtros definidos en [main.F90](./main.F90#18#89), entre las líneas 18 y 89.
 
 COMPILAR:
 ``` console

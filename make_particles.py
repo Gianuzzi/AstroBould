@@ -2,6 +2,7 @@ import itertools
 import os
 
 import numpy as np
+from scipy.stats import rayleigh
 
 # ---------------------------------------------------------------------
 # Constantes y conversiones -> Ms | AU | yr | deg
@@ -49,6 +50,11 @@ def rndm(x0=0.0, xf=360.0):
     while True:
         yield rng.random() * (xf - x0) + x0
 
+def rayleigh_dist(mean=0, var=1):
+    """Rayleigh distribution"""
+    while True:
+        yield rayleigh.rvs(loc=mean, scale=var)
+
 
 type_gen = type(rndm())
 
@@ -67,7 +73,7 @@ data_in = {}
 names = ["a", "e", "M", "w", "R"]
 # PARÁMETROS A VARIAR (Poner unidades de ser necesario)
 data_in["a"] = [0.0]
-data_in["e"] = [0.0]
+data_in["e"] = [0.0] # Puede ser sino rayleigh_dist(0.1, 0.1)
 data_in["M"] = [rndm(0.0, 360.0)]
 data_in["w"] = [0.0]
 data_in["R"] = [n_steps(0.9, 7.5, 3000)]
