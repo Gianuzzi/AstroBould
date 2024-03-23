@@ -68,7 +68,7 @@ from concurrent.futures import ProcessPoolExecutor
 particles = "particles.in"  # Nombre del archivo de partículas
 program = "main"  # Nombre del ejecutable
 chaosfile = "chaos.dat"  # Nombre de archivos de caos (chaosfile)
-datafile = "salida.dat"  # Nombre de archivos de salida (datafile) ["" == no]
+datafile = ""  # Nombre de archivos de salida (datafile) ["" == no]
 workers = 5  # Número de procesadores a usar (workers)
 suffix = ""  # Suffix for the output files
 outfile = "sump.out"  # Final Chaos Summary Output file name

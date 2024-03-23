@@ -91,6 +91,9 @@ module parameters
     logical :: lostokes = .False.
     real(kind=8) :: t_stokes = cero, f_stk = uno
     real(kind=8) :: tau_a = inf, tau_e = inf, C_stk = cero, a_stk = uno
+    !!! Naive-Stokes
+    logical :: lostokes_naive = .False.
+    real(kind=8) :: eta = cero
     !! Dampings (not stokes)
     real(kind=8) :: tau_o = inf ! Omega
     real(kind=8) :: tau_m = inf ! M0
@@ -134,6 +137,9 @@ module parameters
             t_stokes = cero
             tau_a = inf
             tau_e = inf
+            !! Naive-Stokes
+            lostokes_naive = .False.
+            eta = cero
             !! Geo-Potential
             loJ2 = .False.
             J2 = cero
@@ -253,6 +259,14 @@ module parameters
                             read(value_str, *) tau_e
                         case("F damping chara")
                             read(value_str, *) t_stokes
+                        case("include naive-s")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                lostokes_naive = .True.
+                            else
+                                lostokes_naive = .False.
+                            end if
+                        case("drag coef [eta]")
+                            read(value_str, *) eta
                         case("mass damping ch")
                             read(value_str, *) tau_m
                         case("rotation dampin")
@@ -409,14 +423,17 @@ module parameters
             NP = FP * neqs
             
             !! Forces
-            !!! tau_m y tau_o
-            if (abs(tau_m) < tini) tau_m = cero
-            if (abs(tau_o) < tini) tau_o = cero
             !!! tau_a y tau_e
             if ((abs(tau_a) < tini) .or. .not. lostokes) tau_a = cero
             if ((abs(tau_e) < tini) .or. .not. lostokes) tau_e = cero
             if ((abs(t_stokes) < tini) .or. .not. lostokes) t_stokes = cero
             if (((abs(tau_a) < tini) .and. (abs(tau_e) < tini)) .or. (abs(t_stokes) < tini)) lostokes = .False.
+            !!! Naive-stokes
+            if ((abs(eta) < tini) .and. lostokes_naive) lostokes_naive = .False.
+            if ((abs(eta) < tini) .or. .not. lostokes_naive) eta = cero
+            !!! tau_m y tau_o
+            if (abs(tau_m) < tini) tau_m = cero
+            if (abs(tau_o) < tini) tau_o = cero
             !!! Geo-Potential
             if (abs(J2) > tini) loJ2 = .True.
             ! !!! Triaxial

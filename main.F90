@@ -52,6 +52,10 @@ program main
         tau_e = tau_a / 1.d2  ! [days]
         t_stokes = cero       ! [days] Tiempo que actua stokes
 
+        !!!! Naive-Stokes
+        lostokes_naive = .False.
+        eta = 0.0d0
+
         !!!! Geo-Potential (J2)
         loJ2 = .False.
         J2 = cero
@@ -279,7 +283,11 @@ program main
     end if
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+    if (screen) then
+        write(*,*) "Comenzando simulación: ", nsim
+        write(*,*) ACHAR(10)
+        write(*,*) "-----Parámetros iniciales-----"
+    end if
     !!!!!!!!!!!!!!!!!!!!!!!!!! Asteroide y Boulders !!!!!!!!!!!!!!!!!!!!!!!!!!
 
     !!!! Radio
@@ -436,7 +444,15 @@ program main
     rb = xc(1:2)
     vb = xc(4:5)
 
-    
+    db0 = sqrt(rb(1)*rb(1) + rb(2)*rb(2))
+
+    !!!!!!!!!! EFECTOS EXTERNOS
+
+    if (screen) then
+        write(*,*) ACHAR(10)
+        write(*,*) "-----Efectos externos-----"
+
+    end if
     !!!! Fuerza de Stokes
     if (lostokes) then
         call set_C_and_Alpha(tau_a,tau_e,C_stk,a_stk)
@@ -454,6 +470,24 @@ program main
         tau_e = inf
         t_stokes = cero
     end if
+    
+    ! [Imprimimos en pantalla]
+    if (screen) then
+        if (lostokes_naive) then !!!! Naive-Stokes
+            write(*,*) "Naive-Stokes (radial):"
+            write(*,*) "    Eta:", eta
+        end if
+        if (tau_m < inf) then !!!! Tau_m
+            write(*,*) "Explicit mass damping:"
+            write(*,*) "    tau_m:", tau_m/unit_t, "[Prot]"
+        end if
+        if (tau_o < inf) then !!!! Tau_o
+            write(*,*) "Explicit omega damping:"
+            write(*,*) "    tau_o:", tau_o/unit_t, "[Prot]"
+        end if
+        if (loJ2) write(*,*) "J2:", J2 !!!! Geo-Potential (J2)
+    end if
+
             
     !!!! Escape/Colisión
     if (rmin < cero) then
@@ -481,7 +515,10 @@ program main
 
         
     !!!!!!!!!!!!!!!!!!!!!!!!!! Preparamos integracion !!!!!!!!!!!!!!!!!!!!!!!!!!
-    if (screen) write(*,*) "Preparando integración..."
+    if (screen) then
+        write(*,*) ACHAR(10)
+        write(*,*) "-----Preparando integración-----"
+    end if
 
     !!!! Tiempos
     t0 = t0*unit_t
@@ -614,7 +651,7 @@ program main
             do i = 0, Nboul
                 write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
             end do
-            call apply_force(t, m, rb, vb, rib, ab)
+            call apply_force(t, omega, m, rb, vb, rib, ab)
             write(2,*) FP, t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
         end if
     end if
@@ -729,10 +766,14 @@ program main
         !! Particle
         rb = yb(NP+3 : NP+4)
         vb = yb(NP+5 : NP+6)
-        call apply_force(t, m, rb, vb, rib, ab)
+        call apply_force(t, omega, m, rb, vb, rib, ab)
         rib(FP,:) = rb
         vib(FP,:) = vb
         aib(FP,:) = ab
+
+        db0 = sqrt(rb(1)*rb(1) + rb(2)*rb(2))
+        ! call apply_force(t, omega, m*cero, rb, vb, rib, raux)
+        ! write(*,*) t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, raux/unit_a
 
         !! Elements
         xc = (/rb(1),rb(2),cero,vb(1),vb(2),cero/)
@@ -745,9 +786,11 @@ program main
         ! Output
         if (datas .and. .not. perc) write(*,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR, a_corot, yb(1)
         if (datao) then
-            if (eleout) then
+            if (eleout) then ! Output elements
+                ! t, a, e, M, w, R
                 write(2,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
-            else
+            else ! Output cartesian coordinates
+                ! i, t, rx, ry, vx, xy, ax, ay, m, radius
                 do i = 0, Nboul
                     write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
                 end do
@@ -840,7 +883,7 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
             ra = rb + rcm
             xya(i,j) = potast(ra, ria)
             xyr(i,j) = potrot(ra, ria)
-            call apply_force(0.d0, m, rb, vb, rib, ab)
+            call apply_force(0.d0, omega, m, rb, vb, rib, ab)
             acb(i,j,:) = ab
             call accast(omega, m, ra, ria, aa)
             aca(i,j,:) = aa

@@ -3,7 +3,7 @@ module forces
     use parameters
     implicit none
 
-    private :: set_db0, set_da0, accbar, accsto, accJ2 !, acc_triax
+    private :: set_db0, set_da0, accbar, accsto, accJ2, accnaisto !, acc_triax
 
     real(kind=8) :: J2coef = cero
     real(kind=8) :: ReC20coe = cero, ReC22coe = cero
@@ -36,16 +36,17 @@ module forces
             da07 = da05 * da0 * da0
         end subroutine set_da0
 
-        subroutine apply_force(t, m, rb, vb, rib, rdd)
+        subroutine apply_force(t, omega, m, rb, vb, rib, rdd)
             implicit none
-            real(kind=8), intent(in) :: t, m(0:), rb(2), vb(2), rib(0:,:)
+            real(kind=8), intent(in) :: t, omega, m(0:), rb(2), vb(2), rib(0:,:)
             real(kind=8), intent(inout) :: rdd(2)
             
             call set_da0(rb, rib(0,:2), raux, da0)
             call accbar(m, rb, rib, rdd)
-            if (lostokes) then
+            if (lostokes .or. lostokes_naive) then
                 call set_db0(rb, db0)
-                call accsto(GM, t, rb, vb, rdd)
+                if (lostokes) call accsto(GM, t, rb, vb, rdd)
+                if (lostokes_naive) call accnaisto(omega, rb, vb, rdd)
             end if
             if (loJ2) call accJ2(GM0, rdd)
             ! if (loTriAx) call acc_triax(GM0, t, rdd)
@@ -185,6 +186,22 @@ module forces
             rdd = rdd - C_stk * (vb - a_stk * vc) * f_stk ! -C(v * - alpha*vc)
         end subroutine accsto
 
+
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !!!!!!!!!!!!!!!!!! NAIVE STOKES !!!!!!!!!!!!!!!!!
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        subroutine accnaisto(omega, rb, vb, rdd)
+            implicit none
+            real(kind=8), intent(in) :: omega
+            real(kind=8), intent(in) :: rb(2), vb(2)
+            real(kind=8), intent(inout) :: rdd(2)
+            real(kind=8) :: gamma, vrad
+
+            vrad = dot_product(vb, rb) / db0 ! This is v_radial
+            gamma = - eta * omega * vrad ! This is a_radial
+            rdd = rdd + gamma * rb / db0
+        end subroutine accnaisto
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!! GEO-POTENTIAL !!!!!!!!!!!!!!!!!!!!
