@@ -22,7 +22,7 @@ La ejecución básica de una particula individual se realiza con
 $ ./main <a> <e> <M> <w> <R> [args]
 ```
 
-Los argumentos "a, e, M, w" son los elementos orbitales, y R (cociente n_part/Omega_ast) es opcional.
+Los argumentos "$a$, $e$, $M$, $\omega$" son los elementos orbitales, y $R$ (cociente inicial $n_{part}/\Omega_{ast}$) es opcional.
 En caso de usarlo, calcula y reemplaza el valor de a.
 
 Una ayuda puede obtenerse con 
@@ -30,7 +30,7 @@ Una ayuda puede obtenerse con
 ``` console
  $ ./main --help
 
-  ./main <ea> <ee> <eM> <ew> <eR> [args]
+  Uso: ./main <ea> <ee> <eM> <ew> <eR> [args]
   ea   : Elemento a de la partícula (km)
   ee   : Elemento e de la partícula
   eM   : Elemento M de la partícula (deg)
@@ -71,6 +71,10 @@ Luego de configurarlo, su ejecución se realiza con
 ``` console
 $ python parallel.py
 ```
+
+### Archivo TOM (Tiempos, Omega, Masa agregada)
+
+Para crear este archivo se puede usar [make_TOM.f90](./make_TOM.f90), de C. Beaugé. Se debe configurar manualmente, para luego compilar y ejecutar.
 
 # Author
 Emmanuel Gianuzzi
