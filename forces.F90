@@ -196,11 +196,11 @@ module forces
             real(kind=8), intent(in) :: omega
             real(kind=8), intent(in) :: rb(2), vb(2)
             real(kind=8), intent(inout) :: rdd(2)
-            real(kind=8) :: gamma, vrad
+            real(kind=8) :: acc_stk, vrad
 
             vrad = dot_product(vb, rb) / db0 ! This is v_radial
-            gamma = - eta * omega * vrad ! This is a_radial
-            rdd = rdd + gamma * rb / db0
+            acc_stk = - eta * omega * vrad ! This is a_radial
+            rdd = rdd + acc_stk * rb / db0
         end subroutine accnaisto
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

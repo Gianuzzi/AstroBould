@@ -69,7 +69,7 @@ particles = "particles.in"  # Nombre del archivo de partículas
 program = "main"  # Nombre del ejecutable
 chaosfile = "chaos.dat"  # Nombre de archivos de caos (chaosfile)
 datafile = ""  # Nombre de archivos de salida (datafile) ["" == no]
-workers = 5  # Número de procesadores a usar (workers)
+workers = 3   # Número de procesadores a usar (workers)
 suffix = ""  # Suffix for the output files
 outfile = "sump.out"  # Final Chaos Summary Output file name
 explicit = False  # Método: True (cos, sin), False (integra boulders y m0)
@@ -186,11 +186,13 @@ def integrate_n(i):
             subprocess.run(["cp", ocini, ncini], check=True)
         if existe_otom:
             subprocess.run(["cp", otom, ntom], check=True)
+    this_arg = " -nsim %d" % i
     print("Running system %d\n" % (i))
-    # ESTO SE ESTÁ EJECUTANDO EN LA SHELL
-    # print("Running: ./%s %s %d %s"%(program, args, i, lines[i]))
+    ## ESTO SE ESTÁ EJECUTANDO EN LA SHELL
+    #print("Running: ./%s %s %s %s"%(program, args, this_arg, lines[i]))
+    ##(Lines debe ser último porque termina en "\n")
     p = subprocess.run(
-        ["./%s %s %d %s" % (program, args, i, lines[i])],
+        ["./%s %s %s %s" % (program, args, this_arg, lines[i])],
         cwd=dirp,
         check=True,
         shell=True,

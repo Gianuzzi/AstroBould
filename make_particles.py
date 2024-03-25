@@ -76,7 +76,7 @@ data_in["a"] = [0.0]
 data_in["e"] = [0.0] # Puede ser sino rayleigh_dist(0.1, 0.1)
 data_in["M"] = [rndm(0.0, 360.0)]
 data_in["w"] = [0.0]
-data_in["R"] = [n_steps(0.9, 7.5, 3000)]
+data_in["R"] = [n_steps(0.9, 7.5, 10)]
 
 # -----------------
 # OUTPUT

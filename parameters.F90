@@ -70,7 +70,7 @@ module parameters
     integer(kind=4) :: nin = 0, nsim = 0, bad = 0
     integer(kind=4) :: ngx = 0, ngy = 0
     real(kind=8)    :: xmin = inf, xmax = -inf, ymin = inf, ymax = -inf
-    character(30)   :: chn, cha, che, chM, chw, chR
+    character(30)   :: chi, chn, cha, che, chM, chw, chR
     character(30)   :: datafile, chaosfile, infofile, map_file, tomfile
     integer(kind=4) :: ncols = 0 ! Del archivo de t_out
     real(kind=8)    :: auxre
