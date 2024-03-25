@@ -2,7 +2,7 @@ import itertools
 import os
 
 import numpy as np
-from scipy.stats import rayleigh
+from scipy.stats import rayleigh, norm
 
 # ---------------------------------------------------------------------
 # Constantes y conversiones -> Ms | AU | yr | deg
@@ -50,10 +50,27 @@ def rndm(x0=0.0, xf=360.0):
     while True:
         yield rng.random() * (xf - x0) + x0
 
-def rayleigh_dist(mean=0, var=1):
-    """Rayleigh distribution"""
+def rayleigh_dist(x0=0, var=0.1, xmax=1.0):
+    """Rayleigh distribution
+        x0: Valor mínimo
+        var: Varianza (define el pico de la distribución)
+        xmax: Valor máximo
+    """
     while True:
-        yield rayleigh.rvs(loc=mean, scale=var)
+        x = rayleigh.rvs(loc=x0, scale=var)
+        if x <= xmax:
+            yield x
+
+def norm_dist(x0=0.3, scale=0.01, xmin=0, xmax=1.0):
+    """Normal distribution
+        x0: Media
+        scale: Desviación estándar
+        xmax: Valor máximo
+    """
+    while True:
+        x = norm.rvs(loc=x0, scale=scale)
+        if xmin <= x <= xmax:
+            yield x
 
 
 type_gen = type(rndm())
@@ -73,7 +90,7 @@ data_in = {}
 names = ["a", "e", "M", "w", "R"]
 # PARÁMETROS A VARIAR (Poner unidades de ser necesario)
 data_in["a"] = [0.0]
-data_in["e"] = [0.0] # Puede ser sino rayleigh_dist(0.1, 0.1)
+data_in["e"] = [0.0] # Podría ser: rayleigh_dist(0, 0.1, 1)
 data_in["M"] = [rndm(0.0, 360.0)]
 data_in["w"] = [0.0]
 data_in["R"] = [n_steps(0.9, 7.5, 10)]
