@@ -19,7 +19,7 @@ program main
         m0 = 6.3d18 ! Masa del cuerpo 0 [kg]
         R0 = 129.d0 ! Radio del cuerpo 0 [km]
         !!! ROTACIÓN
-        ! Prot = 7.004d0/24.d0  ! Periodo de rotación [days]
+        ! Prot = 7.004d0/24.d0  ! Periodo de rotación [day]
         lambda = 0.471d0      ! Cociente spin/wk
 
         !! Boulders        
@@ -48,26 +48,36 @@ program main
 
         !!!! Stokes
         lostokes = .False.
-        tau_a = inf           ! [days]
-        tau_e = tau_a / 1.d2  ! [days]
-        t_stokes = cero       ! [days] Tiempo que actua stokes
+        tau_a = inf           ! [day]
+        tau_e = tau_a / 1.d2  ! [day]
+        t_stokes = cero       ! [day] Tiempo que actua stokes
+
+        !!!! Naive-Stokes
+        lostokes_naive = .False.
+        eta = 0.0d0
 
         !!!! Geo-Potential (J2)
         loJ2 = .False.
         J2 = cero
 
         !!! Parámetros corrida
-        t0 = cero            ! Initial time [days]
-        tf = 4.d6            ! Final time [days]
-        dt_min = cero        ! Min timestep [days] ! Almost unused
+        t0 = cero            ! Initial time [day]
+        tf = 4.d6            ! Final time [day]
+        dt_min = cero        ! Min timestep [day] ! Almost unused
         logsp = .False.      ! LogSpaced outputs
         n_points = 1000      ! Number of outputs (if logsp=.True. or dt_out=0)
-        dt_out = cero        ! Output timestep [days] (if logsp = .False.)
+        dt_out = cero        ! Output timestep [day] (if logsp = .False.)
         beta = 0.85d0        ! [For adaptive step integrators] Learning rate
         dig_err = 12         ! [For adaptive step integrators] Digits for relative error
         rmin = -1.5d0        ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
         rmax = -1.d2         ! Max distance before escape [km] ! -x => R0 * x
         
+        !!!! Particle elements
+        ea = cero                  ! Element a of the particle [km]
+        ee = cero !0.1d0           ! ecc
+        eM = cero                  ! Mean anomaly (deg)
+        ew = cero                  ! Pericenter argument (deg)
+        eR = cero !1.001d0 !3.3d0  ! resonancia nominal correspondiente
 
         !! ----------  Default -------------
         !!! Output: "" or "no", if not used
@@ -76,13 +86,6 @@ program main
         chaosfile = "chaos.dat"
         map_file = ""
         tomfile = ""
-        !! ----------  Default -------------
-        !!!! Particle elements
-        ea = cero                  ! Element a of the particle (km)
-        ee = cero !0.1d0           ! ecc
-        eM = cero                  ! Mean anomaly (deg)
-        ew = cero                  ! Pericenter argument (deg)
-        eR = cero !1.001d0 !3.3d0  ! resonancia nominal correspondiente
 
     end if
     
@@ -96,7 +99,7 @@ program main
     !Leemos de la línea de comandos
     nin = command_argument_count()
     !!!!! PARTÍCULA (en caso de entrada por terminal)
-    auxlo = .False.
+    auxlo = .False. ! Leí los parámetros numéricos?
     auxin = 0
     if (nin > 0) then
         do i = 1, nin
@@ -106,6 +109,10 @@ program main
             end if
             call get_command_argument(i, auxch)
             select case (trim(auxch))
+            case ("-nsim")
+                call get_command_argument(i+1, chi)
+                read(chi,*) nsim
+                auxin = 1
             case ("--nodata")
                 datao = .False.
                 datafile = ""
@@ -163,13 +170,13 @@ program main
                 auxin = 1
             case ("--help")
                 call get_command_argument(0, auxch)
-                write(*,*) "Uso: " // trim(auxch) // " [nsim] [ea] [ee] [eM] [ew] [eR]"
-                write(*,*) "    nsim: Número de simulación"
+                write(*,*) "Uso: " // trim(auxch) // "<ea> <ee> <eM> <ew> <eR> [args]"
                 write(*,*) "    ea  : Elemento a de la partícula (km)"
                 write(*,*) "    ee  : Elemento e de la partícula"
                 write(*,*) "    eM  : Elemento M de la partícula (deg)"
                 write(*,*) "    ew  : Elemento w de la partícula (deg)"
-                write(*,*) "    eR  : Elemento R de la partícula"
+                write(*,*) "    eR  : Elemento R de la partícula [Optional]"
+                write(*,*) "    -nsim       : Asignar como número de simulación al 'int' que sigue"
                 write(*,*) "    --nodata    : No guardar datos"
                 write(*,*) "    -datafile   : Guardar datos en el archivo que sigue"
                 write(*,*) "    --noinfo    : No guardar información"
@@ -207,24 +214,22 @@ program main
                     write(*,*) "Saliendo."
                     stop 1
                 end if
-                if (.not. auxlo)  then! No leí los parámetros aún
-                    if (nin < i+4) then
-                        write(*,*) "ERROR: No se pudo leer 'nsim'."
-                        write(*,*) "Se requieren al menos 5 argumentos más de línea de comandos"
+                if (.not. auxlo)  then ! No leí los parámetros aún
+                    if (nin < i+3) then
+                        write(*,*) "ERROR: No se pudo leer los elementos orbitales."
+                        write(*,'(A,I0,A)') "        Faltan ", 4-nin, " elementos."
                         write(*,*) "Saliendo."
                         stop 1
                     else ! Leo los argumentos numéricos
-                        call get_command_argument(i, chn)
-                        read(chn,*) nsim
-                        call get_command_argument(i+1, cha)
+                        call get_command_argument(i, cha)
                         read(cha,*) ea
-                        call get_command_argument(i+2, che)
+                        call get_command_argument(i+1, che)
                         read(che,*) ee
-                        call get_command_argument(i+3, chM)
+                        call get_command_argument(i+2, chM)
                         read(chM,*) eM
-                        call get_command_argument(i+4, chw)
+                        call get_command_argument(i+3, chw)
                         read(chw,*) ew
-                        auxin = 4
+                        auxin = 3
                         auxlo = .True.
                         eR = cero
                     end if
@@ -235,7 +240,14 @@ program main
             end select
         end do
     else
-        print*, "WARNING: Se utilizan los parámetros de partículas del código."
+        print*, "WARNING: No hay argumentos de entrada."
+        print*, "  Se utilizan los elementos orbitales de partículas explícitos del código."
+        print*, "¿Está seguro que desea continuar? [y/N]"
+        read(*,*) auxch1
+        if (index("YySs", auxch1) == 0) then
+            print*, "Exiting."
+            stop
+        endif
     end if
 
 
@@ -279,7 +291,12 @@ program main
     end if
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+    if (screen) then
+        write(*,*) ACHAR(5)
+        write(*,*) "Comenzando simulación: ", nsim
+        write(*,*) ACHAR(5)
+        write(*,*) "-----Parámetros iniciales-----"
+    end if
     !!!!!!!!!!!!!!!!!!!!!!!!!! Asteroide y Boulders !!!!!!!!!!!!!!!!!!!!!!!!!!
 
     !!!! Radio
@@ -302,10 +319,10 @@ program main
     theta_a = theta_a*rad ! Ángulos de fase de los boulders [rad]
     wk = sqrt(GM / R0**3)/unit_t       ! Movimiento medio (kepleriano) que tendrían los boulder
     if (lambda > tini) then    
-        omega = wk * lambda            ! Velocidad angular del cuerpo 0 [rad/days]
-        Prot = twopi / omega           ! Periodo de rotación del cuerpo 0 [days]
+        omega = wk * lambda            ! Velocidad angular del cuerpo 0 [rad/day]
+        Prot = twopi / omega           ! Periodo de rotación del cuerpo 0 [day]
     else
-        omega = (twopi / Prot)/unit_t  ! Velocidad angular del cuerpo 0 (rad/days)    
+        omega = (twopi / Prot)/unit_t  ! Velocidad angular del cuerpo 0 [rad/day]
         lambda = omega / wk            ! Cociente de velocidades
     end if
     omega2 = omega * omega
@@ -314,8 +331,8 @@ program main
     if (screen) then
         write(*,*) "Rotación:"
         write(*,*) "  a_corot  :", a_corot/unit_r, "[km]"
-        write(*,*) "  omega    :", omega*unit_t, "[rad/days]"
-        write(*,*) "  omega_kep:", wk*unit_t, "[rad/days]"
+        write(*,*) "  omega    :", omega*unit_t, "[rad/day]"
+        write(*,*) "  omega_kep:", wk*unit_t, "[rad/day]"
         write(*,*) "  lambda   :", lambda
         write(*,*) "  Prot     :", Prot*24*unit_t, "[hs]"
     end if
@@ -337,7 +354,8 @@ program main
         aia(i,2) = - omega2 * ria(i,2)  ! Aceleración y del boulder i
     end do
     if (screen) then
-        write(*,*) "Astrocentricas:"
+        write(*,*) "Coordenadas:"
+        write(*,*) "   Astrocentricas: [x, y, vx, vy, ax, ay, mu, theta]"
         do i = 1, Nboul
             write(*,*) i, ria(i,:)/unit_r, via(i,:)/unit_v, aia(i,:)/unit_a, mu(i), theta_a(i)/rad
         end do
@@ -347,8 +365,8 @@ program main
     call rcmfromast(ria(:Nboul,:), via(:Nboul,:), aia(:Nboul,:), m(0:Nboul), rcm, vcm, acm)
     theta_acm = atan2(rcm(2), rcm(1))
     if (screen) then
-        write(*,*) "Centro de masas:"
-        write(*,*) rcm/unit_r, vcm/unit_v, acm/unit_a, mcm/unit_m
+        write(*,*) "   Centro de masas: [x, y, vx, vy, ax, ay, mass]"
+        write(*,*) "         CM", rcm/unit_r, vcm/unit_v, acm/unit_a, mcm/unit_m
     end if
 
     !!!!! Baricentricas
@@ -365,7 +383,7 @@ program main
         theta_b(i) = atan2(rib(i,2), rib(i,1))
     end do
     if (screen) then
-        write(*,*) "Baricentricas:"
+        write(*,*) "   Baricentricas: [x, y, vx, vy, ax, ay, mass]"
         do i = 0, Nboul
             write(*,*) i, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m
         end do
@@ -374,7 +392,7 @@ program main
 
     !!!! Momento angular
     call ang_mom_bar(rib, vib, m, radius, omega, ang_mom)
-    if (screen) write(*,*) "Momento angular:", ang_mom/unit_m/(unit_r**2)*unit_t, "[kg km^2 / days]"
+    if (screen) write(*,*) "Momento angular:", ang_mom/unit_m/(unit_r**2)*unit_t, "[kg km^2 / day]"
     
 
     !!!! MAPAS Potenciales y Aceleraciones
@@ -436,7 +454,15 @@ program main
     rb = xc(1:2)
     vb = xc(4:5)
 
-    
+    db0 = sqrt(rb(1)*rb(1) + rb(2)*rb(2))
+
+    !!!!!!!!!! EFECTOS EXTERNOS
+
+    if (screen) then
+        write(*,*) ACHAR(5)
+        write(*,*) "-----Efectos externos-----"
+
+    end if
     !!!! Fuerza de Stokes
     if (lostokes) then
         call set_C_and_Alpha(tau_a,tau_e,C_stk,a_stk)
@@ -444,7 +470,7 @@ program main
         tau_e = tau_e*unit_t
         t_stokes = t_stokes*unit_t
         if (screen) then
-            write(*,*) "Stokes:"
+            write(*,*) "Stokes"
             write(*,*) "    t_stokes:", t_stokes/Prot, "[Prot]"
             write(*,*) "    C       : ", C_stk
             write(*,*) "    alpha   : ", a_stk
@@ -454,6 +480,24 @@ program main
         tau_e = inf
         t_stokes = cero
     end if
+    
+    ! [Imprimimos en pantalla]
+    if (screen) then
+        if (lostokes_naive) then !!!! Naive-Stokes
+            write(*,*) "Naive-Stokes (radial)"
+            write(*,*) "    Eta :", eta
+        end if
+        if (tau_m < inf) then !!!! Tau_m
+            write(*,*) "Explicit mass damping"
+            write(*,*) "    tau_m :", tau_m/unit_t, "[Prot]"
+        end if
+        if (tau_o < inf) then !!!! Tau_o
+            write(*,*) "Explicit omega damping"
+            write(*,*) "    tau_o :", tau_o/unit_t, "[Prot]"
+        end if
+        if (loJ2) write(*,*) "J2 :", J2 !!!! Geo-Potential (J2)
+    end if
+
             
     !!!! Escape/Colisión
     if (rmin < cero) then
@@ -473,15 +517,18 @@ program main
         stop 1
     end if
     if (screen) then
-        write(*,*) "Condición escape/colisión:"
-        write(*,*) "    rmin    : ", rmin/unit_r, "[km] =", rmin/R0, "[R0]"
-        write(*,*) "    rmax    : ", rmax/unit_r, "[km] =", rmax/R0, "[R0]"
+        write(*,*) "Condición escape/colisión"
+        write(*,*) "    rmin : ", rmin/unit_r, "[km] =", rmin/R0, "[R0]"
+        write(*,*) "    rmax : ", rmax/unit_r, "[km] =", rmax/R0, "[R0]"
     end if
 
 
         
     !!!!!!!!!!!!!!!!!!!!!!!!!! Preparamos integracion !!!!!!!!!!!!!!!!!!!!!!!!!!
-    if (screen) write(*,*) "Preparando integración..."
+    if (screen) then
+        write(*,*) ACHAR(5)
+        write(*,*) "-----Preparando integración-----"
+    end if
 
     !!!! Tiempos
     t0 = t0*unit_t
@@ -512,9 +559,9 @@ program main
             mass_out(n_points) = mass_out(n_points-1)
         end if
         if (screen) then
-            if (allocated(mass_out)) write(*,*) "  Se hay leído 3 columnas: t, omega, m"
-            if (allocated(omega_out) .and. (.not. allocated(mass_out))) write(*,*) "  Se hay leído 2 columnas: t, omega"
-            if ((.not. allocated(omega_out)) .and. (.not. allocated(mass_out))) write(*,*) "  Se hay leído 1 columna: t"
+            if (allocated(mass_out)) write(*,*) "  Se han leído 3 columnas: t, omega, m"
+            if (allocated(omega_out) .and. (.not. allocated(mass_out))) write(*,*) "  Se han leído 2 columnas: t, omega"
+            if ((.not. allocated(omega_out)) .and. (.not. allocated(mass_out))) write(*,*) "  Se ha leído 1 columna: t"
         end if
     else
         call set_t_outs(t0, tf, n_points, dt_out, logsp, t_out) ! Calc LOOP checkpoints
@@ -593,9 +640,19 @@ program main
     end if
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    !!!! Check. Do I have to work?
+    if (Res0 < tini) then
+        if (screen) then
+            write(*,*) ACHAR(10)
+            write(*,*) "Initial condition a=0. Nothing to do here."
+            write(*,*) "Saliendo."
+        end if
+        stop
+    end if
+
     if (screen) then
         write(*,*) "Integrando..."
-        if (e_tol <= 1.d-16) write(*,*) " WARNING: e_tol might be too low <= 1.d-16"
+        if (e_tol <= 1.d-16) write(*,*) " WARNING: e_tol might be too low (<= 1.d-16)"
     end if
 
     if (datao) open(unit=2, file=trim(datafile), status='unknown', action='write', access="append")
@@ -614,7 +671,7 @@ program main
             do i = 0, Nboul
                 write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
             end do
-            call apply_force(t, m, rb, vb, rib, ab)
+            call apply_force(t, omega, m, rb, vb, rib, ab)
             write(2,*) FP, t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
         end if
     end if
@@ -729,10 +786,14 @@ program main
         !! Particle
         rb = yb(NP+3 : NP+4)
         vb = yb(NP+5 : NP+6)
-        call apply_force(t, m, rb, vb, rib, ab)
+        call apply_force(t, omega, m, rb, vb, rib, ab)
         rib(FP,:) = rb
         vib(FP,:) = vb
         aib(FP,:) = ab
+
+        db0 = sqrt(rb(1)*rb(1) + rb(2)*rb(2))
+        ! call apply_force(t, omega, m*cero, rb, vb, rib, raux)
+        ! write(*,*) t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, raux/unit_a
 
         !! Elements
         xc = (/rb(1),rb(2),cero,vb(1),vb(2),cero/)
@@ -745,9 +806,11 @@ program main
         ! Output
         if (datas .and. .not. perc) write(*,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR, a_corot, yb(1)
         if (datao) then
-            if (eleout) then
+            if (eleout) then ! Output elements
+                ! t, a, e, M, w, R
                 write(2,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
-            else
+            else ! Output cartesian coordinates
+                ! i, t, rx, ry, vx, xy, ax, ay, m, radius
                 do i = 0, Nboul
                     write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
                 end do
@@ -840,7 +903,7 @@ subroutine mapas_pot(N,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
             ra = rb + rcm
             xya(i,j) = potast(ra, ria)
             xyr(i,j) = potrot(ra, ria)
-            call apply_force(0.d0, m, rb, vb, rib, ab)
+            call apply_force(0.d0, omega, m, rb, vb, rib, ab)
             acb(i,j,:) = ab
             call accast(omega, m, ra, ria, aa)
             aca(i,j,:) = aa

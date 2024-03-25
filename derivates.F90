@@ -64,7 +64,7 @@ module derivates
                 ineqs = i*neqs
                 rb = y(ineqs+3 : ineqs+4)
                 vb = y(ineqs+5 : ineqs+6)
-                call apply_force(t, m, rb, vb, rib, ab)
+                call apply_force(t, omega, m, rb, vb, rib, ab)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do
@@ -98,7 +98,7 @@ module derivates
                 ineqs = i * neqs
                 rb   = y(ineqs+3 : ineqs+4)
                 vb   = y(ineqs+5 : ineqs+6)
-                call apply_force(t, m, rb, vb, rib, ab)
+                call apply_force(t, y(1), m, rb, vb, rib, ab)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do
