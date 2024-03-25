@@ -30,11 +30,24 @@ main: ${FREE_OBJECTS} ${FIXED_OBJECTS}
 
 deps:
 	@echo "Creating dependencies file: $(DEP_FILE_NAME)"
-	fortdepend -w -o $(DEP_FILE_NAME) -f *.F90
+	@{ \
+	if command -v fortdepend >/dev/null 2>&1; then \
+		fortdepend -w -o $(DEP_FILE_NAME) -f *.F90; \
+	else \
+		echo "Error: fortdepend is not installed. Please run 'make install' to install it."; \
+		exit 1; \
+	fi; \
+	}
 
 install: # Install fortdepend
-	@echo "Installing fortdepend"
-	@python -m pip install fortdepend
+	@{ \
+	if ! command -v fortdepend >/dev/null 2>&1; then \
+		echo "Installing fortdepend"; \
+		python -m pip install fortdepend; \
+	else \
+		echo "fortdepend already installed."; \
+	fi; \
+	}
 	make deps
 
 clean:
@@ -42,13 +55,11 @@ clean:
 	@rm -rf *.o *.mod main
 
 # Include (or not) and create (if necessary) main.dep
-ifeq ($(MAKECMDGOALS), install)
-else ifeq ($(MAKECMDGOALS), deps)
-else
+ifeq ($(filter-out main all,$(MAKECMDGOALS)),)
 ifneq ("$(wildcard $(DEP_FILE_NAME))","")
--include $(DEP_FILE_NAME)
+include $(DEP_FILE_NAME)
 else
--include $(DEP_FILE)
+include $(DEP_FILE)
 endif
 endif
 
@@ -56,6 +67,6 @@ endif
 ## It can be installed via pip: 
 ### $ python -m pip install fortdepend
 ${DEP_FILE}:
-	fortdepend -w -o $(DEP_FILE_NAME) -f *.F90
+	make deps
 
 .PHONY: clean all deps install
