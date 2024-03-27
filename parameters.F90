@@ -15,7 +15,6 @@ module parameters
     real(kind=8) :: GM = cero, mcm = cero
     real(kind=8) :: m0 = cero, R0 = cero, GM0 = cero
     real(kind=8), allocatable :: radius(:)
-    real(kind=8), dimension(:), allocatable :: mass_out
     real(kind=8) :: growth = cero ! Aumento de masa
 
     !! Vectores de posiciones, velocidades y aceleraciones
@@ -48,7 +47,6 @@ module parameters
 
     !! Rotación
     real(kind=8) :: omega = cero, wk = cero, a_corot = cero, omega2 = cero, lambda2 = cero
-    real(kind=8), dimension(:), allocatable :: omega_out
 
     !! Momento angular
     real(kind=8) :: ang_mom = cero
@@ -58,12 +56,19 @@ module parameters
 
     !!! Tiempos
     integer(kind=4) :: n_iter = 0                                              ! N_iterations
-    integer(kind=4) :: n_points = 0                                            ! N_outputs
     real(kind=8) :: t = cero, t0 = inf, tf = cero                              ! Times
     real(kind=8) :: dt = cero, dt_adap = cero, dt_min = cero, dt_out = cero    ! dTimes
-    real(kind=8) :: t_add = cero, logt = cero                                  ! Times [output]
+    !!!!! Checkpoints
+    integer(kind=4) :: n_check = 0                                             ! N_checkpoints
+    real(kind=8), dimension(:), allocatable :: t_check                         ! Times [checkpoints]
+    !!!!! Outputs
+    integer(kind=4) :: n_out = 0                                               ! N_outputs
     real(kind=8), dimension(:), allocatable :: t_out                           ! Times [output]
+    logical, dimension(:), allocatable :: is_out                               
+    real(kind=8) ::  logt = cero                                               ! Times [output]
     logical :: logsp = .False.                                                 ! Logarithmic spacing
+
+
 
     !!! Parámetros de main
     integer(kind=4) :: i = 0, j = 0, ineqs = 0
@@ -104,6 +109,11 @@ module parameters
     ! logical :: loTriAx = .False.
     ! real(kind=8) :: tria = cero, trib = cero, tric = cero
     ! real(kind=8) :: C20 = cero, C22 = cero, Re = cero
+
+    !! Para integraciones TOM
+    integer(kind=4) :: n_TOM = 0, idx_TOM = 0
+    real(kind=8), dimension(:), allocatable :: t_TOM, omega_TOM, dmass_TOM
+    logical, dimension(:), allocatable :: is_TOM       ! Changes
 
     !!! Punteros
     integer, target :: hexit = 0 !  Hard Exit integer
@@ -148,7 +158,7 @@ module parameters
             tf       = cero    ! Final time [days]
             dt_min   = cero    ! Min timestep [days] ! Almost unused
             logsp    = .False. ! LogSpaced outputs
-            n_points = 0       ! Number of outputs (if logsp=.True. or dt_out=0)
+            n_out = 0          ! Number of outputs (if logsp=.True. or dt_out=0)
             dt_out   = cero    ! Output timestep [days] (if logsp = .False.)
             !!!! Salida
             screen  = .False. ; perc = .False. ! Pantalla, porcentaje
@@ -159,7 +169,7 @@ module parameters
             datafile = ""! Archivo de datos
             chaosfile = "chaos.dat" ! Archivo de datos
             !!!! Tiempos, omegas, y masas
-            tomfile = "" ! Archivo de t_out, omega(t), m(t)
+            tomfile = "" ! Archivo de t_TOM, omega(t_TOM), dm(t_TOM)
             !!!! Mapa de potencial
             map_file = "" ! Archivo de mapas
             ngx = 500   ; ngy = 500
@@ -214,7 +224,7 @@ module parameters
                         case("output time int")
                             read(value_str, *) dt_out
                         case("number of outpu")
-                            read(value_str, *) n_points
+                            read(value_str, *) n_out
                         case("logspaced outpu")
                             if ((auxch1 == "y") .or. (auxch1 == "s")) then
                                 logsp = .True.
@@ -476,6 +486,7 @@ module parameters
         end subroutine set_derived_params
 
         subroutine allocate_all(Nboul)
+            implicit none
             integer(kind=4), intent(in) :: Nboul
             !! Parámetros y auxiliares
             Ntot = Nboul + Npart
@@ -501,7 +512,7 @@ module parameters
 
         subroutine deallocate_all()
             implicit none
-            deallocate(m, mu, Gmi, mucm)
+            deallocate(m, mu, mucm, Gmi)
             deallocate(radius)
             deallocate(rib, ria)
             deallocate(vib, via)
@@ -512,10 +523,10 @@ module parameters
             deallocate(ya, yanew)
         end subroutine deallocate_all
 
-        subroutine set_t_outs(t0, tf, n_points, dt_out, logsp, t_out)
+        subroutine set_t_outs(t0, tf, n_out, dt_out, logsp, t_out)
             implicit none
             real(kind=8), intent(in) :: t0, tf
-            integer(kind=4), intent(inout) :: n_points
+            integer(kind=4), intent(inout) :: n_out
             real(kind=8), intent(inout) :: dt_out
             logical, intent(in) :: logsp
             real(kind=8), dimension(:), allocatable, intent(out) :: t_out
@@ -528,46 +539,46 @@ module parameters
                     write(*,*) "ERROR: dt_out >= (tf - t0)"
                     stop 1
                 end if
-                n_points = int((tf - t0) / dt_out) + 1
-                npointsr = n_points * 1.d0
+                n_out = int((tf - t0) / dt_out) + 1
+                npointsr = n_out * 1.d0
             else
-                npointsr = n_points * 1.d0
+                npointsr = n_out * 1.d0
                 dt_out = (tf - t0) / (npointsr - 1.d0)
             end if
-            if (n_points < 2) then
-                write(*,*) "ERROR: n_points < 2"
+            if (n_out < 2) then
+                write(*,*) "ERROR: n_out < 2"
                 stop 1
             end if
-            allocate (t_out(n_points))
+            allocate (t_out(n_out))
             if (logsp .eqv. .True.) then
                 t_aux = exp (log (tf - t0 + 1.) / npointsr)
                 t_add = t_aux
-                do i = 2, n_points - 1
+                do i = 2, n_out - 1
                     t_add    = t_add * t_aux
                     t_out(i) = t0 + t_add - 1.
                 end do
             else
                 t_aux = (tf - t0) / (npointsr - 1.d0)
-                do i = 1, n_points - 1
+                do i = 1, n_out - 1
                     t_out(i + 1) = t0 + t_aux * i
                 end do
             end if
             t_out(1) = t0
-            t_out(n_points) = tf
+            t_out(n_out) = tf
         end subroutine set_t_outs
         
-        subroutine read_tomf(t0, tf, n_points, t_out, omega_out, mass_out, file_tout)
+        subroutine read_tomf(t0, tf, n_TOM, t_TOM, omega_TOM, dmass_TOM, file_tout)
             implicit none
             real(kind=8), intent(in) :: t0, tf
-            integer(kind=4), intent(out) :: n_points
-            real(kind=8), dimension(:), allocatable, intent(out) :: t_out, omega_out, mass_out
+            integer(kind=4), intent(out) :: n_TOM
+            real(kind=8), dimension(:), allocatable, intent(out) :: t_TOM, omega_TOM, dmass_TOM
             character(LEN=*), intent(in) :: file_tout
             integer(kind=4) :: i, j, io
             integer(kind=4) :: ncols
             real(kind=8) :: t_aux
             character(80) :: auxstr
 
-            n_points = 2
+            n_TOM = 2
             
             open(unit=10, file=file_tout, status="old", action="read")
 
@@ -583,19 +594,24 @@ module parameters
                 read(10, *, iostat=io) t_aux
                 if ((io /= 0) .or. (t_aux > tf)) exit
                 if (t_aux < t0) cycle
-                n_points = n_points + 1
+                n_TOM = n_TOM + 1
             end do
+
+            if (n_TOM == 2) then
+                write(*,*) "ERROR: No se encontraron datos válidos en el archivo."
+                stop 1
+            end if
             
             ! Allocate arrays
-            allocate (t_out(n_points))
-            t_out = -1.d0
+            allocate (t_TOM(n_TOM))
+            t_TOM = -1.d0
             if (ncols > 1) then
-                allocate (omega_out(n_points))
-                omega_out = -1.d0
+                allocate (omega_TOM(n_TOM))
+                omega_TOM = -1.d0
             end if
             if (ncols > 2) then
-                allocate (mass_out(n_points))
-                mass_out = -1.d0
+                allocate (dmass_TOM(n_TOM))
+                dmass_TOM = -1.d0
             end if
             rewind(10) ! Go to the beginning of the file
 
@@ -603,29 +619,91 @@ module parameters
             i = 2
             if (ncols == 1) then
                 do
-                    read(10, *, iostat=io) t_out(i)
-                    if ((io /= 0) .or. (t_out(i) > tf)) exit
-                    if (t_out(i) < t0) cycle
+                    read(10, *, iostat=io) t_TOM(i)
+                    if ((io /= 0) .or. (t_TOM(i) > tf)) exit
+                    if (t_TOM(i) < t0) cycle
                     i = i + 1
                 end do
             else if (ncols == 2) then
                 do
-                    read(10, *, iostat=io) t_out(i), omega_out(i)
-                    if ((io /= 0) .or. (t_out(i) > tf)) exit
-                    if (t_out(i) < t0) cycle
+                    read(10, *, iostat=io) t_TOM(i), omega_TOM(i)
+                    if ((io /= 0) .or. (t_TOM(i) > tf)) exit
+                    if (t_TOM(i) < t0) cycle
                     i = i + 1
                 end do
             else 
                 do
-                    read(10, *, iostat=io) t_out(i), omega_out(i), mass_out(i)
-                    if ((io /= 0) .or. (t_out(i) > tf)) exit
-                    if (t_out(i) < t0) cycle
+                    read(10, *, iostat=io) t_TOM(i), omega_TOM(i), dmass_TOM(i)
+                    if ((io /= 0) .or. (t_TOM(i) > tf)) exit
+                    if (t_TOM(i) < t0) cycle
                     i = i + 1
                 end do
             end if
 
             close(10)
         end subroutine read_tomf
+
+
+        subroutine merge_sort_and_unique(a, b, ina, inb, c, kfin)
+            implicit none
+            real(kind=8), dimension(:), intent(in) :: a, b
+            logical, dimension(:), allocatable, intent(out) :: ina, inb
+            real(kind=8), dimension(:), allocatable, intent(out) :: c
+            integer(kind=4), intent(out) :: kfin
+            logical, dimension(:), allocatable :: ina0, inb0
+            real(kind=8), dimension(:), allocatable :: c0
+            integer(kind=4) :: i, j, k
+
+            allocate (c0(size(a)+size(b)))
+            allocate (ina0(size(c0)))
+            allocate (inb0(size(c0)))
+            c0 = 0.
+            ina0 = .False.
+            inb0 = .False.
+            i = 1
+            j = 1
+            do k = 1, size(c0)
+                if (i > size(a)) then
+                    if (j > size(b)) then
+                        kfin = k - 1
+                        exit
+                    else
+                        c0(k) = b(j)
+                        j = j + 1
+                        inb0(k) = .True.
+                    end if
+                else if (j > size(b)) then
+                    c0(k) = a(i)
+                    i = i + 1
+                    ina0(k) = .True.
+                else if (a(i) < b(j)) then
+                    c0(k) = a(i)
+                    i = i + 1
+                    ina0(k) = .True.
+                else if (a(i) > b(j)) then
+                    c0(k) = b(j)
+                    j = j + 1
+                    inb0(k) = .True.
+                else
+                    c0(k) = a(i)
+                    i = i + 1
+                    j = j + 1
+                    ina0(k) = .True.
+                    inb0(k) = .True.
+                end if
+                kfin = k
+            end do
+
+            allocate (c(kfin))
+            allocate (ina(kfin))
+            allocate (inb(kfin))
+            c = c0(1:kfin)
+            ina = ina0(1:kfin)
+            inb = inb0(1:kfin)
+            deallocate (c0)
+            deallocate (ina0)
+            deallocate (inb0)
+        end subroutine merge_sort_and_unique
 
         subroutine rcmfromast(ria,via,aia,m,rcm,vcm,acm)
             implicit none

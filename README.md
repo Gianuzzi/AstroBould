@@ -55,18 +55,16 @@ Una ayuda puede obtenerse con
   --explicit  : Usar método explícito (cos, sen)
   --elem      : Imprimir elementos orbitales (solo partícula)
   --noelem    : Imprimir coordenadas baricéntricas
-  -tomfile    : Utilizar archivo de (t)iempos|omega|masa que sigue
-  --notomfile : No utilizar archivo de (t)iempos|omega|masa
+  -tomfile    : Utilizar archivo de (t)iempos|omega(t)|dmasa(t) que sigue
+  --notomfile : No utilizar archivo de (t)iempos|omega(t)|dmasa(t)
 ```
 
 
 ### PARALELO (Recordar estar en algún entorno de python)
-En este caso se debe tener un archivo con los datos de las partículas a integrar.
-Este archivo se puede crear con el código [make_particles.py](./make_particles.py)
+En este caso se debe tener un **archivo con los datos de las partículas a integrar**.
+Este archivo se puede crear con el código [make_particles.py](./make_particles.py). Su configuración se realiza en las líneas [67 a 97](./make_particles.py#L67#L97).
 
-Se puede encontrar más información al inicio del archivo [parallel.py](./parallel.py#L2#L55)
-
-Luego de configurarlo, su ejecución se realiza con
+Para ejecutar en paralelo, se puede utilizar el código [parallel.py](./parallel.py). Más información se encuentra [al inicio](./parallel.py#L2#L55) de este archivo. Luego de configurarlo, su ejecución se realiza con
 
 ``` console
 $ python parallel.py
@@ -74,7 +72,9 @@ $ python parallel.py
 
 ### Archivo TOM (Tiempos, Omega, Masa agregada)
 
-Para crear este archivo se puede usar [make_TOM.f90](./make_TOM.f90), de C. Beaugé. Se debe configurar manualmente, para luego compilar y ejecutar.
+Para crear este archivo se puede usar [make_TOM.py](./make_TOM.py), luego de configurarlo (líneas [17 a 41](./make_TOM.py#L17#L41)). Se puede encontrar más información [al inicio](./make_TOM.py#L5#L15) de este archivo. 
+
+Por otro lado, también  se puede usar [make_TOM.f90](./make_TOM.f90), de C. Beaugé. Se debe configurar manualmente, para luego compilar y ejecutar.
 
 # Author
 Emmanuel Gianuzzi
