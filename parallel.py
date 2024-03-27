@@ -1,8 +1,7 @@
-# Version: 6.0
+# Version: 6.5
 
 # DENTRO DE UN ENTORNO PYTHON
 # Ejecución: $ python parallel.py
-
 
 # Este programa integra cada sistema (condición inicial) en
 # un archivo independiente,
@@ -16,21 +15,16 @@
 
 # IMPORTANTE!!!!
 # 1) Todos los archivos deben estar en la misma carpeta
-# 2) El modo CHAOS debe estar ACTIVADO: [chaos = .True.]
-# (Ahora está automático en este script)
+# 2) El modo CHAOS debe estar ACTIVADO: [chaos = .True.] (Default)
 # 3) El ejecutable Debe tener DESactivados:
-#   - El modo de salida pantalla: [screen = .False.]
-# (Ahora está automático en este script)
-#   - El modo de cálculo de mapa de potencial: [map_pot = .False.]
-# (Ahora está automático en este script)
+#  - El modo de salida pantalla: [screen = .False.] (Default)
+#  - El modo de cálculo de mapa de potencial: [map_pot = .False.] (Default)
 
-# En caso de dejar puesta la salida en archivo, se creará un archivo
-#  llamado salida[id].dat por cada partícula.
+# En caso de dejar puesta la salida en archivo (<datafile>),
+# se creará un archivo llamado salida[id].dat por cada partícula.
 
-# Finalmente se creará un archivo de caos llamado chaos[id].dat
-# por cada partícula,
-#  y se concatenarán todos los archivos en un solo archivo <outfile>
-# con el siguiente formato:
+# Este código crea un archivo de caos (chaos[id].dat) por cada partícula.
+# Luego los concatena en un solo archivo <outfile>,con el siguiente formato:
 # 1    : numero simu
 # 2    : mala? (0 == OK, 1 == Colisión, 2 == Escape)
 # 3    : Momento angular total
@@ -42,16 +36,17 @@
 # 17   : Momento angular final de partícula por unidad de masa
 # 18-19: da, de
 
-# Excepto <outfile>, todos los otros archivos se encontrarán en carpetas
-#  creadas con el nombre
-# dpy[pid], donde pid es el ID del procesador que ejecutó el sistema.
-#  El máximo de carpetas
-# creadas será igual al MAX(número de procesadores disponibles en el
-#  sistema, workers).
+# Excepto <outfile>, el resto de los archivos estarán en carpetas creadas
+# con nombre 'dpi[pid]' asociado al ID del procesador que ejecutó el sistema.
+# El máximo de carpetas creadas será igual a
+# MAX (número de procesadores disponibles en el sistema, workers).
 
 # Si no son necesarias, se recomienda BORRAR las carpetas creadas luego de
 # terminar la ejecución.
 # Esto puede hacerse con: $ rm -rf dpy*
+
+# Observación: Si es integración con tomfile, los directorios creados
+# serán tomd[pid] en vez de dpy[pid].
 
 ##############################################################################
 ##############################################################################
@@ -69,14 +64,14 @@ particles = "particles.in"  # Nombre del archivo de partículas
 program = "main"  # Nombre del ejecutable
 chaosfile = "chaos.dat"  # Nombre de archivos de caos (chaosfile)
 datafile = ""  # Nombre de archivos de salida (datafile) ["" == no]
-workers = 3   # Número de procesadores a usar (workers)
+workers = 3  # Número de procesadores a usar (workers)
 suffix = ""  # Suffix for the output files
 outfile = "sump.out"  # Final Chaos Summary Output file name
 explicit = False  # Método: True (cos, sin), False (integra boulders y m0)
 elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 # Nombre del archivo de valores de t_i, omega(t_i), y masa_agregada(t_i)
 # ["" si no se usa]
-tomfile = ""
+tomfile = "tomfile.dat"
 
 
 # Iniciamos #
@@ -101,7 +96,7 @@ if not existe_ocini:
     print("         Se utilizarán los parámetros explicitados en el código, ")
     print("          en vez de los de algún archivo de parámetros. ")
     yes_no = input("¿Desea continuar? [y/n]")
-    if yes_no.lower() not in ["y", "yes"]:
+    if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
         exit(1)
 existe_otom = os.path.isfile(otom)
@@ -109,6 +104,16 @@ if tomfile and (not existe_otom):
     print("ERROR: Tau-Omega-Mass file {} does not exist.".format(otom))
     print("Saliendo.")
     exit(1)
+if os.path.isfile(outfile):
+    print("WARNING: Output file {} already exist.".format(outfile))
+    yes_no = input("Do you want to overwrite it? y/[n]")
+    if yes_no.lower() not in ["y", "yes", "s", "si"]:
+        i = 1
+        aux = outfile.split(".")
+        suf = aux[-1] if len(aux) > 1 else ""
+        while os.path.isfile(outfile):
+            outfile = ".".join(aux[:-1]) + str(i) + ("." + suf if suf else "")
+            i += 1
 
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
@@ -121,16 +126,16 @@ if nsys == 0:
     exit(1)
 print("Cantidad total de partículas: {}".format(nsys))
 
+# Definimos prefijo de directorio, de acuerdo a TOMfile o no
+pref = "tomd" if tomfile else "dpy"
+
 # Obtener los sistemas realizados
 if any(
-    [
-        os.path.isdir(name) and name.startswith("dpy")
-        for name in os.listdir(cwd)
-    ]
+    [os.path.isdir(name) and name.startswith(pref) for name in os.listdir(cwd)]
 ):
     print("Checkeando integraciones ya completadas.")
     command = (
-        f"find dpy* -name 'chaos*{suffix}.dat' "
+        f"find {pref}* -name 'chaos*{suffix}.dat' "
         f"| sed -e 's/.*chaos\\([0-9]*\\){suffix}\\.dat/\\1/' "
         f"| sort -n"
     )
@@ -175,7 +180,7 @@ args += "%s" % (" --elem" if elements else " --noelem")
 def integrate_n(i):
     # Get processor ID
     pid = os.getpid()
-    dirp = os.path.join(cwd, "dpy%d" % pid)
+    dirp = os.path.join(cwd, "%s%d" % (pref, pid))
     nprogr = os.path.join(dirp, program)
     ncini = os.path.join(dirp, "config.ini")
     ntom = os.path.join(dirp, tomfile)
@@ -188,9 +193,9 @@ def integrate_n(i):
             subprocess.run(["cp", otom, ntom], check=True)
     this_arg = " -nsim %d" % i
     print("Running system %d\n" % (i))
-    ## ESTO SE ESTÁ EJECUTANDO EN LA SHELL
-    #print("Running: ./%s %s %s %s"%(program, args, this_arg, lines[i]))
-    ##(Lines debe ser último porque termina en "\n")
+    # ESTO SE ESTÁ EJECUTANDO EN LA SHELL #
+    # print("Running: ./%s %s %s %s"%(program, args, this_arg, lines[i]))
+    # (Lines debe ser último porque termina en "\n") #
     p = subprocess.run(
         ["./%s %s %s %s" % (program, args, this_arg, lines[i])],
         cwd=dirp,
@@ -230,8 +235,8 @@ def make_sum(outfile, suffix=""):
 
     # Recorre todas las subcarpetas en la carpeta raíz
     for subdir in os.listdir(root_dir):
-        # Verifica si el nombre de la subcarpeta comienza con "dpy"
-        if subdir.startswith("dpy"):
+        # Verifica si el nombre de la subcarpeta comienza con 'pref'
+        if subdir.startswith(pref):
             subdir_path = os.path.join(root_dir, subdir)
             # Recorre todos los archivos en la subcarpeta
             for filename in os.listdir(subdir_path):

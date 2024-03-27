@@ -2,28 +2,15 @@ import itertools
 import os
 
 import numpy as np
-from scipy.stats import rayleigh, norm
+from scipy.stats import norm, rayleigh
 
 # ---------------------------------------------------------------------
-# Constantes y conversiones -> Ms | AU | yr | deg
+# Constantes
 pi = np.pi
 rad = pi / 180.0
 deg = 1.0
-G = 4 * pi * pi  # AU³ Ms⁻¹ yr⁻¹
-Msol = 1.0
-Mjup = 9.547919e-4
-Mear = 3.00273e-6
-Parsec = 4.84814e-6
-AU = 1.0
-Rsol = 4.65047e-3
-Rjup = 4.77895e-4
-Rear = 4.26352e-5
-Gyr = 1e9
-Myr = 1e6
-yr = 1.0
-Day = 2.73785078e-3
-Sec = 3.17098e-8
 
+# Semilla para el generador de números aleatorios
 rng = np.random.default_rng(seed=42)
 # ---------------------------------------------------------------------
 
@@ -50,22 +37,24 @@ def rndm(x0=0.0, xf=360.0):
     while True:
         yield rng.random() * (xf - x0) + x0
 
+
 def rayleigh_dist(x0=0, var=0.1, xmax=1.0):
     """Rayleigh distribution
-        x0: Valor mínimo
-        var: Varianza (define el pico de la distribución)
-        xmax: Valor máximo
+    x0: Valor mínimo
+    var: Varianza (define el pico de la distribución)
+    xmax: Valor máximo
     """
     while True:
         x = rayleigh.rvs(loc=x0, scale=var)
         if x <= xmax:
             yield x
 
+
 def norm_dist(x0=0.3, scale=0.01, xmin=0, xmax=1.0):
     """Normal distribution
-        x0: Media
-        scale: Desviación estándar
-        xmax: Valor máximo
+    x0: Media
+    scale: Desviación estándar
+    xmax: Valor máximo
     """
     while True:
         x = norm.rvs(loc=x0, scale=scale)
@@ -82,7 +71,6 @@ type_gen = type(rndm())
 # -----------------
 
 # UNIDADES
-unit_dist = AU
 unit_angle = deg
 
 # Data
@@ -90,10 +78,10 @@ data_in = {}
 names = ["a", "e", "M", "w", "R"]
 # PARÁMETROS A VARIAR (Poner unidades de ser necesario)
 data_in["a"] = [0.0]
-data_in["e"] = [0.0] # Podría ser: rayleigh_dist(0, 0.1, 1)
+data_in["e"] = [0.0]  # Podría ser: rayleigh_dist(0, 0.1, 1)
 data_in["M"] = [rndm(0.0, 360.0)]
 data_in["w"] = [0.0]
-data_in["R"] = [n_steps(0.9, 7.5, 10)]
+data_in["R"] = [n_steps(0.9, 1.5, 30)]
 
 # -----------------
 # OUTPUT
@@ -108,8 +96,9 @@ fmt = "%.11e"
 # Shuffle
 shuffle = False
 
+# -- No tocar después de esta línea --
 
-# --------Función para droper. Editar rem de ser necesario-------------
+# --------Función para dropear. Editar rem de ser necesario-------------
 
 
 def drop(data):
@@ -222,7 +211,6 @@ if __name__ == "__main__":
     data_out = evaluate_generator(data_out)
 
     # Ponemos unidades
-    data_out[:, 0] /= unit_dist
     data_out[:, [2, 3]] /= unit_angle
 
     # Dropeamos si es necesario

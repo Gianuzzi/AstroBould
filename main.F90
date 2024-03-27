@@ -65,7 +65,7 @@ program main
         tf = 4.d6            ! Final time [day]
         dt_min = cero        ! Min timestep [day] ! Almost unused
         logsp = .False.      ! LogSpaced outputs
-        n_points = 1000      ! Number of outputs (if logsp=.True. or dt_out=0)
+        n_out = 1000      ! Number of outputs (if logsp=.True. or dt_out=0)
         dt_out = cero        ! Output timestep [day] (if logsp = .False.)
         beta = 0.85d0        ! [For adaptive step integrators] Learning rate
         dig_err = 12         ! [For adaptive step integrators] Digits for relative error
@@ -85,6 +85,7 @@ program main
         datafile = ""
         chaosfile = "chaos.dat"
         map_file = ""
+        !!! Input: "" or "no", if not used
         tomfile = ""
 
     end if
@@ -541,30 +542,51 @@ program main
         write(*,*) "ERROR: t0 >= tf"
         stop 1
     end if
+
     dt_out = dt_out*unit_t
     dt_min = dt_min*unit_t
+
+    call set_t_outs(t0, tf, n_out, dt_out, logsp, t_out) ! Calc LOOP Outputs
+
     if (tomf) then
         !! En este caso, leeremos los tiempos desde un archivo
         if (screen) write(*,*) "Leyendo tiempos desde el archivo: ", trim(tomfile)
-        call read_tomf(t0, tf, n_points, t_out, omega_out, mass_out, tomfile) ! Read LOOP checkpoints
-        t_out(1) = t0
-        t_out(n_points) = tf
-        if (allocated(omega_out)) then
-            omega_out(1) = omega
-            omega_out(n_points) = omega_out(n_points-1)
+        call read_tomf(t0/unit_t, tf/unit_t, n_TOM, t_TOM, omega_TOM, dmass_TOM, tomfile) ! Read LOOP checkpoints
+        !!! Unidades
+        t_TOM = t_TOM * unit_t
+        if (allocated(omega_TOM)) omega_TOM = omega_TOM / unit_t
+        if (allocated(dmass_TOM)) dmass_TOM = dmass_TOM * unit_m
+        !!! Condiciones iniciales y finales
+        t_TOM(1) = t0
+        t_TOM(n_TOM) = tf
+        if (allocated(dmass_TOM)) then
+            dmass_TOM(1) = cero
+            dmass_TOM(n_TOM) = dmass_TOM(n_TOM-1)
         end if
-        if (allocated(mass_out)) then
-            mass_out = mass_out * unit_m
-            mass_out(1) = cero
-            mass_out(n_points) = mass_out(n_points-1)
+        if (allocated(omega_TOM)) then
+            omega_TOM(1) = omega
+            omega_TOM(n_TOM) = omega_TOM(n_TOM-1)
         end if
+
         if (screen) then
-            if (allocated(mass_out)) write(*,*) "  Se han leído 3 columnas: t, omega, m"
-            if (allocated(omega_out) .and. (.not. allocated(mass_out))) write(*,*) "  Se han leído 2 columnas: t, omega"
-            if ((.not. allocated(omega_out)) .and. (.not. allocated(mass_out))) write(*,*) "  Se ha leído 1 columna: t"
+            if (allocated(dmass_TOM)) then
+                write(*,*) "  Se han leído 3 columnas: t, omega, m"
+            else if (allocated(omega_TOM)) then
+                write(*,*) "  Se han leído 2 columnas: t, omega"
+            else
+                write(*,*) "  Se ha leído 1 columna: t"
+            end if
         end if
+        !! Ahora debemos combinar los tiempos de TOM con los tiempos de LOOP
+        call merge_sort_and_unique(t_TOM, t_out, is_TOM, is_out, t_check, n_check)
     else
-        call set_t_outs(t0, tf, n_points, dt_out, logsp, t_out) ! Calc LOOP checkpoints
+        n_TOM = 0
+        !! En este caso, los tiempos de check son los mismos que los de LOOP
+        n_check = n_out
+        allocate(t_check(n_check))
+        allocate(is_out(n_check))
+        t_check = t_out
+        is_out = .True.
     end if
 
     t = t0              ! Init time
@@ -574,11 +596,11 @@ program main
 
     if (screen) then
         write(*,*) "Tiempos:"
-        write(*,*) "    t0      : ", t0/Prot, "[Prot]"
-        write(*,*) "    tf      : ", tf/Prot, "[Prot]"
-        write(*,*) "    dt_out  : ", dt_out/Prot, "[Prot]"
-        write(*,*) "    dt_min  : ", dt_min/Prot, "[Prot]"
-        write(*,*) "    n_points: ", n_points
+        write(*,*) "    t0    : ", t0/Prot, "[Prot]"
+        write(*,*) "    tf    : ", tf/Prot, "[Prot]"
+        write(*,*) "    dt_out: ", dt_out/Prot, "[Prot]"
+        write(*,*) "    dt_min: ", dt_min/Prot, "[Prot]"
+        write(*,*) "    n_out : ", n_out
     end if
 
     
@@ -675,8 +697,10 @@ program main
             write(2,*) FP, t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
         end if
     end if
+
     ! MAIN LOOP
-    do j = 2, n_points + 1 ! From 2 because 1 is the IC (t0) !! +1 por si hay HardExit en el último
+    idx_TOM = 2 ! 1 es la condición inicial
+    do j = 2, n_check + 1 ! From 2 because 1 is the IC (t0) !! +1 por si hay HardExit en el último
         ra = rb + rcm
         da0 = sqrt(ra(1)*ra(1) + ra(2)*ra(2))
         if ((da0 < rmin) .or. (hexit == 1)) then
@@ -697,7 +721,7 @@ program main
             exit
         end if
 
-        if (j == n_points + 1) then
+        if (j == n_check + 1) then
             if (screen) then
                 write(*,*) ACHAR(10) 
                 write(*,*) "Finalizó la integración en t = ", t/unit_t, "[días]"
@@ -708,35 +732,39 @@ program main
         end if
 
         ! Update dt
-        dt = t_out(j) - t
-        if (allocated(omega_out)) then
-            omega = omega_out(j)
-            omega2 = omega * omega
-            yb(1) = omega
-            if (explicit) then
-                do i = 0, Nboul ! Los ángulos de fase de los boulder (usados en derivates)
-                    theta_b(i) = (omega_out(j-1) * t_out(j) + theta_b(i)) - (omega_out(j) * t_out(j))
-                end do
-            else
-                do i = 0, Nboul ! Modificamos velocidades de asteroide y boulder
-                    yb(ineqs+5 : ineqs+6) = omega * (/-yb(ineqs+4), yb(ineqs+3)/)
-                end do
+        dt = t_check(j) - t
+        if (idx_TOM < n_TOM) then
+            if (is_TOM(j)) then
+                if (allocated(omega_TOM)) then
+                    omega = omega_TOM(idx_TOM)
+                    omega2 = omega * omega
+                    yb(1) = omega
+                    if (explicit) then
+                        do i = 0, Nboul ! Los ángulos de fase de los boulder (usados en derivates)
+                            theta_b(i) = (omega_TOM(idx_TOM-1) * t_check(j) + theta_b(i)) - (omega_TOM(idx_TOM) * t_check(j))
+                        end do
+                    else
+                        do i = 0, Nboul ! Modificamos velocidades de asteroide y boulder
+                            yb(ineqs+5 : ineqs+6) = omega * (/-yb(ineqs+4), yb(ineqs+3)/)
+                        end do
+                    end if
+                end if
+                if (allocated(dmass_TOM)) then
+                    growth = 1.d0 + (dmass_TOM(idx_TOM)/ mcm)
+                    m0 = m0 * growth
+                    m = m * growth
+                    GM0 = G * m0
+                    Gmi = G * m
+                    mcm = sum(m)
+                    mucm = m / mcm ! This should remain constant
+                    GM = G * mcm
+                    do i = 0, Nboul
+                        ineqs = i * neqs
+                        yb(ineqs+2) = m(i)
+                    end do
+                end if
+                idx_TOM = idx_TOM + 1
             end if
-        end if
-        if (allocated(mass_out)) then
-            growth = 1.d0 + (mass_out(j)/ mcm)
-            m0 = m0 * growth
-            m = m * growth
-            GM0 = G * m0
-            Gmi = G * m
-            mcm = sum(m)
-            mucm = m / mcm
-            GM = G * mcm
-            do i = 0, Nboul
-                ineqs = i * neqs
-                yb(ineqs+2) = m(i)
-            end do
-            growth = cero
         end if
 
         !!! Execute an integration method (uncomment/edit one of theese)
@@ -804,20 +832,22 @@ program main
         call chaosvals(ea, ee, amax, amin, emax, emin)
 
         ! Output
-        if (datas .and. .not. perc) write(*,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR, a_corot, yb(1)
-        if (datao) then
-            if (eleout) then ! Output elements
-                ! t, a, e, M, w, R
-                write(2,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
-            else ! Output cartesian coordinates
-                ! i, t, rx, ry, vx, xy, ax, ay, m, radius
-                do i = 0, Nboul
-                    write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
-                end do
-                write(2,*) FP, t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
+        if (is_out(j)) then
+            if (datas .and. .not. perc) write(*,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR, a_corot, yb(1)
+            if (datao) then
+                if (eleout) then ! Output elements
+                    ! t, a, e, M, w, R
+                    write(2,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
+                else ! Output cartesian coordinates
+                    ! i, t, rx, ry, vx, xy, ax, ay, m, radius
+                    do i = 0, Nboul
+                        write(2,*) i, t/unit_t, rib(i,:)/unit_r, vib(i,:)/unit_v, aib(i,:)/unit_a, m(i)/unit_m, radius(i)/unit_r
+                    end do
+                    write(2,*) FP, t/unit_t, rb/unit_r, vb/unit_v, ab/unit_a, cero, cero
+                end if
             end if
+            if (perc) call percentage(t, tf)
         end if
-        if (perc) call percentage(t, tf)
     end do
     if (perc) call percentage(tf+1., tf)
 
@@ -854,10 +884,15 @@ program main
     end if
 
     ! De-alocamos memoria
+    if (screen) write(*,*) "Deallocating memory..."
     call deallocate_all()
+    deallocate(t_check)
+    deallocate(is_out)
     deallocate(t_out)
-    if (allocated(omega_out)) deallocate(omega_out)
-    if (allocated(mass_out)) deallocate(mass_out)
+    if (allocated(is_TOM)) deallocate(is_TOM)
+    if (allocated(t_TOM)) deallocate(t_TOM)
+    if (allocated(omega_TOM)) deallocate(omega_TOM)
+    if (allocated(dmass_TOM)) deallocate(dmass_TOM)
 
 end program main
 
@@ -1147,6 +1182,7 @@ subroutine chaosvals(ea,ee,amax,amin,emax,emin)
     implicit none
     real(kind=8), intent(in)    :: ea, ee
     real(kind=8), intent(inout) :: amax,amin,emax,emin
+
     amax = max(amax,ea)
     amin = min(amin,ea)
     emax = max(emax,ee)
@@ -1188,3 +1224,4 @@ subroutine percentage (tout,tstop)   ! version para gfortran
         write (*,*)
     end if
 end subroutine percentage
+

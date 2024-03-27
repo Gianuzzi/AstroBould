@@ -18,5 +18,5 @@ module const
     real(kind=8), parameter :: unit_v = unit_r / unit_t ! [km/day]
     real(kind=8), parameter :: unit_a = unit_v / unit_t ! [km/day^2]
     real(kind=8), parameter :: G_aux  = 4.9823394d-10 ! [km^3 kg^(-1) day^(-2)]
-    real(kind=8), parameter :: G      = G_aux * (unit_r**3) / unit_m / unit_t ! [unit_d^3 unit_m^(-1) unit_t^(-2)]
+    real(kind=8), parameter :: G      = G_aux * (unit_r**3) / unit_m / unit_t ! [unit_r^3 unit_m^(-1) unit_t^(-2)]
 end module const
