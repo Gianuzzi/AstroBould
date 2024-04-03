@@ -124,7 +124,6 @@ def lines2015(r, alpha=0, rgap=1, ratio=0.1, sigma0=1):  # Genera Sigma(r)
     return sigma
 
 def lynden_bell1974(r, dzeta=0.75, r0=1, sigma0=1, t=0, tdiff=1):  # Genera Sigma(r)
-    raux = np.zeros_like(r)
     t_s = 1 + t/tdiff
     ft_s = np.power(t_s, - (2.5 - dzeta) / (2 - dzeta))
     with warnings.catch_warnings():
@@ -217,26 +216,27 @@ if __name__ == "__main__":
         * (alpha + 2)
         / (rmax ** (alpha + 2) - rmin ** (alpha + 2))
     )
-    mpart = get_dm(redges[:-1], redges[1:], alpha=alpha, sigma0=Sigma0)
+    mbin1 = get_dm(redges[:-1], redges[1:], alpha=alpha, sigma0=Sigma0)
     # Method 2 (better performance?) [Default]
-    mpart2 = asort**alpha * abins
-    mpart2 = mpart2 / np.sum(mpart2) * md
+    mbin2 = asort**alpha * abins
+    mbin2 = mbin2 / np.sum(mbin2) * md
     # Method 3 (smoother, made for a disk with a gap)
     aux = rmin if rmin > 0 else amin * 0.5
     Sigma3 = lines2015(asort, alpha=alpha, rgap=aux, ratio=0.01)
-    mpart3 = Sigma3 * abins
-    mpart3 = mpart3 / np.sum(mpart3) * md
+    mbin3 = Sigma3 * abins
+    mbin3 = mbin3 / np.sum(mbin3) * md
     #
 
     # De-Order mass, in case not sorted a
     if not srtda:
-        mpart = mpart[de_sort]
-        mpart2 = mpart2[de_sort]
-        mpart3 = mpart3[de_sort]
+        mbin1 = mbin1[de_sort]
+        mbin2 = mbin2[de_sort]
+        mbin3 = mbin3[de_sort]
+    mpart = mbin3 # Asignamos el método 3
 
     # Create mass profile file
     massdata = np.vstack(
-        (aini / unit_r, mpart2 / unit_m, abins / unit_r**2)
+        (aini / unit_r, mpart / unit_m, abins / unit_r**2)
     ).T
     np.savetxt("massfile.dat", massdata, delimiter=" ")
     print("Se ha creado el archivo de perfil de masa: massfile.dat")
@@ -279,18 +279,18 @@ if __name__ == "__main__":
                 Lambda[i] = Lambda[i - 1]
                 omega_tom[i] = omega_tom[i - 1]
             elif bad[j] == 1:  # Collision
-                Mast[i] = Mast[i - 1] + mpart2[j]
-                Lambda[i] = Lambda[i - 1] * (1 + mpart2[j] / Mast[i - 1])
+                Mast[i] = Mast[i - 1] + mpart[j]
+                Lambda[i] = Lambda[i - 1] * (1 + mpart[j] / Mast[i - 1])
                 omega_tom[i] = (
                     omega_tom[i - 1] * (Lambda[i - 1] / Lambda[i])
-                    + (mpart2[j] * lini[j]) / Lambda[i]
+                    + (mpart[j] * lini[j]) / Lambda[i]
                 )
-                dmass_tom[i] = mpart2[j]
+                dmass_tom[i] = mpart[j]
             elif bad[j] == 2:  # Escape
                 Mast[i] = Mast[i - 1]
                 Lambda[i] = Lambda[i - 1]
                 omega_tom[i] = (
-                    omega_tom[i - 1] - mpart2[j] * deltal / Lambda[i]
+                    omega_tom[i - 1] - mpart[j] * deltal / Lambda[i]
                 )
             else:  # ERROR
                 raise ValueError(
