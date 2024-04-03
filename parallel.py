@@ -98,7 +98,7 @@ if not existe_ocini:
     print("WARNING: Configuration file {} does not exist.".format(ocini))
     print("         Se utilizarán los parámetros explicitados en el código, ")
     print("          en vez de los de algún archivo de parámetros. ")
-    yes_no = input("¿Desea continuar? [y/n]")
+    yes_no = input("¿Desea continuar? [y/[n]]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
         exit(1)
@@ -109,7 +109,7 @@ if tomfile and (not existe_otom):
     exit(1)
 if os.path.isfile(outfile):
     print("WARNING: Output file {} already exist.".format(outfile))
-    yes_no = input("Do you want to overwrite it? y/[n]")
+    yes_no = input("Do you want to overwrite it? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         i = 1
         aux = outfile.split(".")

@@ -345,7 +345,7 @@ if __name__ == "__main__":
     ).T
     if os.path.isfile(tomfile):
         print("WARNING: Output file {} already exist.".format(tomfile))
-        yes_no = input("Do you want to overwrite it? y/[n]")
+        yes_no = input("Do you want to overwrite it? y/[n]\n")
         if yes_no.lower() not in ["y", "yes", "s", "si"]:
             i = 1
             aux = tomfile.split(".")
