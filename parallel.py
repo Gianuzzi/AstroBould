@@ -62,7 +62,6 @@ from concurrent.futures import ProcessPoolExecutor
 
 particles = "particles.in"  # Nombre del archivo de partículas
 program = "main"  # Nombre del ejecutable
-chaosfile = "chaos.dat"  # Nombre de archivos de caos (chaosfile)
 datafile = ""  # Nombre de archivos de salida (datafile) ["" == no]
 workers = 3  # Número de procesadores a usar (workers)
 suffix = ""  # Suffix for the output files
@@ -73,6 +72,10 @@ elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 # ["" si no se usa]
 tomfile = "tomfile.dat"
 
+
+# ----------------------------------------------------------------------
+# -------------------- No tocar de aquí en adelante --------------------
+# ----------------------------------------------------------------------
 
 # Iniciamos #
 
@@ -95,7 +98,7 @@ if not existe_ocini:
     print("WARNING: Configuration file {} does not exist.".format(ocini))
     print("         Se utilizarán los parámetros explicitados en el código, ")
     print("          en vez de los de algún archivo de parámetros. ")
-    yes_no = input("¿Desea continuar? [y/n]")
+    yes_no = input("¿Desea continuar? [y/[n]]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
         exit(1)
@@ -106,7 +109,7 @@ if tomfile and (not existe_otom):
     exit(1)
 if os.path.isfile(outfile):
     print("WARNING: Output file {} already exist.".format(outfile))
-    yes_no = input("Do you want to overwrite it? y/[n]")
+    yes_no = input("Do you want to overwrite it? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         i = 1
         aux = outfile.split(".")
@@ -118,6 +121,9 @@ if os.path.isfile(outfile):
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
     lines = f.readlines()
+# Arreglamos por si hay "e" en vez de "d"
+for i in range(len(lines)):
+    lines[i] = lines[i].replace("e", "d")
 
 # Obtener el número de líneas del archivo de partículas
 nsys = len(lines)
@@ -163,14 +169,8 @@ if len(missing_lines) == 0:
 workers = min(max(1, min(int(workers), len(os.sched_getaffinity(0)))), nsys)
 print("Workers: {}\n".format(workers))
 
-# Arreglamos por si hay "e" en vez de "d"
-for i in range(nsys):
-    lines[i] = lines[i].replace("e", "d")
-
-# Argumentos. Estos son
+# Argumentos. Estos son:
 args = "--noinfo --noscreen --nomap --nodatascr --noperc"
-args += "%s" % (" -chaosfile %s" % chaosfile if chaosfile else "")
-args += "%s" % (" -datafile %s" % datafile if datafile else " --nodata")
 args += "%s" % (" --explicit" if explicit else " --implicit")
 args += "%s" % (" -tomfile %s" % tomfile if tomfile else " --notomfile")
 args += "%s" % (" --elem" if elements else " --noelem")
@@ -191,13 +191,19 @@ def integrate_n(i):
             subprocess.run(["cp", ocini, ncini], check=True)
         if existe_otom:
             subprocess.run(["cp", otom, ntom], check=True)
-    this_arg = " -nsim %d" % i
+    this_args = " -nsim %d" % i
+    this_args += " -chaosfile chaos%d%s.dat" % (i, suffix)
+    this_args += "%s" % (
+        " -datafile %s" % ("salida%d%s.dat" % (i, suffix))
+        if datafile
+        else " --nodata"
+    )
     print("Running system %d\n" % (i))
     # ESTO SE ESTÁ EJECUTANDO EN LA SHELL #
-    # print("Running: ./%s %s %s %s"%(program, args, this_arg, lines[i]))
+    # print("Running: ./%s %s %s %s"%(program, args, this_args, lines[i]))
     # (Lines debe ser último porque termina en "\n") #
     p = subprocess.run(
-        ["./%s %s %s %s" % (program, args, this_arg, lines[i])],
+        ["./%s %s %s %s" % (program, args, this_args, lines[i])],
         cwd=dirp,
         check=True,
         shell=True,
@@ -205,23 +211,6 @@ def integrate_n(i):
     if p.returncode != 0:
         print("The system %d has failed." % i)
         return
-    subprocess.run(
-        [
-            "mv",
-            "-f",
-            os.path.join(dirp, chaosfile),
-            os.path.join(dirp, "chaos%d%s.dat" % (i, suffix)),
-        ]
-    )
-    if datafile != "":
-        subprocess.run(
-            [
-                "mv",
-                "-f",
-                os.path.join(dirp, datafile),
-                os.path.join(dirp, "salida%d%s.dat" % (i, suffix)),
-            ]
-        )
     print("System %d has been integrated." % i)
     return
 

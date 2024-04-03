@@ -198,6 +198,7 @@ program main
                 write(*,*) "    --noelem    : Imprimir coordenadas baricéntricas"
                 write(*,*) "    -tomfile    : Utilizar archivo de (t)iempos|omega|masa que sigue"
                 write(*,*) "    --notomfile : No utilizar archivo de (t)iempos|omega|masa"
+                write(*,*) "    --help      : Mostrar esta ayuda"
                 stop 0
             case default
                 is_number = .False.
@@ -292,17 +293,20 @@ program main
     end if
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!! No tocar de aquí a abajo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     if (screen) then
         write(*,*) ACHAR(5)
         write(*,*) "Comenzando simulación: ", nsim
         write(*,*) ACHAR(5)
         write(*,*) "-----Parámetros iniciales-----"
     end if
+
     !!!!!!!!!!!!!!!!!!!!!!!!!! Asteroide y Boulders !!!!!!!!!!!!!!!!!!!!!!!!!!
 
     !!!! Radio
     radius = radius*unit_r ! Unidades según G    
-
 
     !!!! Masas
     do i = 1, Nboul
@@ -313,7 +317,6 @@ program main
     mucm = m / mcm ! Mues respecto a mcm
     Gmi = G * m
     GM = G * mcm
-
 
     !!!! Rotaciones
     !theta = cero ! Ángulo de fase del cuerpo 0 [rad]
@@ -337,7 +340,6 @@ program main
         write(*,*) "  lambda   :", lambda
         write(*,*) "  Prot     :", Prot*24*unit_t, "[hs]"
     end if
-
 
     !!!! Coordenadas
     if (screen) then
@@ -390,19 +392,16 @@ program main
         end do
     end if
 
-
     !!!! Momento angular
     call ang_mom_bar(rib, vib, m, radius, omega, ang_mom)
     if (screen) write(*,*) "Momento angular:", ang_mom/unit_m/(unit_r**2)*unit_t, "[kg km^2 / day]"
     
-
     !!!! MAPAS Potenciales y Aceleraciones
     if (map_pot) then
         if (screen) write(*,*) "Calculando MAPAS potencial..."
         call mapas_pot(Nboul,ngx,ngy,xmin,xmax,ymin,ymax,rib,m,omega,map_file)
         if (screen) write(*,*) "Guardado en el archivo: ", trim(map_file)
     end if
-
 
     !!!! Variación en masa o en omega (funciones del tiempo)
     if ((abs(tau_m) > tini) .and. (tau_m < inf)) then
@@ -429,41 +428,13 @@ program main
     end if
  
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!! Partícula !!!!!!!!!!!!!!!!!!!!!!!!!!
-
-    !!!! Elementos orbitales
-    ea = ea*unit_r
-    eM = eM*rad
-    eW = eW*rad
-    if (eR > tini) then
-        ea = eR**(2/3.) * a_corot
-    else
-        eR = (ea/a_corot)**(1.5)
-    end if
-    xe0 = (/ea, ee, ei, eM, ew, eO/)
-    xe = xe0
-    Res0 = eR
-
-
-    !!!! Caos
-    call chaosvals(ea, ee, amax, amin, emax, emin)
-
-
-    !!!! Coordenadas y vectores
-    call coord(mcm, ea, ee, ei, eM, ew, eO, xc0)
-    xc = xc0
-    rb = xc(1:2)
-    vb = xc(4:5)
-
-    db0 = sqrt(rb(1)*rb(1) + rb(2)*rb(2))
-
     !!!!!!!!!! EFECTOS EXTERNOS
 
     if (screen) then
         write(*,*) ACHAR(5)
         write(*,*) "-----Efectos externos-----"
-
     end if
+
     !!!! Fuerza de Stokes
     if (lostokes) then
         call set_C_and_Alpha(tau_a,tau_e,C_stk,a_stk)
@@ -523,9 +494,9 @@ program main
         write(*,*) "    rmax : ", rmax/unit_r, "[km] =", rmax/R0, "[R0]"
     end if
 
-
-        
+   
     !!!!!!!!!!!!!!!!!!!!!!!!!! Preparamos integracion !!!!!!!!!!!!!!!!!!!!!!!!!!
+
     if (screen) then
         write(*,*) ACHAR(5)
         write(*,*) "-----Preparando integración-----"
@@ -603,6 +574,33 @@ program main
         write(*,*) "    n_out : ", n_out
     end if
 
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!! Partícula !!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !!!! Elementos orbitales
+    ea = ea*unit_r
+    eM = eM*rad
+    eW = eW*rad
+    if (eR > tini) then
+        ea = eR**(2/3.) * a_corot
+    else
+        eR = (ea/a_corot)**(1.5)
+    end if
+    xe0 = (/ea, ee, ei, eM, ew, eO/)
+    xe = xe0
+    Res0 = eR
+
+    !!!! Caos
+    call chaosvals(ea, ee, amax, amin, emax, emin)
+
+    !!!! Coordenadas y vectores
+    call coord(mcm, ea, ee, ei, eM, ew, eO, xc0)
+    xc = xc0
+    rb = xc(1:2)
+    vb = xc(4:5)
+
+    db0 = sqrt(rb(1)*rb(1) + rb(2)*rb(2))
+
     
     !!!! Yb[aricentric]
     ! call ast2bar(ra, va, aa, rcm, vcm, acm, rb, vb, ab)
@@ -633,34 +631,34 @@ program main
     ya(NP+5 : NP+6) = va
 
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  INFO FILE  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    if (infoo) then
-        i = 0
-        inquire(file=trim(infofile), exist=auxlo)
-        do while (auxlo)
-            i = i + 1
-            if (i > 10) then
-                if (screen) write(*,*) "ERROR: No se pudo crear el archivo de resumen."
-                i = -1
-                exit
-            end if
-            write (auxch2,'(I2.2)') i
-            inquire(file=trim(infofile)//"_"//trim(auxch2), exist=auxlo)
-        end do
-        if (i >= 0) then
-            if (i == 0) then
-                if (screen) write(*,*) "Se guardará el resumen en el archivo: ", trim(infofile)
-                open(unit=1, file=trim(infofile), status="new", action="write")
-            else
-                if (screen) write(*,*) "Se guardará el resumen en el archivo: ", trim(infofile)//"_"//trim(auxch2)
-                open(unit=1, file=trim(infofile)//"_"//trim(auxch2), status="new", action="write")
-            end if
-            write(1,*) "Nboul,m0,mu,theta,R0,Prot,tf,dt_out,ang_mom"
-            write(1,*) Nboul,m0,mu,theta_a,R0,Prot,tf,dt_out,ang_mom
-            close(1)
-        end if
-    end if
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  INFO FILE  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! if (infoo) then
+    !     i = 0
+    !     inquire(file=trim(infofile), exist=auxlo)
+    !     do while (auxlo)
+    !         i = i + 1
+    !         if (i > 10) then
+    !             if (screen) write(*,*) "ERROR: No se pudo crear el archivo de resumen."
+    !             i = -1
+    !             exit
+    !         end if
+    !         write (auxch2,'(I2.2)') i
+    !         inquire(file=trim(infofile)//"_"//trim(auxch2), exist=auxlo)
+    !     end do
+    !     if (i >= 0) then
+    !         if (i == 0) then
+    !             if (screen) write(*,*) "Se guardará el resumen en el archivo: ", trim(infofile)
+    !             open(unit=1, file=trim(infofile), status="new", action="write")
+    !         else
+    !             if (screen) write(*,*) "Se guardará el resumen en el archivo: ", trim(infofile)//"_"//trim(auxch2)
+    !             open(unit=1, file=trim(infofile)//"_"//trim(auxch2), status="new", action="write")
+    !         end if
+    !         write(1,*) "Nboul,m0,mu,theta,R0,Prot,tf,dt_out,ang_mom"
+    !         write(1,*) Nboul,m0,mu,theta_a,R0,Prot,tf,dt_out,ang_mom
+    !         close(1)
+    !     end if
+    ! end if
+    ! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     !!!! Check. Do I have to work?
     if (Res0 < tini) then
@@ -669,12 +667,12 @@ program main
             write(*,*) "Initial condition a=0. Nothing to do here."
             write(*,*) "Saliendo."
         end if
-        stop
+        stop 1
     end if
 
     if (screen) then
         write(*,*) "Integrando..."
-        if (e_tol <= 1.d-16) write(*,*) " WARNING: e_tol might be too low (<= 1.d-16)"
+        if (e_tol <= 1.d-16) write(*,*) " WARNING: e_tol might be too low (<= 10⁻¹⁶)"
     end if
 
     if (datao) open(unit=2, file=trim(datafile), status='unknown', action='write', access="append")
@@ -684,6 +682,7 @@ program main
     else
         dydt => dydt_bar_im
     end if
+    
     !!! BARYCENTRIC
     if (datas .and. .not. perc) write(*,*) t/unit_t, ea/unit_r, ee, eM/rad, ew/rad, eR
     if (datao) then
@@ -750,7 +749,7 @@ program main
                     end if
                 end if
                 if (allocated(dmass_TOM)) then
-                    growth = 1.d0 + (dmass_TOM(idx_TOM)/ mcm)
+                    growth = 1.d0 + (dmass_TOM(idx_TOM) / mcm)
                     m0 = m0 * growth
                     m = m * growth
                     GM0 = G * m0
@@ -893,6 +892,8 @@ program main
     if (allocated(t_TOM)) deallocate(t_TOM)
     if (allocated(omega_TOM)) deallocate(omega_TOM)
     if (allocated(dmass_TOM)) deallocate(dmass_TOM)
+
+    if (screen) write(*,*) "End of program"
 
 end program main
 

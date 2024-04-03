@@ -168,7 +168,7 @@ def make_ic(data_in):
 def check_continue(outfile):
     if os.path.isfile(outfile):
         print("WARNING: File {} already exist.".format(outfile))
-        print("Do yo want to overwrite it? Y/[N]")
+        print("Do yo want to overwrite it? y/[n]\n")
         q = input()
         ntry = 3
         while q.lower() not in ["y", "yes", "s", "si", "n", "no"]:

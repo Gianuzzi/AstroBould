@@ -429,8 +429,8 @@ module parameters
                 stop 1
             end if
             !! Indices
-            FP = Nboul + 1
-            NP = FP * neqs
+            FP = Nboul + 1 ! First particle
+            NP = FP * neqs ! Index of first particle
             
             !! Forces
             !!! tau_a y tau_e
@@ -521,6 +521,7 @@ module parameters
             deallocate(r_b, theta_b)
             deallocate(yb, ybnew)
             deallocate(ya, yanew)
+            hexitptr => null()
         end subroutine deallocate_all
 
         subroutine set_t_outs(t0, tf, n_out, dt_out, logsp, t_out)
