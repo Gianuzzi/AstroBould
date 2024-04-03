@@ -62,7 +62,6 @@ from concurrent.futures import ProcessPoolExecutor
 
 particles = "particles.in"  # Nombre del archivo de partículas
 program = "main"  # Nombre del ejecutable
-chaosfile = "chaos.dat"  # Nombre de archivos de caos (chaosfile)
 datafile = ""  # Nombre de archivos de salida (datafile) ["" == no]
 workers = 3  # Número de procesadores a usar (workers)
 suffix = ""  # Suffix for the output files
@@ -118,8 +117,6 @@ if os.path.isfile(outfile):
         while os.path.isfile(outfile):
             outfile = ".".join(aux[:-1]) + str(i) + ("." + suf if suf else "")
             i += 1
-if chaosfile == "":
-    chaosfile = "chaos.dat"  # Default chaosfile
 
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
