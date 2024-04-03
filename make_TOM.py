@@ -117,19 +117,24 @@ def get_dm(r1, r2, alpha=0, sigma0=1):
 
 
 def lines2015(r, alpha=0, rgap=1, ratio=0.1, sigma0=1):  # Genera Sigma(r)
-    fgap = 1. / (1. + np.exp(-(r - rgap) / (rgap * ratio)))
+    fgap = 1.0 / (1.0 + np.exp(-(r - rgap) / (rgap * ratio)))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sigma = sigma0 * fgap * np.where(r > 0, np.power(r, alpha), 0.)
+        sigma = sigma0 * fgap * np.where(r > 0, np.power(r, alpha), 0.0)
     return sigma
 
-def lynden_bell1974(r, dzeta=0.75, r0=1, sigma0=1, t=0, tdiff=1):  # Genera Sigma(r)
-    t_s = 1 + t/tdiff
-    ft_s = np.power(t_s, - (2.5 - dzeta) / (2 - dzeta))
+
+def lynden_bell1974(
+    r, dzeta=0.75, r0=1, sigma0=1, t=0, tdiff=1
+):  # Genera Sigma(r)
+    t_s = 1 + t / tdiff
+    ft_s = np.power(t_s, -(2.5 - dzeta) / (2 - dzeta))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        fexp = np.exp(- np.where(r > 0, np.power(r / r0, 2- dzeta), 0.) / t_s)
-        sigma = sigma0 * ft_s * np.where(r > 0, np.power(r, -dzeta), 0.) * fexp
+        fexp = np.exp(-np.where(r > 0, np.power(r / r0, 2 - dzeta), 0.0) / t_s)
+        sigma = (
+            sigma0 * ft_s * np.where(r > 0, np.power(r, -dzeta), 0.0) * fexp
+        )
     return sigma
 
 
@@ -232,7 +237,7 @@ if __name__ == "__main__":
         mbin1 = mbin1[de_sort]
         mbin2 = mbin2[de_sort]
         mbin3 = mbin3[de_sort]
-    mpart = mbin3 # Asignamos el método 3
+    mpart = mbin3  # Asignamos el método 3
 
     # Create mass profile file
     massdata = np.vstack(
@@ -289,9 +294,7 @@ if __name__ == "__main__":
             elif bad[j] == 2:  # Escape
                 Mast[i] = Mast[i - 1]
                 Lambda[i] = Lambda[i - 1]
-                omega_tom[i] = (
-                    omega_tom[i - 1] - mpart[j] * deltal / Lambda[i]
-                )
+                omega_tom[i] = omega_tom[i - 1] - mpart[j] * deltal / Lambda[i]
             else:  # ERROR
                 raise ValueError(
                     "Bad '%d' no reconocido en partícula '%d'."

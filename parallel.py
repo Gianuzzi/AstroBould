@@ -119,7 +119,7 @@ if os.path.isfile(outfile):
             outfile = ".".join(aux[:-1]) + str(i) + ("." + suf if suf else "")
             i += 1
 if chaosfile == "":
-    chaosfile = "chaos.dat" # Default chaosfile
+    chaosfile = "chaos.dat"  # Default chaosfile
 
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
@@ -174,8 +174,6 @@ print("Workers: {}\n".format(workers))
 
 # Argumentos. Estos son:
 args = "--noinfo --noscreen --nomap --nodatascr --noperc"
-args += "%s" % (" -chaosfile %s" % chaosfile if chaosfile else "")
-args += "%s" % (" -datafile %s" % datafile if datafile else " --nodata")
 args += "%s" % (" --explicit" if explicit else " --implicit")
 args += "%s" % (" -tomfile %s" % tomfile if tomfile else " --notomfile")
 args += "%s" % (" --elem" if elements else " --noelem")
@@ -196,13 +194,19 @@ def integrate_n(i):
             subprocess.run(["cp", ocini, ncini], check=True)
         if existe_otom:
             subprocess.run(["cp", otom, ntom], check=True)
-    this_arg = " -nsim %d" % i
+    this_args = " -nsim %d" % i
+    this_args += " -chaosfile chaos%d%s.dat" % (i, suffix)
+    this_args += "%s" % (
+        " -datafile %s" % ("salida%d%s.dat" % (i, suffix))
+        if datafile
+        else " --nodata"
+    )
     print("Running system %d\n" % (i))
     # ESTO SE ESTÁ EJECUTANDO EN LA SHELL #
-    # print("Running: ./%s %s %s %s"%(program, args, this_arg, lines[i]))
+    # print("Running: ./%s %s %s %s"%(program, args, this_args, lines[i]))
     # (Lines debe ser último porque termina en "\n") #
     p = subprocess.run(
-        ["./%s %s %s %s" % (program, args, this_arg, lines[i])],
+        ["./%s %s %s %s" % (program, args, this_args, lines[i])],
         cwd=dirp,
         check=True,
         shell=True,
@@ -210,23 +214,6 @@ def integrate_n(i):
     if p.returncode != 0:
         print("The system %d has failed." % i)
         return
-    subprocess.run(
-        [
-            "mv",
-            "-f",
-            os.path.join(dirp, chaosfile),
-            os.path.join(dirp, "chaos%d%s.dat" % (i, suffix)),
-        ]
-    )
-    if datafile != "":
-        subprocess.run(
-            [
-                "mv",
-                "-f",
-                os.path.join(dirp, datafile),
-                os.path.join(dirp, "salida%d%s.dat" % (i, suffix)),
-            ]
-        )
     print("System %d has been integrated." % i)
     return
 
