@@ -28,7 +28,7 @@ module derivates
             if (tau_o >= inf) then
                 domega = cero
             else
-                domega = -exp(-t / tau_o) * omega / tau_o
+                domega = -exp(-(t-t0) / tau_o) * omega / tau_o
             end if
         end function domega_dt
 
@@ -39,7 +39,7 @@ module derivates
             if (tau_m >= inf) then
                 dm0 = cero
             else
-                dm0 = -exp(-t / tau_m) * m0 / tau_m
+                dm0 = -exp(-(t-t0) / tau_m) * m0 / tau_m
             end if
         end function dm0_dt
 
@@ -56,15 +56,15 @@ module derivates
             ! print*, 't = ', t
 
             do i = 0, Nboul
-                rib(i,1) = cos(omega * t + theta_b(i)) * r_b(i)
-                rib(i,2) = sin(omega * t + theta_b(i)) * r_b(i)
+                rib(i,1) = cos(omega * (t-t0) + theta_b(i)) * r_b(i)
+                rib(i,2) = sin(omega * (t-t0) + theta_b(i)) * r_b(i)
             end do
 
             do i = Nboul+1, Ntot
                 ineqs = i*neqs
                 rb = y(ineqs+3 : ineqs+4)
                 vb = y(ineqs+5 : ineqs+6)
-                call apply_force(t, omega, m, rb, vb, rib, ab)
+                call apply_force(t-t0, omega, m, rb, vb, rib, ab)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do
@@ -96,9 +96,9 @@ module derivates
 
             do i = Nboul+1, Ntot
                 ineqs = i * neqs
-                rb   = y(ineqs+3 : ineqs+4)
-                vb   = y(ineqs+5 : ineqs+6)
-                call apply_force(t, y(1), m, rb, vb, rib, ab)
+                rb = y(ineqs+3 : ineqs+4)
+                vb = y(ineqs+5 : ineqs+6)
+                call apply_force(t-t0, y(1), m, rb, vb, rib, ab)
                 dydt(ineqs+3 : ineqs+4) = vb
                 dydt(ineqs+5 : ineqs+6) = ab
             end do

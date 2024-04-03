@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import numpy as np
 
@@ -14,10 +15,10 @@ import numpy as np
 #         (a) Leer parámetros iniciales del archivo config.ini [Default].
 #         (b) Introducir valores en este código manualmente.
 
-# (1) Archivo TOM
+# (1) Archivo TOM a crear
 tomfile = "tomfile.dat"
 
-# (2) Archivo sump
+# (2) Archivo sump a utilizar para crear TOM
 sump_file = "sump.dat"
 
 # (3) Parámetros del disco a crear
@@ -41,11 +42,11 @@ mu_b = [0.1]  # Cociente de masas de boulders a asteroide (mBoul = mu_B * m0)
 # Dato: Si son varios boulders, se introducen todos como lista: [mu1, mu2, ...]
 
 
-#
-#
-# No tocar a partir de aquí
-#
-#
+# -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+# ----------------------- No tocar a partir de aquí -----------------------
+# -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 
 def read_config(config_file="config.ini"):
@@ -115,9 +116,21 @@ def get_dm(r1, r2, alpha=0, sigma0=1):
     )  # Después se normaliza por fuera
 
 
-def lines2015(r, alpha=0, rgap=1, ratio=0.1):  # Genera Sigma(r)
-    fgap = 1 / (1 + np.exp(-(r - rgap) / (rgap * ratio)))
-    sigma = fgap * r**alpha
+def lines2015(r, alpha=0, rgap=1, ratio=0.1, sigma0=1):  # Genera Sigma(r)
+    fgap = 1. / (1. + np.exp(-(r - rgap) / (rgap * ratio)))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sigma = sigma0 * fgap * np.where(r > 0, np.power(r, alpha), 0.)
+    return sigma
+
+def lynden_bell1974(r, dzeta=0.75, r0=1, sigma0=1, t=0, tdiff=1):  # Genera Sigma(r)
+    raux = np.zeros_like(r)
+    t_s = 1 + t/tdiff
+    ft_s = np.power(t_s, - (2.5 - dzeta) / (2 - dzeta))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fexp = np.exp(- np.where(r > 0, np.power(r / r0, 2- dzeta), 0.) / t_s)
+        sigma = sigma0 * ft_s * np.where(r > 0, np.power(r, -dzeta), 0.) * fexp
     return sigma
 
 
@@ -188,7 +201,7 @@ if __name__ == "__main__":
     amax = asort[-1]
 
     # Set bin edges positions
-    rmin = max(amin - 0.5 * (asort[1] - amin), 0)
+    rmin = max(amin - 0.5 * (asort[1] - amin), 1e-10)
     rmax = amax + 0.5 * (amax - asort[-2])
     redges = 0.5 * (asort[:-1] + asort[1:])
     redges = np.concatenate(([rmin], redges, [rmax]))

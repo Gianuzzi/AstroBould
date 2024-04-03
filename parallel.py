@@ -74,6 +74,10 @@ elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 tomfile = "tomfile.dat"
 
 
+# ----------------------------------------------------------------------
+# -------------------- No tocar de aquí en adelante --------------------
+# ----------------------------------------------------------------------
+
 # Iniciamos #
 
 # Obtener el path actual y renombrar
@@ -114,10 +118,15 @@ if os.path.isfile(outfile):
         while os.path.isfile(outfile):
             outfile = ".".join(aux[:-1]) + str(i) + ("." + suf if suf else "")
             i += 1
+if chaosfile == "":
+    chaosfile = "chaos.dat" # Default chaosfile
 
 # Leemos el archivo de partículas
 with open(oparticles, "r") as f:
     lines = f.readlines()
+# Arreglamos por si hay "e" en vez de "d"
+for i in range(len(lines)):
+    lines[i] = lines[i].replace("e", "d")
 
 # Obtener el número de líneas del archivo de partículas
 nsys = len(lines)
@@ -163,11 +172,7 @@ if len(missing_lines) == 0:
 workers = min(max(1, min(int(workers), len(os.sched_getaffinity(0)))), nsys)
 print("Workers: {}\n".format(workers))
 
-# Arreglamos por si hay "e" en vez de "d"
-for i in range(nsys):
-    lines[i] = lines[i].replace("e", "d")
-
-# Argumentos. Estos son
+# Argumentos. Estos son:
 args = "--noinfo --noscreen --nomap --nodatascr --noperc"
 args += "%s" % (" -chaosfile %s" % chaosfile if chaosfile else "")
 args += "%s" % (" -datafile %s" % datafile if datafile else " --nodata")

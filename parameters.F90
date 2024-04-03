@@ -429,8 +429,8 @@ module parameters
                 stop 1
             end if
             !! Indices
-            FP = Nboul + 1
-            NP = FP * neqs
+            FP = Nboul + 1 ! First particle
+            NP = FP * neqs ! Index of first particle
             
             !! Forces
             !!! tau_a y tau_e
