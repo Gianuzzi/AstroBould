@@ -521,6 +521,7 @@ module parameters
             deallocate(r_b, theta_b)
             deallocate(yb, ybnew)
             deallocate(ya, yanew)
+            hexitptr => null()
         end subroutine deallocate_all
 
         subroutine set_t_outs(t0, tf, n_out, dt_out, logsp, t_out)
