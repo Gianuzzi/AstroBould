@@ -1249,11 +1249,7 @@ program main
         timestep = checkpoint_times(j) - time
         !! Check TOM
         if (checkpoint_is_tom(j) .and. (tom_index_number <= tom_total_number)) then
-            print*, "Dentro de TOM. Tiempo:", time
-            print*, "Old Omega: ", asteroid_omega
-            print*, "Old Mass: ", asteroid_mass
             if (allocated(tom_deltaomega)) then
-                print*, "Delta Omega: ", tom_deltaomega(tom_index_number)
                 asteroid_omega = asteroid_omega + tom_deltaomega(tom_index_number)
                 asteroid_omega2 = asteroid_omega * asteroid_omega
                 if (use_explicit_method) asteroid_theta_correction = asteroid_theta - asteroid_omega * (time - initial_time)
@@ -1268,7 +1264,6 @@ program main
                 end if
             end if
             if (allocated(tom_deltamass)) then
-                print*, "Delta Mass: ", tom_deltamass(tom_index_number)
                 tom_mass_growth_param = uno + (tom_deltamass(tom_index_number) / asteroid_mass)
                 mass_primary = mass_primary * tom_mass_growth_param
                 mass_ast_arr = mass_ast_arr * tom_mass_growth_param
@@ -1277,9 +1272,11 @@ program main
                 Gasteroid_mass = G * asteroid_mass
             end if
             tom_index_number = tom_index_number + 1
-            print*, "New Omega: ", asteroid_omega
-            print*, "New Mass: ", asteroid_mass
-            pause
+            if (use_screen) then
+                write (*,*) ACHAR(5)
+                write (*,*) "Se actualizó Omega | Masa según archivo TOM, en t = ", time / unit_time, "[días]"
+                write (*,*) ACHAR(5)
+            end if
         end if
 
         !!! Execute an integration method (uncomment/edit one of these)
