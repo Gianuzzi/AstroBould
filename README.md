@@ -3,7 +3,7 @@ Repositorio con programa para integrar partículas gravitatoriamente alrededor d
 
 Los parámetros iniciales del sistema y la integración se modifican en el archivo: [config.ini](./config.ini)
 
-En caso de no utilizarlo, se usan los parámetros definidos en [main.F90](./main.F90#22#118), entre las líneas 22 y 118.
+En caso de no utilizarlo, se usan los parámetros definidos en [main.F90](./src/main.F90), entre las líneas [22 a 118](./src/main.F90#22#118).
 
 # Usage
 
@@ -84,7 +84,7 @@ Hay 2 posibilidad de ejecución en paralelo:
 - _Independiente_: Se realizan múltiples integraciones independientes, con una partícula cada una. Aquí cada integración se ejecuta en paralelo.
 
 En este caso se debe tener un **archivo con los datos de las partículas a integrar**.
-Este archivo se puede crear con el código [make_particles.py](./tools/make_particles.py). Su configuración se realiza en las líneas [75 a 102](./make_particles.py#75#L102), y si ejecució se realiza con:
+Este archivo se puede crear con el código [make_particles.py](./tools/make_particles.py). Su configuración se realiza en las líneas [75 a 102](./tools/make_particles.py#L75#L102), y si ejecució se realiza con:
 
 ``` console
 $ python make_particles.py
@@ -110,7 +110,7 @@ También se puede utilzar el código [launcher.py](./launcher.py) para esta inte
 
 ### Archivo TOM (Tiempos, Omega, Masa agregada)
 
-Para crear este archivo se puede usar [make_TOM.py](./tools/make_TOM.py), luego de configurarlo (líneas [17 a 41](./make_TOM.py#L17#L41)). Se puede encontrar más información [al inicio](./make_TOM.py#L5#L15) de este archivo. 
+Para crear este archivo se puede usar [make_TOM.py](./tools/make_TOM.py), luego de configurarlo (líneas [17 a 41](./tools/make_TOM.py#L17#L41)). Se puede encontrar más información [al inicio](./tools/make_TOM.py#L5#L15) de este archivo. 
 
 Por otro lado, también  se puede usar [make_TOM.f90](./tools/make_TOM.f90), de C. Beaugé. Se debe configurar manualmente, para luego compilar y ejecutar.
 
