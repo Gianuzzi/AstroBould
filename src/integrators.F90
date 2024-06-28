@@ -1,5 +1,4 @@
 module integrators
-
     implicit none
 
     ! Define dydt_i pointer
@@ -224,14 +223,15 @@ module integrators
             real(kind=8), dimension(:), intent(in)                           :: y
             real(kind=8), dimension(:,:), intent(in)                         :: m
             real(kind=8), dimension((size (m,1) - 1), size (y)), intent(out) :: rk ! In columns
-            real(kind=8), dimension(size (y))                                :: rkaux
+            real(kind=8), dimension(size (y))                                :: rkaux, added
             procedure(dydt_tem)                                              :: dydt
             integer(kind=4)                                                  :: i, j
             
             do i = 1, size (m, 1) - 1 ! Rows
                 rkaux = ZERO
-                do j = 1, i ! Cols (<i bc its inf triang)    
-                    rkaux = rkaux + m(1+j,i) * rk(j,:)                    
+                do j = 1, i ! Cols (<i bc its inf triang)
+                    added = m(i+1,j) * rk(j,:)
+                    rkaux = rkaux + added
                 end do
                 rk(i, :) = dydt (t + m(1,i) * dt, y + dt * rkaux)
             end do
@@ -294,7 +294,7 @@ module integrators
             
             call integ (t, y, dt_adap, dydt, osol, oaux, yaux, ynew)
 
-            yscal = abs (y + dt_adap * dydt (t, y)) + SAFE_LOW
+            yscal = abs (y) + abs (dt_adap * dydt (t, y)) + SAFE_LOW
             
             e_calc = max (maxval (abs ((ynew - yaux) / yscal )), SAFE_LOW)
             ratio  = e_tol / e_calc
@@ -1130,7 +1130,7 @@ module integrators
             call integ (           t,     y, hdt_adap, dydt, yhalf)                       
             call integ (t + hdt_adap, yhalf, hdt_adap, dydt,  yaux)
 
-            yscal = abs (y + dt_adap * dydt (t, y)) + SAFE_LOW
+            yscal = abs (y) + abs (dt_adap * dydt (t, y)) + SAFE_LOW
             
             e_calc = max (maxval (abs ((ynew - yaux) / yscal) / twotordmi1), SAFE_LOW)
             ratio  = e_tol / e_calc
@@ -1344,8 +1344,8 @@ module integrators
 
             der = dydt (x, y)
             yscal = abs (y) + abs (htry * der) + SAFE_LOW
-
-            if (abs(eps - epsold) .gt. SAFE_LOW) then !E_TOL? ! A new tolerance, so reinitialize.
+            
+            if (abs(eps - epsold) > SAFE_LOW) then !E_TOL? ! A new tolerance, so reinitialize.
                 hnext = -1.0d29 ! “Impossible” values.
                 xnew  = -1.0d29
                 eps1  = safe1 * eps
@@ -1361,13 +1361,13 @@ module integrators
                 end do
                 epsold = eps
                 do kopt = 2, kmaxx - 1 ! Determine optimal row number for convergence.
-                    if (arr(kopt + 1) .gt. arr(kopt) * alf(kopt - 1, kopt)) exit
+                    if (arr(kopt + 1) > arr(kopt) * alf(kopt - 1, kopt)) exit
                 end do
                 kmax = kopt
             end if
             h = htry
             ysav = y
-            if ((abs(h - hnext) .gt. SAFE_LOW) .or. (abs(x - xnew) .gt. SAFE_LOW)) then !E_TOL? ! A new stepsize or a new integration: Reestablish the order window.
+            if ((abs(h - hnext) > SAFE_LOW) .or. (abs(x - xnew) > SAFE_LOW)) then !E_TOL? ! A new stepsize or a new integration: Reestablish the order window.
                 first = .True.
                 kopt = kmax
             end if
@@ -1375,8 +1375,9 @@ module integrators
             main_loop: do
                 do k = 1, kmax ! Evaluate the sequence of modiﬁed midpoint integrations.
                     xnew = x + h
-                    if (abs(xnew - x) .lt. SAFE_LOW) then !E_TOL?
-                        write(*,*) "Step size underflow in bstep", abs(xnew - x)
+                    if (abs(xnew - x) < SAFE_LOW) then !E_TOL?
+                        write (*,*) "Step size underflow in bstep", abs(xnew - x)
+                        stop 2
                         return
                     end if
                     call mmid (ysav, der, sizey, x, h, nseq(k), yseq, dydt)
@@ -1388,26 +1389,27 @@ module integrators
                         do i = 1, sizey
                             errmax = max (errmax, abs(yerr(i)/yscal(i))) ! FALTA SCALADO? !! Ya no?
                         end do
+                        ! print*, yerr(2), yscal(2), y(2), h * der(2), yerr(9), yscal(9), y(9), h * der(9)
                         errmax = errmax / eps
                         km = k - 1
                         err(km) = (errmax / safe1)**(1.d0 / (2.d0 * km + 1))
                     end if
                     if (k .ne. 1 .and. (k .ge. kopt - 1 .or. first)) then ! In order window.
-                        if (errmax .lt. 1.) exit main_loop ! Converged.
+                        if (errmax < 1.) exit main_loop ! Converged.
                         if (k .eq. kmax .or. k .eq. kopt + 1) then ! Check for possible stepsize reduction.
                             red = safe2 / err(km)
                             exit
                         else if (k .eq. kopt) then
-                            if (alf(kopt - 1, kopt) .lt. err(km)) then
+                            if (alf(kopt - 1, kopt) < err(km)) then
                                 red = 1. / err(km)
                                 exit
                             end if
                         else if (kopt .eq. kmax) then
-                            if (alf(km, kmax - 1) .lt. err(km)) then
+                            if (alf(km, kmax - 1) < err(km)) then
                                 red = alf(km, kmax - 1) * safe2 / err(km)
                                 exit
                             end if
-                        else if (alf(km, kopt) .lt. err(km)) then
+                        else if (alf(km, kopt) < err(km)) then
                             red = alf(km, kopt - 1) / err(km)
                             exit
                         end if
@@ -1424,7 +1426,7 @@ module integrators
             do kk = 1, km
                 fact = max (err(kk), scalmx)
                 work = fact * arr(kk + 1)
-                if (work .lt. wrkmin) then
+                if (work < wrkmin) then
                     scala = fact
                     wrkmin = work
                     kopt = kk + 1

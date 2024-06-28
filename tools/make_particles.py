@@ -32,10 +32,13 @@ def concat(*arrs):
     return np.concatenate([*arrs])
 
 
-def rndm(x0=0.0, xf=360.0):
+def rndm(x0=0.0, xf=360.0, func=None):
     """Número aleatorio entre x0 y xf"""
     while True:
-        yield rng.random() * (xf - x0) + x0
+        if callable(func):
+            yield func(rng.random() * (xf - x0) + x0)
+        else:
+            yield rng.random() * (xf - x0) + x0
 
 
 def rayleigh_dist(x0=0, var=0.1, xmax=1.0):
@@ -69,19 +72,21 @@ type_gen = type(rndm())
 # -----------------
 # INPUT
 # -----------------
+use_mass = True
 
 # UNIDADES
 unit_angle = deg
 
 # Data
 data_in = {}
-names = ["a", "e", "M", "w", "R"]
+names = ["mass", "a", "e", "M", "w", "R"]
 # PARÁMETROS A VARIAR (Poner unidades de ser necesario)
+data_in["mass"] = [rndm(12, 15, lambda x: 10 ** x)]
 data_in["a"] = [0.0]
 data_in["e"] = [0.0]  # Podría ser: rayleigh_dist(0, 0.1, 1)
 data_in["M"] = [rndm(0.0, 360.0)]
 data_in["w"] = [0.0]
-data_in["R"] = [n_steps(0.9, 1.5, 30)]
+data_in["R"] = [n_steps(0.5, 3.5, 4)]
 
 # -----------------
 # OUTPUT
@@ -219,6 +224,10 @@ if __name__ == "__main__":
     # Mezclamos si se quiere
     if shuffle:
         data_out = shuffle_matrix(data_out)
+
+    # Remove mass if not needed
+    if not use_mass:
+        data_out = data_out[:, 1:]
 
     # Guardamos
     if not check_continue(filename):

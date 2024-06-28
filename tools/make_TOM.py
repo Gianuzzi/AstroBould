@@ -178,15 +178,30 @@ if __name__ == "__main__":
         Omega0 = 2 * np.pi / Prot
 
     # Read sump sump_file
+    ## 0    ! i
+    ## 1    ! bad
+    ## 2    ! total time to integrate
+    ## 3    ! initial (Asteroid): angular momentum
+    ## 4-9  ! initial: mass, a, e, M, omega, MMR
+    ## 10   ! initial: angular momentum per unit mass
+    ## 11   ! surviving time
+    ## 12-16! final: a, e, M, omega, MMR
+    ## 17   ! final: angular momentum per unit mass
+    ## 18-19! a_min, a_max
+    ## 20-21! e_min, e_max
+    ## 22   ! Delta a
+    ## 23   ! Delta e
     data = np.genfromtxt("sump.out")
+
+    idx = data[:, 0].astype(int)
     bad = data[:, 1].astype(int)
-    L0 = data[0, 2] * unit_m * unit_r**2 / unit_t
-    aini = data[:, 4] * unit_r
-    n_spin = data[:, 8]
-    lini = data[:, 9] * unit_r**2 / unit_t
-    tfin = data[:, 10] * unit_t
-    lfin = data[:, 16] * unit_r**2 / unit_t
-    de = data[:, 18]
+    L0 = data[0, 3] * unit_m * unit_r**2 / unit_t
+    aini = data[:, 5] * unit_r
+    MMR = data[:, 9]
+    lini = data[:, 10] * unit_r**2 / unit_t
+    tfin = data[:, 11] * unit_t
+    lfin = data[:, 17] * unit_r**2 / unit_t
+    de = data[:, 23]
 
     # Set each particle mass #
 
@@ -244,15 +259,15 @@ if __name__ == "__main__":
         (aini / unit_r, mpart / unit_m, abins / unit_r**2)
     ).T
     np.savetxt("massfile.dat", massdata, delimiter=" ")
-    print("Se ha creado el archivo de perfil de masa: massfile.dat")
+    print("Se ha creado el archivo de perfil de masa: massfile.dat [a, mpart, dA]")
 
     # Set each particle event Omega, and Delta M #
 
     # Get time events order
     argsrt = np.argsort(tfin)
 
-    # Initial Lambda = L/Omega
-    Lambda0 = L0 / Omega0
+    # Initial Inertia = L/Omega
+    Inertia0 = L0 / Omega0
 
     # Initial asteroid mass
     Mast0 = mcm
@@ -261,12 +276,12 @@ if __name__ == "__main__":
     times_tom = np.zeros(len(tfin) + 1)
     omega_tom = np.zeros(len(tfin) + 1)
     dmass_tom = np.zeros(len(tfin) + 1)
-    Lambda = np.zeros(len(tfin) + 1)
+    Inertia = np.zeros(len(tfin) + 1)
     Mast = np.zeros(len(tfin) + 1)
 
     # Initial values
     omega_tom[0] = Omega0
-    Lambda[0] = Lambda0
+    Inertia[0] = Inertia0
     Mast[0] = Mast0
 
     # Get beauge's file name
@@ -281,20 +296,20 @@ if __name__ == "__main__":
             ratio_l = lfin[j] / lini[j]
             if bad[j] == 0:  # Survived
                 Mast[i] = Mast[i - 1]
-                Lambda[i] = Lambda[i - 1]
+                Inertia[i] = Inertia[i - 1]
                 omega_tom[i] = omega_tom[i - 1]
             elif bad[j] == 1:  # Collision
                 Mast[i] = Mast[i - 1] + mpart[j]
-                Lambda[i] = Lambda[i - 1] * (1 + mpart[j] / Mast[i - 1])
+                Inertia[i] = Inertia[i - 1] * (1 + mpart[j] / Mast[i - 1])
                 omega_tom[i] = (
-                    omega_tom[i - 1] * (Lambda[i - 1] / Lambda[i])
-                    + (mpart[j] * lini[j]) / Lambda[i]
+                    omega_tom[i - 1] * (Inertia[i - 1] / Inertia[i])
+                    + (mpart[j] * lini[j]) / Inertia[i]
                 )
                 dmass_tom[i] = mpart[j]
             elif bad[j] == 2:  # Escape
                 Mast[i] = Mast[i - 1]
-                Lambda[i] = Lambda[i - 1]
-                omega_tom[i] = omega_tom[i - 1] - mpart[j] * deltal / Lambda[i]
+                Inertia[i] = Inertia[i - 1]
+                omega_tom[i] = omega_tom[i - 1] - mpart[j] * deltal / Inertia[i]
             else:  # ERROR
                 raise ValueError(
                     "Bad '%d' no reconocido en partícula '%d'."
@@ -306,7 +321,7 @@ if __name__ == "__main__":
                     i,
                     j,
                     bad[j],
-                    n_spin[j],
+                    MMR[j],
                     tfin[j] / unit_t,
                     de[j],
                     ratio_l,
@@ -340,8 +355,10 @@ if __name__ == "__main__":
         print("No hay eventos para escribir en el archivo TOM.")
         print("Saliendo.")
         exit(1)
+    # CAMBIAMOS OMEGA POR DELTA OMEGA
+    domega_tom = np.diff(np.append(Omega0, omega_tom[-1]))
     tom = np.vstack(
-        (times_tom / unit_t, omega_tom * unit_t, dmass_tom / unit_m)
+        (times_tom / unit_t, domega_tom * unit_t, dmass_tom / unit_m)
     ).T
     if os.path.isfile(tomfile):
         print("WARNING: Output file {} already exist.".format(tomfile))
@@ -356,4 +373,4 @@ if __name__ == "__main__":
                 )
                 i += 1
     np.savetxt(tomfile, tom, delimiter=" ")
-    print("Se ha creado el archivo TOM: %s" % tomfile)
+    print("Se ha creado el archivo TOM: %s" % tomfile, " [t, dOmega, dM]")

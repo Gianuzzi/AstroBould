@@ -52,7 +52,7 @@ program main ; use common
 !!! archivo con resultados de la simulación inicial con AstroBould.
         add = 'e_'//trim(arq_e)//'_'//trim(arq_isim)
         arch_in = 'Astrobould/sump_'//trim(add)//'.out'
-        open(1,file=arch_in,status='old')
+        open (1,file=arch_in,status='old')
 
 !!! nombre de los archivos de salida.
         add = trim(arq_g)//'_e_'//trim(arq_e)//'_'//trim(arq_isim)
