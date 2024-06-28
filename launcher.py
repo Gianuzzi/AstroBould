@@ -8,10 +8,10 @@
 # y luego concatena los archivos de caos en un solo archivo.
 
 # El archivo de partículas a introducir debe tener formato:
-# a e M w
+# mass a e M w
 # Pero también se puede introducir una última columna con el valor de R,
 # el cual reemplaza a a: [a = R**(2/3.) * a_corot]. Entonces quedaría:
-# a e M w R
+# mass a e M w R
 
 # IMPORTANTE : Todos los archivos deben estar en la misma carpeta
 

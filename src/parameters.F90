@@ -294,7 +294,7 @@ module parameters
             use_multiple_outputs = .False. ! Salida en múltiples archivos
             !! Output (Poner "" o "no" para no crear archivo)
             datafile = ""! Archivo de datos
-            chaosfile = "chaos.dat" ! Archivo de datos
+            chaosfile = "" ! Archivo de datos
             multfile = "" ! Prefijo de archivos de salida individuales
             !!! Mapa de potencial
             mapfile = "" ! Archivo de mapas
@@ -348,8 +348,8 @@ module parameters
                 if (colonPos > 0) then
                     param_str = trim(adjustl(line(: colonPos)))
                     value_str = trim(adjustl(line(colonPos + 1 : commentPos - 1)))
-                    auxch1 = value_str(:1)
-                    auxch2 = value_str(:2)
+                    auxch1 = to_lower(value_str(:1))
+                    auxch2 = to_lower(value_str(:2))
                     auxch15 = param_str(:15)
                     select case (auxch15)
                         case("initial time fo")
@@ -434,15 +434,16 @@ module parameters
                         case("mean motion rat")
                             read (value_str, *) single_part_MMR
                         case("particles input")
-                            if (auxch2 == "no") then
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
                                 use_particlesfile = .False.
                                 particlesfile = ""
-                            else if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                use_particlesfile = .True.
-                                particlesfile = "salida.dat"
-                            else
+                            else if (len(trim(value_str)) > 0) then
                                 use_particlesfile = .True.
                                 particlesfile = trim(value_str)
+                            else
+                                use_particlesfile = .False.
+                                particlesfile = ""
                             end if
                         case("include torque")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
@@ -501,18 +502,16 @@ module parameters
                                 use_merge = .False.
                             end if
                         case("input time-omeg")
-                            if (auxch2 == "no") then
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
                                 use_tomfile = .False.
                                 tomfile = ""
-                            else
+                            else if (len(trim(value_str)) > 0) then
                                 use_tomfile = .True.
                                 tomfile = trim(value_str)
-                            end if
-                            read (value_str, *) tomfile
-                            if (len_trim(tomfile) > 0) then
-                                use_tomfile = .True.
                             else
                                 use_tomfile = .False.
+                                tomfile = ""
                             end if
                         case("information on")
                             if ((auxch1 == "y") .or. (auxch1 == "s")) then
@@ -521,35 +520,28 @@ module parameters
                                 use_screen = .False.
                             end if
                         case("general output")
-                            if (auxch2 == "no") then
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
                                 use_datafile = .False.
                                 datafile = ""
-                            else if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                use_datafile = .True.
-                                datafile = "salida.dat"
                             else
                                 use_datafile = .True.
                                 datafile = trim(value_str)
                             end if
                         case("idividual file")
-                            if (auxch2 == "no") then
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
                                 use_multiple_outputs = .False.
                                 multfile = ""
-                            else if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                use_multiple_outputs = .True.
-                                multfile = "fort"
                             else
                                 use_multiple_outputs = .True.
                                 multfile = trim(value_str)
                             end if
                         case("chaos indicator")
-                            if (auxch2 == "no") then
-                                use_chaosfile    = .False.
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
+                                use_chaosfile = .False.
                                 chaosfile = ""
-                            else if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                use_chaosfile = .True.
-                                chaosfile = "chaos.dat"
-                                use_chaos = .True.
                             else
                                 use_chaosfile = .True.
                                 chaosfile = trim(value_str)
@@ -573,12 +565,10 @@ module parameters
                                 use_elements_output = .True.
                             end if
                         case("create map file")
-                            if (auxch2 == "no") then
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
                                 use_potential_map = .False.
                                 mapfile = ""
-                            else if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                use_potential_map = .True.
-                                mapfile = "mapas.dat"
                             else
                                 use_potential_map = .True.
                                 mapfile = trim(value_str)
@@ -1065,11 +1055,18 @@ module parameters
             integer(kind=4) :: ncols, nrows, i, j, io, my_method
             real(kind=8) :: aux_real
             character(80) :: auxstr
+            logical :: existe
            
             if (present(method)) then
                 my_method = method
             else
                 my_method = 0
+            end if
+
+            inquire (file=trim(file_name), exist=existe)
+            if (.not. existe) then
+                write (*,*) "ERROR: No se encontró el archivo: ", trim(file_name)
+                stop 1
             end if
 
             open (unit=20, file=trim(file_name), status="old", action="read")
@@ -1129,9 +1126,16 @@ module parameters
             integer(kind=4) :: ncols
             real(kind=8) :: t_aux
             character(80) :: auxstr
+            logical :: existe
 
             n_TOM = 2
             
+            inquire (file=trim(file_tout), exist=existe)
+            if (.not. existe) then
+                write (*,*) "ERROR: No se encontró el archivo TOM: ", trim(file_tout)
+                stop 1
+            end if
+
             open (unit=30, file=file_tout, status="old", action="read")
 
             !! Count number of columns
@@ -1928,6 +1932,42 @@ module parameters
             nullify(write_b_to_individual)
             nullify(flush_chaos)
         end subroutine nullify_pointers
+
+        ! 26. Go from lower to upper case
+        function to_upper(strIn) result(strOut)
+            ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
+            ! Original author: Clive Page
+            implicit none
+            character(len=*), intent(in) :: strIn
+            character(len=len(strIn)) :: strOut
+            integer :: i,j
+    
+            do i = 1, len(strIn)
+                j = iachar(strIn(i:i))
+                if (j>= iachar("a") .and. j<=iachar("z") ) then
+                    strOut(i:i) = achar(iachar(strIn(i:i))-32)
+                else
+                    strOut(i:i) = strIn(i:i)
+                end if
+            end do
+        end function to_upper
+
+        ! 26.5 Go from lower to upper case
+        function to_lower(strIn) result(strOut)
+            implicit none
+            character(len=*), intent(in) :: strIn
+            character(len=len(strIn)) :: strOut
+            integer :: i,j
+    
+            do i = 1, len(strIn)
+                j = iachar(strIn(i:i))
+                if (j>= iachar("A") .and. j<=iachar("Z") ) then
+                    strOut(i:i) = achar(iachar(strIn(i:i))+32)
+                else
+                    strOut(i:i) = strIn(i:i)
+                end if
+            end do
+        end function to_lower
 
         ! 99 Subrutina para pointer vacío (no hace nada) con input i
         subroutine do_nothing_i(i)

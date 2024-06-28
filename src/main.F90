@@ -793,7 +793,7 @@ program main
     !! TOMFILE
     if (use_tomfile) then
         !! En este caso, leeremos los tiempos desde un archivo
-        if (use_screen) write (*,*) "Leyendo tiempos desde el archivo: ", trim(tomfile)
+        if (use_screen) write (*,*) "Leyendo tiempos desde el archivo TOM: ", trim(tomfile)
         call read_tomfile(initial_time / unit_time, final_time / unit_time, tom_times, tom_deltaomega, tom_deltamass, tomfile) ! Read LOOP checkpoints
         tom_total_number = size(tom_times, 1)
         !!! Unidades
