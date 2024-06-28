@@ -620,6 +620,7 @@ program main
     end if
     
     if (use_single_particle) then
+        if (use_elements_output) particles_index(Nparticles) = simulation_number
         !! Masa
         particles_mass(Nparticles) = single_part_mass * unit_mass     ! Masa
         !! Elementos orbitales
@@ -1448,7 +1449,7 @@ program main
             open (unit=40, file=trim(chaosfile), status='unknown', action='write')!, access="append")
             do i = 1, Nparticles
                 aux_integer = sorted_particles_index(i)
-                write (40,*) aux_integer, & ! i
+                write (40,*) particles_index(aux_integer), & ! i
                 & particles_outcome(aux_integer), & ! bad
                 & final_time / unit_time, & ! total time to integrate
                 & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum
@@ -1491,7 +1492,7 @@ program main
             end if
             do i = 1, Nparticles
                 aux_integer = sorted_particles_index(i)
-                write (*,*) aux_integer, & ! i
+                write (*,*) particles_index(aux_integer), & ! i
                 & particles_outcome(aux_integer), & ! bad
                 & particles_times(aux_integer), & ! surviving time
                 & particles_initial_conditions(aux_integer,6), & ! initial: MMR

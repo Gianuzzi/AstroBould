@@ -62,7 +62,7 @@ from concurrent.futures import ProcessPoolExecutor
 program = "ASTROBOULD"  # Nombre del ejecutable
 
 ## Configuración de integración ##
-workers = 4  # Número de procesadores a usar (workers)
+workers = 2  # Número de procesadores a usar (workers)
 explicit = False  # Método: True (cos, sin), False (integra boulders y m0)
 version1 = False  # Versión del código (1 o 2)
 
@@ -187,12 +187,12 @@ if not torque:
         else:
             raise IOError("Error al leer integraciones ya realizadas.")
         done = set([int(cint) for cint in output_lines if cint != ""])
-        missing_lines = [x for x in range(nsys) if x not in done]
+        missing_lines = [x for x in range(1,nsys+1) if x not in done]
         print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
         nsys = len(missing_lines)
         print("   Cantidad de sistemas a integrar: {}".format(nsys))
     else:
-        missing_lines = range(0, nsys)
+        missing_lines = range(1, nsys+1)
 
     # Hay que hacer?
     if len(missing_lines) == 0:
@@ -250,7 +250,7 @@ def integrate_n(i):
             )
     )
     print("Running system %d\n" % (i))
-    my_line = " ".join(lines[i].split()[1:]) # Elimina el primer valor (en caso que fuese la masa...)
+    my_line = " ".join(lines[i-1].split()[1:]) # -1 porque la lsita arranca de 0 #Elimina el primer valor (en caso que fuese la masa...)
     # ESTO SE ESTÁ EJECUTANDO EN LA SHELL #
     # print("Running: ./%s %s %s %s"%(program, args, this_args, my_line))
     # (Lines debe ser último porque termina en "\n") #

@@ -210,7 +210,7 @@ module parameters
             implicit none
 
             ! Simulation
-            simulation_number = 0
+            simulation_number = 1
             ! Times
             initial_time = cero
             final_time = cero
@@ -1641,7 +1641,7 @@ module parameters
             call fseek(unit_file, 0, 0)       ! move to beginning
             do i = 1, Nparticles
                 aux_integer = my_sorted_particles_index(i)
-                write (unit_file,*) aux_integer, & ! i
+                write (unit_file,*) particles_index(aux_integer), & ! i
                 & particles_outcome(aux_integer), & ! bad
                 & final_time / unit_time, & ! total time to integrate
                 & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum
