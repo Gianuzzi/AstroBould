@@ -1596,7 +1596,7 @@ module parameters
                 & particles_elem(aux_integer,1) / unit_dist, particles_elem(aux_integer,2), &
                 & particles_elem(aux_integer,3) / radian, particles_elem(aux_integer,4) / radian, &
                 & particles_MMR(aux_integer), particles_mass(aux_integer) / unit_mass, &
-                & asteroid_a_corot / unit_dist, asteroid_omega * unit_time, asteroid_mass / unit_mass
+                & particles_dist(aux_integer) / unit_dist, asteroid_omega * unit_time, asteroid_mass / unit_mass
         end subroutine write_elements
 
         ! 21.2 Write coordinates to unit_file (particles)
