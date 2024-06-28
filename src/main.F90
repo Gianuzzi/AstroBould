@@ -1089,6 +1089,12 @@ program main
     else
         flush_chaos => do_nothing_i
     end if
+    !! Escribir salida en cada output?
+    if (use_flush_output) then
+        flush_output => flush_to_file
+    else
+        flush_output => do_nothing_i
+    end if
 
 
     ! Set parameters new to the derivative
@@ -1401,6 +1407,7 @@ program main
             do i = 1, Nparticles
                 call write_i_to_general(i, 20)
             end do
+            call flush_output(20)
             !$OMP SECTION
             call flush_chaos(40) ! Update chaos
             !$OMP END SECTIONS

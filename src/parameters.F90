@@ -43,6 +43,7 @@ module parameters
     logical :: use_multiple_outputs
     character(30) :: datafile, chaosfile, mapfile, multfile
     character(30) :: tomfile, particlesfile
+    logical :: use_flush_output
     !! Tomfile
     integer(kind=4) :: tom_index_number, tom_total_number
     real(kind=8), dimension(:), allocatable :: tom_times, tom_deltaomega, tom_deltamass
@@ -178,6 +179,7 @@ module parameters
     procedure (write_i_to_unit_template), pointer :: write_b_to_screen => null ()
     procedure (write_i_to_unit_template), pointer :: write_b_to_individual => null ()
     procedure (int_i_template), pointer :: flush_chaos => null ()
+    procedure (int_i_template), pointer :: flush_output => null ()
 
     abstract interface
         subroutine simple_ptr_template ()
@@ -303,11 +305,13 @@ module parameters
             map_min_y = -300. ; map_max_y = 300.
 
 
-            ! Extras, fuera de Config.ini
+            ! Extras, fuera de Config.ini. Se editan solo acá
             !! Centrar CM?
             hard_center = .False.
             !! Update chaos
             use_update_chaos = .False.
+            !! Flush 
+            use_flush_output = .True.
         end subroutine init_default_parameters
 
         ! 2. Leer el archivo de configuración
@@ -902,6 +906,7 @@ module parameters
             use_chaos = use_chaosfile .or. use_chaos
             use_elements = use_elements_output .or. use_chaos
             if (.not. use_chaosfile) use_update_chaos = .False.
+            if (.not. use_datafile) use_flush_output = .False.
 
             ! Parallel
             !$ compiled_with_openmp = .True. !! Parece comentado, pero es asi
@@ -1968,6 +1973,14 @@ module parameters
                 end if
             end do
         end function to_lower
+
+        ! 27. Flush to a file
+        subroutine flush_to_file(unit_file)
+            implicit none
+            integer(kind=4), intent(in) :: unit_file
+
+            flush(unit_file)
+        end subroutine flush_to_file
 
         ! 99 Subrutina para pointer vacío (no hace nada) con input i
         subroutine do_nothing_i(i)
