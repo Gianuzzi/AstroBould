@@ -76,6 +76,7 @@ partfile = "particles.in"  # Nombre del archivo de partículas
 tomfile = "" # Nombre del archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 ## Output ## ("" o False si no se usa)
+new_dir = False # Puede ser un string con el nombre de la carpeta a crear. Defaul: "simulation"
 datafile = "salida" # Nombre del archivo de salida de datos (sin extensión)
 final_chaos = "sump.out"  # Final Chaos Summary Output file name
 suffix = ""  # Suffix for the output files
@@ -95,6 +96,15 @@ elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 
 # Obtener el path actual
 cwd = os.getcwd()
+
+# Define work_dir
+if isinstance(new_dir, str):
+    wrk_dir = os.path.join(cwd, new_dir)
+elif isinstance(new_dir, bool):
+    wrk_dir = os.path.join(cwd, "simulation") if new_dir else cwd
+else:
+    raise ValueError("new_dir must be either a string or a boolean")
+
 
 # Archivos
 ocini = os.path.join(cwd, config) # Archivo de configuración
@@ -165,39 +175,43 @@ if nsys == 0:
     exit(1)
 print("Cantidad total de partículas: {}".format(nsys))
 
-if not torque:
+# Ver si hay que hacer todo, o ya hay alguna realizadas
+new_simulation = True
+missing_lines = range(1, nsys+1)
+if not torque: # Si hay torque, cagaste.
     # Definimos prefijo de directorio, de acuerdo a TOMfile o no
     pref = "tomd" if tomfile else "dpy"
 
     # Obtener los sistemas realizados
-    if any(
-        [os.path.isdir(name) and name.startswith(pref) for name in os.listdir(cwd)]
-    ):
-        print("Checkeando integraciones ya completadas.")
-        command = (
-            f"find {pref}* -name 'chaos*{suffix}.dat' "
-            f"| sed -e 's/.*chaos\\([0-9]*\\){suffix}\\.dat/\\1/' "
-            f"| sort -n"
-        )
-        result = subprocess.run(
-            command, shell=True, stdout=subprocess.PIPE, text=True
-        )
-        if result.returncode == 0:
-            output_lines = result.stdout.splitlines()
-        else:
-            raise IOError("Error al leer integraciones ya realizadas.")
-        done = set([int(cint) for cint in output_lines if cint != ""])
-        missing_lines = [x for x in range(1,nsys+1) if x not in done]
-        print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
-        nsys = len(missing_lines)
-        print("   Cantidad de sistemas a integrar: {}".format(nsys))
-    else:
-        missing_lines = range(1, nsys+1)
-
-    # Hay que hacer?
-    if len(missing_lines) == 0:
-        print("Ya se han integrado todas las partículas.")
-        exit(1)
+    if os.path.isdir(wrk_dir):
+        print("Checkeando integraciones ya completadas" +\
+            " dentro de %s..." % (os.path.basename(wrk_dir) if cwd != wrk_dir else "este directorio"))
+        if any(
+            [os.path.isdir(os.path.join(wrk_dir, name)) and name.startswith(pref) for name in os.listdir(wrk_dir)]
+        ):
+            command = (
+                f"find {pref}* -name 'chaos*{suffix}.dat' "
+                f"| sed -e 's/.*chaos\\([0-9]*\\){suffix}\\.dat/\\1/' "
+                f"| sort -n"
+            )
+            result = subprocess.run(
+                command, shell=True, stdout=subprocess.PIPE, text=True, cwd=wrk_dir,
+            )
+            if result.returncode == 0:
+                output_lines = result.stdout.splitlines()
+            else:
+                raise IOError("Error al leer integraciones ya realizadas.")
+            done = set([int(cint) for cint in output_lines if cint != ""])
+            missing_lines = [x for x in range(1,nsys+1) if x not in done]
+            print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
+            nsys = len(missing_lines)
+            print("   Cantidad de sistemas a integrar: {}".format(nsys))
+            new_simulation = False            
+        
+# Hay que hacer?
+if len(missing_lines) == 0:
+    print("Ya se han integrado todas las partículas.")
+    exit(1)
 
 
 # Obtener el número de workers
@@ -230,7 +244,7 @@ args += " --merge" if merge else " --nomerge"
 def integrate_n(i):
     # Get processor ID
     pid = os.getpid()
-    dirp = os.path.join(cwd, "%s%d" % (pref, pid))
+    dirp = os.path.join(wrk_dir, "%s%d" % (pref, pid))
     nprogr = os.path.join(dirp, program)
     ncini = os.path.join(dirp, "config.ini")
     ntom = os.path.join(dirp, tomfile)
@@ -266,10 +280,10 @@ def integrate_n(i):
     print("System %d has been integrated." % i)
     return
 
-
+# Crear archivo sump
 def make_sum(final_chaos, suffix=""):
     # Ruta a la carpeta raíz que contiene las subcarpetas con los archivos
-    root_dir = cwd
+    root_dir = wrk_dir
 
     # Lista para almacenar los nombres de los archivos
     file_list = []
@@ -309,23 +323,46 @@ def make_sum(final_chaos, suffix=""):
     outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
     outs.insert(-1, ".")
     final_chaos = "".join(outs)
-    with open(final_chaos, "w") as f_out:
+    with open(os.path.join(wrk_dir, final_chaos), "w") as f_out:
         for file in file_list:
             with open(file, "r") as f_in:
                 for line in f_in:
                     f_out.write("{}".format(line))
 
 
+# Definir nombre único para wrk_dir
+def generate_unique_dir(base_dir):
+    i = 1
+    unique_dir = base_dir
+    while os.path.isdir(unique_dir):
+        unique_dir = f"{base_dir}_{i}"
+        i += 1
+    return unique_dir
+
+
 if __name__ == "__main__":
+    if new_simulation and (cwd != wrk_dir):
+        os.mkdir(wrk_dir) # Creamos directorio donde volcaremos todo
+        print("Directory  '% s' created\n" % os.path.basename(wrk_dir)) 
     if not torque:
         with ProcessPoolExecutor(max_workers=workers) as executor:
             results = executor.map(integrate_n, missing_lines)
         if final_chaos:
             print("Creando archivo resumen {}".format(final_chaos))
-            if os.path.isfile(final_chaos):
+            if os.path.isfile(os.path.join(wrk_dir, final_chaos)):
                 print("WARNING: Se ha reemplazando archivo ya existente.")
             make_sum(final_chaos, suffix)
     else:
         print("Running all systems in one process.")
-        subprocess.run(["./%s %s" % (program, args)], cwd=cwd, check=True, shell=True)
+        nprogr = os.path.join(wrk_dir, program)
+        ncini = os.path.join(wrk_dir, "config.ini")
+        ntom = os.path.join(wrk_dir, tomfile)
+        nparticles = os.path.join(wrk_dir, partfile)
+        subprocess.run(["cp", oprogr, nprogr], check=True)
+        subprocess.run(["cp", oparticles, nparticles], check=True)
+        if existe_ocini:
+            subprocess.run(["cp", ocini, ncini], check=True)
+        if existe_otom:
+            subprocess.run(["cp", otom, ntom], check=True)
+        subprocess.run(["./%s %s" % (program, args)], cwd=wrk_dir, check=True, shell=True)
     print("LISTO!")
