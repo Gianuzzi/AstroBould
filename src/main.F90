@@ -244,8 +244,6 @@ program main
 
 
     ! Rotaciones
-    theta_from_primary = cero
-    if (use_boulders) theta_from_primary = theta_from_primary * radian ! Ángulos de fase de los boulders [rad]
     omega_kep = sqrt(Gasteroid_mass / radius_primary**3) / unit_time ! Movimiento medio (kepleriano) que tendrían los boulder
     if (lambda_kep > tini) then    
         asteroid_omega = omega_kep * lambda_kep  ! Velocidad angular del cuerpo 0 [rad/day]
@@ -277,32 +275,34 @@ program main
 
 
 
-    ! Coordenadas
+    ! Coordenadas (Solo tienen sentido con boulders)
+    if (use_boulders) then
+        theta_from_primary = theta_from_primary * radian ! Ángulos de fase de los boulders [rad]
 
-    !! Astrocentricas
-    do i = 1, Nboulders
-        pos_from_primary(i,1) = radius_primary * cos(theta_from_primary(i)) ! Posición x del boulder i
-        pos_from_primary(i,2) = radius_primary * sin(theta_from_primary(i)) ! Posición x del boulder i
-        vel_from_primary(i,1) = - asteroid_omega * pos_from_primary(i,2) ! Velocidad x del boulder i
-        vel_from_primary(i,2) =   asteroid_omega * pos_from_primary(i,1) ! Velocidad x del boulder i
-        acc_from_primary(i,1) = - asteroid_omega2 * pos_from_primary(i,1) ! Aceleración x del boulder i
-        acc_from_primary(i,2) = - asteroid_omega2 * pos_from_primary(i,2) ! Aceleración x del boulder i
-    end do
-    !!! Mensaje
-    if (use_screen .and. use_boulders) then
-        write (*,*) "Coordenadas:"
-        write (*,*) "   m0-centricas: [x, y, vx, vy, ax, ay, mu, theta]"
+        !! Astrocentricas
         do i = 1, Nboulders
-            write (*,*) i, &
-            & pos_from_primary(i,:) / unit_dist, &
-            & pos_from_primary(i,:) / unit_vel, &
-            & acc_from_primary(i,:) / unit_acc, &
-            & mu_from_primary(i), &
-            & theta_from_primary(i) / radian
+            pos_from_primary(i,1) = radius_primary * cos(theta_from_primary(i)) ! Posición x del boulder i
+            pos_from_primary(i,2) = radius_primary * sin(theta_from_primary(i)) ! Posición x del boulder i
+            vel_from_primary(i,1) = - asteroid_omega * pos_from_primary(i,2) ! Velocidad x del boulder i
+            vel_from_primary(i,2) =   asteroid_omega * pos_from_primary(i,1) ! Velocidad x del boulder i
+            acc_from_primary(i,1) = - asteroid_omega2 * pos_from_primary(i,1) ! Aceleración x del boulder i
+            acc_from_primary(i,2) = - asteroid_omega2 * pos_from_primary(i,2) ! Aceleración x del boulder i
         end do
-        write (*,*) ACHAR(5)
+        !!! Mensaje
+        if (use_screen) then
+            write (*,*) "Coordenadas:"
+            write (*,*) "   m0-centricas: [x, y, vx, vy, ax, ay, mu, theta]"
+            do i = 1, Nboulders
+                write (*,*) i, &
+                & pos_from_primary(i,:) / unit_dist, &
+                & pos_from_primary(i,:) / unit_vel, &
+                & acc_from_primary(i,:) / unit_acc, &
+                & mu_from_primary(i), &
+                & theta_from_primary(i) / radian
+            end do
+            write (*,*) ACHAR(5)
+        end if
     end if
-
 
     !! Centro de masas, desde primary
     pos_ast_from_primary = cero
@@ -903,31 +903,8 @@ program main
 
     
     !!!!!!!! VECTOR A INTEGRAR !!!!!!!
-    !!!!! Mensaje por si NO hay boulders
-    if (.not. use_boulders) then
-        if (use_screen) then
-            write (*,*) ACHAR(5)
-            write (*,*) "WARNING: No hay boulders. Se redefinirá a la versión especial 3 para integración."
-        end if
-        parameters_arr(1) = asteroid_pos(1) ! xA
-        parameters_arr(2) = asteroid_pos(2) ! yA
-        parameters_arr(3) = asteroid_vel(1) ! vxA
-        parameters_arr(4) = asteroid_vel(2) ! vyA
-        !$OMP PARALLEL IF(my_threads > 1 .AND. Nparticles > 10) DEFAULT(SHARED) &
-        !$OMP PRIVATE(i)
-        !$OMP DO SCHEDULE (STATIC)
-        do i = 1, Nparticles
-            parameters_arr(1 + 4 * i) = particles_coord(i,1) ! xP
-            parameters_arr(2 + 4 * i) = particles_coord(i,2) ! yP
-            parameters_arr(3 + 4 * i) = particles_coord(i,3) ! vPx
-            parameters_arr(4 + 4 * i) = particles_coord(i,4) ! vPy
-        end do
-        !$OMP END DO
-        !$OMP END PARALLEL
-        first_particle = 5
-    end if
     !!!! Inicializamos vector
-    if (use_version_1) then
+    if (use_version_1 .or. (.not. use_boulders)) then
         !!!!! Version 1: [x0, y0, vx0, vy0, x1, y1, vx1, vy1, ...]
         allocate(parameters_arr(4 * Ntotal))
         allocate(parameters_arr_new(4 * Ntotal))
@@ -1359,6 +1336,8 @@ program main
         !    & error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new, particles_hexitptr)
         call BStoer_caller (time, parameters_arr, adaptive_timestep, dydt, &
             & error_tolerance, timestep, parameters_arr_new, particles_hexitptr)
+!         call BStoer_caller2 (time, parameters_arr, adaptive_timestep, dydt, &
+!             & error_tolerance, timestep, parameters_arr_new, particles_hexitptr)
 
         !! If so, the dt used is in dt_adap
         if (particles_hexit(0) .ne. 0) timestep = adaptive_timestep
