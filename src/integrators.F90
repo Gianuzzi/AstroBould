@@ -1510,10 +1510,11 @@ module integrators
         !        Bulirsch_Stoer2
         !---------------------------------
 
-        subroutine BStoer_caller2 (t, y, dt_adap, dydt, e_tol, dt, ynew) !,dt_min
+        subroutine BStoer_caller2 (t, y, dt_adap, dydt, e_tol, dt, ynew, hexitptr) !,dt_min
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, dt!, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
+            integer, pointer, optional                     :: hexitptr
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
@@ -1525,6 +1526,12 @@ module integrators
             t_end = time + dt
             ! dtmin = min (dt_min, dt)
             do while (time < t_end)
+                if (present(hexitptr)) then ! If Hard Exit pointer present
+                        if (hexitptr .ne. 0) then ! If Hard Exit is True
+                            dt_adap = time - t ! Replace dt_adap with actual dt used
+                            return ! Exit subroutine
+                        end if
+                end if
                 yaux  = ynew
                 ! dt_adap = min(max(dt_adap, dt_min), t_end - time)
                 dt_adap = min(dt_adap, t_end - time)

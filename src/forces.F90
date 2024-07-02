@@ -340,6 +340,49 @@ module forces
             dydt(2) = domegadt(t, omega) + omegadot
             if (any(particles_hexit(1:) .ne. 0)) particles_hexit(0) = 1
         end function dydt_implicit_v2
+
+        function dydt_no_boulders (t, y) result(dydt)
+            !y = /theta, omega, xA, yA, vxA, vyA, Part, .../
+            implicit none
+            real(kind=8), intent(in)               :: t
+            real(kind=8), dimension(:), intent(in) :: y
+            real(kind=8), dimension(size(y))       :: dydt
+            real(kind=8) :: r0b(2), v0b(2)
+            real(kind=8) :: rb(2), vb(2), ab(2)
+            integer(kind=4) :: i, particle_i
+
+            dydt = cero
+
+            ! Set the asteroid derivatives
+            dydt(1:2) = y(3:4)
+            dydt(3:4) = (/cero, cero/)
+            
+            ! Calculate the positions of m0
+            r0b = y(1:2)
+            v0b = y(3:4)
+
+            !$OMP PARALLEL IF((my_threads > 1) .AND. (Nactive > 20)) DEFAULT(SHARED) &
+            !$OMP PRIVATE(i,rb,vb,ab,particle_i)
+            !$OMP DO SCHEDULE (STATIC)
+            do i = 1, Nactive
+                ab = cero
+                particle_i = i * equation_size
+                rb = y(particle_i+1 : particle_i+2)
+                vb = y(particle_i+3 : particle_i+4)
+                call apply_force_no_boulders(&
+                    & t, &
+                    & mass_ast_arr(0), particles_mass(i), &
+                    & particles_hexit(i), &
+                    & rb, vb, &
+                    & r0b, v0b, &
+                    & ab)
+                dydt(particle_i+1 : particle_i+2) = vb
+                dydt(particle_i+3 : particle_i+4) = ab
+            end do
+            !$OMP END DO
+            !$OMP END PARALLEL
+            if (any(particles_hexit(1:) .ne. 0)) particles_hexit(0) = 1
+        end function dydt_no_boulders
     
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!! ACCELERATIONS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -413,6 +456,41 @@ module forces
             if (use_J2) call J2_acceleration(m(0), r_from_i(0,:), dist_from_i(0), ab)
 
         end subroutine apply_force
+
+        subroutine apply_force_no_boulders(t, m0, mp, hexit_p, rb, vb, r0b, v0b, ab)
+            implicit none
+            real(kind=8), intent(in) :: t
+            real(kind=8), intent(in) :: m0, mp
+            integer(kind=4), intent(inout) :: hexit_p
+            real(kind=8), intent(in) :: rb(2), vb(2)
+            real(kind=8), intent(in) :: r0b(2), v0b(2)
+            real(kind=8), intent(inout) :: ab(2) ! YA DEBEN VENIR INICIALIZADOS
+            real(kind=8) :: r_from_0(2), v_from_0(2)
+            real(kind=8) :: dist_from_0
+            integer(kind=4) :: i
+
+            ! Calculate distance and vector to boulders
+            r_from_0 = rb - r0b
+            v_from_0 = vb - v0b
+            dist_from_0 = sqrt(r_from_0(1)**2 + r_from_0(2)**2)
+            
+            ! Check if collision or escape
+            if (dist_from_0 < min_distance) hexit_p = 1
+            if (dist_from_0 > max_distance) hexit_p = 2
+        
+            ! Calculate gravity (and torque if needed)
+            call gravitational_acceleration((/m0/), r_from_0, (/dist_from_0/), ab)
+
+            ! Calculate stokes
+            if (use_stokes) call stokes_acceleration(m0, t, r_from_0, v_from_0, dist_from_0, ab)
+
+            ! Calculate naive stokes
+            if (use_naive_stokes) call naive_stokes_acceleration(r_from_0, v_from_0, dist_from_0, ab)
+
+            ! Calculate J2
+            if (use_J2) call J2_acceleration(m0, r_from_0, dist_from_0, ab)
+
+        end subroutine apply_force_no_boulders
         
         !!!
         !!! CONFIGURATION
