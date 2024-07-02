@@ -366,7 +366,7 @@ module forces
             !$OMP DO SCHEDULE (STATIC)
             do i = 1, Nactive
                 ab = cero
-                particle_i = i * equation_size + 2
+                particle_i = i * equation_size
                 rb = y(particle_i+1 : particle_i+2)
                 vb = y(particle_i+3 : particle_i+4)
                 call apply_force_no_boulders(&
