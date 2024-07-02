@@ -85,6 +85,7 @@ module parameters
     !!! Primary
     real(kind=8) :: mass_primary, radius_primary
     !!! Boulders
+    logical :: use_boulders
     integer(kind=4) :: Nboulders
     real(kind=8), dimension(:), allocatable :: theta_from_primary, mu_from_primary
     real(kind=8), dimension(:,:), allocatable :: pos_from_primary
@@ -239,6 +240,7 @@ module parameters
             lambda_kep = cero ! Ratio of omega to keplerian 
             asteroid_rotational_period = cero ! Rotational period
             !! Boulders
+            use_boulders = .False.
             Nboulders = 0
             !! Particles
             Nparticles = 0
@@ -837,10 +839,11 @@ module parameters
         subroutine set_derived_parameters()
             implicit none
 
-            if (Nboulders < 1) then
-                write (*,*) "ERROR: Nboulders < 1"
+            if (Nboulders < 0) then
+                write (*,*) "ERROR: Nboulders < 0"
                 stop 1
             end if
+            use_boulders = (Nboulders > 0)
                         
             !! Forces
             !!! stokes_a_damping_time y stokes_e_damping_time
@@ -944,7 +947,7 @@ module parameters
             allocate(mass_ast_arr(0:Nboulders), radius_ast_arr(0:Nboulders), mu_ast_arr(0:Nboulders), Gmass_ast_arr(0:Nboulders))
             allocate(pos_ast_arr(0:Nboulders,2), vel_ast_arr(0:Nboulders,2), acc_ast_arr(0:Nboulders,2))
             allocate(theta_ast_arr(0:Nboulders), dist_ast_arr(0:Nboulders))
-            if (Nboulders > 0) then
+            if (use_boulders) then
                 allocate(theta_from_primary(Nboulders), mu_from_primary(Nboulders))
                 allocate(pos_from_primary(Nboulders,2), vel_from_primary(Nboulders,2), acc_from_primary(Nboulders,2))
             end if
@@ -978,7 +981,7 @@ module parameters
             implicit none
 
             deallocate(mass_ast_arr, radius_ast_arr, mu_ast_arr, Gmass_ast_arr)
-            if (Nboulders > 0) then
+            if (use_boulders) then
                 deallocate(theta_from_primary, mu_from_primary)
                 deallocate(pos_from_primary, vel_from_primary, acc_from_primary)
             end if
@@ -1378,7 +1381,7 @@ module parameters
             implicit none
             
             deallocate(particles_initial_conditions)
-            deallocate(m0_and_boulders_initial_conditions)  
+            if (use_boulders) deallocate(m0_and_boulders_initial_conditions)  
             deallocate(asteroid_initial_conditions)
         end subroutine free_initial_conditions
 
@@ -1511,22 +1514,24 @@ module parameters
             Gasteroid_mass = G * asteroid_mass ! Update
             Gmass_ast_arr = G * mass_ast_arr ! Update
             
-            ! Update asteroid angular momentum
-            asteroid_angmom = asteroid_angmom + angmom
-            !! Update asteroid angular velocity
-            asteroid_omega = asteroid_angmom / asteroid_inertia
-            asteroid_omega2 = asteroid_omega * asteroid_omega
-            !! Update asteroid angle correction
-            asteroid_theta_correction = asteroid_theta - asteroid_omega * (time - initial_time)
-            !! Update parameters array
-            if (use_version_1) then
-                do i = 0, Nboulders
-                    aux_integer = i * 4
-                    parameters_arr(aux_integer+3) = - pos_ast_arr(i,2) * asteroid_omega
-                    parameters_arr(aux_integer+4) = pos_ast_arr(i,1) * asteroid_omega
-                end do
-            else
-                parameters_arr(2) = asteroid_omega
+            if (use_boulders) then
+                ! Update asteroid angular momentum
+                asteroid_angmom = asteroid_angmom + angmom
+                !! Update asteroid angular velocity
+                asteroid_omega = asteroid_angmom / asteroid_inertia
+                asteroid_omega2 = asteroid_omega * asteroid_omega
+                !! Update asteroid angle correction
+                asteroid_theta_correction = asteroid_theta - asteroid_omega * (time - initial_time)
+                !! Update parameters array
+                if (use_version_1) then
+                    do i = 0, Nboulders
+                        aux_integer = i * 4
+                        parameters_arr(aux_integer+3) = - pos_ast_arr(i,2) * asteroid_omega
+                        parameters_arr(aux_integer+4) = pos_ast_arr(i,1) * asteroid_omega
+                    end do
+                else
+                    parameters_arr(2) = asteroid_omega
+                end if
             end if
         end subroutine merge_into_asteroid
 
@@ -1568,11 +1573,13 @@ module parameters
 
             ! m0 and Boulders (from m0)
             !! mass, radius, theta
-            allocate(m0boul_ic(0:Nboulders, 3))
-            m0boul_ic(:Nboulders,1) = mass_ast_arr(0:Nboulders)
-            m0boul_ic(:Nboulders,2) = radius_ast_arr(0:Nboulders)
-            m0boul_ic(0,3) = cero
-            m0boul_ic(1:Nboulders,3) = theta_from_primary(1:Nboulders)
+            if (use_boulders) then
+                allocate(m0boul_ic(0:Nboulders, 3))
+                m0boul_ic(:Nboulders,1) = mass_ast_arr(0:Nboulders)
+                m0boul_ic(:Nboulders,2) = radius_ast_arr(0:Nboulders)
+                m0boul_ic(0,3) = cero
+                m0boul_ic(1:Nboulders,3) = theta_from_primary(1:Nboulders)
+            end if
 
             ! Asteroid
             !! mass, radius, pos, vel, theta, omega, inertia, angmom, Prot, acorot

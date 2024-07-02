@@ -186,6 +186,14 @@ program main
 
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  NBOULDERS  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    if (.not. use_boulders) then
+        write (*,*) "WARNING: No se integrarán boulders."
+        write (*,*) "         Se utilizará un asteroide sin boulders, y sin efectos por rotación."
+    end if
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Parallel  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     if (use_screen) then
@@ -236,7 +244,8 @@ program main
 
 
     ! Rotaciones
-    theta_from_primary = theta_from_primary * radian ! Ángulos de fase de los boulders [rad]
+    theta_from_primary = cero
+    if (use_boulders) theta_from_primary = theta_from_primary * radian ! Ángulos de fase de los boulders [rad]
     omega_kep = sqrt(Gasteroid_mass / radius_primary**3) / unit_time ! Movimiento medio (kepleriano) que tendrían los boulder
     if (lambda_kep > tini) then    
         asteroid_omega = omega_kep * lambda_kep  ! Velocidad angular del cuerpo 0 [rad/day]
@@ -260,6 +269,10 @@ program main
         write (*,*) "Masa cuerpo central    :", mass_primary / unit_mass, "[kg]"
         write (*,*) "Radio de cuerpo central:", radius_primary / unit_dist, "[km]"
         write (*,*) ACHAR(5)
+        if (.not. use_boulders) then
+            write(*,*) "La rotación se considera solo para definir parámetros iniciales."
+            write (*,*) ACHAR(5)
+        end if
     end if
 
 
@@ -276,7 +289,7 @@ program main
         acc_from_primary(i,2) = - asteroid_omega2 * pos_from_primary(i,2) ! Aceleración x del boulder i
     end do
     !!! Mensaje
-    if (use_screen) then
+    if (use_screen .and. use_boulders) then
         write (*,*) "Coordenadas:"
         write (*,*) "   m0-centricas: [x, y, vx, vy, ax, ay, mu, theta]"
         do i = 1, Nboulders
@@ -301,9 +314,9 @@ program main
         vel_ast_from_primary = vel_ast_from_primary + mu_ast_arr(i) * vel_from_primary(i,:) ! Velocidad del asteroide
         acc_ast_from_primary = acc_ast_from_primary + mu_ast_arr(i) * acc_from_primary(i,:) ! Aceleración del asteroide
     end do
-    if (Nboulders > 0) theta_ast_from_primary = atan2(pos_ast_from_primary(2), pos_ast_from_primary(1)) ! Ángulo del asteroide
+    if (use_boulders) theta_ast_from_primary = atan2(pos_ast_from_primary(2), pos_ast_from_primary(1)) ! Ángulo del asteroide
     !!! Mensaje
-    if (use_screen) then
+    if (use_screen .and. use_boulders) then
         write (*,*) "   Centro de masas desde m0: [x, y, vx, vy, ax, ay, mass]"
         write (*,*) "         CM", pos_ast_from_primary / unit_dist, &
                                 & vel_ast_from_primary / unit_vel, &
@@ -328,7 +341,7 @@ program main
         dist_ast_arr(i) = sqrt(pos_ast_arr(i,1)*pos_ast_arr(i,1) + pos_ast_arr(i,2)*pos_ast_arr(i,2))
     end do
     !!! Mensaje
-    if (use_screen) then
+    if (use_screen .and. use_boulders) then
         write (*,*) "   Baricentricas: [x, y, vx, vy, ax, ay, mass, distance, theta]"
         do i = 0, Nboulders
             write (*,*) i, &
@@ -421,10 +434,18 @@ program main
             write (*,*) "tau_o [Prot]:", omega_linear_damping_time * unit_time / asteroid_rotational_period
             stop 1
         end if
-        omega_linear_damping_time = omega_linear_damping_time * unit_time
-        omega_linear_damping_slope = - asteroid_omega / (omega_linear_damping_time - initial_time)
-        write (*,*) "Explicit omega linear damping"
-        write (*,*) "    tau_o :", omega_linear_damping_time / asteroid_rotational_period, "[Prot]"
+        if (.not. use_boulders) then
+            write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
+            omega_linear_damping_time = infinity
+            omega_linear_damping_slope = cero
+        else
+            omega_linear_damping_time = omega_linear_damping_time * unit_time
+            omega_linear_damping_slope = - asteroid_omega / (omega_linear_damping_time - initial_time)
+            if (use_screen) then
+                write (*,*) "Explicit omega linear damping"
+                write (*,*) "    tau_o :", omega_linear_damping_time / asteroid_rotational_period, "[Prot]"
+            end if
+        end if
     else
         omega_linear_damping_time = infinity
         omega_linear_damping_slope = cero
@@ -436,9 +457,16 @@ program main
             write (*,*) "tau_o [Prot]:", omega_exp_damping_time * unit_time / asteroid_rotational_period
             stop 1
         end if
-        omega_exp_damping_time = omega_exp_damping_time * unit_time
-        write (*,*) "Explicit omega exponential damping"
-        write (*,*) "    tau_o :", omega_exp_damping_time / asteroid_rotational_period, "[Prot]"
+        if (.not. use_boulders) then
+            write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
+            omega_exp_damping_time = infinity
+        else
+            omega_exp_damping_time = omega_exp_damping_time * unit_time
+            if (use_screen) then
+                write (*,*) "Explicit omega exponential damping"
+                write (*,*) "    tau_o :", omega_exp_damping_time / asteroid_rotational_period, "[Prot]"
+            end if
+        end if
     else
         omega_exp_damping_time = infinity
     end if
@@ -451,8 +479,10 @@ program main
             stop 1
         end if
         mass_exp_damping_time = mass_exp_damping_time * unit_time
-        write (*,*) "Explicit mass exponential damping"
-        write (*,*) "    tau_m :", mass_exp_damping_time / asteroid_rotational_period, "[Prot]"
+        if (use_screen) then
+            write (*,*) "Explicit mass exponential damping"
+            write (*,*) "    tau_m :", mass_exp_damping_time / asteroid_rotational_period, "[Prot]"
+        end if
     else
         mass_exp_damping_time = infinity
     end if
@@ -492,6 +522,12 @@ program main
     end if
 
 
+    !! Torque
+    if ((.not. use_boulders) .and. use_torque) then
+        if (use_screen) write (*,*) "WARNING: Torque has no effect without boulders. It won't be used"
+        use_torque = .False.
+    end if
+
     !! Mensaje !
     if (use_screen) then
         if (use_naive_stokes) then !!!! Naive-Stokes
@@ -503,7 +539,7 @@ program main
             write (*,*) "    J2 :", J2_coefficient !!!! Geo-Potential (J2)
         end if
         if (use_torque) write (*,*) "Torque from particles to asteroid ACTIVATED"
-        
+
         if (.not. any((/use_stokes, use_naive_stokes, use_J2, use_torque, &
             & omega_linear_damping_time < infinity, &
             & omega_exp_damping_time < infinity, &
@@ -743,7 +779,8 @@ program main
     if (min_distance < cero) then
         min_distance = radius_primary * abs(min_distance)
     else if (min_distance < tini) then
-        min_distance = radius_primary + maxval(radius_ast_arr(1:))
+        min_distance = radius_primary
+        if (use_boulders) min_distance = radius_primary + maxval(radius_ast_arr(1:))
     else
         min_distance = min_distance * unit_dist
     end if
@@ -815,9 +852,9 @@ program main
         !!! Mensaje !
         if (use_screen) then
             if (allocated(tom_deltamass)) then
-                write (*,*) "  Se han leído 3 columnas: t, omega, m"
+                write (*,*) "  Se han leído 3 columnas: t, Delta_omega, Delta_m"
             else if (allocated(tom_deltaomega)) then
-                write (*,*) "  Se han leído 2 columnas: t, omega"
+                write (*,*) "  Se han leído 2 columnas: t, Delta_omega"
             else
                 write (*,*) "  Se ha leído 1 columna: t"
             end if
@@ -826,6 +863,10 @@ program main
         call merge_sort_and_unique(tom_times, output_times, &
                                    & checkpoint_is_tom, checkpoint_is_output, &
                                    & checkpoint_times, checkpoint_number)
+        if (allocated(tom_deltaomega) .and. (.not. use_boulders)) then
+            if (use_screen) write (*,*) "WARNING: No tiene sentido Delta_omega sin boulders. Se ignorará."
+            deallocate(tom_deltaomega)            
+        end if
     else
         !! En este caso, los tiempos de check son los mismos que los de LOOP
         checkpoint_number = output_number
@@ -862,8 +903,29 @@ program main
 
     
     !!!!!!!! VECTOR A INTEGRAR !!!!!!!
-    !!!! Nos pararemos en el centro de masas del sistema (asteroide).
-    !! Calculate the center of mass of the asteroid
+    !!!!! Mensaje por si NO hay boulders
+    if (.not. use_boulders) then
+        if (use_screen) then
+            write (*,*) ACHAR(5)
+            write (*,*) "WARNING: No hay boulders. Se redefinirá a la versión especial 3 para integración."
+        end if
+        parameters_arr(1) = asteroid_pos(1) ! xA
+        parameters_arr(2) = asteroid_pos(2) ! yA
+        parameters_arr(3) = asteroid_vel(1) ! vxA
+        parameters_arr(4) = asteroid_vel(2) ! vyA
+        !$OMP PARALLEL IF(my_threads > 1 .AND. Nparticles > 10) DEFAULT(SHARED) &
+        !$OMP PRIVATE(i)
+        !$OMP DO SCHEDULE (STATIC)
+        do i = 1, Nparticles
+            parameters_arr(1 + 4 * i) = particles_coord(i,1) ! xP
+            parameters_arr(2 + 4 * i) = particles_coord(i,2) ! yP
+            parameters_arr(3 + 4 * i) = particles_coord(i,3) ! vPx
+            parameters_arr(4 + 4 * i) = particles_coord(i,4) ! vPy
+        end do
+        !$OMP END DO
+        !$OMP END PARALLEL
+        first_particle = 5
+    end if
     !!!! Inicializamos vector
     if (use_version_1) then
         !!!!! Version 1: [x0, y0, vx0, vy0, x1, y1, vx1, vy1, ...]
@@ -1028,6 +1090,8 @@ program main
             dydt => dydt_implicit_v2
         end if
     end if
+    !! Redeinimos vector si hay boulders
+    if (.not. use_boulders) dydt => dydt_no_boulders
     !! Definimos vector merge
     if (use_merge) then
         resolve_merge => accumulate_mass_and_angmom
@@ -1305,60 +1369,72 @@ program main
         parameters_arr_new = dydt(time, parameters_arr)
 
         ! Asteroid and boulders
-        if (use_explicit_method) then
-            ! Constantes de Asteroid: pos, vel, omega, inertia, masa
-            asteroid_theta = asteroid_omega * (time - initial_time) + asteroid_theta_correction!! No lo cambio ahora porque está en explicit_v2
-            do i = 0, Nboulders
-                pos_ast_arr(i,1) = cos(asteroid_theta + theta_ast_arr(i)) * dist_ast_arr(i)
-                pos_ast_arr(i,2) = sin(asteroid_theta + theta_ast_arr(i)) * dist_ast_arr(i)
-            end do
-            vel_ast_arr(0:,1) = - asteroid_omega * pos_ast_arr(0:,2)
-            vel_ast_arr(0:,2) =   asteroid_omega * pos_ast_arr(0:,1)
-            acc_ast_arr = - asteroid_omega2 * pos_ast_arr
-        else
-            if (use_version_1) then
-                ! Constantes de Asteroid (hasta ahora): masa
-                !! Tendremos que obtener Asteroid (center of mass) properties (pos, vel, omega, ...)
-                !!! Implicit V1
+        if (use_boulders) then
+            ! Con boulders
+            if (use_explicit_method) then
+                ! Constantes de Asteroid: pos, vel, omega, inertia, masa
+                asteroid_theta = asteroid_omega * (time - initial_time) + asteroid_theta_correction!! No lo cambio ahora porque está en explicit_v2
                 do i = 0, Nboulders
-                    aux_integer = i * equation_size
-                    pos_ast_arr(i,:) = parameters_arr(aux_integer+1 : aux_integer+2)
-                    vel_ast_arr(i,:) = parameters_arr(aux_integer+3 : aux_integer+4)
-                    acc_ast_arr(i,:) = parameters_arr_new(aux_integer+3 : aux_integer+4)
+                    pos_ast_arr(i,1) = cos(asteroid_theta + theta_ast_arr(i)) * dist_ast_arr(i)
+                    pos_ast_arr(i,2) = sin(asteroid_theta + theta_ast_arr(i)) * dist_ast_arr(i)
                 end do
-                call get_asteroid_from_boulders(mass_ast_arr, pos_ast_arr, vel_ast_arr, &
-                                                & asteroid_pos, asteroid_vel, asteroid_omega, asteroid_inertia)
-                do i = 0, Nboulders
-                    dist_ast_arr(i) = sqrt(sum((pos_ast_arr(i,:) - asteroid_pos)**2))
-                end do
-                ! Definimos theta como la variación del ángulo de m0 respecto del asteroide, respecto a la condición inicial
-                asteroid_theta = mod(atan2(pos_ast_arr(0,2) - asteroid_pos(2), &
-                                        & pos_ast_arr(0,1) - asteroid_pos(1)) - &
-                                        & theta_ast_arr(0), twopi)
-            else 
-                ! Constantes de Asteroid (hasta ahora): masa, inertia
-                !! Las Asteroid (center of mass) properties están servidas
-                !!! Implicit V2
-                parameters_arr(1) = mod(parameters_arr(1), twopi)
-                asteroid_theta = parameters_arr(1)
-                asteroid_omega = parameters_arr(2)
-                asteroid_pos = parameters_arr(3:4)
-                asteroid_vel = parameters_arr(5:6)
-                pos_ast_arr(0:,1) = cos(asteroid_theta + theta_ast_arr(0:)) * dist_ast_arr(0:)
-                pos_ast_arr(0:,2) = sin(asteroid_theta + theta_ast_arr(0:)) * dist_ast_arr(0:)
                 vel_ast_arr(0:,1) = - asteroid_omega * pos_ast_arr(0:,2)
                 vel_ast_arr(0:,2) =   asteroid_omega * pos_ast_arr(0:,1)
-                do i = 0, Nboulders
-                    pos_ast_arr(i,:) = asteroid_pos + pos_ast_arr(i,:)
-                    vel_ast_arr(i,:) = asteroid_vel + vel_ast_arr(i,:)
-                end do
                 acc_ast_arr = - asteroid_omega2 * pos_ast_arr
+            else
+                if (use_version_1) then
+                    ! Constantes de Asteroid (hasta ahora): masa
+                    !! Tendremos que obtener Asteroid (center of mass) properties (pos, vel, omega, ...)
+                    !!! Implicit V1
+                    do i = 0, Nboulders
+                        aux_integer = i * equation_size
+                        pos_ast_arr(i,:) = parameters_arr(aux_integer+1 : aux_integer+2)
+                        vel_ast_arr(i,:) = parameters_arr(aux_integer+3 : aux_integer+4)
+                        acc_ast_arr(i,:) = parameters_arr_new(aux_integer+3 : aux_integer+4)
+                    end do
+                    call get_asteroid_from_boulders(mass_ast_arr, pos_ast_arr, vel_ast_arr, &
+                                                    & asteroid_pos, asteroid_vel, asteroid_omega, asteroid_inertia)
+                    do i = 0, Nboulders
+                        dist_ast_arr(i) = sqrt(sum((pos_ast_arr(i,:) - asteroid_pos)**2))
+                    end do
+                    ! Definimos theta como la variación del ángulo de m0 respecto del asteroide, respecto a la condición inicial
+                    asteroid_theta = mod(atan2(pos_ast_arr(0,2) - asteroid_pos(2), &
+                                            & pos_ast_arr(0,1) - asteroid_pos(1)) - &
+                                            & theta_ast_arr(0), twopi)
+                else 
+                    ! Constantes de Asteroid (hasta ahora): masa, inertia
+                    !! Las Asteroid (center of mass) properties están servidas
+                    !!! Implicit V2
+                    parameters_arr(1) = mod(parameters_arr(1), twopi)
+                    asteroid_theta = parameters_arr(1)
+                    asteroid_omega = parameters_arr(2)
+                    asteroid_pos = parameters_arr(3:4)
+                    asteroid_vel = parameters_arr(5:6)
+                    pos_ast_arr(0:,1) = cos(asteroid_theta + theta_ast_arr(0:)) * dist_ast_arr(0:)
+                    pos_ast_arr(0:,2) = sin(asteroid_theta + theta_ast_arr(0:)) * dist_ast_arr(0:)
+                    vel_ast_arr(0:,1) = - asteroid_omega * pos_ast_arr(0:,2)
+                    vel_ast_arr(0:,2) =   asteroid_omega * pos_ast_arr(0:,1)
+                    do i = 0, Nboulders
+                        pos_ast_arr(i,:) = asteroid_pos + pos_ast_arr(i,:)
+                        vel_ast_arr(i,:) = asteroid_vel + vel_ast_arr(i,:)
+                    end do
+                    acc_ast_arr = - asteroid_omega2 * pos_ast_arr
+                end if
             end if
+
+            ! Update asteroid properties
+            asteroid_omega2 = asteroid_omega * asteroid_omega
+            asteroid_a_corot = (G * asteroid_mass / asteroid_omega2)**(1/3.)
+        
+        else 
+            ! Sin boulders, casi todo constante
+            asteroid_theta = mod(asteroid_omega * (time - initial_time), twopi)
+            asteroid_pos = parameters_arr(1:2)
+            asteroid_vel = parameters_arr(3:4)
+            pos_ast_arr(0,:) = asteroid_pos
+            vel_ast_arr(0,:) = asteroid_vel
         end if
 
-        ! Update asteroid properties
-        asteroid_omega2 = asteroid_omega * asteroid_omega
-        asteroid_a_corot = (G * asteroid_mass / asteroid_omega2)**(1/3.)
         
         !! Particles
         !$OMP PARALLEL IF(my_threads > 1 .AND. Nactive > 1) DEFAULT(SHARED) &
@@ -1615,6 +1691,7 @@ subroutine create_map(Nboul,ngx,ngy,xmin,xmax,ymin,ymax,mib,rib,vib,map_file)
     acb = cero
     pot_at_R = - mib(0) / radius_primary
     asteroid_mass = sum(mib)
+
     do i = 1, ngx
         do j = 1, ngy
             rb(1) = xmin + i * (xmax - xmin) / ngx
