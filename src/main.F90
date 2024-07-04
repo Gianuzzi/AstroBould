@@ -127,7 +127,6 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!! No tocar de aquí a abajo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
     !!!!!!!!    OUTPUT     !!!!!!!!!!
 
     if ((trim(datafile) /= "") .and. (trim(datafile) /= "no")) then
@@ -200,9 +199,9 @@ program main
         write (*,*) ACHAR(5)
         if (use_parallel) then
             write (*,*) "---------- Parallel integration----------"
-            write (*,*) "  Available threads:", available_threads
-            write (*,*) "  Requested threads:", requested_threads
-            write (*,*) "  Used threads     :", my_threads
+            write (*,f12) "  Available threads:", available_threads
+            write (*,f12) "  Requested threads:", requested_threads
+            write (*,f12) "  Used threads     :", my_threads
         else
             write (*,*) "---------- Serial integration ----------"
         end if
@@ -215,7 +214,7 @@ program main
 
     if (use_screen) then
         write (*,*) ACHAR(5)
-        write (*,*) "Comenzando simulación: ", simulation_number
+        write (*,f12) "Comenzando simulación: ", simulation_number
         write (*,*) ACHAR(5)
         write (*,*) "---------- Parámetros iniciales ----------"
         write (*,*) ACHAR(5)
@@ -258,14 +257,14 @@ program main
     !! Mensaje
     if (use_screen) then
         write (*,*) "Rotación:"
-        write (*,*) "  a_corot   :", asteroid_a_corot / unit_dist, "[km]"
-        write (*,*) "  omega     :", asteroid_omega * unit_time, "[rad/day]"
-        write (*,*) "  omega_kep :", omega_kep * unit_time, "[rad/day]"
-        write (*,*) "  lambda_kep:", lambda_kep
-        write (*,*) "  Period    :", asteroid_rotational_period * 24 * unit_time, "[hs]"
+        write (*,f13) "  a_corot   :", asteroid_a_corot / unit_dist, "[km]"
+        write (*,f13) "  omega     :", asteroid_omega * unit_time, "[rad/day]"
+        write (*,f13) "  omega_kep :", omega_kep * unit_time, "[rad/day]"
+        write (*,f13) "  lambda_kep:", lambda_kep
+        write (*,f13) "  Period    :", asteroid_rotational_period * 24 * unit_time, "[hs]"
         write (*,*) ACHAR(5)
-        write (*,*) "Masa cuerpo central    :", mass_primary / unit_mass, "[kg]"
-        write (*,*) "Radio de cuerpo central:", radius_primary / unit_dist, "[km]"
+        write (*,f13) "Masa cuerpo central    :", mass_primary / unit_mass, "[kg]"
+        write (*,f13) "Radio de cuerpo central:", radius_primary / unit_dist, "[km]"
         write (*,*) ACHAR(5)
         if (.not. use_boulders) then
             write(*,*) "La rotación se considera solo para definir parámetros iniciales."
@@ -293,7 +292,7 @@ program main
             write (*,*) "Coordenadas:"
             write (*,*) "   m0-centricas: [x, y, vx, vy, ax, ay, mu, theta]"
             do i = 1, Nboulders
-                write (*,*) i, &
+                write (*,f233) i, &
                 & pos_from_primary(i,:) / unit_dist, &
                 & pos_from_primary(i,:) / unit_vel, &
                 & acc_from_primary(i,:) / unit_acc, &
@@ -318,7 +317,7 @@ program main
     !!! Mensaje
     if (use_screen .and. use_boulders) then
         write (*,*) "   Centro de masas desde m0: [x, y, vx, vy, ax, ay, mass]"
-        write (*,*) "         CM", pos_ast_from_primary / unit_dist, &
+        write (*,f133) "         CM", pos_ast_from_primary / unit_dist, &
                                 & vel_ast_from_primary / unit_vel, &
                                 & acc_ast_from_primary / unit_acc, &
                                 & asteroid_mass / unit_mass
@@ -344,7 +343,7 @@ program main
     if (use_screen .and. use_boulders) then
         write (*,*) "   Baricentricas: [x, y, vx, vy, ax, ay, mass, distance, theta]"
         do i = 0, Nboulders
-            write (*,*) i, &
+            write (*,f233) i, &
                      & pos_ast_arr(i,:) / unit_dist, &
                      & vel_ast_arr(i,:) / unit_vel, &
                      & acc_ast_arr(i,:) / unit_acc, &
@@ -372,13 +371,14 @@ program main
     end if
     !! Mensaje
     if (use_screen) then
-        write (*,*) "Momento angular total:", asteroid_angmom / unit_mass / (unit_dist**2) * unit_time, "[kg km^2 / day]"
-        write (*,*) "Momento inercia asteroide", asteroid_inertia / (unit_mass * unit_dist**2), "[kg km^2]"
+        write (*,f13) "Momento angular total    :", asteroid_angmom / unit_mass / (unit_dist**2) * unit_time, "[kg km^2 / day]"
+        write (*,f13) "Momento inercia asteroide:", asteroid_inertia / (unit_mass * unit_dist**2), "[kg km^2]"
         write (*,*) "Check:"
-        write (*,*) "    L / (I * omega):", asteroid_angmom / asteroid_inertia / asteroid_omega
-        write (*,*) "    Relative error :", abs(asteroid_omega - (asteroid_angmom / asteroid_inertia)) / asteroid_omega
+        write (*,f13) "    L / (I * omega):", asteroid_angmom / asteroid_inertia / asteroid_omega
+        write (*,f13) "    Relative error :", abs(asteroid_omega - (asteroid_angmom / asteroid_inertia)) / asteroid_omega
         write (*,*) ACHAR(5)
     end if
+
 
 
 
@@ -397,8 +397,8 @@ program main
     !!!! Mensaje
     if (use_screen) then
         write (*,*) "Centro de masas del asteroide:"
-        write (*,*) "  [x, y]  : ", asteroid_pos / unit_dist, "[km]"
-        write (*,*) "  [vx, vy]: ", asteroid_vel / unit_vel, "[km/day]"
+        write (*,f1331) "  [x, y]  : ", asteroid_pos / unit_dist, "[km]"
+        write (*,f1331) "  [vx, vy]: ", asteroid_vel / unit_vel, "[km/day]"
         write (*,*) ACHAR(5)
     end if
     !! Check y Centrado
@@ -436,7 +436,7 @@ program main
         if (use_explicit_method) then
             write (*,*) ACHAR(10)
             write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
-            write (*,*) "tau_o [Prot]:", omega_linear_damping_time * unit_time / asteroid_rotational_period
+            write (*,f13) "tau_o [Prot]:", omega_linear_damping_time * unit_time / asteroid_rotational_period
             stop 1
         end if
         if (.not. use_boulders) then
@@ -448,7 +448,7 @@ program main
             omega_linear_damping_slope = - asteroid_omega / (omega_linear_damping_time - initial_time)
             if (use_screen) then
                 write (*,*) "Explicit omega linear damping"
-                write (*,*) "    tau_o :", omega_linear_damping_time / asteroid_rotational_period, "[Prot]"
+                write (*,f13)  "    tau_o :", omega_linear_damping_time / asteroid_rotational_period, "[Prot]"
             end if
         end if
     else
@@ -459,7 +459,7 @@ program main
         if (use_explicit_method) then
             write (*,*) ACHAR(10)
             write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
-            write (*,*) "tau_o [Prot]:", omega_exp_damping_time * unit_time / asteroid_rotational_period
+            write (*,f13) "tau_o [Prot]:", omega_exp_damping_time * unit_time / asteroid_rotational_period
             stop 1
         end if
         if (.not. use_boulders) then
@@ -469,7 +469,7 @@ program main
             omega_exp_damping_time = omega_exp_damping_time * unit_time
             if (use_screen) then
                 write (*,*) "Explicit omega exponential damping"
-                write (*,*) "    tau_o :", omega_exp_damping_time / asteroid_rotational_period, "[Prot]"
+                write (*,f13)  "    tau_o :", omega_exp_damping_time / asteroid_rotational_period, "[Prot]"
             end if
         end if
     else
@@ -480,13 +480,13 @@ program main
         if (use_explicit_method) then
             write (*,*) ACHAR(10)
             write (*,*) "ERROR: No se puede usar el método explícito con tau_m finito."
-            write (*,*) "tau_m [Prot]:", mass_exp_damping_time * unit_time / asteroid_rotational_period
+            write (*,f13) "tau_m [Prot]:", mass_exp_damping_time * unit_time / asteroid_rotational_period
             stop 1
         end if
         mass_exp_damping_time = mass_exp_damping_time * unit_time
         if (use_screen) then
             write (*,*) "Explicit mass exponential damping"
-            write (*,*) "    tau_m :", mass_exp_damping_time / asteroid_rotational_period, "[Prot]"
+            write (*,f13)  "    tau_m :", mass_exp_damping_time / asteroid_rotational_period, "[Prot]"
         end if
     else
         mass_exp_damping_time = infinity
@@ -516,9 +516,9 @@ program main
         !!! Mensaje
         if (use_screen) then
             write (*,*) "Stokes"
-            write (*,*) "    t_stokes: ", stokes_charac_time / asteroid_rotational_period, "[Prot]"
-            write (*,*) "    C       : ", stokes_C
-            write (*,*) "    alpha   : ", stokes_alpha
+            write (*,f13)  "    t_stokes: ", stokes_charac_time / asteroid_rotational_period, "[Prot]"
+            write (*,f13)  "    C       : ", stokes_C
+            write (*,f13)  "    alpha   : ", stokes_alpha
         end if
     else ! Just to be sure
         stokes_a_damping_time = infinity
@@ -537,11 +537,11 @@ program main
     if (use_screen) then
         if (use_naive_stokes) then !!!! Naive-Stokes
             write (*,*) "Naive-Stokes (drag radial)"
-            write (*,*) "    Eta :", drag_coefficient
+            write (*,f13) "    Eta :", drag_coefficient
         end if
         if (use_J2) then
             write (*,*) "Geo-Potential (J2)"
-            write (*,*) "    J2 :", J2_coefficient !!!! Geo-Potential (J2)
+            write (*,f13) "    J2 :", J2_coefficient !!!! Geo-Potential (J2)
         end if
         if (use_torque) write (*,*) "Torque from particles to asteroid ACTIVATED"
 
@@ -594,8 +594,8 @@ program main
         call read_columns_file(particlesfile, aux_particles_arr)
         Narticles_in_partfile = size(aux_particles_arr, 1)
         if (use_screen) then
-            write (*,*) "  Se han leído ", Narticles_in_partfile, " filas."
-            write (*,*) "  Se han leído ", size(aux_particles_arr, 2), " columnas."
+            write (*,f12) "  Se han leído ", Narticles_in_partfile, " filas."
+            write (*,f12) "  Se han leído ", size(aux_particles_arr, 2), " columnas."
         end if
         ! [Remember to free memory later...]
     else 
@@ -621,7 +621,7 @@ program main
     if ((use_parallel) .and. (Nparticles < my_threads)) then
         my_threads = Nparticles
         if (use_screen) then
-            write (*,*) "WARNING: Se reducen los threads a ", my_threads
+            write (*,f12) "WARNING: Se reducen los threads a ", my_threads
             write (*,*) ACHAR(5)
         end if
         !$ call omp_set_num_threads(my_threads)
@@ -719,23 +719,23 @@ program main
     if (use_screen) then
         if (use_single_particle) then
             write (*,*) "Partícula simple:"
-            write (*,*) "    Masa:", particles_mass(Nparticles) / unit_mass, "[kg]"
-            write (*,*) "    Elementos orbitales:"
-            write (*,*) "      a      :", particles_elem(Nparticles,1) / unit_dist, "[km]"
-            write (*,*) "      e      :", particles_elem(Nparticles,2)
-            write (*,*) "      M      :", particles_elem(Nparticles,3) / radian, "[deg]"
-            write (*,*) "      w      :", particles_elem(Nparticles,4) / radian, "[deg]"
-            write (*,*) "      MMR    :", particles_MMR(Nparticles)
-            write (*,*) "      Periodo:", twopi * sqrt(particles_elem(Nparticles,1)**3 / &
+            write (*,f13)  "    Masa:", particles_mass(Nparticles) / unit_mass, "[kg]"
+            write (*,*)   "    Elementos orbitales:"
+            write (*,f13)  "      a      :", particles_elem(Nparticles,1) / unit_dist, "[km]"
+            write (*,f13)  "      e      :", particles_elem(Nparticles,2)
+            write (*,f13)  "      M      :", particles_elem(Nparticles,3) / radian, "[deg]"
+            write (*,f13)  "      w      :", particles_elem(Nparticles,4) / radian, "[deg]"
+            write (*,f13)  "      MMR    :", particles_MMR(Nparticles)
+            write (*,f13)  "      Periodo:", twopi * sqrt(particles_elem(Nparticles,1)**3 / &
                                             & (Gasteroid_mass + particles_mass(Nparticles))) / unit_time, "[day]"
             write (*,*) "    Coordenadas:"
-            write (*,*) "      x   :", particles_coord(Nparticles,1) / unit_dist, "[km]"
-            write (*,*) "      y   :", particles_coord(Nparticles,2) / unit_dist, "[km]"
-            write (*,*) "      vx  :", particles_coord(Nparticles,3) / unit_vel, "[km/day]"
-            write (*,*) "      vy  :", particles_coord(Nparticles,4) / unit_vel, "[km/day]"
-            write (*,*) "      dist:", particles_dist(Nparticles) / unit_dist, "[km]"
+            write (*,f13)  "      x   :", particles_coord(Nparticles,1) / unit_dist, "[km]"
+            write (*,f13)  "      y   :", particles_coord(Nparticles,2) / unit_dist, "[km]"
+            write (*,f13)  "      vx  :", particles_coord(Nparticles,3) / unit_vel, "[km/day]"
+            write (*,f13)  "      vy  :", particles_coord(Nparticles,4) / unit_vel, "[km/day]"
+            write (*,f13)  "      dist:", particles_dist(Nparticles) / unit_dist, "[km]"
         else
-            write (*,*) "Cantidad total de partículas:", Nparticles
+            write (*,f12) "Cantidad total de partículas:", Nparticles
         end if
         write (*,*) ACHAR(5)
     end if
@@ -803,8 +803,8 @@ program main
     end if
     if (use_screen) then
         write (*,*) "Condición escape/colisión"
-        write (*,*) "    rmin : ", min_distance / unit_dist, "[km] =", min_distance / radius_primary, "[R0]"
-        write (*,*) "    rmax : ", max_distance / unit_dist, "[km] =", max_distance / radius_primary, "[R0]"
+        write (*,f13) "    rmin : ", min_distance / unit_dist, "[km] =", min_distance / radius_primary, "[R0]"
+        write (*,f13) "    rmax : ", max_distance / unit_dist, "[km] =", max_distance / radius_primary, "[R0]"
         if (use_merge) then
             write (*,*) "  Las colisiones se resolverán como mergers al asteroide."
         else
@@ -895,15 +895,15 @@ program main
     !! Mensaje
     if (use_screen) then
         write (*,*) "Tiempos:"
-        write (*,*) "    t0    : ", initial_time / asteroid_rotational_period, "[Prot]", &
-            & " = ", initial_time / unit_time, "[day]"
-        write (*,*) "    tf    : ", final_time / asteroid_rotational_period, "[Prot]", &
-            & " = ", final_time / unit_time, "[day]"
-        write (*,*) "    dt_out: ", output_timestep / asteroid_rotational_period, "[Prot]", &
-            & " = ", output_timestep / unit_time, "[day]"
-        write (*,*) "    dt_min: ", min_timestep / asteroid_rotational_period, "[Prot]", &
-            & " = ", min_timestep / unit_time, "[day]"
-        write (*,*) "    n_out : ", output_number
+        write (*,f13) "    t0    : ", initial_time / asteroid_rotational_period, "[Prot] = ", &
+        & initial_time / unit_time, "[day]"
+        write (*,f13) "    tf    : ", final_time / asteroid_rotational_period, "[Prot] = ", &
+        & final_time / unit_time, "[day]"
+        write (*,f13) "    dt_out: ", output_timestep / asteroid_rotational_period, "[Prot] = ", &
+        & output_timestep / unit_time, "[day]"
+        write (*,f13) "    dt_min: ", min_timestep / asteroid_rotational_period, "[Prot] = ", &
+        & min_timestep / unit_time, "[day]"
+        write (*,f12) "    n_out : ", output_number
         write (*,*) ACHAR(5)
     end if
 
@@ -1200,8 +1200,8 @@ program main
         do i = 1, Nactive
             if ((particles_dist(i) < min_distance) .or. (particles_hexit(i) .eq. 1)) then
                 if (use_screen) then
-                    write (*,*) "Colisión de la partícula ", i, "(", particles_index(i), ")", &
-                    & " en t = ", time / unit_time, "[días]"
+                    write (*,f12531) "Colisión de la partícula ", i, "(", particles_index(i), ") en t = ", &
+                    & time / unit_time, "[días]"
                     write (*,*) ACHAR(5)
                 end if
                 particles_outcome(i) = 1
@@ -1213,8 +1213,8 @@ program main
             else if ((particles_dist(i) > max_distance) .or. (particles_hexit(i) .eq. 2)) then
                 if (use_screen) then
                     write (*,*) ACHAR(5)
-                    write (*,*) "Escape de la partícula ", i, "(", particles_index(i), ")", &
-                    & " en t = ", time / unit_time, "[días]"
+                    write (*,f12531) "Escape de la partícula ", i, "(", particles_index(i), ") en t = ", &
+                    & time / unit_time, "[días]"
                     write (*,*) ACHAR(5)
                 end if
                 particles_outcome(i) = 2
@@ -1237,7 +1237,7 @@ program main
             if (staying_particles == 0) then ! All particles are out
                 if (use_screen) then
                     do i = Nactive, 1, -1
-                        write (*,*) "  - Eliminando partícula ", i, "(", particles_index(i), ")"
+                        write (*,f12) "  - Eliminando partícula ", i, "(", particles_index(i), ")"
                         write (*,*) ACHAR(5)
                     end do
                 end if
@@ -1262,7 +1262,7 @@ program main
                 !$OMP DO SCHEDULE (STATIC)
                 do i = 1, discarded_particles
                     if (use_screen) then
-                        write (*,*) "  - Eliminando partícula ", ij_to_swap(i,1), "(", particles_index(ij_to_swap(i,1)), ")"
+                        write (*,f12) "  - Eliminando partícula ", ij_to_swap(i,1), "(", particles_index(ij_to_swap(i,1)), ")"
                         write (*,*) ACHAR(5)
                     end if
                     if (ij_to_swap(i,1) < (Nactive - discarded_particles)) then
@@ -1274,7 +1274,7 @@ program main
                 Nactive = Nactive - discarded_particles
             end if
             if (use_screen) then
-                write (*,*) "Quedan ", Nactive, " partículas activas."
+                write (*,f12) "Quedan ", Nactive, " partículas activas."
                 write (*,*) ACHAR(5)
             end if
             call argsort_int(particles_index(1:Nactive), sorted_particles_index(1:Nactive)) ! Get the sorted index
@@ -1285,7 +1285,7 @@ program main
         if (j == checkpoint_number + 1) then
             if (use_screen) then
                 write (*,*) ACHAR(5) 
-                write (*,*) "Finalizó la integración en t = ", time / unit_time, "[días]"
+                write (*,f13) "Finalizó la integración en t = ", time / unit_time, "[días]"
             end if
             exit main_loop
         end if
@@ -1294,7 +1294,7 @@ program main
             if (use_screen) then
                 write (*,*) ACHAR(5) 
                 write (*,*) "No quedan partículas activas."
-                write (*,*) "Finalizó la integración en t = ", time / unit_time, "[días]"
+                write (*,f13) "Finalizó la integración en t = ", time / unit_time, "[días]"
             end if
             exit main_loop
         end if
@@ -1330,7 +1330,7 @@ program main
             tom_index_number = tom_index_number + 1
             if (use_screen) then
                 write (*,*) ACHAR(5)
-                write (*,*) "Se actualizó Omega | Masa según archivo TOM, en t = ", time / unit_time, "[días]"
+                write (*,f13) "Se actualizó Omega | Masa según archivo TOM, en t = ", time / unit_time, "[días]"
                 write (*,*) ACHAR(5)
             end if
         end if
@@ -1522,7 +1522,7 @@ program main
             open (unit=40, file=trim(chaosfile), status='unknown', action='write')!, access="append")
             do i = 1, Nparticles
                 aux_integer = sorted_particles_index(i)
-                write (40,*) particles_index(aux_integer), & ! i
+                write (40,f2233) particles_index(aux_integer), & ! i
                 & particles_outcome(aux_integer), & ! bad
                 & final_time / unit_time, & ! total time to integrate
                 & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum
@@ -1565,7 +1565,7 @@ program main
             end if
             do i = 1, Nparticles
                 aux_integer = sorted_particles_index(i)
-                write (*,*) particles_index(aux_integer), & ! i
+                write (*,f2233) particles_index(aux_integer), & ! i
                 & particles_outcome(aux_integer), & ! bad
                 & particles_times(aux_integer), & ! surviving time
                 & particles_initial_conditions(aux_integer,6), & ! initial: MMR
