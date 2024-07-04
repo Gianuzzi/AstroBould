@@ -361,12 +361,13 @@ program main
     asteroid_inertia = cero
     if (use_boulders) then
         do i = 0, Nboulders
+            aux_real = 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 ! Inertia Sphere
             asteroid_angmom = asteroid_angmom + mass_ast_arr(i) * cross2D(pos_ast_arr(i,:), vel_ast_arr(i,:)) ! Traslacional
-            ! asteroid_angmom = asteroid_angmom + 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 * asteroid_omega ! Rotacional
-            asteroid_inertia = asteroid_inertia + mass_ast_arr(i) * dist_ast_arr(i)**2 ! Inercia
+            asteroid_angmom = asteroid_angmom + aux_real * asteroid_omega ! Rotacional (Sphere)
+            asteroid_inertia = asteroid_inertia + aux_real + mass_ast_arr(i) * dist_ast_arr(i)**2 ! Sphere + Steiner
         end do
     else 
-        asteroid_inertia = (2.d0/3.d0) *  mass_primary * radius_primary**2 ! Sphere
+        asteroid_inertia = 0.4d0 *  mass_primary * radius_primary**2 ! Sphere
         asteroid_angmom = asteroid_inertia * asteroid_omega ! Spin
     end if
     !! Mensaje
