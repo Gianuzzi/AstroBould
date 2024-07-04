@@ -360,11 +360,16 @@ program main
     ! Angular momentum and Inertia
     asteroid_angmom = cero
     asteroid_inertia = cero
-    do i = 0, Nboulders
-        asteroid_angmom = asteroid_angmom + mass_ast_arr(i) * cross2D(pos_ast_arr(i,:), vel_ast_arr(i,:)) ! Traslacional
-        ! asteroid_angmom = asteroid_angmom + 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 * asteroid_omega ! Rotacional
-        asteroid_inertia = asteroid_inertia + mass_ast_arr(i) * dist_ast_arr(i)**2 ! Inercia
-    end do
+    if (use_boulders) then
+        do i = 0, Nboulders
+            asteroid_angmom = asteroid_angmom + mass_ast_arr(i) * cross2D(pos_ast_arr(i,:), vel_ast_arr(i,:)) ! Traslacional
+            ! asteroid_angmom = asteroid_angmom + 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 * asteroid_omega ! Rotacional
+            asteroid_inertia = asteroid_inertia + mass_ast_arr(i) * dist_ast_arr(i)**2 ! Inercia
+        end do
+    else 
+        asteroid_inertia = (2.d0/3.d0) *  mass_primary * radius_primary**2 ! Sphere
+        asteroid_angmom = asteroid_inertia * asteroid_omega ! Spin
+    end if
     !! Mensaje
     if (use_screen) then
         write (*,*) "Momento angular total:", asteroid_angmom / unit_mass / (unit_dist**2) * unit_time, "[kg km^2 / day]"
@@ -716,17 +721,19 @@ program main
             write (*,*) "Partícula simple:"
             write (*,*) "    Masa:", particles_mass(Nparticles) / unit_mass, "[kg]"
             write (*,*) "    Elementos orbitales:"
-            write (*,*) "        a   :", particles_elem(Nparticles,1) / unit_dist, "[km]"
-            write (*,*) "        e   :", particles_elem(Nparticles,2)
-            write (*,*) "        M   :", particles_elem(Nparticles,3) / radian, "[deg]"
-            write (*,*) "        w   :", particles_elem(Nparticles,4) / radian, "[deg]"
-            write (*,*) "        MMR :", particles_MMR(Nparticles)
+            write (*,*) "      a      :", particles_elem(Nparticles,1) / unit_dist, "[km]"
+            write (*,*) "      e      :", particles_elem(Nparticles,2)
+            write (*,*) "      M      :", particles_elem(Nparticles,3) / radian, "[deg]"
+            write (*,*) "      w      :", particles_elem(Nparticles,4) / radian, "[deg]"
+            write (*,*) "      MMR    :", particles_MMR(Nparticles)
+            write (*,*) "      Periodo:", twopi * sqrt(particles_elem(Nparticles,1)**3 / &
+                                            & (Gasteroid_mass + particles_mass(Nparticles))) / unit_time, "[day]"
             write (*,*) "    Coordenadas:"
-            write (*,*) "        x   :", particles_coord(Nparticles,1) / unit_dist, "[km]"
-            write (*,*) "        y   :", particles_coord(Nparticles,2) / unit_dist, "[km]"
-            write (*,*) "        vx  :", particles_coord(Nparticles,3) / unit_vel, "[km/day]"
-            write (*,*) "        vy  :", particles_coord(Nparticles,4) / unit_vel, "[km/day]"
-            write (*,*) "        dist:", particles_dist(Nparticles) / unit_dist, "[km]"
+            write (*,*) "      x   :", particles_coord(Nparticles,1) / unit_dist, "[km]"
+            write (*,*) "      y   :", particles_coord(Nparticles,2) / unit_dist, "[km]"
+            write (*,*) "      vx  :", particles_coord(Nparticles,3) / unit_vel, "[km/day]"
+            write (*,*) "      vy  :", particles_coord(Nparticles,4) / unit_vel, "[km/day]"
+            write (*,*) "      dist:", particles_dist(Nparticles) / unit_dist, "[km]"
         else
             write (*,*) "Cantidad total de partículas:", Nparticles
         end if
@@ -883,7 +890,7 @@ program main
     time = initial_time ! Tiempo actual
     timestep = output_times(1) - initial_time ! Paso de tiempo inicial
     min_timestep = max(min(min_timestep, output_timestep), tini) ! Paso de tiempo mínimo
-    adaptive_timestep = min_timestep ! Paso de tiempo adaptativo inicial
+    adaptive_timestep = asteroid_rotational_period*0.01d0 ! Paso de tiempo adaptativo inicial: 1% del periodo de rotación
 
     !! Mensaje
     if (use_screen) then
@@ -1171,7 +1178,7 @@ program main
     end do
     !$OMP END SECTIONS
     !$OMP END PARALLEL
-
+    
     !!!!!! MAIN LOOP INTEGRATION !!!!!!!
     ! MAIN LOOP
     tom_index_number = 2 !!!! Inicializamos en 2 porque el primer checkpoint es el IC (t0)
@@ -1300,6 +1307,7 @@ program main
             if (allocated(tom_deltaomega)) then
                 asteroid_omega = asteroid_omega + tom_deltaomega(tom_index_number)
                 asteroid_omega2 = asteroid_omega * asteroid_omega
+                asteroid_rotational_period = twopi / asteroid_omega
                 if (use_explicit_method) asteroid_theta_correction = asteroid_theta - asteroid_omega * (time - initial_time)
                 if (use_version_1) then
                     do i = 0, Nboulders
@@ -1329,15 +1337,17 @@ program main
 
         !!! Execute an integration method (uncomment/edit one of these)
         ! call integ_caller (time, parameters_arr, adaptive_timestep, dydt, &
-        !     & Runge_Kutta4, timestep, parameters_arr_new, particles_hexitptr)
+        !     & Ralston4, timestep, parameters_arr_new, particles_hexitptr)
         ! call rk_half_step_caller (time, parameters_arr, adaptive_timestep, dydt, &
         !     & Runge_Kutta5, 5, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new, particles_hexitptr)
         ! call embedded_caller (time, parameters_arr, adaptive_timestep, dydt, Dormand_Prince8_7, &
         !    & error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new, particles_hexitptr)
         call BStoer_caller (time, parameters_arr, adaptive_timestep, dydt, &
             & error_tolerance, timestep, parameters_arr_new, particles_hexitptr)
-!         call BStoer_caller2 (time, parameters_arr, adaptive_timestep, dydt, &
-!             & error_tolerance, timestep, parameters_arr_new, particles_hexitptr)
+        ! call BStoer_caller2 (time, parameters_arr, adaptive_timestep, dydt, &
+        !     & error_tolerance, timestep, parameters_arr_new, particles_hexitptr)
+        ! call leapfrog_caller (time, parameters_arr, adaptive_timestep, dydt, &
+        !     & leapfrof_KDK, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new, particles_hexitptr)
 
         !! If so, the dt used is in dt_adap
         if (particles_hexit(0) .ne. 0) timestep = adaptive_timestep
@@ -1404,6 +1414,7 @@ program main
             ! Update asteroid properties
             asteroid_omega2 = asteroid_omega * asteroid_omega
             asteroid_a_corot = (G * asteroid_mass / asteroid_omega2)**(1/3.)
+            asteroid_rotational_period = twopi / asteroid_omega
         
         else 
             ! Sin boulders, casi todo constante

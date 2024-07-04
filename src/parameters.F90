@@ -947,7 +947,7 @@ module parameters
             allocate(mass_ast_arr(0:Nboulders), radius_ast_arr(0:Nboulders), mu_ast_arr(0:Nboulders), Gmass_ast_arr(0:Nboulders))
             allocate(pos_ast_arr(0:Nboulders,2), vel_ast_arr(0:Nboulders,2), acc_ast_arr(0:Nboulders,2))
             allocate(theta_ast_arr(0:Nboulders), dist_ast_arr(0:Nboulders))
-            if (use_boulders) then
+            if (Nboulders > 0) then
                 allocate(theta_from_primary(Nboulders), mu_from_primary(Nboulders))
                 allocate(pos_from_primary(Nboulders,2), vel_from_primary(Nboulders,2), acc_from_primary(Nboulders,2))
             end if
