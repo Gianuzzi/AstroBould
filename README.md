@@ -84,15 +84,15 @@ Hay 2 posibilidad de ejecución en paralelo:
 - _Independiente_: Se realizan múltiples integraciones independientes, con una partícula cada una. Aquí cada integración se ejecuta en paralelo.
 
 En este caso se debe tener un **archivo con los datos de las partículas a integrar**.
-Este archivo se puede crear con el código [make_particles.py](./tools/make_particles.py). Su configuración se realiza en las líneas [75 a 102](./tools/make_particles.py#L75#L102), y si ejecució se realiza con:
+Este archivo se puede crear con el código [make_particles.py](./tools/make_particles.py). Su configuración se realiza en las líneas [70 a 104](./tools/make_particles.py#L70#L104), y si ejecució se realiza con:
 
 ``` console
 $ python make_particles.py
 ```
 
-Para la integración _dependiente_ es necesario compilar usando _-fopenmp_ (incluído ya por default), mientras que para la independiente no es necesario. En este segundo caso, es posible compilar ejecutando ` make serial`, y así entonces no se utiliza _fopenmp_.
+Para la integración _dependiente_ es necesario compilar usando _-fopenmp_, mientras que para la independiente (default) no es necesario. Para el primer caso, se debe compilar ejecutando `make parallel`. 
 
-Para realizar la integración _independiente_, se provee el código en Python [launcher.py](./launcher.py). Más información se encuentra [al inicio](./launcher.py#L3#L42) de este archivo. Luego de configurarlo, su ejecución se realiza con:
+Para realizar la integración _independiente_, se provee el código en Python [launcher.py](./launcher.py). Más información se encuentra [al inicio](./launcher.py#L3#L47) de este archivo. Luego de configurarlo, su ejecución se realiza con:
 
 ``` console
 $ python launcher.py
@@ -110,7 +110,7 @@ También se puede utilzar el código [launcher.py](./launcher.py) para esta inte
 
 ### Archivo TOM (Tiempos, Omega, Masa agregada)
 
-Para crear este archivo se puede usar [make_TOM.py](./tools/make_TOM.py), luego de configurarlo (líneas [17 a 41](./tools/make_TOM.py#L17#L41)). Se puede encontrar más información [al inicio](./tools/make_TOM.py#L5#L15) de este archivo. 
+Para crear este archivo se puede usar [make_TOM.py](./tools/make_TOM.py), luego de configurarlo (líneas [18 a 42](./tools/make_TOM.py#L18#L42)). Se puede encontrar más información [al inicio](./tools/make_TOM.py#L6#L16) de este archivo. 
 
 Por otro lado, también  se puede usar [make_TOM.f90](./tools/make_TOM.f90), de C. Beaugé. Se debe configurar manualmente, para luego compilar y ejecutar.
 
