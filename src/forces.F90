@@ -573,13 +573,14 @@ module forces
             implicit none
             real(kind=8), intent(in) :: mcm, r_from_cm(2), v_from_cm(2), dist_from_cm 
             real(kind=8), intent(inout) :: ab(2)
-            real(kind=8) :: acc_radial, vel_radial, v2, mean_movement, Gmcm 
+            real(kind=8) :: acc_radial, vel_radial, v2, mean_movement, Gmcm, aux_real
 
             Gmcm = G * mcm
             v2 = dot_product(v_from_cm, v_from_cm)
             ! Debemos chequear que la partícula no esté "desligada"
-            if (dist_from_cm .le. (dos * Gmcm / v2)) return ! No se puede calcular
-            mean_movement = (dos * Gmcm / dist_from_cm - v2)**(1.5d0) / Gmcm ! n
+            aux_real = dos * Gmcm / dist_from_cm - v2
+            if (aux_real < cero) return ! No se puede calcular
+            mean_movement = aux_real**(1.5d0) / Gmcm ! n
             vel_radial = dot_product(v_from_cm, r_from_cm) / dist_from_cm 
             acc_radial = - drag_coefficient * mean_movement * vel_radial
             ab = ab + acc_radial * r_from_cm / dist_from_cm
