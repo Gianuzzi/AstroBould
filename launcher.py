@@ -67,8 +67,8 @@ explicit = False  # Método: True (cos, sin), False (integra boulders y m0)
 version1 = False  # Versión del código (1 o 2)
 
 ## Torque and merge ##
-torque = True  # Si se quiere usar torque
-merge = True  # Si se quiere usar merge
+torque = False  # Si se quiere usar torque
+merge = False  # Si se quiere usar merge
 
 ## Input ## ("" o False si no se usa)
 config = "config.ini"  # Nombre del archivo de configuración
@@ -76,7 +76,7 @@ partfile = "particles.in"  # Nombre del archivo de partículas
 tomfile = "" # Nombre del archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 ## Output ## ("" o False si no se usa)
-new_dir = False # Puede ser un string con el nombre de la carpeta a crear. Defaul: "simulation"
+new_dir = True # Puede ser un string con el nombre de la carpeta a crear. Defaul: "simulation"
 datafile = "salida" # Nombre del archivo de salida de datos (sin extensión)
 final_chaos = "sump"  # Final Chaos Summary Output file name (sin extensión)
 suffix = ""  # Suffix for the output files
@@ -104,6 +104,11 @@ elif isinstance(new_dir, bool):
     wrk_dir = os.path.join(cwd, "simulation") if new_dir else cwd
 else:
     raise ValueError("new_dir must be either a string or a boolean")
+
+# Redefine partfile if bool
+if (isinstance(datafile, bool) and datafile): datafile = "salida"
+# Redefine partffinal_chaosile if bool
+if (isinstance(final_chaos, bool) and final_chaos): final_chaos = "sump"
 
 
 # Archivos
@@ -138,16 +143,17 @@ if tomfile and (not existe_otom):
     print("Saliendo.")
     exit(1)
 ## Datafile
-if os.path.isfile(final_chaos):
+if os.path.isfile(os.path.join(wrk_dir, "%s.out" % final_chaos)):
     print("WARNING: Output file {} already exist.".format(final_chaos))
+    if datafile: print("         Independently, <%s> will be appended (if existing)"%datafile)
     yes_no = input("Do you want to overwrite it? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         i = 1
-        aux = final_chaos.split(".")
-        suf = aux[-1] if len(aux) > 1 else ""
-        while os.path.isfile(final_chaos):
-            final_chaos = ".".join(aux[:-1]) + str(i) + ("." + suf if suf else "")
+        unique_file = final_chaos
+        while os.path.isfile(os.path.join(wrk_dir, "%s.out" % unique_file)):
+            unique_file = f"{final_chaos}_{i}"
             i += 1
+        final_chaos = unique_file
 
 # Checks #
 ## Si hay torque, entonces explicit debe ser false
@@ -178,7 +184,7 @@ print("Cantidad total de partículas: {}".format(nsys))
 # Ver si hay que hacer todo, o ya hay alguna realizadas
 new_simulation = True
 missing_lines = range(1, nsys+1)
-if not torque: # Si hay torque, cagaste.
+if not torque: # Si hay torque, cagaste. La única prueba es si ya hay un sump.
     # Definimos prefijo de directorio, de acuerdo a TOMfile o no
     pref = "tomd" if tomfile else "dpy"
 
@@ -206,7 +212,8 @@ if not torque: # Si hay torque, cagaste.
             print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
             nsys = len(missing_lines)
             print("   Cantidad de sistemas a integrar: {}".format(nsys))
-            new_simulation = False            
+            new_simulation = False
+
         
 # Hay que hacer?
 if len(missing_lines) == 0:
@@ -342,7 +349,7 @@ def generate_unique_dir(base_dir):
 
 
 if __name__ == "__main__":
-    if new_simulation and (cwd != wrk_dir):
+    if new_simulation and (not os.path.samefile(wrk_dir, cwd)):
         os.mkdir(wrk_dir) # Creamos directorio donde volcaremos todo
         print("Directory  '% s' created\n" % os.path.basename(wrk_dir)) 
     if not torque:
@@ -355,7 +362,7 @@ if __name__ == "__main__":
             make_sum(final_chaos, suffix)
     else:
         print("Running all systems in one process.")
-        if wrk_dir != cwd:
+        if not os.path.samefile(wrk_dir, cwd):
             nprogr = os.path.join(wrk_dir, program)
             ncini = os.path.join(wrk_dir, "config.ini")
             ntom = os.path.join(wrk_dir, tomfile)
