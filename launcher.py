@@ -349,9 +349,9 @@ def generate_unique_dir(base_dir):
 
 
 if __name__ == "__main__":
-    if new_simulation and (not os.path.samefile(wrk_dir, cwd)):
+    if new_simulation and (not os.path.exists(wrk_dir)):
         os.mkdir(wrk_dir) # Creamos directorio donde volcaremos todo
-        print("Directory  '% s' created\n" % os.path.basename(wrk_dir)) 
+        print("Directory  '% s' created\n" % os.path.basename(wrk_dir))
     if not torque:
         with ProcessPoolExecutor(max_workers=workers) as executor:
             results = executor.map(integrate_n, missing_lines)
@@ -373,5 +373,6 @@ if __name__ == "__main__":
                 subprocess.run(["cp", ocini, ncini], check=True)
             if existe_otom:
                 subprocess.run(["cp", otom, ntom], check=True)
+        print("./%s %s" % (program, args))
         subprocess.run(["./%s %s" % (program, args)], cwd=wrk_dir, check=True, shell=True)
     print("LISTO!")
