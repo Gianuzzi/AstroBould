@@ -182,6 +182,18 @@ module parameters
     procedure (int_i_template), pointer :: flush_chaos => null ()
     procedure (int_i_template), pointer :: flush_output => null ()
 
+    !!!!!!!!    FORMATS    !!!!!
+    character(19), parameter :: f12    = "(22(A, 1X, I7, 1X))"
+    character(35), parameter :: f12531 = "(2(A, 1X, I7, 1X), 1PE22.15, 1X, A)"
+    character(29), parameter :: f1233  = "(A, 1X, I7, 22(1X, 1PE22.15))"
+    character(25), parameter :: f13    = "(22(A, 1X, 1PE22.15, 1X))"
+    character(21), parameter :: f133   = "(A, 22(1X, 1PE22.15))"
+    character(27), parameter :: f1331  = "(A, 2(1X, 1PE22.15), 1X, A)"
+    character(26), parameter :: f2233  = "(I7, I7, 22(1X, 1PE22.15))"
+    character(26), parameter :: f23    = "(22(I7, 1X, 1PE22.15, 1X))"
+    character(22), parameter :: f233   = "(I7, 22(1X, 1PE22.15))"
+
+
     abstract interface
         subroutine simple_ptr_template ()
             implicit none
@@ -947,7 +959,7 @@ module parameters
             allocate(mass_ast_arr(0:Nboulders), radius_ast_arr(0:Nboulders), mu_ast_arr(0:Nboulders), Gmass_ast_arr(0:Nboulders))
             allocate(pos_ast_arr(0:Nboulders,2), vel_ast_arr(0:Nboulders,2), acc_ast_arr(0:Nboulders,2))
             allocate(theta_ast_arr(0:Nboulders), dist_ast_arr(0:Nboulders))
-            if (use_boulders) then
+            if (Nboulders > 0) then
                 allocate(theta_from_primary(Nboulders), mu_from_primary(Nboulders))
                 allocate(pos_from_primary(Nboulders,2), vel_from_primary(Nboulders,2), acc_from_primary(Nboulders,2))
             end if
@@ -1604,7 +1616,7 @@ module parameters
             integer(kind=4), intent(in) :: i, unit_file
 
             aux_integer = sorted_particles_index(i)
-            write (unit_file,*) particles_index(aux_integer), time / unit_time, &
+            write (unit_file,f233) particles_index(aux_integer), time / unit_time, &
                 & particles_elem(aux_integer,1) / unit_dist, particles_elem(aux_integer,2), &
                 & particles_elem(aux_integer,3) / radian, particles_elem(aux_integer,4) / radian, &
                 & particles_MMR(aux_integer), particles_mass(aux_integer) / unit_mass, &
@@ -1617,7 +1629,7 @@ module parameters
             integer(kind=4), intent(in) :: i, unit_file
 
             aux_integer = sorted_particles_index(i)
-            write (unit_file,*) particles_index(aux_integer) + Nboulders, time / unit_time, &
+            write (unit_file,f233) particles_index(aux_integer) + Nboulders, time / unit_time, &
                 & particles_coord(aux_integer,1:2) / unit_dist, particles_coord(aux_integer,3:4) / unit_vel, &
                 & parameters_arr_new(first_particle + 4 * (i - 1) + 2 : first_particle + 4 * (i - 1) + 3) / unit_acc, &
                 & particles_mass(aux_integer) / unit_mass, particles_dist(aux_integer) / unit_dist
@@ -1628,7 +1640,7 @@ module parameters
             implicit none
             integer(kind=4), intent(in) :: i, unit_file
             
-            write (unit_file,*) i, time / unit_time, &
+            write (unit_file,f233) i, time / unit_time, &
                 & pos_ast_arr(i,:) / unit_dist, vel_ast_arr(i,:) / unit_vel, acc_ast_arr(i,:) / unit_acc, &
                 & mass_ast_arr(i) / unit_mass, radius_ast_arr(i) / unit_dist
         end subroutine write_coordinates_boulders
@@ -1653,7 +1665,7 @@ module parameters
             call fseek(unit_file, 0, 0)       ! move to beginning
             do i = 1, Nparticles
                 aux_integer = my_sorted_particles_index(i)
-                write (unit_file,*) particles_index(aux_integer), & ! i
+                write (unit_file,f2233) particles_index(aux_integer), & ! i
                 & particles_outcome(aux_integer), & ! bad
                 & final_time / unit_time, & ! total time to integrate
                 & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum

@@ -3,7 +3,7 @@
 
 SRC_DIR = src
 OBJ_DIR = build
-MOD_DIR = modules
+MOD_DIR = src
 DEP_FILE = dependencies.dep # Name of the dependencies file
 EXE_FILE = ASTROBOULD # Name of the executable
 
@@ -23,7 +23,7 @@ else
 endif
 
 # Serial
-ifndef SERIAL
+ifdef PARALLEL
 	MYFFLAGS += -fopenmp
 endif
 
@@ -57,13 +57,17 @@ all: $(OBJ_DIR) main $(DEP_FILE)
 
 # Pattern rules
 
-# Serial
-serial:
-	$(MAKE) SERIAL=1
+# Parallel
+parallel:
+	$(MAKE) PARALLEL=1
 
 # Debug
 debug:
 	$(MAKE) DEBUG=1
+
+# Debug and parallel
+debug_parallel:
+	$(MAKE) DEBUG=1 PARALLEL=1
 
 
 # Create build directory before compiling
@@ -89,7 +93,7 @@ main: $(OBJECTS)
 	@touch $(EXE_FILE)
 	@echo ""
 	@echo "Compilation successful!"
-	@if [ -n "$(SERIAL)" ]; then echo " (Without using OpenMP)"; fi
+	@if [ -n "$(PARALLEL)" ]; then echo " (Using OpenMP)"; fi
 	@echo ""
 	
 
@@ -154,7 +158,7 @@ ${MAKE_DEP_FILE}:
 #--------------------------------------------------------------------------
 
 # Phony rules
-.PHONY: clean all deps install serial debug
+.PHONY: clean all deps install parallel debug debug_parallel
 
 # Default rule
 .DEFAULT_GOAL := all

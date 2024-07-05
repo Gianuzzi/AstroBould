@@ -371,7 +371,7 @@ module forces
                 vb = y(particle_i+3 : particle_i+4)
                 call apply_force_no_boulders(&
                     & t, &
-                    & mass_ast_arr(0), particles_mass(i), &
+                    & mass_ast_arr(0), &
                     & particles_hexit(i), &
                     & rb, vb, &
                     & r0b, v0b, &
@@ -457,17 +457,16 @@ module forces
 
         end subroutine apply_force
 
-        subroutine apply_force_no_boulders(t, m0, mp, hexit_p, rb, vb, r0b, v0b, ab)
+        subroutine apply_force_no_boulders(t, m0, hexit_p, rb, vb, r0b, v0b, ab)
             implicit none
             real(kind=8), intent(in) :: t
-            real(kind=8), intent(in) :: m0, mp
+            real(kind=8), intent(in) :: m0
             integer(kind=4), intent(inout) :: hexit_p
             real(kind=8), intent(in) :: rb(2), vb(2)
             real(kind=8), intent(in) :: r0b(2), v0b(2)
             real(kind=8), intent(inout) :: ab(2) ! YA DEBEN VENIR INICIALIZADOS
             real(kind=8) :: r_from_0(2), v_from_0(2)
             real(kind=8) :: dist_from_0
-            integer(kind=4) :: i
 
             ! Calculate distance and vector to boulders
             r_from_0 = rb - r0b
