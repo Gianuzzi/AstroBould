@@ -1201,7 +1201,7 @@ program main
         do i = 1, Nactive
             if ((particles_dist(i) < min_distance) .or. (particles_hexit(i) .eq. 1)) then
                 if (use_screen) then
-                    write (*,f12531) "Colisión de la partícula ", i, "(", particles_index(i), ") en t = ", &
+                    write (*,f125131) "Colisión de la partícula ", i, "(", particles_index(i), ") en t = ", &
                     & time / unit_time, "[días]"
                     write (*,*) ACHAR(5)
                 end if
@@ -1214,7 +1214,7 @@ program main
             else if ((particles_dist(i) > max_distance) .or. (particles_hexit(i) .eq. 2)) then
                 if (use_screen) then
                     write (*,*) ACHAR(5)
-                    write (*,f12531) "Escape de la partícula ", i, "(", particles_index(i), ") en t = ", &
+                    write (*,f125131) "Escape de la partícula ", i, "(", particles_index(i), ") en t = ", &
                     & time / unit_time, "[días]"
                     write (*,*) ACHAR(5)
                 end if
