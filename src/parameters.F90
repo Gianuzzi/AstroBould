@@ -119,7 +119,7 @@ module parameters
     real(kind=8), dimension(:), allocatable :: Gmass_ast_arr
     !!! Particles
     real(kind=8), dimension(:,:), allocatable :: aux_particles_arr
-    integer(kind=4) :: first_particle
+    integer(kind=4) :: first_particle, last_particle
     integer(kind=4), dimension(:), allocatable :: particles_outcome
     integer(kind=4), dimension(:,:), allocatable :: ij_to_swap
 
@@ -169,6 +169,7 @@ module parameters
 
     !!! MERGE
     logical :: use_merge
+    integer :: merged_particles
     real(kind=8) :: mass_to_merge, angular_momentum_to_merge
     procedure (do_merge_template), pointer :: resolve_merge => null ()
 
@@ -321,10 +322,10 @@ module parameters
 
             ! Extras, fuera de Config.ini. Se editan solo acá
             !! Centrar CM?
-            hard_center = .False.
-            !! Update chaos
-            use_update_chaos = .False.
-            !! Flush 
+            hard_center = .True.
+            !! Update chaos at every output timestep, instead of waiting to the end of the run
+            use_update_chaos = .True.
+            !! Flush output at every output timestep (even though the buffer is not full) 
             use_flush_output = .True.
         end subroutine init_default_parameters
 
@@ -1410,12 +1411,12 @@ module parameters
 
             if (i == j) return
 
-            tmp_integer = particles_index(j)
+            tmp_integer = particles_index(i)
             tmp_data = (/particles_mass(i), particles_coord(i,:), particles_elem(i,:), &
                          particles_MMR(i), particles_dist(i)/)
             tmp_integer2 = particles_outcome(i)
 
-            particles_index(j) = particles_index(i)
+            particles_index(i) = particles_index(j)
             particles_mass(i) = particles_mass(j)
             particles_coord(i,:) = particles_coord(j,:)
             particles_elem(i,:) = particles_elem(j,:)
@@ -1423,7 +1424,7 @@ module parameters
             particles_dist(i) = particles_dist(j)
             particles_outcome(i) = particles_outcome(j)
 
-            particles_index(i) = tmp_integer
+            particles_index(j) = tmp_integer
             particles_mass(j) = tmp_data(1)
             particles_coord(j,:) = tmp_data(2:5)
             particles_elem(j,:) = tmp_data(6:9)
@@ -1631,7 +1632,8 @@ module parameters
             aux_integer = sorted_particles_index(i)
             write (unit_file,f233) particles_index(aux_integer) + Nboulders, time / unit_time, &
                 & particles_coord(aux_integer,1:2) / unit_dist, particles_coord(aux_integer,3:4) / unit_vel, &
-                & parameters_arr_new(first_particle + 4 * (i - 1) + 2 : first_particle + 4 * (i - 1) + 3) / unit_acc, &
+                & cero, cero, &
+!                 & parameters_arr_new(first_particle + 4 * (i - 1) + 2 : first_particle + 4 * (i - 1) + 3) / unit_acc, &$
                 & particles_mass(aux_integer) / unit_mass, particles_dist(aux_integer) / unit_dist
         end subroutine write_coordinates_particle
 
