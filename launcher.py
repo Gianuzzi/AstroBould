@@ -16,9 +16,9 @@
 # IMPORTANTE : Todos los archivos deben estar en la misma carpeta
 
 # En caso de dejar puesta la salida en archivo (<datafile>),
-# se creará un archivo llamado salida[id].dat por cada partícula.
+# se creará un archivo llamado salida[id].out por cada partícula.
 
-# Este código crea un archivo de caos (chaos[id].dat) por cada partícula.
+# Este código crea un archivo de caos (chaos[id].out) por cada partícula.
 # Luego los concatena en un solo archivo <final_chaos>,con el siguiente formato:
 ## 0    ! Numero de partícula / simulación
 ## 1    ! bad? (0: no, 1: collision, 2: ejection)
@@ -67,8 +67,8 @@ explicit = False  # Método: True (cos, sin), False (integra boulders y m0)
 version1 = False  # Versión del código (1 o 2)
 
 ## Torque and merge ##
-torque = False  # Si se quiere usar torque
-merge = False  # Si se quiere usar merge
+torque = True  # Si se quiere usar torque
+merge = True  # Si se quiere usar merge
 
 ## Input ## ("" o False si no se usa)
 config = "config.ini"  # Nombre del archivo de configuración
@@ -78,7 +78,7 @@ tomfile = "" # Nombre del archivo de valores de t_i, delta_omega(t_i), y delta_m
 ## Output ## ("" o False si no se usa)
 new_dir = False # Puede ser un string con el nombre de la carpeta a crear. Defaul: "simulation"
 datafile = "salida" # Nombre del archivo de salida de datos (sin extensión)
-final_chaos = "sump.out"  # Final Chaos Summary Output file name
+final_chaos = "sump"  # Final Chaos Summary Output file name (sin extensión)
 suffix = ""  # Suffix for the output files
 ### Screen ###
 screen_info = True  # Si se quiere ver la información en pantalla (solo con torque = True)
@@ -190,8 +190,8 @@ if not torque: # Si hay torque, cagaste.
             [os.path.isdir(os.path.join(wrk_dir, name)) and name.startswith(pref) for name in os.listdir(wrk_dir)]
         ):
             command = (
-                f"find {pref}* -name 'chaos*{suffix}.dat' "
-                f"| sed -e 's/.*chaos\\([0-9]*\\){suffix}\\.dat/\\1/' "
+                f"find {pref}* -name 'chaos*{suffix}.out' "
+                f"| sed -e 's/.*chaos\\([0-9]*\\){suffix}\\.out/\\1/' "
                 f"| sort -n"
             )
             result = subprocess.run(
@@ -228,8 +228,9 @@ if torque:
         args += " --datascr" if screen_data else " --nodatascr"
         args += " --noperc"        
     args += " -partfile %s" % partfile
-    args += " -datafile %s.dat" % datafile if datafile else " --nodataf"
+    args += " -datafile %s.out" % datafile if datafile else " --nodataf"
     args += " -parallel %d" % workers
+    args += " -chaosfile %s.out" % final_chaos if final_chaos else " --nochaosf"
 else:
     args = " --notorque  --nomapf --noscreen --nodatascr --noperc --noparallel"
 args += " --explicit" if explicit else " --implicit"
@@ -256,10 +257,10 @@ def integrate_n(i):
         if existe_otom:
             subprocess.run(["cp", otom, ntom], check=True)
     this_args = " -nsim %d" % i
-    this_args += " -chaosfile chaos%d%s.dat" % (i, suffix)
+    this_args += " -chaosfile chaos%d%s.out" % (i, suffix)
     this_args += "%s" % (" --nodataf"
         if not datafile else
-        " -datafile %s" % ("%s%d%s.dat" % (
+        " -datafile %s" % ("%s%d%s.out" % (
             datafile if isinstance(datafile,str) else "salida", i, suffix)
             )
     )
@@ -296,25 +297,25 @@ def make_sum(final_chaos, suffix=""):
             # Recorre todos los archivos en la subcarpeta
             for filename in os.listdir(subdir_path):
                 # Verifica si el nombre del archivo comienza con
-                # "chaos" y termina con ".dat"
+                # "chaos" y termina con ".out"
                 if (
                     filename.startswith("chaos")
-                    and filename.endswith(".dat")
+                    and filename.endswith(".out")
                     and (suffix in filename)
                 ):
                     filepath = os.path.join(subdir_path, filename)
                     file_list.append(filepath)
 
-    # Ordena los nombres de los archivos por el valor de i en "chaos%d%s.dat"
+    # Ordena los nombres de los archivos por el valor de i en "chaos%d%s.out"
     if suffix == "":
         file_list = sorted(
-            file_list, key=lambda x: int(x.split("chaos")[1].split(".dat")[0])
+            file_list, key=lambda x: int(x.split("chaos")[1].split(".out")[0])
         )
     else:
         file_list = sorted(
             file_list,
             key=lambda x: int(
-                x.split("chaos")[1].split(".dat")[0].split(suffix)[0]
+                x.split("chaos")[1].split(".out")[0].split(suffix)[0]
             ),
         )
 
@@ -354,15 +355,16 @@ if __name__ == "__main__":
             make_sum(final_chaos, suffix)
     else:
         print("Running all systems in one process.")
-        nprogr = os.path.join(wrk_dir, program)
-        ncini = os.path.join(wrk_dir, "config.ini")
-        ntom = os.path.join(wrk_dir, tomfile)
-        nparticles = os.path.join(wrk_dir, partfile)
-        subprocess.run(["cp", oprogr, nprogr], check=True)
-        subprocess.run(["cp", oparticles, nparticles], check=True)
-        if existe_ocini:
-            subprocess.run(["cp", ocini, ncini], check=True)
-        if existe_otom:
-            subprocess.run(["cp", otom, ntom], check=True)
+        if wrk_dir != cwd:
+            nprogr = os.path.join(wrk_dir, program)
+            ncini = os.path.join(wrk_dir, "config.ini")
+            ntom = os.path.join(wrk_dir, tomfile)
+            nparticles = os.path.join(wrk_dir, partfile)
+            subprocess.run(["cp", oprogr, nprogr], check=True)
+            subprocess.run(["cp", oparticles, nparticles], check=True)
+            if existe_ocini:
+                subprocess.run(["cp", ocini, ncini], check=True)
+            if existe_otom:
+                subprocess.run(["cp", otom, ntom], check=True)
         subprocess.run(["./%s %s" % (program, args)], cwd=wrk_dir, check=True, shell=True)
     print("LISTO!")
