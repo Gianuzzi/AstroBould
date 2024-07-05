@@ -955,6 +955,8 @@ program main
         !$OMP END PARALLEL
         first_particle = 7
     end if
+    !! Define last particle ( y -> parameters(:last_particle) )
+    last_particle = first_particle + 4 * Nparticles - 1
 
 
     ! CHECKS
@@ -1191,12 +1193,12 @@ program main
         discarded_particles = 0
         !!! Pre-set merges
         use_merge = use_merge .and. any(particles_mass(1:Nactive) > cero)
+        merged_particles = 0
         mass_to_merge = cero
         angular_momentum_to_merge = cero
         !! Calculate distances to the asteroid
         !$OMP PARALLEL IF(my_threads > 1 .AND. Nactive > 10) DEFAULT(SHARED) &
-        !$OMP PRIVATE(i) &
-        !$OMP SHARED(discarded_particles)
+        !$OMP PRIVATE(i)
         !$OMP DO REDUCTION(+:mass_to_merge,angular_momentum_to_merge) SCHEDULE (STATIC)
         do i = 1, Nactive
             if ((particles_dist(i) < min_distance) .or. (particles_hexit(i) .eq. 1)) then
@@ -1213,7 +1215,6 @@ program main
                 call resolve_merge(i, mass_to_merge, angular_momentum_to_merge)
             else if ((particles_dist(i) > max_distance) .or. (particles_hexit(i) .eq. 2)) then
                 if (use_screen) then
-                    write (*,*) ACHAR(5)
                     write (*,f125131) "Escape de la partícula ", i, "(", particles_index(i), ") en t = ", &
                     & time / unit_time, "[días]"
                     write (*,*) ACHAR(5)
@@ -1229,11 +1230,20 @@ program main
         !$OMP END DO
         !$OMP END PARALLEL
         
+        
         staying_particles = Nactive - discarded_particles
         particles_hexit = 0 ! Resetear HardExit
         !! Discard particles
         if (discarded_particles > 0) then
-            if (use_merge) call merge_into_asteroid(mass_to_merge, angular_momentum_to_merge) ! Merge particles into asteroid
+            merged_particles = count(particles_hexit(1:Nactive) .eq. 1)
+            if (use_merge .and. (merged_particles > 0)) then
+                call merge_into_asteroid(mass_to_merge, angular_momentum_to_merge) ! Merge particles into asteroid
+                if (use_screen) then
+                    write(*,*) "Merged", merged_particles, "particles into the asteroid"
+                    write(*,*) " New mass :", asteroid_mass / unit_mass, "[kg]"
+                    write(*,*) " New omega:", asteroid_omega * unit_time, "[rad/día]"
+                end if
+            end if
             call quicksort_int(ij_to_swap(1:discarded_particles,1), 1, discarded_particles) ! Sort particles to discard
             if (staying_particles == 0) then ! All particles are out
                 if (use_screen) then
@@ -1279,6 +1289,7 @@ program main
                 write (*,*) ACHAR(5)
             end if
             call argsort_int(particles_index(1:Nactive), sorted_particles_index(1:Nactive)) ! Get the sorted index
+            last_particle = first_particle + 4 * Nactive - 1 ! Redefine last_particle
         end if
         
         ! Check if all done
@@ -1337,18 +1348,18 @@ program main
         end if
 
         !!! Execute an integration method (uncomment/edit one of these)
-        ! call integ_caller (time, parameters_arr, adaptive_timestep, dydt, &
-        !     & Ralston4, timestep, parameters_arr_new, particles_hexitptr)
-        ! call rk_half_step_caller (time, parameters_arr, adaptive_timestep, dydt, &
-        !     & Runge_Kutta5, 5, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new, particles_hexitptr)
-        ! call embedded_caller (time, parameters_arr, adaptive_timestep, dydt, Dormand_Prince8_7, &
-        !    & error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new, particles_hexitptr)
-        call BStoer_caller (time, parameters_arr, adaptive_timestep, dydt, &
-            & error_tolerance, timestep, parameters_arr_new, particles_hexitptr)
-        ! call BStoer_caller2 (time, parameters_arr, adaptive_timestep, dydt, &
-        !     & error_tolerance, timestep, parameters_arr_new, particles_hexitptr)
-        ! call leapfrog_caller (time, parameters_arr, adaptive_timestep, dydt, &
-        !     & leapfrof_KDK, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new, particles_hexitptr)
+        ! call integ_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
+        !     & Ralston4, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+        ! call rk_half_step_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
+        !     & Runge_Kutta5, 5, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+        ! call embedded_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, Dormand_Prince8_7, &
+        !    & error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+        call BStoer_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
+            & error_tolerance, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+        ! call BStoer_caller2 (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
+        !     & error_tolerance, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+        ! call leapfrog_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
+        !     & leapfrof_KDK, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
 
         !! If so, the dt used is in dt_adap
         if (particles_hexit(0) .ne. 0) timestep = adaptive_timestep
@@ -1356,7 +1367,6 @@ program main
         ! Update parameters
         time = time + timestep
         parameters_arr = parameters_arr_new
-        parameters_arr_new = dydt(time, parameters_arr)
 
         ! Asteroid and boulders
         if (use_boulders) then
@@ -1380,12 +1390,12 @@ program main
                         aux_integer = i * equation_size
                         pos_ast_arr(i,:) = parameters_arr(aux_integer+1 : aux_integer+2)
                         vel_ast_arr(i,:) = parameters_arr(aux_integer+3 : aux_integer+4)
-                        acc_ast_arr(i,:) = parameters_arr_new(aux_integer+3 : aux_integer+4)
                     end do
                     call get_asteroid_from_boulders(mass_ast_arr, pos_ast_arr, vel_ast_arr, &
                                                     & asteroid_pos, asteroid_vel, asteroid_omega, asteroid_inertia)
                     do i = 0, Nboulders
                         dist_ast_arr(i) = sqrt(sum((pos_ast_arr(i,:) - asteroid_pos)**2))
+                        acc_ast_arr(i,:) = - (pos_ast_arr(i,:) - asteroid_pos) * asteroid_omega**2
                     end do
                     ! Definimos theta como la variación del ángulo de m0 respecto del asteroide, respecto a la condición inicial
                     asteroid_theta = mod(atan2(pos_ast_arr(0,2) - asteroid_pos(2), &
@@ -1455,7 +1465,7 @@ program main
             end do 
             !$OMP END DO NOWAIT
             !$OMP DO
-            do i = 1, Nparticles
+            do i = 1, Nactive
                 call write_i_to_individual(i, 200+i+Nboulders)
             end do 
             !$OMP END DO 
@@ -1464,14 +1474,14 @@ program main
             do i = 0, Nboulders
                 call write_b_to_screen(i, 6)
             end do
-            do i = 1, Nparticles
+            do i = 1, Nactive
                 call write_i_to_screen(i, 6)
             end do
             !$OMP SECTION
             do i = 0, Nboulders
                 call write_b_to_general(i, 20)
             end do
-            do i = 1, Nparticles
+            do i = 1, Nactive
                 call write_i_to_general(i, 20)
             end do
             call flush_output(20)
@@ -1520,7 +1530,12 @@ program main
         if (use_chaosfile) then
             !! Guardar archivo de caos
             call argsort_int(particles_index, sorted_particles_index)
-            open (unit=40, file=trim(chaosfile), status='unknown', action='write')!, access="append")
+            inquire (unit=40, opened=aux_logical)
+            if (.not. aux_logical) then
+                open (unit=40, file=trim(chaosfile), status='unknown', action='write')
+            else
+                call fseek(40, 0, 0)       ! move to beginning
+            end if
             do i = 1, Nparticles
                 aux_integer = sorted_particles_index(i)
                 write (40,f2233) particles_index(aux_integer), & ! i
