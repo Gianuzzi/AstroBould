@@ -127,7 +127,7 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-            if (any(particles_hexit(1:) .ne. 0)) particles_hexit(0) = 1 
+            if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1 
         end function dydt_explicit_v1
 
         function dydt_implicit_v1 (t, y) result(dydt) ! Tienen un error sistemático que no detecto aún
@@ -205,7 +205,7 @@ module forces
                 dydt(ineqs+1 : ineqs+2) = y(ineqs+3 : ineqs+4)
                 dydt(ineqs+3 : ineqs+4) = -omega2 * raux(i,:) + omegadot * (/-raux(i,2), raux(i,1)/) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
             end do
-            if (any(particles_hexit(1:) .ne. 0)) particles_hexit(0) = 1
+            if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_implicit_v1
 
         function dydt_explicit_v2 (t, y) result(dydt)
@@ -338,7 +338,7 @@ module forces
             !$OMP END DO
             !$OMP END PARALLEL
             dydt(2) = domegadt(t, omega) + omegadot
-            if (any(particles_hexit(1:) .ne. 0)) particles_hexit(0) = 1
+            if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_implicit_v2
 
         function dydt_no_boulders (t, y) result(dydt)
@@ -381,7 +381,7 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-            if (any(particles_hexit(1:) .ne. 0)) particles_hexit(0) = 1
+            if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_no_boulders
     
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
