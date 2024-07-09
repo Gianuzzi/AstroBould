@@ -961,8 +961,10 @@ module parameters
                 single_part_MMR = cero
             end if
         end subroutine set_derived_parameters
+        
+        ! 5.x Subroutines to allocate arrays
 
-        ! 5.0 Alocatar arrays asteroide
+        ! 5.1 Alocatar arrays asteroide
         subroutine allocate_asteriod_arrays(Nboulders)
             implicit none
             integer(kind=4), intent(in) :: Nboulders
@@ -977,7 +979,7 @@ module parameters
             end if
         end subroutine allocate_asteriod_arrays
 
-        ! 5.1 Alocatar particulas
+        ! 5.2 Alocatar particulas
         subroutine allocate_particles(Nparticles)
             implicit none
             integer(kind=4), intent(in) :: Nparticles
@@ -1000,7 +1002,7 @@ module parameters
             particles_hexitptr => particles_hexit(0) ! Puntero a Hard Exit (NO TOCAR) !!! Ya está en default
         end subroutine allocate_particles
 
-        ! 5.2 Liberar arrays asteroide
+        ! 5.3 Liberar arrays asteroide
         subroutine free_asteroid_arrays()
             implicit none
 
@@ -1013,7 +1015,7 @@ module parameters
             deallocate(theta_ast_arr, dist_ast_arr)
         end subroutine free_asteroid_arrays
 
-        ! 5.3 Liberar arrays particles
+        ! 5.4 Liberar arrays particles
         subroutine free_particles()
             implicit none
 
@@ -1301,8 +1303,10 @@ module parameters
 
             res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
         end function cross2D
+        
+        ! 11.x Subroutines to argsort arrays
 
-        ! 11. Calcular indices de elementos ordenados en un arreglo
+        ! 11.1 Calcular indices de elementos ordenados en un arreglo
         subroutine argsort(a, b)
             implicit none
             real(kind=8), intent(in) :: a(:)   ! array of numbers
@@ -1326,7 +1330,7 @@ module parameters
             end do
         end subroutine argsort
 
-        ! 11.5 Calcular indices de elementos ordenados en un arreglo de enteros
+        ! 11.2 Calcular indices de elementos ordenados en un arreglo de enteros
         subroutine argsort_int(a, b)
             implicit none
             integer(kind=4), intent(in) :: a(:)   ! array of numbers
@@ -1411,6 +1415,7 @@ module parameters
 
         ! 16. Intercambiar partículas j y i
         subroutine swap_particles(i, j, chaos)
+            ! Initial conditions are not swapped
             implicit none
             integer(kind=4), intent(in) :: i, j
             logical, intent(in) :: chaos
@@ -1468,8 +1473,10 @@ module parameters
             particles_hexit(i) = particles_hexit(j)
             particles_hexit(j) = tmp_integer
         end subroutine swap_particles
+        
+        ! 17.x Subroutines to sort arrays
 
-        ! 17. Ordenar valores reales
+        ! 17.1 Ordenar valores reales
         recursive subroutine quicksort(a, first, last)
             implicit none
             real(kind=8), dimension(:), intent(inout) ::  a
@@ -1496,7 +1503,7 @@ module parameters
             if (j+1 < last)  call quicksort(a, j+1, last)
         end subroutine quicksort
 
-        ! 17.5 Ordenar valores enteros
+        ! 17.2 Ordenar valores enteros
         recursive subroutine quicksort_int(a, first, last)
             implicit none
             integer(kind=4), dimension(:), intent(inout) ::  a
@@ -1558,8 +1565,10 @@ module parameters
                 end if
             end if
         end subroutine merge_into_asteroid
+        
+        ! 19.x Subroutines to accumulate (or not) mass and angmom
 
-        ! 19. Acumular masa y momento angular de particulas
+        ! 19.1 Acumular masa y momento angular de particulas
         subroutine accumulate_mass_and_angmom(i, acum_mass, acum_angmom)
             implicit none
             integer(kind=4), intent(in) :: i
@@ -1567,9 +1576,10 @@ module parameters
 
             acum_mass = acum_mass + particles_mass(i)
             acum_angmom = acum_angmom + particles_mass(i) * cross2D(particles_coord(i,1:2), particles_coord(i,3:4))
+            particles_mass(i) = cero ! Set to 0,as it is now inside asteroid
         end subroutine accumulate_mass_and_angmom
 
-        ! 19.5 NO acumular masa y momento de particulas
+        ! 19.2 NO acumular masa y momento de particulas
         subroutine do_not_accumulate_mass_and_angmom(i, acum_mass, acum_angmom)
             implicit none
             integer(kind=4), intent(in) :: i
@@ -1676,35 +1686,38 @@ module parameters
             allocate (my_sorted_particles_index(Nparticles))
             call argsort_int(particles_index, my_sorted_particles_index)
             call fseek(unit_file, 0, 0)       ! move to beginning
+            ! Remember that Initial conditions were not swapped
             do i = 1, Nparticles
                 aux_integer = my_sorted_particles_index(i)
                 write (unit_file,f2233) particles_index(aux_integer), & ! i
                 & particles_outcome(aux_integer), & ! bad
                 & final_time / unit_time, & ! total time to integrate
                 & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum
-                & particles_initial_conditions(aux_integer,1) / unit_mass, & ! initial: mass
-                & particles_initial_conditions(aux_integer,2) / unit_dist, & ! initial: a
-                & particles_initial_conditions(aux_integer,3), & ! initial: e
-                & particles_initial_conditions(aux_integer,4) / radian, & ! initial: M
-                & particles_initial_conditions(aux_integer,5) / radian, & ! initial: omega
-                & particles_initial_conditions(aux_integer,6), & ! initial: MMR
-                & sqrt(particles_initial_conditions(aux_integer,2) * &
-                  & (uno - particles_initial_conditions(aux_integer,3)**2) &
-                  & * Gasteroid_mass) / (unit_dist * unit_vel), & ! initial: angular momentum per unit mass
+                & particles_initial_conditions(i,1) / unit_mass, & ! initial: mass
+                & particles_initial_conditions(i,2) / unit_dist, & ! initial: a
+                & particles_initial_conditions(i,3), & ! initial: e
+                & particles_initial_conditions(i,4) / radian, & ! initial: M
+                & particles_initial_conditions(i,5) / radian, & ! initial: omega
+                & particles_initial_conditions(i,6), & ! initial: MMR
+                & sqrt(particles_initial_conditions(i,2) * &
+                  & (uno - particles_initial_conditions(i,3)**2) * &
+                  & G * (particles_initial_conditions(i,1) + asteroid_initial_conditions(1))) / &
+                  & (unit_dist * unit_vel), & ! initial: angular momentum per unit mass
                 & particles_times(aux_integer) / unit_time, & ! surviving time
                 & particles_elem(aux_integer,1) / unit_dist, particles_elem(aux_integer,2), & ! final: a, e
                 & particles_elem(aux_integer,3) / radian, particles_elem(aux_integer,4) / radian, & ! final: M, omega
                 & particles_MMR(aux_integer), & ! final: MMR
                 & sqrt(particles_elem(aux_integer,1) * &
-                  & (uno - particles_elem(aux_integer,2)**2) &
-                  & * Gasteroid_mass) / (unit_dist * unit_vel), & ! final: angular momentum per unit mass
+                  & (uno - particles_elem(aux_integer,2)**2) * &
+                  & G * (particles_mass(aux_integer) + asteroid_mass)) / &
+                  & (unit_dist * unit_vel), & ! final: angular momentum per unit mass
                 & particles_min_a(aux_integer) / unit_dist, particles_max_a(aux_integer) / unit_dist, & ! a_min, a_max
                 & particles_min_e(aux_integer), particles_max_e(aux_integer), & ! e_min, e_max
                 & (particles_max_a(aux_integer) - particles_min_a(aux_integer)) / unit_dist, & ! Delta a
                 & (particles_max_e(aux_integer) - particles_min_e(aux_integer)) ! Delta e
             end do
             deallocate (my_sorted_particles_index)
-            flush(40)
+            flush(unit_file)
         end subroutine write_chaos
 
         ! 22.x Subroutines to get coordinates and elements from a body
@@ -1969,8 +1982,10 @@ module parameters
             nullify(write_b_to_individual)
             nullify(flush_chaos)
         end subroutine nullify_pointers
+        
+        ! 26.x Subroutines to switch between lower and upper case
 
-        ! 26. Go from lower to upper case
+        ! 26.1 Go from lower to upper case
         function to_upper(strIn) result(strOut)
             ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
             ! Original author: Clive Page
@@ -1989,7 +2004,7 @@ module parameters
             end do
         end function to_upper
 
-        ! 26.5 Go from lower to upper case
+        ! 26.2 Go from lower to upper case
         function to_lower(strIn) result(strOut)
             implicit none
             character(len=*), intent(in) :: strIn
@@ -2013,9 +2028,10 @@ module parameters
 
             flush(unit_file)
         end subroutine flush_to_file
-
         
-        ! 28. Check distances (Version 1)  [from cm]
+        ! 28.x Functions to check collision/escape
+        
+        ! 28.1 Check distances (Version 1)  [from cm]
         function check_continue_v1 (y) result(keep_going)
             implicit none
             real(kind=8), dimension(:), intent(in) :: y
@@ -2049,7 +2065,7 @@ module parameters
             
         end function check_continue_v1
         
-        ! 28.5 Check distances (Version 2) [from cm]
+        ! 28.2 Check distances (Version 2) [from cm]
         function check_continue_v2 (y) result(keep_going)
             implicit none
             real(kind=8), dimension(:), intent(in) :: y
@@ -2091,7 +2107,6 @@ module parameters
         end function check_continue_v2
         
         
-
         ! 99 Subrutina para pointer vacío (no hace nada) con input i
         subroutine do_nothing_i(i)
             implicit none

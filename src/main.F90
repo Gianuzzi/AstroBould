@@ -712,7 +712,7 @@ program main
 
 
     !!! Redefine logicals
-    if (all(particles_mass .eq. cero)) use_merge = .False. ! No merge if no mass
+    if (all(particles_mass < tini)) use_merge = .False. ! No merge if no mass
     use_single_particle = Nparticles .eq. 1
     if (use_single_particle) use_elements = .True.
     
@@ -1555,22 +1555,24 @@ program main
                 & particles_outcome(aux_integer), & ! bad
                 & final_time / unit_time, & ! total time to integrate
                 & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum
-                & particles_initial_conditions(aux_integer,1) / unit_mass, & ! initial: mass
-                & particles_initial_conditions(aux_integer,2) / unit_dist, & ! initial: a
-                & particles_initial_conditions(aux_integer,3), & ! initial: e
-                & particles_initial_conditions(aux_integer,4) / radian, & ! initial: M
-                & particles_initial_conditions(aux_integer,5) / radian, & ! initial: omega
-                & particles_initial_conditions(aux_integer,6), & ! initial: MMR
-                & sqrt(particles_initial_conditions(aux_integer,2) * &
-                  & (uno - particles_initial_conditions(aux_integer,3)**2) &
-                  & * Gasteroid_mass) / (unit_dist * unit_vel), & ! initial: angular momentum per unit mass
+                & particles_initial_conditions(i,1) / unit_mass, & ! initial: mass
+                & particles_initial_conditions(i,2) / unit_dist, & ! initial: a
+                & particles_initial_conditions(i,3), & ! initial: e
+                & particles_initial_conditions(i,4) / radian, & ! initial: M
+                & particles_initial_conditions(i,5) / radian, & ! initial: omega
+                & particles_initial_conditions(i,6), & ! initial: MMR
+                & sqrt(particles_initial_conditions(i,2) * &
+                  & (uno - particles_initial_conditions(i,3)**2) * &
+                  & G * (particles_initial_conditions(i,1) + asteroid_initial_conditions(1))) / &
+                  & (unit_dist * unit_vel), & ! initial: angular momentum per unit mass
                 & particles_times(aux_integer) / unit_time, & ! surviving time
                 & particles_elem(aux_integer,1) / unit_dist, particles_elem(aux_integer,2), & ! final: a, e
                 & particles_elem(aux_integer,3) / radian, particles_elem(aux_integer,4) / radian, & ! final: M, omega
                 & particles_MMR(aux_integer), & ! final: MMR
                 & sqrt(particles_elem(aux_integer,1) * &
-                  & (uno - particles_elem(aux_integer,2)**2) &
-                  & * Gasteroid_mass) / (unit_dist * unit_vel), & ! final: angular momentum per unit mass
+                  & (uno - particles_elem(aux_integer,2)**2) * &
+                  & G * (particles_mass(aux_integer) + asteroid_mass)) / &
+                  & (unit_dist * unit_vel), & ! final: angular momentum per unit mass
                 & particles_min_a(aux_integer) / unit_dist, particles_max_a(aux_integer) / unit_dist, & ! a_min, a_max
                 & particles_min_e(aux_integer), particles_max_e(aux_integer), & ! e_min, e_max
                 & (particles_max_a(aux_integer) - particles_min_a(aux_integer)) / unit_dist, & ! Delta a
