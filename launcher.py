@@ -1,4 +1,4 @@
-# Version: 7.1
+# Version: 8.0
 
 # DENTRO DE UN ENTORNO PYTHON
 # Ejecución: $ python parallel.py
@@ -380,7 +380,7 @@ def make_sum(final_chaos, suffix=""):
     # Concatena los archivos
     outs = final_chaos.split(".")
     outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
-    outs.insert(-1, ".")
+    outs.insert(-1, ".out")
     final_chaos = "".join(outs)
     with open(os.path.join(wrk_dir, final_chaos), "w") as f_out:
         for file in file_list:
