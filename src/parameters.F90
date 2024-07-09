@@ -154,16 +154,18 @@ module parameters
     real(kind=8), dimension(:), allocatable :: parameters_arr, parameters_arr_new
     
     !!! Hard Exit
+    logical :: is_premature_exit
     integer(kind=4), dimension(:), allocatable, target :: particles_hexit !  Hard Exit integer
     integer(kind=4), pointer :: particles_hexitptr ! pointer to Hard Exit
-
+    procedure (check_continue_template), pointer :: check_continue_ptr => null ()
+    
     !!! INITIAL CONDITIONS (Here we store the initial conditions of everything)
     real(kind=8), dimension(:,:), allocatable :: particles_initial_conditions !! mass, a, e, M, w, MRR
     real(kind=8), dimension(:,:), allocatable :: m0_and_boulders_initial_conditions !! mass, radius, theta
     real(kind=8), dimension(:), allocatable :: asteroid_initial_conditions !! mass, radius, pos, vel, theta, omega, inertia, angmom, Prot, acorot
     
 
-    !!! GENERAL PTRs
+    !!! GENERAL element PTRs
     procedure (int_i_template), pointer :: get_elements_i => null ()
     procedure (int_i_template), pointer :: get_chaos_i => null ()
 
@@ -185,7 +187,7 @@ module parameters
 
     !!!!!!!!    FORMATS    !!!!!
     character(19), parameter :: f12    = "(22(A, 1X, I7, 1X))"
-    character(42), parameter :: f125131 = "(2(A, 1X, I7, 1X), A, 1X, 1PE22.15, 1X, A)"
+    character(45), parameter :: f125131 = "(2(A, 1X, I7, 1X), 2(A, 1X, 1PE22.15, 1X), A)"
     character(29), parameter :: f1233  = "(A, 1X, I7, 22(1X, 1PE22.15))"
     character(25), parameter :: f13    = "(22(A, 1X, 1PE22.15, 1X))"
     character(21), parameter :: f133   = "(A, 22(1X, 1PE22.15))"
@@ -216,6 +218,15 @@ module parameters
             integer(kind=4), intent(in) :: i
             integer(kind=4), intent(in) :: unit
         end subroutine write_i_to_unit_template
+        
+        function check_continue_template (y) result(keep_going)
+            implicit none
+            real(kind=8), dimension(:), intent(in) :: y
+            real(kind=8) :: r0b(2)
+            real(kind=8) :: rb(2), dist_to_m0, r_from_m0(2)
+            integer(kind=4) :: i, particle_i
+            logical :: keep_going
+        end function
 
     end interface
 
@@ -2002,6 +2013,84 @@ module parameters
 
             flush(unit_file)
         end subroutine flush_to_file
+
+        
+        ! 28. Check distances (Version 1)  [from cm]
+        function check_continue_v1 (y) result(keep_going)
+            implicit none
+            real(kind=8), dimension(:), intent(in) :: y
+            real(kind=8) :: r0b(2)
+            real(kind=8) :: rb(2), dist_to_m0, r_from_m0(2)
+            integer(kind=4) :: i, particle_i
+            logical :: keep_going
+            
+            ! Calculate the center of mass of the asteroid
+            r0b(1) = y(1)
+            r0b(2) = y(2)
+            
+            ! Calculate distance and vector to boulders
+            do i = 1, Nactive
+                particle_i = (i + Nboulders) * 4
+                rb(1) = y(particle_i+1)
+                rb(2) = y(particle_i+2)
+                r_from_m0 = rb - r0b
+                dist_to_m0 = sqrt(r_from_m0(1)**2 + r_from_m0(2)**2)
+                if (dist_to_m0 > max_distance) then
+                    particles_hexit(i) = 2
+                else if (dist_to_m0 < min_distance) then
+                    particles_hexit(i) = 1
+                else
+                    particles_hexit(i) = 0  ! Assuming 0 is the default or non-action value
+                end if
+            end do
+            
+            keep_going = all(particles_hexit(1:Nactive) .eq. 0)
+            if (.not. keep_going) particles_hexit(0) = 1
+            
+        end function check_continue_v1
+        
+        ! 28.5 Check distances (Version 2) [from cm]
+        function check_continue_v2 (y) result(keep_going)
+            implicit none
+            real(kind=8), dimension(:), intent(in) :: y
+            real(kind=8) :: r0b(2)
+!             real(kind=8) :: rcm(2)
+            real(kind=8) :: rb(2), dist_to_m0, r_from_m0(2)
+            integer(kind=4) :: i, particle_i
+            logical :: keep_going
+            
+
+            ! ! Calculate the positions of m0
+            ! r0b(1) = cos(y(1) + theta_ast_arr(0)) * dist_ast_arr(0)
+            ! r0b(2) = sin(y(1) + theta_ast_arr(0)) * dist_ast_arr(0)
+            ! r0b(1) = y(3) + r0b(1) ! xA + rcos(theta + theta_i)
+            ! r0b(2) = y(4) + r0b(2) ! yA + rsin(theta + theta_i)
+
+            ! Define center of mass and velocity
+            r0b = y(3:4)
+            
+            ! Calculate distance and vector to boulders
+            do i = 1, Nactive
+                particle_i = i * 4 + 2
+                rb(1) = y(particle_i+1)
+                rb(2) = y(particle_i+2)
+                r_from_m0 = rb - r0b
+                dist_to_m0 = sqrt(r_from_m0(1)**2 + r_from_m0(2)**2)
+                if (dist_to_m0 > max_distance) then
+                    particles_hexit(i) = 2
+                else if (dist_to_m0 < min_distance) then
+                    particles_hexit(i) = 1
+                else
+                    particles_hexit(i) = 0  ! Assuming 0 is the default or non-action value
+                end if
+            end do
+            
+            keep_going = all(particles_hexit(1:Nactive) .eq. 0)
+            if (.not. keep_going) particles_hexit(0) = 1
+            
+        end function check_continue_v2
+        
+        
 
         ! 99 Subrutina para pointer vacío (no hace nada) con input i
         subroutine do_nothing_i(i)

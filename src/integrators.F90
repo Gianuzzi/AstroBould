@@ -45,6 +45,12 @@ module integrators
     real(kind=8), parameter :: SQ15_30 = SQ15/3.d1, SQ15_15 = SQ15_30 * TWO
 
     abstract interface
+    
+        function function_check_keep_tem (y) result(keep_going)
+            implicit none
+            real(kind=8), dimension(:), intent(in) :: y
+            logical :: keep_going
+        end function function_check_keep_tem
 
         !---------------------------------------------------------------------------------------------
         ! ND -> ND
@@ -1342,7 +1348,8 @@ module integrators
                 do k = 1, kmax ! Evaluate the sequence of modiﬁed midpoint integrations.
                     xnew = x + h
                     if (abs(xnew - x) < SAFE_LOW) then !E_TOL?
-                        write (*,*) "Step size underflow in bstep", abs(xnew - x)
+                        print*, "Step size underflow in bstep", abs(xnew - x)
+                        exit main_loop ! Luckily, hexitptr will handle it
                         stop 2
                         return
                     end if
@@ -1785,24 +1792,26 @@ module integrators
         !   Call an RK (not embedded) integrator
         !---------------------------------
 
-        subroutine integ_caller (t, y, dt_min, dydt, integ, dt, ynew, hexitptr)
+        subroutine integ_caller (t, y, dt_min, dydt, integ, dt, ynew, check_fun)
             implicit none
             real(kind=8), intent(in)                       :: t, dt, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
-            integer, pointer, optional                     :: hexitptr
+            procedure(function_check_keep_tem), optional   :: check_fun
             procedure(dydt_tem)                            :: dydt
             procedure(integ_tem)                           :: integ
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(size (y))              :: yaux, der
             real(kind=8)                                   :: time, t_end, dt_used
+            logical                                        :: keep = .True.
 
             ynew    = y
             time    = t
             t_end   = time + dt
             dt_used = min (dt_min, dt)
             do while (time < t_end)
-                if (present(hexitptr)) then ! If Hard Exit pointer present
-                    if (hexitptr .ne. 0) return ! If Hard Exit is True, Exit subroutine
+                if (present(check_fun)) then ! If Check Continue function present
+                    keep = check_fun(ynew)
+                    if (.not. keep) return ! Exit subroutine
                 end if
                 yaux = ynew
                 der  = dydt (time, yaux)
@@ -1815,25 +1824,27 @@ module integrators
         !   Call an embedded integrator
         !---------------------------------
         
-        subroutine embedded_caller (t, y, dt_adap, dydt, integ, e_tol, beta, dt_min, dt, ynew, hexitptr)
+        subroutine embedded_caller (t, y, dt_adap, dydt, integ, e_tol, beta, dt_min, dt, ynew, check_fun)
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, beta, dt_min, dt
             real(kind=8), dimension(:), intent(in)         :: y
-            integer, pointer, optional                     :: hexitptr
+            procedure(function_check_keep_tem), optional   :: check_fun
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             procedure(embedded_tem)                        :: integ
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(size (y))              :: yaux, der
             real(kind=8)                                   :: time, t_end, dtmin, dtused
+            logical                                        :: keep = .True.
 
             ynew  = y
             time  = t
             t_end = time + dt
             dtmin = min (dt_min, dt)
             do while (time < t_end)
-                if (present(hexitptr)) then ! If Hard Exit pointer present
-                    if (hexitptr .ne. 0) then ! If Hard Exit is True
+                if (present(check_fun)) then ! If Check Continue function present
+                    keep = check_fun(ynew)
+                    if (.not. keep) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
                         return ! Exit subroutine
                     end if
@@ -1850,11 +1861,11 @@ module integrators
         !   Call an RK integrator with adaptive timestep
         !---------------------------------
 
-        subroutine solve_rk_half_step_caller (t, y, dt_adap, dydt, integ, p, e_tol, beta, dt_min, dt, ynew, hexitptr)
+        subroutine solve_rk_half_step_caller (t, y, dt_adap, dydt, integ, p, e_tol, beta, dt_min, dt, ynew, check_fun)
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, beta, dt, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
-            integer, pointer, optional                     :: hexitptr
+            procedure(function_check_keep_tem), optional   :: check_fun
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             procedure(integ_tem)                           :: integ
@@ -1862,14 +1873,16 @@ module integrators
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(size (y))              :: yaux, der
             real(kind=8)                                   :: time, t_end, dtmin, dtused
+            logical                                        :: keep = .True.
 
             ynew  = y
             time  = t
             t_end = time + dt
             dtmin = dt_min
             do while (time < t_end)
-                if (present(hexitptr)) then ! If Hard Exit pointer present
-                    if (hexitptr .ne. 0) then ! If Hard Exit is True
+                if (present(check_fun)) then ! If Check Continue function present
+                    keep = check_fun(ynew)
+                    if (.not. keep) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
                         return ! Exit subroutine
                     end if
@@ -1886,28 +1899,30 @@ module integrators
         !   Call Bulirsch_Stoer
         !---------------------------------
         
-        subroutine BStoer_caller (t, y, dt_adap, dydt, e_tol, dt, ynew, hexitptr) !, dt_min
+        subroutine BStoer_caller (t, y, dt_adap, dydt, e_tol, dt, ynew, check_fun) !, dt_min
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, dt!, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
-            integer, pointer, optional                     :: hexitptr
+            procedure(function_check_keep_tem), optional   :: check_fun
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(size (y))              :: yaux
             real(kind=8)                                   :: time, t_end, dtused! , dtmin
+            logical                                        :: keep = .True.
 
             ynew  = y
             time  = t
             t_end = time + dt
             do while (time < t_end)
-                if (present(hexitptr)) then ! If Hard Exit pointer present
-                    if (hexitptr .ne. 0) then ! If Hard Exit is True
+                if (present(check_fun)) then ! If Check Continue function present
+                    keep = check_fun(ynew)
+                    if (.not. keep) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
                         return ! Exit subroutine
                     end if
                 end if
-                yaux  = ynew
+                yaux = ynew
                 dt_adap = min(dt_adap, t_end - time)
                 call Bulirsch_Stoer (time, yaux, dt_adap, dydt, e_tol, dtused, ynew)
                 time = time + dtused    
@@ -1918,27 +1933,29 @@ module integrators
         !   Call Bulirsch_Stoer2 ! Only useful for [x, y, vx, vy,...] systems
         !---------------------------------
 
-        subroutine BStoer_caller2 (t, y, dt_adap, dydt, e_tol, dt, ynew, hexitptr) !,dt_min
+        subroutine BStoer_caller2 (t, y, dt_adap, dydt, e_tol, dt, ynew, check_fun) !,dt_min
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, dt!, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
-            integer, pointer, optional                     :: hexitptr
+            procedure(function_check_keep_tem), optional   :: check_fun
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(size (y))              :: yaux
             real(kind=8)                                   :: time, t_end, dtused!, dtmin
+            logical                                        :: keep = .True.
 
             ynew  = y
             time  = t
             t_end = time + dt
             ! dtmin = min (dt_min, dt)
             do while (time < t_end)
-                if (present(hexitptr)) then ! If Hard Exit pointer present
-                        if (hexitptr .ne. 0) then ! If Hard Exit is True
-                            dt_adap = time - t ! Replace dt_adap with actual dt used
-                            return ! Exit subroutine
-                        end if
+                if (present(check_fun)) then ! If Check Continue function present
+                    keep = check_fun(ynew)
+                    if (.not. keep) then ! If Hard Exit is True
+                        dt_adap = time - t ! Replace dt_adap with actual dt used
+                        return ! Exit subroutine
+                    end if
                 end if
                 yaux  = ynew
                 ! dt_adap = min(max(dt_adap, dt_min), t_end - time)
@@ -1952,25 +1969,27 @@ module integrators
         !  Call leapfrog integrator (adaptive timestep) ! Only useful for [x, y, vx, vy,...] systems
         !------------------------------------------------
 
-        subroutine leapfrog_caller (t, y, dt_adap, dydt, leapfrog, e_tol, beta, dt_min, dt, ynew, hexitptr)
+        subroutine leapfrog_caller (t, y, dt_adap, dydt, leapfrog, e_tol, beta, dt_min, dt, ynew, check_fun)
             implicit none
             real(kind=8), intent(in)                       :: t, e_tol, beta, dt, dt_min
             real(kind=8), dimension(:), intent(in)         :: y
-            integer, pointer, optional                     :: hexitptr
+            procedure(function_check_keep_tem), optional   :: check_fun
             real(kind=8), intent(inout)                    :: dt_adap
             procedure(dydt_tem)                            :: dydt
             procedure(leapfrog_tem)                        :: leapfrog
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(size (y))              :: yaux, der
             real(kind=8)                                   :: time, t_end, dtmin, dtused
+            logical                                        :: keep = .True.
 
             ynew  = y
             time  = t
             t_end = time + dt
             dtmin = dt_min
             do while (time < t_end)
-                if (present(hexitptr)) then ! If Hard Exit pointer present
-                    if (hexitptr .ne. 0) then ! If Hard Exit is True
+                if (present(check_fun)) then ! If Check Continue function present
+                    keep = check_fun(ynew)
+                    if (.not. keep) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
                         return ! Exit subroutine
                     end if
