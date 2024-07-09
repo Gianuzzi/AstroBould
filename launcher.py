@@ -73,20 +73,21 @@ merge = False  # Si se quiere usar merge
 ## Input ## ("" o False si no se usa)
 config = "config.ini"  # Nombre del archivo de configuración
 partfile = "particles.in"  # Nombre del archivo de partículas
-tomfile = "" # Nombre del archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
+tomfile = ""  # Nombre del archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 ## Output ## ("" o False si no se usa)
-new_dir = True # Puede ser un string con el nombre de la carpeta a crear. Defaul: "simulation"
-datafile = "salida" # Nombre del archivo de salida de datos (sin extensión)
+new_dir = True  # Puede ser un string con el nombre de la carpeta a crear. Default: "simulation"
+datafile = "salida"  # Nombre del archivo de salida de datos (sin extensión)
 final_chaos = "sump"  # Final Chaos Summary Output file name (sin extensión)
 suffix = ""  # Suffix for the output files
-### Screen ###
-screen_info = True  # Si se quiere ver la información en pantalla (solo con torque = True)
-screen_data = False  # Si se quiere ver los datos en pantalla # "%" para porcentaje (solo con torque = True)
-### Elements ###
+## Screen ##
+screen_info = True  # Si se quiere ver la información en pantalla (requires all_in_one=True)
+screen_data = False  # Si se quiere ver los datos en pantalla # "%" para porcentaje (requires all_in_one=True)
+## Elements ##
 elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 
-
+### If all particles must be run in same integration (requires parallel)
+all_in_one = False
 
 # ----------------------------------------------------------------------
 # -------------------- No tocar de aquí en adelante --------------------
@@ -106,16 +107,20 @@ else:
     raise ValueError("new_dir must be either a string or a boolean")
 
 # Redefine partfile if bool
-if (isinstance(datafile, bool) and datafile): datafile = "salida"
+if isinstance(datafile, bool) and datafile:
+    datafile = "salida"
 # Redefine partffinal_chaosile if bool
-if (isinstance(final_chaos, bool) and final_chaos): final_chaos = "sump"
+if isinstance(final_chaos, bool) and final_chaos:
+    final_chaos = "sump"
 
 
 # Archivos
-ocini = os.path.join(cwd, config) # Archivo de configuración
-oprogr = os.path.join(cwd, program) # Ejecutable
-oparticles = os.path.join(cwd, partfile) # Archivo de partículas
-otom = os.path.join(cwd, tomfile) # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
+ocini = os.path.join(cwd, config)  # Archivo de configuración
+oprogr = os.path.join(cwd, program)  # Ejecutable
+oparticles = os.path.join(cwd, partfile)  # Archivo de partículas
+otom = os.path.join(
+    cwd, tomfile
+)  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 # Checkeamos los archivos
 ## Configuración
@@ -142,10 +147,16 @@ if tomfile and (not existe_otom):
     print("ERROR: Tau-Omega-Mass file {} does not exist.".format(otom))
     print("Saliendo.")
     exit(1)
-## Datafile
+## Chaosfile
+if final_chaos is None:
+    final_chaos = "sump"
 if os.path.isfile(os.path.join(wrk_dir, "%s.out" % final_chaos)):
-    print("WARNING: Output file {} already exist.".format(final_chaos))
-    if datafile: print("         Independently, <%s> will be appended (if existing)"%datafile)
+    print("WARNING: Chaos Output file {} already exist.".format(final_chaos))
+    if datafile:
+        print(
+            "         Independently, <%s> will be appended (if existing)"
+            % datafile
+        )
     yes_no = input("Do you want to overwrite it? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         i = 1
@@ -160,6 +171,23 @@ if os.path.isfile(os.path.join(wrk_dir, "%s.out" % final_chaos)):
 if torque and explicit:
     print("WARNING: Torque is active. Explicit mode will be deactivated.")
     explicit = False
+    yes_no = input("Do you want to continue? y/[n]\n")
+    if yes_no.lower() not in ["y", "yes", "s", "si"]:
+        print("Saliendo.")
+        exit(1)
+
+if all_in_one and (not torque):
+    print(
+        "WARNING: ALl particles will be integrated together, but without torque."
+    )
+    yes_no = input("Do you want to continue? y/[n]\n")
+    if yes_no.lower() not in ["y", "yes", "s", "si"]:
+        print("Saliendo.")
+        exit(1)
+
+if torque and (not all_in_one):
+    print("WARNING: ALl particles will be integrated independently,")
+    print(" but each of them will induce torque to its asteroid.")
     yes_no = input("Do you want to continue? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
@@ -183,17 +211,30 @@ print("Cantidad total de partículas: {}".format(nsys))
 
 # Ver si hay que hacer todo, o ya hay alguna realizadas
 new_simulation = True
-missing_lines = range(1, nsys+1)
-if not torque: # Si hay torque, cagaste. La única prueba es si ya hay un sump.
+missing_lines = range(1, nsys + 1)
+if (
+    not all_in_one
+):  # Si hay all_in_one, cagaste. La única prueba es si ya hay un sump.
     # Definimos prefijo de directorio, de acuerdo a TOMfile o no
     pref = "tomd" if tomfile else "dpy"
 
     # Obtener los sistemas realizados
     if os.path.isdir(wrk_dir):
-        print("Checkeando integraciones ya completadas" +\
-            " dentro de %s..." % (os.path.basename(wrk_dir) if cwd != wrk_dir else "este directorio"))
+        print(
+            "Checkeando integraciones ya completadas"
+            + " dentro de %s..."
+            % (
+                os.path.basename(wrk_dir)
+                if cwd != wrk_dir
+                else "este directorio"
+            )
+        )
         if any(
-            [os.path.isdir(os.path.join(wrk_dir, name)) and name.startswith(pref) for name in os.listdir(wrk_dir)]
+            [
+                os.path.isdir(os.path.join(wrk_dir, name))
+                and name.startswith(pref)
+                for name in os.listdir(wrk_dir)
+            ]
         ):
             command = (
                 f"find {pref}* -name 'chaos*{suffix}.out' "
@@ -201,20 +242,24 @@ if not torque: # Si hay torque, cagaste. La única prueba es si ya hay un sump.
                 f"| sort -n"
             )
             result = subprocess.run(
-                command, shell=True, stdout=subprocess.PIPE, text=True, cwd=wrk_dir,
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                text=True,
+                cwd=wrk_dir,
             )
             if result.returncode == 0:
                 output_lines = result.stdout.splitlines()
             else:
                 raise IOError("Error al leer integraciones ya realizadas.")
             done = set([int(cint) for cint in output_lines if cint != ""])
-            missing_lines = [x for x in range(1,nsys+1) if x not in done]
+            missing_lines = [x for x in range(1, nsys + 1) if x not in done]
             print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
             nsys = len(missing_lines)
             print("   Cantidad de sistemas a integrar: {}".format(nsys))
             new_simulation = False
 
-        
+
 # Hay que hacer?
 if len(missing_lines) == 0:
     print("Ya se han integrado todas las partículas.")
@@ -226,26 +271,26 @@ workers = min(max(1, min(int(workers), len(os.sched_getaffinity(0)))), nsys)
 print("Workers: {}\n".format(workers))
 
 # Argumentos. Estos son:
-if torque:
-    args = "--torque --nomapf"
+args = " --nomapf"
+if all_in_one:
     args += " --screen" if screen_info else " --noscreen"
-    if screen_data=="%":
+    if screen_data == "%":
         args += " --perc --nodatascr"
     else:
         args += " --datascr" if screen_data else " --nodatascr"
-        args += " --noperc"        
+        args += " --noperc"
     args += " -partfile %s" % partfile
     args += " -datafile %s.out" % datafile if datafile else " --nodataf"
     args += " -parallel %d" % workers
     args += " -chaosfile %s.out" % final_chaos if final_chaos else " --nochaosf"
 else:
-    args = " --notorque  --nomapf --noscreen --nodatascr --noperc --noparallel"
+    args += " --noscreen --nodatascr --noperc --noparallel"
 args += " --explicit" if explicit else " --implicit"
 args += " -tomfile %s" % tomfile if tomfile else " --notomfile"
 args += " --elem" if elements else " --noelem"
 args += " --version1" if version1 else " --version2"
+args += " --torque" if torque else " --notorque"
 args += " --merge" if merge else " --nomerge"
-
 
 
 # Función general
@@ -265,14 +310,19 @@ def integrate_n(i):
             subprocess.run(["cp", otom, ntom], check=True)
     this_args = " -nsim %d" % i
     this_args += " -chaosfile chaos%d%s.out" % (i, suffix)
-    this_args += "%s" % (" --nodataf"
-        if not datafile else
-        " -datafile %s" % ("%s%d%s.out" % (
-            datafile if isinstance(datafile,str) else "salida", i, suffix)
-            )
+    this_args += "%s" % (
+        " --nodataf"
+        if not datafile
+        else " -datafile %s"
+        % (
+            "%s%d%s.out"
+            % (datafile if isinstance(datafile, str) else "salida", i, suffix)
+        )
     )
     print("Running system %d\n" % (i))
-    my_line = " ".join(lines[i-1].split()[1:]) # -1 porque la lsita arranca de 0 #Elimina el primer valor (en caso que fuese la masa...)
+    my_line = " ".join(
+        lines[i - 1].split()[1:]
+    )  # -1 porque la lsita arranca de 0 #Elimina el primer valor (en caso que fuese la masa...)
     # ESTO SE ESTÁ EJECUTANDO EN LA SHELL #
     # print("Running: ./%s %s %s %s"%(program, args, this_args, my_line))
     # (Lines debe ser último porque termina en "\n") #
@@ -287,6 +337,7 @@ def integrate_n(i):
         return
     print("System %d has been integrated." % i)
     return
+
 
 # Crear archivo sump
 def make_sum(final_chaos, suffix=""):
@@ -350,9 +401,9 @@ def generate_unique_dir(base_dir):
 
 if __name__ == "__main__":
     if new_simulation and (not os.path.exists(wrk_dir)):
-        os.mkdir(wrk_dir) # Creamos directorio donde volcaremos todo
+        os.mkdir(wrk_dir)  # Creamos directorio donde volcaremos todo
         print("Directory  '% s' created\n" % os.path.basename(wrk_dir))
-    if not torque:
+    if not all_in_one:
         with ProcessPoolExecutor(max_workers=workers) as executor:
             results = executor.map(integrate_n, missing_lines)
         if final_chaos:
@@ -374,5 +425,7 @@ if __name__ == "__main__":
             if existe_otom:
                 subprocess.run(["cp", otom, ntom], check=True)
         print("./%s %s" % (program, args))
-        subprocess.run(["./%s %s" % (program, args)], cwd=wrk_dir, check=True, shell=True)
+        subprocess.run(
+            ["./%s %s" % (program, args)], cwd=wrk_dir, check=True, shell=True
+        )
     print("LISTO!")
