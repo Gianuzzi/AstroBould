@@ -178,7 +178,7 @@ if torque and explicit:
 
 if all_in_one and (not torque):
     print(
-        "WARNING: ALl particles will be integrated together, but without torque."
+        "WARNING: All particles will be integrated together, but without torque."
     )
     yes_no = input("Do you want to continue? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
@@ -186,7 +186,7 @@ if all_in_one and (not torque):
         exit(1)
 
 if torque and (not all_in_one):
-    print("WARNING: ALl particles will be integrated independently,")
+    print("WARNING: All particles will be integrated independently,")
     print(" but each of them will induce torque to its asteroid.")
     yes_no = input("Do you want to continue? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
@@ -382,11 +382,79 @@ def make_sum(final_chaos, suffix=""):
     outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
     outs.insert(-1, ".out")
     final_chaos = "".join(outs)
-    with open(os.path.join(wrk_dir, final_chaos), "w") as f_out:
-        for file in file_list:
-            with open(file, "r") as f_in:
-                for line in f_in:
-                    f_out.write("{}".format(line))
+    command = ' '.join([file for file in file_list])
+    p = subprocess.run(
+        ["cat %s > %s" % (command, final_chaos)],
+        cwd=wrk_dir, check=True, shell=True
+    )
+
+    if p.returncode != 0:
+        print("Could not create % with cat."%final_chaos)
+        print(" Trying with pure python...")
+        with open(os.path.join(wrk_dir, final_chaos), "w") as f_out:
+            for file in file_list:
+                with open(file, "r") as f_in:
+                    for line in f_in:
+                        f_out.write("{}".format(line))
+
+# Crear archivo salida final
+def make_sal(salida, suffix=""):
+    # Ruta a la carpeta raíz que contiene las subcarpetas con los archivos
+    root_dir = wrk_dir
+
+    # Lista para almacenar los nombres de los archivos
+    file_list = []
+
+    # Recorre todas las subcarpetas en la carpeta raíz
+    for subdir in os.listdir(root_dir):
+        # Verifica si el nombre de la subcarpeta comienza con 'pref'
+        if subdir.startswith(pref):
+            subdir_path = os.path.join(root_dir, subdir)
+            # Recorre todos los archivos en la subcarpeta
+            for filename in os.listdir(subdir_path):
+                # Verifica si el nombre del archivo comienza con
+                # <salida> y termina con ".out"
+                if (
+                    filename.startswith(salida)
+                    and filename.endswith(".out")
+                    and (suffix in filename)
+                ):
+                    filepath = os.path.join(subdir_path, filename)
+                    file_list.append(filepath)
+
+    # Ordena los nombres de los archivos por el valor de i en "<salida>.out"
+    if suffix == "":
+        file_list = sorted(
+            file_list, key=lambda x: int(x.split(salida)[1].split(".out")[0])
+        )
+    else:
+        file_list = sorted(
+            file_list,
+            key=lambda x: int(
+                x.split(salida)[1].split(".out")[0].split(suffix)[0]
+            ),
+        )
+
+    # Concatena los archivos
+    outs = salida.split(".")
+    outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
+    outs.insert(-1, ".out")
+    salida = "".join(outs)
+    command = ' '.join([file for file in file_list])
+    p = subprocess.run(
+        ["cat %s > %s" % (command, salida)],
+        cwd=wrk_dir, check=True, shell=True
+    )
+
+    if p.returncode != 0:
+        print("Could not create % with cat."%salida)
+        print(" Trying with pure python...")
+        with open(os.path.join(wrk_dir, salida), "w") as f_out:
+            for file in file_list:
+                with open(file, "r") as f_in:
+                    for line in f_in:
+                        f_out.write("{}".format(line))
+
 
 
 # Definir nombre único para wrk_dir
@@ -403,27 +471,42 @@ if __name__ == "__main__":
     if new_simulation and (not os.path.exists(wrk_dir)):
         os.mkdir(wrk_dir)  # Creamos directorio donde volcaremos todo
         print("Directory  '% s' created\n" % os.path.basename(wrk_dir))
+    if not os.path.samefile(wrk_dir, cwd): # Pasamos todo al dir de trabajo (organizado)
+        ## Programa
+        nprogr = os.path.join(wrk_dir, program)
+        subprocess.run(["cp", oprogr, nprogr], check=True)
+        oprogr = nprogr
+        ## Archivo de configuracion inicial
+        if existe_ocini:
+            ncini = os.path.join(wrk_dir, config)
+            subprocess.run(["cp", ocini, ncini], check=True)
+            ocini = ncini
+        ## Partículas
+        nparticles = os.path.join(wrk_dir, partfile)
+        subprocess.run(["cp", oparticles, nparticles], check=True)
+        oparticles = nparticles
+        ## Archivo TOM
+        if existe_otom:
+            ntom = os.path.join(wrk_dir, tomfile)
+            subprocess.run(["cp", otom, ntom], check=True)
+            otom = ntom        
     if not all_in_one:
         with ProcessPoolExecutor(max_workers=workers) as executor:
             results = executor.map(integrate_n, missing_lines)
+        if datafile:
+            print("")
+            print("Creando archivo resumen %s.out\n"%datafile)
+            if os.path.isfile(os.path.join(wrk_dir, "%s.out"%datafile)):
+                print("WARNING: Se ha reemplazando archivo %s.out ya existente."%datafile)
+            make_sal(datafile, suffix)
         if final_chaos:
-            print("Creando archivo resumen {}".format(final_chaos))
-            if os.path.isfile(os.path.join(wrk_dir, final_chaos)):
-                print("WARNING: Se ha reemplazando archivo ya existente.")
+            print("")
+            print("Creando archivo resumen %s.out"%final_chaos)
+            if os.path.isfile(os.path.join(wrk_dir, "%s.out"%final_chaos)):
+                print("WARNING: Se ha reemplazando archivo %s.out ya existente."%final_chaos)
             make_sum(final_chaos, suffix)
     else:
         print("Running all systems in one process.")
-        if not os.path.samefile(wrk_dir, cwd):
-            nprogr = os.path.join(wrk_dir, program)
-            ncini = os.path.join(wrk_dir, "config.ini")
-            ntom = os.path.join(wrk_dir, tomfile)
-            nparticles = os.path.join(wrk_dir, partfile)
-            subprocess.run(["cp", oprogr, nprogr], check=True)
-            subprocess.run(["cp", oparticles, nparticles], check=True)
-            if existe_ocini:
-                subprocess.run(["cp", ocini, ncini], check=True)
-            if existe_otom:
-                subprocess.run(["cp", otom, ntom], check=True)
         print("./%s %s" % (program, args))
         subprocess.run(
             ["./%s %s" % (program, args)], cwd=wrk_dir, check=True, shell=True
