@@ -19,7 +19,7 @@ import numpy as np
 tomfile = "tomfile.dat"
 
 # (2) Archivo sump a utilizar para crear TOM
-sump_file = "sump.dat"
+sump_file = "sump.out"
 
 # (3) Parámetros del disco a crear
 mu_d = 0.01  # Cociente de masas de disco a asteroide (mDisk = mu_D * m0)
@@ -356,7 +356,7 @@ if __name__ == "__main__":
         print("Saliendo.")
         exit(1)
     # CAMBIAMOS OMEGA POR DELTA OMEGA
-    domega_tom = np.diff(np.append(Omega0, omega_tom[-1]))
+    domega_tom = np.diff(np.insert(omega_tom, 0, Omega0))
     tom = np.vstack(
         (times_tom / unit_t, domega_tom * unit_t, dmass_tom / unit_m)
     ).T
