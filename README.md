@@ -24,7 +24,7 @@ La ejecución básica de una particula individual se realiza con
 $ ./main <a> <e> <M> <w> <R> [args]
 ```
 
-Los argumentos "$a$, $e$, $M$, $\omega$" son los elementos orbitales, y $R$ (cociente de movimientos inicial $n_{part}/\Omega_{ast}$) es opcional.
+Los argumentos $a, e, M, \omega$ son los elementos orbitales, y $R$ (cociente de movimientos inicial $n_{part}/\Omega_{ast}$) es opcional.
 En caso de usarlo, calcula y reemplaza el valor de $a$.
 
 Una ayuda puede obtenerse con 
@@ -75,6 +75,12 @@ Uso: ./ASTROBOULD <ea> <ee> <eM> <ew> <eR> [args]
 
 ```
 
+### Cofigurations file
+
+Para definir los parámetros de una integración a realizar, es posible editar el [archivo de configuraciones](./config.ini). Este archivo será leído por el ejecutable al comenzar la ejecución.
+
+Es importante tener en cuenta que algunas de las configuraciones aquí seteadas serán anuladas y sobreescritas por las introducidas en [launcher.py](./launcher.py), en caso de utilizar este segundo método para integración en paralelo (ver abajo).
+
 
 ### Parallel 
 
@@ -90,9 +96,13 @@ Este archivo se puede crear con el código [make_particles.py](./tools/make_part
 $ python make_particles.py
 ```
 
-Para la integración _dependiente_ es necesario compilar usando _-fopenmp_, mientras que para la independiente (default) no es necesario. Para el primer caso, se debe compilar ejecutando `make parallel`. 
+Para la integración _dependiente_ es necesario compilar usando _-fopenmp_, mientras que para la independiente (default) no es necesario. Para el primer caso, se debe compilar ejecutando
 
-Para realizar la integración _independiente_, se provee el código en Python [launcher.py](./launcher.py). Más información se encuentra [al inicio](./launcher.py#L3#L47) de este archivo. Luego de configurarlo, su ejecución se realiza con:
+``` console
+$ make parallel
+```
+
+Para realizar la integración _independiente_, se provee el código en Python [launcher.py](./launcher.py). Más información se encuentra [al inicio](./launcher.py#L3#L47) de este archivo. Luego de configurarlo, editando las líneas [61 a 90](./launcher.py#L61#L90), su ejecución se realiza con:
 
 ``` console
 $ python launcher.py
@@ -100,13 +110,20 @@ $ python launcher.py
 
 (Recordar estar en algún entorno de python)
 
-Para realizar una integración _dependiente_, simplemente se debe editar el número de cpus en el [archivo de configuraciones](./config.ini) ([use parallel threads](./config.ini#L17)), o ejecutar directamente en la terminal:
+Para realizar una integración _dependiente_, hay dos posibilidades: 
+1) Editar el número de cpus en el [archivo de configuraciones](./config.ini) ([use parallel threads](./config.ini#L17)), o ejecutar directamente en la terminal:
 
 ``` console
 $ ./ASTROBOULD [args] -parallel <number of cpus to use>
 ```
 
-También se puede utilzar el código [launcher.py](./launcher.py) para esta integración, pero en este caso solo funcionará si está activado el modo [torque](./launcher.py#L70).
+2) Utilzar el código [launcher.py](./launcher.py) para esta integración, seteando
+
+``` python
+all_in_one = True
+```
+en la línea [90](./launcher.py#L90) de este archivo.
+
 
 ### Archivo TOM (Tiempos, Omega, Masa agregada)
 
