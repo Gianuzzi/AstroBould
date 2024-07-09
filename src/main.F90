@@ -712,7 +712,7 @@ program main
 
 
     !!! Redefine logicals
-    if (all(particles_mass .eq. cero)) use_merge = .False. ! No merge if no mass
+    if (all(particles_mass < tini)) use_merge = .False. ! No merge if no mass
     use_single_particle = Nparticles .eq. 1
     if (use_single_particle) use_elements = .True.
     
@@ -1058,8 +1058,10 @@ program main
     if (use_explicit_method) then
         if (use_version_1) then
             dydt => dydt_explicit_v1
+            check_continue_ptr => check_continue_v1
         else
-            dydt => dydt_explicit_v2            
+            dydt => dydt_explicit_v2
+            check_continue_ptr => check_continue_v2
         end if
     else
         if (use_torque) then
@@ -1073,8 +1075,10 @@ program main
         end if
         if (use_version_1) then
             dydt => dydt_implicit_v1
+            check_continue_ptr => check_continue_v1
         else
             dydt => dydt_implicit_v2
+            check_continue_ptr => check_continue_v2
         end if
     end if
     !! Redeinimos vector si hay boulders
@@ -1204,7 +1208,7 @@ program main
             if ((particles_dist(i) < min_distance) .or. (particles_hexit(i) .eq. 1)) then
                 if (use_screen) then
                     write (*,f125131) "Colisión de la partícula ", i, "(", particles_index(i), ") en t = ", &
-                    & time / unit_time, "[días]"
+                    & time / unit_time, "[días], y r = ", particles_dist(i) / unit_dist, "[km]"
                     write (*,*) ACHAR(5)
                 end if
                 particles_outcome(i) = 1
@@ -1216,7 +1220,7 @@ program main
             else if ((particles_dist(i) > max_distance) .or. (particles_hexit(i) .eq. 2)) then
                 if (use_screen) then
                     write (*,f125131) "Escape de la partícula ", i, "(", particles_index(i), ") en t = ", &
-                    & time / unit_time, "[días]"
+                    & time / unit_time, "[días], y r = ", particles_dist(i) / unit_dist, "[km]"
                     write (*,*) ACHAR(5)
                 end if
                 particles_outcome(i) = 2
@@ -1232,17 +1236,16 @@ program main
         
         
         staying_particles = Nactive - discarded_particles
-        particles_hexit = 0 ! Resetear HardExit
         !! Discard particles
         if (discarded_particles > 0) then
-            merged_particles = count(particles_hexit(1:Nactive) .eq. 1)
+            merged_particles = count(particles_outcome(:Nactive) .eq. 1)
             if (use_merge .and. (merged_particles > 0)) then
                 call merge_into_asteroid(mass_to_merge, angular_momentum_to_merge) ! Merge particles into asteroid
                 if (use_screen) then
-                    write(*,*) "Merged", merged_particles, "particles into the asteroid"
-                    write(*,*) " New mass :", asteroid_mass / unit_mass, "[kg]"
-                    write(*,*) " New omega:", asteroid_omega * unit_time, "[rad/día]"
-                end if
+                    write(*,f12) "Merged", merged_particles, "particles into the asteroid"
+                    write(*,f13) " New mass :", asteroid_mass / unit_mass, "[kg]"
+                    write(*,f13) " New omega:", asteroid_omega * unit_time, "[rad/día]"
+                end if                
             end if
             call quicksort_int(ij_to_swap(1:discarded_particles,1), 1, discarded_particles) ! Sort particles to discard
             if (staying_particles == 0) then ! All particles are out
@@ -1276,7 +1279,7 @@ program main
                         write (*,f12) "  - Eliminando partícula ", ij_to_swap(i,1), "(", particles_index(ij_to_swap(i,1)), ")"
                         write (*,*) ACHAR(5)
                     end if
-                    if (ij_to_swap(i,1) < (Nactive - discarded_particles)) then
+                    if (ij_to_swap(i,1) .le. (Nactive - discarded_particles)) then
                         call swap_particles(ij_to_swap(i,1), ij_to_swap(i,2), use_chaos)
                     end if
                 end do
@@ -1291,6 +1294,7 @@ program main
             call argsort_int(particles_index(1:Nactive), sorted_particles_index(1:Nactive)) ! Get the sorted index
             last_particle = first_particle + 4 * Nactive - 1 ! Redefine last_particle
         end if
+        particles_hexit = 0 ! Resetear HardExit
         
         ! Check if all done
         !! Time end
@@ -1349,20 +1353,29 @@ program main
 
         !!! Execute an integration method (uncomment/edit one of these)
         ! call integ_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-        !     & Ralston4, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+        !     & Ralston4, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
         ! call rk_half_step_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-        !     & Runge_Kutta5, 5, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+        !     & Runge_Kutta5, 5, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
         ! call embedded_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, Dormand_Prince8_7, &
-        !    & error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+        !    & error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
         call BStoer_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-            & error_tolerance, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+            & error_tolerance, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
         ! call BStoer_caller2 (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-        !     & error_tolerance, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
+        !     & error_tolerance, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
         ! call leapfrog_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-        !     & leapfrof_KDK, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), particles_hexitptr)
-
-        !! If so, the dt used is in dt_adap
-        if (particles_hexit(0) .ne. 0) timestep = adaptive_timestep
+        !     & leapfrof_KDK, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
+    
+        ! Check if it might be hard_exit
+        if (particles_hexit(0) .ne. 0) then
+            !! If so, the dt used is in dt_adap
+            if (is_premature_exit) timestep = adaptive_timestep
+            !! Check if premature_exit: If exit at less than 1% of finishing timestep
+            if (timestep > cero) then
+                is_premature_exit = (checkpoint_times(j) - (time+timestep))/timestep > 0.01d0
+            else
+                is_premature_exit = checkpoint_times(j) - time < tini
+            end if
+        end if
 
         ! Update parameters
         time = time + timestep
@@ -1455,7 +1468,7 @@ program main
         
         
         ! Output
-        if ((checkpoint_is_output(j)) .and. (particles_hexit(0) .eq. 0)) then
+        if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) then
             
             !$OMP PARALLEL IF(my_threads > 1) DEFAULT(SHARED) &
             !$OMP PRIVATE(i,aux_integer)
@@ -1494,9 +1507,9 @@ program main
         if (use_percentage) call percentage(time, final_time)
         
 
-        ! Update j
-        j = j + 1
-
+        ! Update j; only if not HardExit
+        if (.not. is_premature_exit) j = j + 1
+        
     end do main_loop
 
     !! Update surviving particles times
@@ -1542,22 +1555,24 @@ program main
                 & particles_outcome(aux_integer), & ! bad
                 & final_time / unit_time, & ! total time to integrate
                 & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum
-                & particles_initial_conditions(aux_integer,1) / unit_mass, & ! initial: mass
-                & particles_initial_conditions(aux_integer,2) / unit_dist, & ! initial: a
-                & particles_initial_conditions(aux_integer,3), & ! initial: e
-                & particles_initial_conditions(aux_integer,4) / radian, & ! initial: M
-                & particles_initial_conditions(aux_integer,5) / radian, & ! initial: omega
-                & particles_initial_conditions(aux_integer,6), & ! initial: MMR
-                & sqrt(particles_initial_conditions(aux_integer,2) * &
-                  & (uno - particles_initial_conditions(aux_integer,3)**2) &
-                  & * Gasteroid_mass) / (unit_dist * unit_vel), & ! initial: angular momentum per unit mass
+                & particles_initial_conditions(i,1) / unit_mass, & ! initial: mass
+                & particles_initial_conditions(i,2) / unit_dist, & ! initial: a
+                & particles_initial_conditions(i,3), & ! initial: e
+                & particles_initial_conditions(i,4) / radian, & ! initial: M
+                & particles_initial_conditions(i,5) / radian, & ! initial: omega
+                & particles_initial_conditions(i,6), & ! initial: MMR
+                & sqrt(particles_initial_conditions(i,2) * &
+                  & (uno - particles_initial_conditions(i,3)**2) * &
+                  & G * (particles_initial_conditions(i,1) + asteroid_initial_conditions(1))) / &
+                  & (unit_dist * unit_vel), & ! initial: angular momentum per unit mass
                 & particles_times(aux_integer) / unit_time, & ! surviving time
                 & particles_elem(aux_integer,1) / unit_dist, particles_elem(aux_integer,2), & ! final: a, e
                 & particles_elem(aux_integer,3) / radian, particles_elem(aux_integer,4) / radian, & ! final: M, omega
                 & particles_MMR(aux_integer), & ! final: MMR
                 & sqrt(particles_elem(aux_integer,1) * &
-                  & (uno - particles_elem(aux_integer,2)**2) &
-                  & * Gasteroid_mass) / (unit_dist * unit_vel), & ! final: angular momentum per unit mass
+                  & (uno - particles_elem(aux_integer,2)**2) * &
+                  & G * (particles_mass(aux_integer) + asteroid_mass)) / &
+                  & (unit_dist * unit_vel), & ! final: angular momentum per unit mass
                 & particles_min_a(aux_integer) / unit_dist, particles_max_a(aux_integer) / unit_dist, & ! a_min, a_max
                 & particles_min_e(aux_integer), particles_max_e(aux_integer), & ! e_min, e_max
                 & (particles_max_a(aux_integer) - particles_min_a(aux_integer)) / unit_dist, & ! Delta a

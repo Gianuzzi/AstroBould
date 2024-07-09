@@ -127,9 +127,9 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-            if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1 
+!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_explicit_v1
-
+        
         function dydt_implicit_v1 (t, y) result(dydt) ! Tienen un error sistemático que no detecto aún
             !y = / x0, y0, vx0, vy0, Bould, Part, .../
             !! This is the hardest one to implement, because omega is not constant,
@@ -205,9 +205,9 @@ module forces
                 dydt(ineqs+1 : ineqs+2) = y(ineqs+3 : ineqs+4)
                 dydt(ineqs+3 : ineqs+4) = -omega2 * raux(i,:) + omegadot * (/-raux(i,2), raux(i,1)/) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
             end do
-            if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
+!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_implicit_v1
-
+        
         function dydt_explicit_v2 (t, y) result(dydt)
             !y = /theta, omega, xA, yA, vxA, vyA, Part, .../
             ! Utiliza las posiciones exactas para los boulders, con w constante
@@ -271,9 +271,9 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-            if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
+!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_explicit_v2
-
+        
         function dydt_implicit_v2 (t, y) result(dydt)
             !y = /theta, omega, xA, yA, vxA, vyA, Part, .../
             implicit none
@@ -312,7 +312,7 @@ module forces
             ! Define center of mass and velocity
             rcm = y(3:4)
             vcm = y(5:6)
-
+            
             ! Particles accelerations and omegadot
             omegadot = cero ! Init
             !$OMP PARALLEL IF((my_threads > 1) .AND. (Nactive > 20)) DEFAULT(SHARED) &
@@ -338,11 +338,11 @@ module forces
             !$OMP END DO
             !$OMP END PARALLEL
             dydt(2) = domegadt(t, omega) + omegadot
-            if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
-        end function dydt_implicit_v2
-
+!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
+        end function dydt_implicit_v2      
+        
         function dydt_no_boulders (t, y) result(dydt)
-            !y = /theta, omega, xA, yA, vxA, vyA, Part, .../
+            !y = /xA, yA, vxA, vyA, Part, .../
             implicit none
             real(kind=8), intent(in)               :: t
             real(kind=8), dimension(:), intent(in) :: y
@@ -381,9 +381,12 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-            if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
+!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_no_boulders
-    
+        
+        
+        
+        
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!! ACCELERATIONS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -411,6 +414,7 @@ module forces
             ! Check if collision or escape
             if (dist_from_i(0) < min_distance) hexit_p = 1
             if (dist_from_i(0) > max_distance) hexit_p = 2
+            if (hexit_p > 0) return
 
             !Lets see what we need...
             if ((use_torque .and. (mp > tini)) .or. use_naive_stokes .or. use_stokes) then
