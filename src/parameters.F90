@@ -849,7 +849,6 @@ module parameters
                 end do
             else
                 print*, "WARNING: No hay argumentos de entrada."
-                print*, "  Se utilizan los elementos orbitales de partículas explícitos del código."
                 print*, "¿Está seguro que desea continuar? [y/N]"
                 read (*,*) aux_character1
                 if (index("YySs", aux_character1) == 0) then
@@ -906,17 +905,15 @@ module parameters
             
             !! Cuerpo central
             !!!! Masa
-            if (mass_primary <= 0) then
-                write (*,*) "ERROR: La masa del cuerpo central debe ser positiva."
-                stop 1
-            end if
-            mass_ast_arr(0) = mass_primary
+            ! if (mass_primary <= 0) then
+            !     write (*,*) "ERROR: La masa del cuerpo central debe ser positiva."
+            !     stop 1
+            ! end if
             !!!! Radio
             if (radius_primary <= 0) then
                 write (*,*) "ERROR: El radio del cuerpo central debe ser positivo."
                 stop 1
             end if
-            radius_ast_arr(0) = radius_primary
             
             !! Torque
             if (use_torque .and. use_explicit_method) then
@@ -938,7 +935,11 @@ module parameters
             ! Parallel
             !$ compiled_with_openmp = .True. !! Parece comentado, pero es asi
             if (use_parallel) then
-                if (.not. compiled_with_openmp) then
+                if ((requested_threads == 0) .or. (requested_threads == 1)) then
+                    requested_threads = 0
+                    my_threads = 1
+                    use_parallel = .False.
+                else if (.not. compiled_with_openmp) then
                     write (*,*) "ERROR: No se puede usar paralelización sin OpenMP."
                     stop 1
                 end if
@@ -2031,32 +2032,50 @@ module parameters
         
         ! 28.x Functions to check collision/escape
         
-        ! 28.1 Check distances (Version 1)  [from cm]
+        ! 28.1 Check distances (Version 1)
         function check_continue_v1 (y) result(keep_going)
             implicit none
             real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8) :: r0b(2)
-            real(kind=8) :: rb(2), dist_to_m0, r_from_m0(2)
-            integer(kind=4) :: i, particle_i
+            real(kind=8) :: rb(2)
+            real(kind=8) :: rcm(2), dist_to_cm, r_from_cm(2)
+            real(kind=8) :: rib(0:Nboulders,2), dist_to_i, r_from_i(2)
+            integer(kind=4) :: j, particle_j, i
+            integer(kind=4), parameter :: neqs = 4
             logical :: keep_going
+
+            ! Re-set particles_hexit
+            particles_hexit = 0  ! 0 is the default or non-action value
             
-            ! Calculate the center of mass of the asteroid
-            r0b(1) = y(1)
-            r0b(2) = y(2)
-            
-            ! Calculate distance and vector to boulders
-            do i = 1, Nactive
-                particle_i = (i + Nboulders) * 4
-                rb(1) = y(particle_i+1)
-                rb(2) = y(particle_i+2)
-                r_from_m0 = rb - r0b
-                dist_to_m0 = sqrt(r_from_m0(1)**2 + r_from_m0(2)**2)
-                if (dist_to_m0 > max_distance) then
-                    particles_hexit(i) = 2
-                else if (dist_to_m0 < min_distance) then
-                    particles_hexit(i) = 1
+            ! Calculate the center of mass of the asteroid and boulders
+            rcm = cero
+            do i = 0, Nboulders 
+                rib(i,0) = y((i * neqs) + 1)
+                rib(i,1) = y((i * neqs) + 2)
+                rcm = rcm + mass_ast_arr(i) * rib(i,:)
+            end do
+            rcm = rcm / asteroid_mass ! rcm = sum_i m_i * r_i / M
+
+            ! Calculate vector and distance to CM
+            do j = 1, Nactive
+                particle_j = (j + Nboulders) * neqs
+                rb(1) = y(particle_j+1)
+                rb(2) = y(particle_j+2)
+                r_from_cm = rb - rcm
+                dist_to_cm = sqrt(r_from_cm(1)*r_from_cm(1) + r_from_cm(2)*r_from_cm(2))
+                if (dist_to_cm > max_distance) then
+                    particles_hexit(j) = 2
+                else if (dist_to_cm < min_distance) then
+                    particles_hexit(j) = 1
                 else
-                    particles_hexit(i) = 0  ! Assuming 0 is the default or non-action value
+                    ! Calculate vector and distance to boulders
+                    boulders_loop: do i = 0, Nboulders
+                        r_from_i = rb - rib(i,:)
+                        dist_to_i = sqrt(r_from_i(1)*r_from_i(1) + r_from_i(2)*r_from_i(2))
+                        if (dist_to_i < radius_ast_arr(i)) then
+                            particles_hexit(j) = 1
+                            exit boulders_loop
+                        end if
+                    end do boulders_loop
                 end if
             end do
             
@@ -2069,35 +2088,45 @@ module parameters
         function check_continue_v2 (y) result(keep_going)
             implicit none
             real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8) :: r0b(2)
-!             real(kind=8) :: rcm(2)
-            real(kind=8) :: rb(2), dist_to_m0, r_from_m0(2)
-            integer(kind=4) :: i, particle_i
+            real(kind=8) :: rb(2)
+            real(kind=8) :: rcm(2), dist_to_cm, r_from_cm(2)
+            real(kind=8) :: rib(0:Nboulders,2), dist_to_i, r_from_i(2)
+            integer(kind=4) :: j, particle_j, i
+            integer(kind=4), parameter :: neqs = 4
             logical :: keep_going
-            
 
-            ! ! Calculate the positions of m0
-            ! r0b(1) = cos(y(1) + theta_ast_arr(0)) * dist_ast_arr(0)
-            ! r0b(2) = sin(y(1) + theta_ast_arr(0)) * dist_ast_arr(0)
-            ! r0b(1) = y(3) + r0b(1) ! xA + rcos(theta + theta_i)
-            ! r0b(2) = y(4) + r0b(2) ! yA + rsin(theta + theta_i)
-
-            ! Define center of mass and velocity
-            r0b = y(3:4)
+            ! Re-set particles_hexit
+            particles_hexit = 0  ! 0 is the default or non-action value
             
+            ! Calculate the center of mass of the asteroid and boulders
+            rcm(1) = y(3)
+            rcm(2) = y(4)
+            do i = 0, Nboulders
+                rib(i,1) = cos(y(1) + theta_ast_arr(i)) * dist_ast_arr(i)
+                rib(i,2) = sin(y(1) + theta_ast_arr(i)) * dist_ast_arr(i)
+            end do
+
             ! Calculate distance and vector to boulders
-            do i = 1, Nactive
-                particle_i = i * 4 + 2
-                rb(1) = y(particle_i+1)
-                rb(2) = y(particle_i+2)
-                r_from_m0 = rb - r0b
-                dist_to_m0 = sqrt(r_from_m0(1)**2 + r_from_m0(2)**2)
-                if (dist_to_m0 > max_distance) then
-                    particles_hexit(i) = 2
-                else if (dist_to_m0 < min_distance) then
-                    particles_hexit(i) = 1
-                else
-                    particles_hexit(i) = 0  ! Assuming 0 is the default or non-action value
+            do j = 1, Nactive
+                particle_j = j * neqs + 2
+                rb(1) = y(particle_j+1)
+                rb(2) = y(particle_j+2)
+                r_from_cm = rb - rcm
+                dist_to_cm = sqrt(r_from_cm(1)*r_from_cm(1) + r_from_cm(2)*r_from_cm(2))
+                if (dist_to_cm > max_distance) then
+                    particles_hexit(j) = 2
+                else if (dist_to_cm < min_distance) then
+                    particles_hexit(j) = 1
+                else 
+                    ! Calculate vector and distance to boulders
+                    boulders_loop: do i = 0, Nboulders
+                        r_from_i = rb - rib(i,:)
+                        dist_to_i = sqrt(r_from_i(1)*r_from_i(1) + r_from_i(2)*r_from_i(2))
+                        if (dist_to_i < radius_ast_arr(i)) then
+                            particles_hexit(j) = 1
+                            exit boulders_loop
+                        end if
+                    end do boulders_loop
                 end if
             end do
             
