@@ -16,7 +16,7 @@ FC = gfortran -g
 # Debug
 ifdef DEBUG
 	MYFFLAGS := -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow
-	MYLDFLAGS := -O0
+	MYLDFLAGS := -O0 -pg
 else
 	MYFFLAGS := -ffinite-math-only -funsafe-math-optimizations -funroll-loops
 	MYLDFLAGS := -O2
