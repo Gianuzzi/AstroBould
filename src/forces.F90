@@ -101,18 +101,21 @@ module forces
                 vib(i,2) = asteroid_omega * rib(i,1)
                 dydt(ineqs+1) = vib(i,1) ! for the sake of the integrator
                 dydt(ineqs+2) = vib(i,2) ! for the sake of the integrator
-                dydt(ineqs+3 : ineqs+4) = -asteroid_omega2 * rib(i,:) ! for the sake of the integrator
+                dydt(ineqs+3) = -asteroid_omega2 * rib(i,1) ! for the sake of the integrator
+                dydt(ineqs+4) = -asteroid_omega2 * rib(i,2) ! for the sake of the integrator
             end do
 
             ! Particles accelerations
-            !$OMP PARALLEL IF((my_threads > 1) .AND. (Nactive > 20)) DEFAULT(SHARED) &
+            !$OMP PARALLEL DEFAULT(SHARED) &
             !$OMP PRIVATE(i,rb,vb,ab,particle_i)
             !$OMP DO SCHEDULE (STATIC)
             do i = 1, Nactive
                 ab = cero
                 particle_i = (i + Nboulders) * equation_size
-                rb = y(particle_i+1 : particle_i+2)
-                vb = y(particle_i+3 : particle_i+4)
+                rb(1) = y(particle_i+1)
+                rb(2) = y(particle_i+2)
+                vb(1) = y(particle_i+3)
+                vb(2) = y(particle_i+4)
                 call apply_force(&
                     & t, &
                     & mass_ast_arr, particles_mass(i), &
@@ -122,8 +125,10 @@ module forces
                     & asteroid_mass, asteroid_pos, asteroid_vel, & ! No varían en cada step en este modelo
                     & asteroid_inertia, & ! inertia no varía en cada step en este modelo
                     & dummy_real, dummy_real2, ab) ! Solo aceleración a partículas
-                dydt(particle_i+1 : particle_i+2) = vb
-                dydt(particle_i+3 : particle_i+4) = ab
+                dydt(particle_i+1) = vb(1)
+                dydt(particle_i+2) = vb(2)
+                dydt(particle_i+3) = ab(1)
+                dydt(particle_i+4) = ab(2)
             end do
             !$OMP END DO
             !$OMP END PARALLEL
@@ -152,8 +157,10 @@ module forces
             vcm = cero
             do i = 0, Nboulders 
                 ineqs = i * equation_size
-                rib(i,:) = y(ineqs+1 : ineqs+2)
-                vib(i,:) = y(ineqs+3 : ineqs+4)
+                rib(i,1) = y(ineqs+1)
+                rib(i,2) = y(ineqs+2)
+                vib(i,1) = y(ineqs+3)
+                vib(i,2) = y(ineqs+4)
                 rcm = rcm + mass_ast_arr(i) * rib(i,:)
                 vcm = vcm + mass_ast_arr(i) * vib(i,:)
             end do
@@ -174,14 +181,16 @@ module forces
 
             ! Particles accelerations (and possible torque for the asteroid)
             omegadot = cero ! Init
-            !$OMP PARALLEL IF((my_threads > 1) .AND. (Nactive > 20)) DEFAULT(SHARED) &
+            !$OMP PARALLEL DEFAULT(SHARED) &
             !$OMP PRIVATE(i,rb,vb,ab,particle_i)
             !$OMP DO REDUCTION(+:omegadot) SCHEDULE (STATIC)
             do i = 1, Nactive
                 ab = cero
                 particle_i = (i + Nboulders) * equation_size
-                rb = y(particle_i+1 : particle_i+2)
-                vb = y(particle_i+3 : particle_i+4)
+                rb(1) = y(particle_i+1)
+                rb(2) = y(particle_i+2)
+                vb(1) = y(particle_i+3)
+                vb(2) = y(particle_i+4)
                 call apply_force(&
                     & t, &
                     & mass_ast_arr, particles_mass(i), &
@@ -191,8 +200,10 @@ module forces
                     & asteroid_mass, rcm, vcm, & ! rcm y vcm pueden haber variado, así que se recalcularon
                     & inertia, & ! inertia puede haber variado, así que se recalculó
                     & omegadot, dummy_real2, ab)
-                dydt(particle_i+1 : particle_i+2) = vb
-                dydt(particle_i+3 : particle_i+4) = ab
+                dydt(particle_i+1) = vb(1)
+                dydt(particle_i+2) = vb(2)
+                dydt(particle_i+3) = ab(1)
+                dydt(particle_i+4) = ab(2)
             end do
             !$OMP END DO
             !$OMP END PARALLEL
@@ -202,8 +213,10 @@ module forces
             ! Set bodies accelerations (acá al final porque necesitamos omegadot)
             do i = 0, Nboulders 
                 ineqs = i * equation_size
-                dydt(ineqs+1 : ineqs+2) = y(ineqs+3 : ineqs+4)
-                dydt(ineqs+3 : ineqs+4) = -omega2 * raux(i,:) + omegadot * (/-raux(i,2), raux(i,1)/) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
+                dydt(ineqs+1) = y(ineqs+3)
+                dydt(ineqs+2) = y(ineqs+4)
+                dydt(ineqs+3) = -omega2 * raux(i,1) - omegadot * raux(i,2) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
+                dydt(ineqs+4) = -omega2 * raux(i,2) + omegadot * raux(i,1) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
             end do
 !             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_implicit_v1
@@ -249,14 +262,16 @@ module forces
             vcm = y(5:6)
 
             ! Particles accelerations
-            !$OMP PARALLEL IF((my_threads > 1) .AND. (Nactive > 20)) DEFAULT(SHARED) &
+            !$OMP PARALLEL DEFAULT(SHARED) &
             !$OMP PRIVATE(i,rb,vb,ab,particle_i)
             !$OMP DO SCHEDULE (STATIC)
             do i = 1, Nactive
                 ab = cero
                 particle_i = i * equation_size + 2
-                rb = y(particle_i+1 : particle_i+2)
-                vb = y(particle_i+3 : particle_i+4)
+                rb(1) = y(particle_i+1)
+                rb(2) = y(particle_i+2)
+                vb(1) = y(particle_i+3)
+                vb(2) = y(particle_i+4)
                 call apply_force(&
                     & t, &
                     & mass_ast_arr, particles_mass(i), &
@@ -266,8 +281,10 @@ module forces
                     & asteroid_mass, rcm, vcm, &
                     & asteroid_inertia, & ! inertia no varía
                     & dummy_real, dummy_real2, ab) ! Solo aceleración a partículas
-                dydt(particle_i+1 : particle_i+2) = vb
-                dydt(particle_i+3 : particle_i+4) = ab
+                dydt(particle_i+1) = vb(1)
+                dydt(particle_i+2) = vb(2)
+                dydt(particle_i+3) = ab(1)
+                dydt(particle_i+4) = ab(2)
             end do
             !$OMP END DO
             !$OMP END PARALLEL
@@ -315,14 +332,16 @@ module forces
             
             ! Particles accelerations and omegadot
             omegadot = cero ! Init
-            !$OMP PARALLEL IF((my_threads > 1) .AND. (Nactive > 20)) DEFAULT(SHARED) &
+            !$OMP PARALLEL DEFAULT(SHARED) &
             !$OMP PRIVATE(i,rb,vb,ab,particle_i)
             !$OMP DO REDUCTION(+:omegadot) SCHEDULE (STATIC)
             do i = 1, Nactive
                 ab = cero
                 particle_i = i * equation_size + 2
-                rb = y(particle_i+1 : particle_i+2)
-                vb = y(particle_i+3 : particle_i+4)
+                rb(1) = y(particle_i+1)
+                rb(2) = y(particle_i+2)
+                vb(1) = y(particle_i+3)
+                vb(2) = y(particle_i+4)
                 call apply_force(&
                     & t, &
                     & mass_ast_arr, particles_mass(i), &
@@ -332,8 +351,10 @@ module forces
                     & asteroid_mass, rcm, vcm, &
                     & asteroid_inertia, & ! inertia no varía
                     & omegadot, dummy_real2, ab)
-                dydt(particle_i+1 : particle_i+2) = vb
-                dydt(particle_i+3 : particle_i+4) = ab
+                dydt(particle_i+1) = vb(1)
+                dydt(particle_i+2) = vb(2)
+                dydt(particle_i+3) = ab(1)
+                dydt(particle_i+4) = ab(2)
             end do
             !$OMP END DO
             !$OMP END PARALLEL
@@ -361,14 +382,16 @@ module forces
             r0b = y(1:2)
             v0b = y(3:4)
 
-            !$OMP PARALLEL IF((my_threads > 1) .AND. (Nactive > 20)) DEFAULT(SHARED) &
+            !$OMP PARALLEL DEFAULT(SHARED) &
             !$OMP PRIVATE(i,rb,vb,ab,particle_i)
             !$OMP DO SCHEDULE (STATIC)
             do i = 1, Nactive
                 ab = cero
                 particle_i = i * equation_size
-                rb = y(particle_i+1 : particle_i+2)
-                vb = y(particle_i+3 : particle_i+4)
+                rb(1) = y(particle_i+1)
+                rb(2) = y(particle_i+2)
+                vb(1) = y(particle_i+3)
+                vb(2) = y(particle_i+4)
                 call apply_force_no_boulders(&
                     & t, &
                     & mass_ast_arr(0), &
@@ -376,8 +399,10 @@ module forces
                     & rb, vb, &
                     & r0b, v0b, &
                     & ab)
-                dydt(particle_i+1 : particle_i+2) = vb
-                dydt(particle_i+3 : particle_i+4) = ab
+                dydt(particle_i+1) = vb(1)
+                dydt(particle_i+2) = vb(2)
+                dydt(particle_i+3) = ab(1)
+                dydt(particle_i+4) = ab(2)
             end do
             !$OMP END DO
             !$OMP END PARALLEL
@@ -408,13 +433,8 @@ module forces
             ! Calculate distance and vector to boulders
             do i = 0, Nboulders
                 r_from_i(i,:) = rb - rib(i,:)
-                dist_from_i(i) = sqrt(r_from_i(i,1)**2 + r_from_i(i,2)**2)
+                dist_from_i(i) = sqrt(r_from_i(i,1)*r_from_i(i,1) + r_from_i(i,2)*r_from_i(i,2))
             end do
-            
-            ! Check if collision or escape
-            if (dist_from_i(0) < min_distance) hexit_p = 1
-            if (dist_from_i(0) > max_distance) hexit_p = 2
-            if (hexit_p > 0) return
 
             !Lets see what we need...
             if ((use_torque .and. (mp > tini)) .or. use_naive_stokes .or. use_stokes) then
@@ -432,8 +452,17 @@ module forces
                 end if
                 r_from_cm = rb - rcm
                 v_from_cm = vb - vcm
-                dist_from_cm = sqrt(r_from_cm(1)*r_from_cm(1) + r_from_cm(2)*r_from_cm(2))
+            else 
+                r_from_cm = rb
+                v_from_cm = vb
             end if
+            dist_from_cm = sqrt(r_from_cm(1)*r_from_cm(1) + r_from_cm(2)*r_from_cm(2))
+            
+            ! Check if collision or escape
+            if (any(dist_from_i < radius_ast_arr)) hexit_p = 1
+            if (dist_from_cm < min_distance) hexit_p = 1
+            if (dist_from_cm > max_distance) hexit_p = 2
+            if (hexit_p > 0) return
         
             ! Calculate gravity (and torque if needed)
             if (use_torque .and. (mp > tini)) then
@@ -475,7 +504,7 @@ module forces
             ! Calculate distance and vector to boulders
             r_from_0 = rb - r0b
             v_from_0 = vb - v0b
-            dist_from_0 = sqrt(r_from_0(1)**2 + r_from_0(2)**2)
+            dist_from_0 = sqrt(r_from_0(1)*r_from_0(1) + r_from_0(2)*r_from_0(2))
             
             ! Check if collision or escape
             if (dist_from_0 < min_distance) hexit_p = 1

@@ -81,12 +81,15 @@ unit_angle = deg
 data_in = {}
 names = ["mass", "a", "e", "M", "w", "R"]
 # PARÁMETROS A VARIAR (Poner unidades de ser necesario)
-data_in["mass"] = [rndm(12, 15, lambda x: 10 ** x)]
+data_in["mass"] = [rndm(0.0, 1.)]
 data_in["a"] = [0.0]
 data_in["e"] = [0.0]  # Podría ser: rayleigh_dist(0, 0.1, 1)
 data_in["M"] = [rndm(0.0, 360.0)]
 data_in["w"] = [0.0]
-data_in["R"] = [n_steps(0.5, 3.5, 4)]
+data_in["R"] = [n_steps(0.5, 3.5, 4000)]
+
+# Disk mass (in kg)
+disk_mass = 6.3e15
 
 # -----------------
 # OUTPUT
@@ -228,6 +231,9 @@ if __name__ == "__main__":
     # Remove mass if not needed
     if not use_mass:
         data_out = data_out[:, 1:]
+    elif disk_mass > 0:
+        temp = np.sum(data_out[:, 0])
+        data_out[:, 0] = disk_mass * data_out[:, 0] / temp
 
     # Guardamos
     if not check_continue(filename):

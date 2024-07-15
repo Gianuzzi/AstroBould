@@ -22,7 +22,7 @@ program main
         
         ! Asteroide central
         !! Primary
-        mass_primary = 6.3d18 ! Masa del cuerpo 0 [kg]
+        mass_primary = 6.3d18 ! Masa del cuerpo 0 [kg] ! -x =>  mAst = x
         radius_primary = 129.d0 ! Radio del cuerpo 0 [km]
 
         !! ROTACIÓN
@@ -231,6 +231,8 @@ program main
 
     ! Masas
     mass_primary = mass_primary * unit_mass ! Unidades según G
+    !! Check if mass_primary < 0. If so, |mass_primary| should be asteroid mass
+    if (mass_primary < cero) mass_primary = abs(mass_primary) / (uno + sum(mu_from_primary(1:Nboulders)))
     mass_ast_arr(0) = mass_primary ! Masa del cuerpo 0
     do i = 1, Nboulders
         mass_ast_arr(i) = mu_from_primary(i) * mass_primary ! Masa del boulder i
@@ -351,6 +353,20 @@ program main
                      & dist_ast_arr(i) / unit_dist, &
                      & theta_ast_arr(i) / radian
         end do
+        write (*,*) ACHAR(5)
+    end if
+
+
+    ! Define asteroid radius
+    if (use_boulders) then
+        asteroid_radius = maxval(dist_ast_arr(1:Nboulders) + radius_ast_arr(1:Nboulders)) ! Radio del asteroide
+    else
+        asteroid_radius = radius_primary
+    end if
+    !! Mensaje
+    if (use_screen .and. use_boulders) then
+        write (*,f13) "Masa total de asteroide     :", asteroid_mass / unit_mass, "[kg]"
+        write (*,f13) "Radio efectivo del asteroide:", asteroid_radius / unit_dist, "[km]"
         write (*,*) ACHAR(5)
     end if
 
@@ -641,7 +657,7 @@ program main
         particles_elem(:Narticles_in_partfile,3) = aux_particles_arr(:,4) * radian    ! M
         particles_elem(:Narticles_in_partfile,4) = aux_particles_arr(:,5) * radian    ! w
         if (size(aux_particles_arr, 2) > 5) then
-            !$OMP PARALLEL IF(my_threads > 1 .AND. Narticles_in_partfile > 10) DEFAULT(SHARED) &
+            !$OMP PARALLEL DEFAULT(SHARED) &
             !$OMP PRIVATE(i)
             !$OMP DO SCHEDULE (STATIC)
             do i = 1, Narticles_in_partfile
@@ -681,7 +697,7 @@ program main
 
     !! Crear vector de coordenadas
     aux_real_arr6 = cero
-    !$OMP PARALLEL IF(my_threads > 1 .AND. Nparticles > 10) DEFAULT(NONE) &
+    !$OMP PARALLEL DEFAULT(NONE) &
     !$OMP PRIVATE(i,aux_real_arr6) &
     !$OMP SHARED(Nparticles,asteroid_mass,particles_mass,particles_elem,particles_coord)
     !$OMP DO SCHEDULE (STATIC)
@@ -785,15 +801,14 @@ program main
     
     ! Escape/Colisión
     if (min_distance < cero) then
-        min_distance = radius_primary * abs(min_distance)
+        min_distance = asteroid_radius * abs(min_distance)
     else if (min_distance < tini) then
-        min_distance = radius_primary
-        if (use_boulders) min_distance = radius_primary + maxval(radius_ast_arr(1:))
+        min_distance = asteroid_radius
     else
         min_distance = min_distance * unit_dist
     end if
     if (max_distance < cero) then
-        max_distance = radius_primary * abs(max_distance)
+        max_distance = asteroid_radius * abs(max_distance)
     else 
         max_distance = max_distance * unit_dist
     end if
@@ -804,8 +819,8 @@ program main
     end if
     if (use_screen) then
         write (*,*) "Condición escape/colisión"
-        write (*,f13) "    rmin : ", min_distance / unit_dist, "[km] =", min_distance / radius_primary, "[R0]"
-        write (*,f13) "    rmax : ", max_distance / unit_dist, "[km] =", max_distance / radius_primary, "[R0]"
+        write (*,f13) "    rmin : ", min_distance / unit_dist, "[km] =", min_distance / asteroid_radius, "[Rast]"
+        write (*,f13) "    rmax : ", max_distance / unit_dist, "[km] =", max_distance / asteroid_radius, "[Rast]"
         if (use_merge) then
             write (*,*) "  Las colisiones se resolverán como mergers al asteroide."
         else
@@ -922,7 +937,7 @@ program main
             parameters_arr(3 + 4 * i) = vel_ast_arr(i,1)
             parameters_arr(4 + 4 * i) = vel_ast_arr(i,2)
         end do
-        !$OMP PARALLEL IF(my_threads > 1 .AND. Nparticles > 10) DEFAULT(SHARED) &
+        !$OMP PARALLEL DEFAULT(SHARED) &
         !$OMP PRIVATE(i)
         !$OMP DO SCHEDULE (STATIC)
         do i = 1, Nparticles
@@ -942,7 +957,7 @@ program main
         parameters_arr(2) = asteroid_omega
         parameters_arr(3:4) = asteroid_pos
         parameters_arr(5:6) = asteroid_vel
-        !$OMP PARALLEL IF(my_threads > 1 .AND. Nparticles > 10) DEFAULT(SHARED) &
+        !$OMP PARALLEL DEFAULT(SHARED) &
         !$OMP PRIVATE(i)
         !$OMP DO SCHEDULE (STATIC)
         do i = 1, Nparticles
@@ -975,6 +990,16 @@ program main
             write (*,*) "Saliendo."
         end if
         stop 1
+    end if
+
+    !!! Check workers
+    if (use_parallel) then
+        aux_integer = MIN(MAX(Nactive, 3), my_threads)
+        if (aux_integer .ne. my_threads) then
+            my_threads = aux_integer
+            !$ call OMP_SET_NUM_THREADS(my_threads)
+            if (use_screen) write (*,*) "WARNING: Se usarán ", my_threads, " hilos para la integración."
+        end if
     end if
 
 
@@ -1156,7 +1181,7 @@ program main
     parameters_arr_new = dydt(initial_time, parameters_arr)
 
     !! Initial conditions Output
-    !$OMP PARALLEL IF(my_threads > 1) DEFAULT(SHARED) &
+    !$OMP PARALLEL DEFAULT(SHARED) &
     !$OMP PRIVATE(i)
     !$OMP DO
     do i = 0, Nboulders
@@ -1167,7 +1192,7 @@ program main
     do i = 1, Nparticles
         call write_i_to_individual(i, 200+i+Nboulders)
     end do 
-    !$OMP END DO 
+    !$OMP END DO NOWAIT
     !$OMP SECTIONS
     !$OMP SECTION
     do i = 0, Nboulders
@@ -1201,7 +1226,7 @@ program main
         mass_to_merge = cero
         angular_momentum_to_merge = cero
         !! Calculate distances to the asteroid
-        !$OMP PARALLEL IF(my_threads > 1 .AND. Nactive > 10) DEFAULT(SHARED) &
+        !$OMP PARALLEL DEFAULT(SHARED) &
         !$OMP PRIVATE(i)
         !$OMP DO REDUCTION(+:mass_to_merge,angular_momentum_to_merge) SCHEDULE (STATIC)
         do i = 1, Nactive
@@ -1258,17 +1283,17 @@ program main
                 Nactive = 0 ! All particles are out
             else
                 aux_integer = 1
-                !$OMP PARALLEL IF((my_threads > 1) .AND. (discarded_particles > 20)) DEFAULT(SHARED) &
+                !$OMP PARALLEL DEFAULT(SHARED) &
                 !$OMP PRIVATE(i)
                 !$OMP DO SCHEDULE (STATIC)
                 do i = 1, discarded_particles
                     if (particles_outcome(Nactive + 1 - i) .ne. 0) then
                         ij_to_swap(discarded_particles + 1 - i, 2) = Nactive + 1 - i
                     else
-                        !$OMP CRITICAL
+                        !$OMP CRITICAL (swap)
                         ij_to_swap(aux_integer, 2) = Nactive + 1 - i
                         aux_integer = aux_integer + 1
-                        !$OMP END CRITICAL
+                        !$OMP END CRITICAL (swap)
                     end if
                 end do
                 !$OMP END DO
@@ -1293,6 +1318,18 @@ program main
             end if
             call argsort_int(particles_index(1:Nactive), sorted_particles_index(1:Nactive)) ! Get the sorted index
             last_particle = first_particle + 4 * Nactive - 1 ! Redefine last_particle
+
+            if (use_parallel) then
+                aux_integer = MIN(MAX(Nactive, 3), my_threads)
+                if (aux_integer .ne. my_threads) then
+                    my_threads = aux_integer
+                    !$ call OMP_SET_NUM_THREADS(my_threads)
+                    if (use_screen) then
+                        write (*,f12) "WARNING: Se reducen a ", my_threads, " hilos para la integración."
+                        write (*,*) ACHAR(5)
+                    end if
+                end if
+            end if
         end if
         particles_hexit = 0 ! Resetear HardExit
         
@@ -1451,7 +1488,7 @@ program main
 
         
         !! Particles
-        !$OMP PARALLEL IF(my_threads > 1 .AND. Nactive > 1) DEFAULT(SHARED) &
+        !$OMP PARALLEL DEFAULT(SHARED) &
         !$OMP PRIVATE(i,aux_integer)
         !$OMP DO SCHEDULE (STATIC)
         do i = 1, Nactive
@@ -1470,7 +1507,7 @@ program main
         ! Output
         if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) then
             
-            !$OMP PARALLEL IF(my_threads > 1) DEFAULT(SHARED) &
+            !$OMP PARALLEL DEFAULT(SHARED) &
             !$OMP PRIVATE(i,aux_integer)
             !$OMP DO
             do i = 0, Nboulders
@@ -1481,7 +1518,7 @@ program main
             do i = 1, Nactive
                 call write_i_to_individual(i, 200+i+Nboulders)
             end do 
-            !$OMP END DO 
+            !$OMP END DO NOWAIT
             !$OMP SECTIONS
             !$OMP SECTION
             do i = 0, Nboulders
