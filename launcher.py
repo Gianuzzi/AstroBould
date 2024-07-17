@@ -284,7 +284,7 @@ if all_in_one:
     args += " -parallel %d" % workers
     args += " -chaosfile %s.out" % final_chaos if final_chaos else " --nochaosf"
 else:
-    args += " --noscreen --nodatascr --noperc --noparallel"
+    args += " --noscreen --nodatascr --noperc --noparallel --nopartfile"
 args += " --explicit" if explicit else " --implicit"
 args += " -tomfile %s" % tomfile if tomfile else " --notomfile"
 args += " --elem" if elements else " --noelem"
@@ -489,7 +489,7 @@ if __name__ == "__main__":
         if existe_otom:
             ntom = os.path.join(wrk_dir, tomfile)
             subprocess.run(["cp", otom, ntom], check=True)
-            otom = ntom        
+            otom = ntom
     if not all_in_one:
         with ProcessPoolExecutor(max_workers=workers) as executor:
             results = executor.map(integrate_n, missing_lines)
