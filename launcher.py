@@ -52,6 +52,7 @@
 # Importamos #
 
 import os
+import sys
 import subprocess
 from concurrent.futures import ProcessPoolExecutor
 
@@ -132,7 +133,7 @@ if not existe_ocini:
     yes_no = input("¿Desea continuar? [y/[n]]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
-        exit(1)
+        sys.exit()
 ## Ejecutable
 if not os.path.isfile(oprogr):
     msg = "Executable file {} does not exist.".format(oprogr)
@@ -146,7 +147,7 @@ existe_otom = os.path.isfile(otom)
 if tomfile and (not existe_otom):
     print("ERROR: Tau-Omega-Mass file {} does not exist.".format(otom))
     print("Saliendo.")
-    exit(1)
+    sys.exit()
 ## Chaosfile
 if final_chaos is None:
     final_chaos = "sump"
@@ -174,7 +175,7 @@ if torque and explicit:
     yes_no = input("Do you want to continue? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
-        exit(1)
+        sys.exit()
 
 if all_in_one and (not torque):
     print(
@@ -183,7 +184,7 @@ if all_in_one and (not torque):
     yes_no = input("Do you want to continue? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
-        exit(1)
+        sys.exit()
 
 if torque and (not all_in_one):
     print("WARNING: All particles will be integrated independently,")
@@ -191,7 +192,7 @@ if torque and (not all_in_one):
     yes_no = input("Do you want to continue? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
-        exit(1)
+        sys.exit()
 
 
 # Leemos input
@@ -205,9 +206,11 @@ for i in range(len(lines)):
 # Obtener el número de líneas del archivo de partículas
 nsys = len(lines)
 if nsys == 0:
-    print("No hay partículas para integrar.")
-    exit(1)
-print("Cantidad total de partículas: {}".format(nsys))
+    print("No hay partículas para integrar en el archivo %s." % partfile)
+    print("Saliendo.")
+    sys.exit()
+else:
+    print("Cantidad total de partículas: {}".format(nsys))
 
 # Ver si hay que hacer todo, o ya hay alguna realizadas
 new_simulation = True
@@ -229,46 +232,40 @@ if (
                 else "este directorio"
             )
         )
-        if any(
-            [
-                os.path.isdir(os.path.join(wrk_dir, name))
-                and name.startswith(pref)
-                for name in os.listdir(wrk_dir)
-            ]
-        ):
-            command = (
-                f"find {pref}* -name 'chaos*{suffix}.out' "
-                f"| sed -e 's/.*chaos\\([0-9]*\\){suffix}\\.out/\\1/' "
-                f"| sort -n"
-            )
-            result = subprocess.run(
-                command,
-                shell=True,
-                stdout=subprocess.PIPE,
-                text=True,
-                cwd=wrk_dir,
-            )
-            if result.returncode == 0:
-                output_lines = result.stdout.splitlines()
-            else:
-                raise IOError("Error al leer integraciones ya realizadas.")
-            done = set([int(cint) for cint in output_lines if cint != ""])
-            missing_lines = [x for x in range(1, nsys + 1) if x not in done]
-            print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
-            nsys = len(missing_lines)
-            print("   Cantidad de sistemas a integrar: {}".format(nsys))
-            new_simulation = False
+
+        # Lista de archivos done.txt
+        file_list = []
+
+        # Recorre todas las subcarpetas en la carpeta raíz
+        for subdir in os.listdir(wrk_dir):
+            # Verifica si el nombre de la subcarpeta comienza con 'pref'
+            this_list = []
+            if subdir.startswith(pref):
+                subdir_path = os.path.join(wrk_dir, subdir)
+                # Recorre todos los archivos en la subcarpeta
+                this_list = [os.path.join(subdir_path, "done.txt")
+                             for f in os.listdir(subdir_path)
+                             if f == "done.txt"]
+            file_list.extend(this_list)
+            
+        done = []
+        for file in file_list:
+            with open(file, "r") as f:
+                done.extend([int(cint) for cint in f.readlines() if cint != ""])
+        missing_lines = [x for x in range(1, nsys + 1) if x not in done]
+        print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
+        nsys = len(missing_lines)
+        print("   Cantidad de sistemas a integrar: {}".format(nsys))
+        new_simulation = False
 
 
 # Hay que hacer?
 if len(missing_lines) == 0:
     print("Ya se han integrado todas las partículas.")
-    exit(1)
-
-
-# Obtener el número de workers
-workers = min(max(1, min(int(workers), len(os.sched_getaffinity(0)))), nsys)
-print("Workers: {}\n".format(workers))
+else:
+    # Obtener el número de workers
+    workers = min(max(1, min(int(workers), len(os.sched_getaffinity(0)))), nsys)
+    print("Workers: {}\n".format(workers))
 
 # Argumentos. Estos son:
 args = " --nomapf"
@@ -326,16 +323,19 @@ def integrate_n(i):
     # ESTO SE ESTÁ EJECUTANDO EN LA SHELL #
     # print("Running: ./%s %s %s %s"%(program, args, this_args, my_line))
     # (Lines debe ser último porque termina en "\n") #
-    p = subprocess.run(
-        ["./%s %s %s %s" % (program, args, this_args, my_line)],
-        cwd=dirp,
-        check=True,
-        shell=True,
-    )
-    if p.returncode != 0:
+    try:
+        p = subprocess.run(
+            ["./%s %s %s %s" % (program, args, this_args, my_line)],
+            cwd=dirp,
+            check=True,
+            shell=True,
+        )
+    except:
         print("The system %d has failed." % i)
         return
     print("System %d has been integrated." % i)
+    with open(os.path.join(dirp, "done.txt"), "a") as f:
+        f.write("%d\n" % i)
     return
 
 
@@ -383,13 +383,13 @@ def make_sum(final_chaos, suffix=""):
     outs.insert(-1, ".out")
     final_chaos = "".join(outs)
     command = ' '.join([file for file in file_list])
-    p = subprocess.run(
-        ["cat %s > %s" % (command, final_chaos)],
-        cwd=wrk_dir, check=True, shell=True
-    )
-
-    if p.returncode != 0:
-        print("Could not create % with cat."%final_chaos)
+    try:
+        p = subprocess.run(
+            ["cat %s > %s" % (command, final_chaos)],
+            cwd=wrk_dir, check=True, shell=True
+        )
+    except:
+        print("Could not create %s with cat."%final_chaos)
         print(" Trying with pure python...")
         with open(os.path.join(wrk_dir, final_chaos), "w") as f_out:
             for file in file_list:
@@ -441,13 +441,13 @@ def make_sal(salida, suffix=""):
     outs.insert(-1, ".out")
     salida = "".join(outs)
     command = ' '.join([file for file in file_list])
-    p = subprocess.run(
-        ["cat %s > %s" % (command, salida)],
-        cwd=wrk_dir, check=True, shell=True
-    )
-
-    if p.returncode != 0:
-        print("Could not create % with cat."%salida)
+    try:
+        p = subprocess.run(
+            ["cat %s > %s" % (command, salida)],
+            cwd=wrk_dir, check=True, shell=True
+        )
+    except:
+        print("Could not create %s with cat."%salida)
         print(" Trying with pure python...")
         with open(os.path.join(wrk_dir, salida), "w") as f_out:
             for file in file_list:
