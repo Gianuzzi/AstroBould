@@ -1381,7 +1381,7 @@ program main
                 Gasteroid_mass = G * asteroid_mass
             end if
             tom_index_number = tom_index_number + 1
-            if (use_screen) then
+            if (use_screen .and. (allocated(tom_deltaomega) .or. allocated(tom_deltamass))) then
                 write (*,*) ACHAR(5)
                 write (*,f13) "Se actualizó Omega | Masa según archivo TOM, en t = ", time / unit_time, "[días]"
                 write (*,*) ACHAR(5)
