@@ -493,13 +493,7 @@ module parameters
                             read (value_str, *) stokes_e_damping_time
                         case("F damping chara")
                             read (value_str, *) stokes_charac_time
-                        case("include naive-s")
-                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                                use_naive_stokes = .True.
-                            else
-                                use_naive_stokes = .False.
-                            end if
-                        case("drag coef [eta]")
+                        case("naive-stokes dr")
                             read (value_str, *) drag_coefficient
                         case("rotation linear")
                             read (value_str, *) omega_linear_damping_time
@@ -877,8 +871,7 @@ module parameters
                & (abs(stokes_e_damping_time) < tini)) .or. (abs(stokes_charac_time) < tini)) &
                & use_stokes = .False.
             !!! Naive-stokes
-            if ((abs(drag_coefficient) < tini) .and. use_naive_stokes) use_naive_stokes = .False.
-            if ((abs(drag_coefficient) < tini) .or. .not. use_naive_stokes) drag_coefficient = cero
+            if (abs(drag_coefficient) > tini) use_naive_stokes = .True.
             !!! tau_m y tau_o
             if (abs(omega_linear_damping_time) < tini) omega_linear_damping_time = infinity
             if (abs(omega_exp_damping_time) < tini) omega_exp_damping_time = infinity
@@ -1089,7 +1082,7 @@ module parameters
             real(kind=8), dimension(:,:), allocatable :: aux_real_arr
             integer(kind=4) :: ncols, nrows, i, j, io, my_method
             real(kind=8) :: aux_real
-            character(80) :: auxstr
+            character(260) :: auxstr
             logical :: existe
            
             if (present(method)) then
@@ -1109,11 +1102,17 @@ module parameters
             !! Count number of columns
             ncols = 0
             read (20, '(A)') auxstr
-            do i = 1,MAX_COLS 
+            do i = 1,MAX_COLS
+                io = 0
                 read (auxstr, *, iostat=io) (aux_real, j=1,i)
                 if (io .ne. 0) exit
             end do
-            ncols = i
+            if (io .eq. 0) then 
+                ncols = i
+            else
+                ncols = i - 1
+            end if
+            
             rewind (20) ! Go to the beginning of the file
             
             if (my_method .eq. 0) then
@@ -1174,12 +1173,19 @@ module parameters
             open (unit=30, file=file_tout, status="old", action="read")
 
             !! Count number of columns
+            ncols = 0
             read (30, '(A)') auxstr
             do i = 1,3   ! The very maximum that the string can contain: 3
+                io = 0
                 read (auxstr, *, iostat=io) (t_aux, j=1,i)
                 if (io .ne. 0) exit
-            enddo
-            ncols = i
+            end do
+            if (io .eq. 0) then 
+                ncols = i
+            else
+                ncols = i - 1
+            end if
+            
             rewind (30) ! Go to the beginning of the file
             do ! Count number of (valid) lines 
                 read (30, *, iostat=io) t_aux
@@ -1639,11 +1645,18 @@ module parameters
             integer(kind=4), intent(in) :: i, unit_file
 
             aux_integer = sorted_particles_index(i)
-            write (unit_file,f233) particles_index(aux_integer), time / unit_time, &
-                & particles_elem(aux_integer,1) / unit_dist, particles_elem(aux_integer,2), &
-                & particles_elem(aux_integer,3) / radian, particles_elem(aux_integer,4) / radian, &
-                & particles_MMR(aux_integer), particles_mass(aux_integer) / unit_mass, &
-                & particles_dist(aux_integer) / unit_dist, asteroid_omega * unit_time, asteroid_mass / unit_mass
+            write (unit_file,f233) &
+                & particles_index(aux_integer), &
+                & time / unit_time, &
+                & particles_elem(aux_integer,1) / unit_dist, &
+                & particles_elem(aux_integer,2), &
+                & particles_elem(aux_integer,3) / radian, &
+                & particles_elem(aux_integer,4) / radian, &
+                & particles_MMR(aux_integer), &
+                & particles_mass(aux_integer) / unit_mass, &
+                & particles_dist(aux_integer) / unit_dist, &
+                & asteroid_omega * unit_time, &
+                & asteroid_mass / unit_mass
         end subroutine write_elements
 
         ! 21.2 Write coordinates to unit_file (particles)
@@ -1652,11 +1665,15 @@ module parameters
             integer(kind=4), intent(in) :: i, unit_file
 
             aux_integer = sorted_particles_index(i)
-            write (unit_file,f233) particles_index(aux_integer) + Nboulders, time / unit_time, &
-                & particles_coord(aux_integer,1:2) / unit_dist, particles_coord(aux_integer,3:4) / unit_vel, &
+            write (unit_file,f233) &
+                & particles_index(aux_integer) + Nboulders, &
+                & time / unit_time, &
+                & particles_coord(aux_integer,1:2) / unit_dist, &
+                & particles_coord(aux_integer,3:4) / unit_vel, &
                 & cero, cero, &
-!                 & parameters_arr_new(first_particle + 4 * (i - 1) + 2 : first_particle + 4 * (i - 1) + 3) / unit_acc, &$
-                & particles_mass(aux_integer) / unit_mass, particles_dist(aux_integer) / unit_dist
+! & parameters_arr_new(first_particle + 4 * (i - 1) + 2 : first_particle + 4 * (i - 1) + 3) / unit_acc, &$
+                & particles_mass(aux_integer) / unit_mass, &
+                & particles_dist(aux_integer) / unit_dist
         end subroutine write_coordinates_particle
 
         ! 21.3 Write coordinates to unit_file (boulders)
@@ -1664,9 +1681,14 @@ module parameters
             implicit none
             integer(kind=4), intent(in) :: i, unit_file
             
-            write (unit_file,f233) i, time / unit_time, &
-                & pos_ast_arr(i,:) / unit_dist, vel_ast_arr(i,:) / unit_vel, acc_ast_arr(i,:) / unit_acc, &
-                & mass_ast_arr(i) / unit_mass, radius_ast_arr(i) / unit_dist
+            write (unit_file,f233) &
+                & i, &
+                & time / unit_time, &
+                & pos_ast_arr(i,:) / unit_dist, &
+                & vel_ast_arr(i,:) / unit_vel, &
+                & acc_ast_arr(i,:) / unit_acc, &
+                & mass_ast_arr(i) / unit_mass, &
+                & radius_ast_arr(i) / unit_dist
         end subroutine write_coordinates_boulders
 
         ! 21.4 DO NOT Write
@@ -1690,7 +1712,8 @@ module parameters
             ! Remember that Initial conditions were not swapped
             do i = 1, Nparticles
                 aux_integer = my_sorted_particles_index(i)
-                write (unit_file,f2233) particles_index(aux_integer), & ! i
+                write (unit_file,f2233) &
+                & particles_index(aux_integer), & ! i
                 & particles_outcome(aux_integer), & ! bad
                 & final_time / unit_time, & ! total time to integrate
                 & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum
@@ -1712,8 +1735,10 @@ module parameters
                   & (uno - particles_elem(aux_integer,2)**2) * &
                   & G * (particles_mass(aux_integer) + asteroid_mass)) / &
                   & (unit_dist * unit_vel), & ! final: angular momentum per unit mass
-                & particles_min_a(aux_integer) / unit_dist, particles_max_a(aux_integer) / unit_dist, & ! a_min, a_max
-                & particles_min_e(aux_integer), particles_max_e(aux_integer), & ! e_min, e_max
+                & particles_min_a(aux_integer) / unit_dist, & ! a_min 
+                & particles_max_a(aux_integer) / unit_dist, & ! a_max
+                & particles_min_e(aux_integer), & ! e_min 
+                & particles_max_e(aux_integer), & ! e_max
                 & (particles_max_a(aux_integer) - particles_min_a(aux_integer)) / unit_dist, & ! Delta a
                 & (particles_max_e(aux_integer) - particles_min_e(aux_integer)) ! Delta e
             end do
