@@ -80,13 +80,13 @@ program main
         !!! Parámetros corrida
         !!!! Tiempos
         initial_time = cero      ! Initial time [day]
-        final_time = 2.d3      ! Final time [day]
+        final_time = 2.d3        ! Final time [day]
         min_timestep = cero      ! Min timestep [day] ! Almost unused
-        use_logspaced_output = .False.   ! LogSpaced outputs
-        output_number = 10000      ! Number of outputs (if logsp=.True. or dt_out=0)
-        output_timestep = cero      ! Output timestep [day] (if logsp = .False.)
+        case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
+        output_number = 10000    ! Number of outputs (if dt_out=0)
+        output_timestep = cero   ! Output timestep [day] (used if case_output_type != 1)
         !!!! Error
-        learning_rate = 0.85d0    ! [For adaptive step integrators] Learning rate
+        learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
         error_digits = 12        ! [For adaptive step integrators] Digits for relative error
         !!!! Colision y escape
         min_distance = -1.5d0    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
@@ -849,7 +849,7 @@ program main
     min_timestep = min_timestep * unit_time
 
     !! Output times
-    call set_output_times(initial_time, final_time, output_number, output_timestep, use_logspaced_output, output_times)
+    call set_output_times(initial_time, final_time, output_number, output_timestep, case_output_type, output_times)
 
     !! TOMFILE
     if (use_tomfile) then

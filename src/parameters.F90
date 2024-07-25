@@ -16,7 +16,7 @@ module parameters
     real(kind=8) :: initial_time, final_time, output_timestep
     real(kind=8) :: min_timestep
     integer(kind=4) :: output_number
-    logical :: use_logspaced_output
+    integer(kind=4) :: case_output_type ! 0 => linear, 1 => log, 2 => combination
     real(kind=8), dimension(:), allocatable :: output_times
     real(kind=8) :: time, timestep
     real(kind=8) :: adaptive_timestep
@@ -244,7 +244,7 @@ module parameters
             output_timestep = cero
             min_timestep = cero
             output_number = 0
-            use_logspaced_output = .False.
+            case_output_type = 0 ! 0 => linear, 1 => log, 2 => combination
             ! Parameters
             use_explicit_method = .False.
             use_version_1 = .False.
@@ -390,12 +390,8 @@ module parameters
                             read (value_str, *) output_timestep
                         case("number of outpu")
                             read (value_str, *) output_number
-                        case("logspaced outpu")
-                            if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                use_logspaced_output = .True.
-                            else
-                                use_logspaced_output = .False.
-                            end if
+                        case("output distribu")
+                            read (value_str, *) case_output_type
                         case("use implicit me")
                             if ((auxch1 == "y") .or. (auxch1 == "s")) then
                                 use_explicit_method = .False.
@@ -856,6 +852,13 @@ module parameters
         subroutine set_derived_parameters()
             implicit none
 
+            !! Times
+            if ((case_output_type < 0) .or. (case_output_type > 2)) then
+                write (*,*) "ERROR: Tipo de distribución para tiempos de salida no reconocido."
+                stop 1
+            end if
+
+            !! Boulders
             if (Nboulders < 0) then
                 write (*,*) "ERROR: Nboulders < 0"
                 stop 1
@@ -1028,12 +1031,12 @@ module parameters
         end subroutine free_particles
 
         ! 6. Setear los tiempos de salida
-        subroutine set_output_times(t0, tf, n_out, dt_out, logsp, t_out)
+        subroutine set_output_times(t0, tf, n_out, dt_out, case_dist, t_out)
             implicit none
             real(kind=8), intent(in) :: t0, tf
             integer(kind=4), intent(inout) :: n_out
             real(kind=8), intent(inout) :: dt_out
-            logical, intent(in) :: logsp
+            integer(kind=4), intent(in) :: case_dist
             real(kind=8), dimension(:), allocatable, intent(out) :: t_out
             real(kind=8) :: t_aux, t_add
             integer(kind=4) :: i
@@ -1055,19 +1058,41 @@ module parameters
                 stop 1
             end if
             allocate (t_out(n_out))
-            if (logsp .eqv. .True.) then
+            select case (case_dist)
+            case(0) ! Lineal
+                t_aux = (tf - t0) / (npointsr - uno)
+                do i = 2, n_out - 1
+                    t_out(i) = t0 + t_aux * (i-1)
+                end do
+            case(1) ! Logarítmico
                 t_aux = exp (log (tf - t0 + 1.) / npointsr)
                 t_add = t_aux
                 do i = 2, n_out - 1
                     t_add    = t_add * t_aux
                     t_out(i) = t0 + t_add - 1.
                 end do
-            else
-                t_aux = (tf - t0) / (npointsr - 1.d0)
-                do i = 1, n_out - 1
-                    t_out(i + 1) = t0 + t_aux * i
+            case(2) ! Combinado
+                !! Teniendo en cuenta que 0 es t0 y n_out es tf, si se pide
+                !!  una cantidad impar n_out de puntos, se van a hacer 
+                !!  lin = (n_out-1)/2 puntos lineales y log = lin-1 puntos logarítmicos
+                !!  Si se pide una cantidad par, lin = log = n_out/2
+                ! Primero lineal
+                npointsr = uno * (ceiling(npointsr * uno2 - tini) + 1) ! - tini para evitar errores de redondeo
+                t_aux = (tf - t0) / (npointsr - uno)
+                do i = 2, ceiling(npointsr - tini) - 1 ! - tini para evitar errores de redondeo
+                    t_out(i) = t0 + t_aux * (i-1)
                 end do
-            end if
+                ! Luego logarítmico
+                if (mod(n_out, 2) .ne. 0) npointsr = npointsr - uno
+                t_aux = exp (log (tf - t0 + 1.) / npointsr)
+                t_add = t_aux
+                do i = n_out - floor(npointsr + tini) + 2, n_out - 1 ! + tini para evitar errores de redondeo
+                    t_add    = t_add * t_aux
+                    t_out(i) = t0 + t_add - 1.
+                end do
+                ! Y al final ordenamos
+                call quicksort(t_out, 2, n_out-1)
+            end select
             t_out(1) = t0
             t_out(n_out) = tf
         end subroutine set_output_times
