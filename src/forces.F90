@@ -483,7 +483,7 @@ module forces
             if (use_stokes) call stokes_acceleration(mcm, t, r_from_cm, v_from_cm, dist_from_cm, ab)
 
             ! Calculate naive stokes
-            if (use_naive_stokes) call naive_stokes_acceleration(mcm, r_from_cm, v_from_cm, dist_from_cm, ab)
+            if (use_naive_stokes) call naive_stokes_acceleration(mcm, t, r_from_cm, v_from_cm, dist_from_cm, ab)
 
             ! Calculate J2
             if (use_J2) call J2_acceleration(m(0), r_from_i(0,:), dist_from_i(0), ab)
@@ -518,7 +518,7 @@ module forces
             if (use_stokes) call stokes_acceleration(m0, t, r_from_0, v_from_0, dist_from_0, ab)
 
             ! Calculate naive stokes
-            if (use_naive_stokes) call naive_stokes_acceleration(m0, r_from_0, v_from_0, dist_from_0, ab)
+            if (use_naive_stokes) call naive_stokes_acceleration(m0, t, r_from_0, v_from_0, dist_from_0, ab)
 
             ! Calculate J2
             if (use_J2) call J2_acceleration(m0, r_from_0, dist_from_0, ab)
@@ -602,12 +602,14 @@ module forces
         !!!!!!!!!!!!!!!!!!!!! NAIVE-STOKES !!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        subroutine naive_stokes_acceleration (mcm, r_from_cm, v_from_cm, dist_from_cm, ab)
+        subroutine naive_stokes_acceleration (mcm, t, r_from_cm, v_from_cm, dist_from_cm, ab)
             implicit none
-            real(kind=8), intent(in) :: mcm, r_from_cm(2), v_from_cm(2), dist_from_cm 
+            real(kind=8), intent(in) :: mcm, t, r_from_cm(2), v_from_cm(2), dist_from_cm 
             real(kind=8), intent(inout) :: ab(2)
-            real(kind=8) :: acc_radial, vel_radial, v2, mean_movement, Gmcm, aux_real
+            real(kind=8) :: drag_factor, aux_real
+            real(kind=8) :: Gmcm, v2, acc_radial, vel_radial, mean_movement 
 
+            drag_factor = uno2 * (uno + tanh(1.d1 * (uno - t / drag_charac_time)))
             Gmcm = G * mcm
             v2 = dot_product(v_from_cm, v_from_cm)
             ! Debemos chequear que la partícula no esté "desligada"
@@ -616,7 +618,7 @@ module forces
             mean_movement = aux_real**(1.5d0) / Gmcm ! n
             vel_radial = dot_product(v_from_cm, r_from_cm) / dist_from_cm 
             acc_radial = - drag_coefficient * mean_movement * vel_radial
-            ab = ab + acc_radial * r_from_cm / dist_from_cm
+            ab = ab + acc_radial * r_from_cm / dist_from_cm * drag_factor
         end subroutine naive_stokes_acceleration
 
         

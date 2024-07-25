@@ -65,13 +65,14 @@ program main
         
         !!!! Stokes
         use_stokes = .False.
-        stokes_a_damping_time = infinity     ! [day]
+        stokes_a_damping_time = infinity                     ! [day]
         stokes_e_damping_time = stokes_a_damping_time / 1.d2 ! [day]
-        stokes_charac_time = cero                   ! [day] Tiempo que actua stokes
+        stokes_charac_time = cero                            ! [day] Tiempo que actua stokes
 
         !!!! Naive-Stokes (drag)
         use_naive_stokes = .False.
-        drag_coefficient = 0.0d0
+        drag_coefficient = cero  ! Eta
+        drag_charac_time = cero  ! [day] Tiempo que actua drag
 
         !!!! Geo-Potential (J2)
         use_J2 = .False.
@@ -533,7 +534,7 @@ program main
         !!! Mensaje
         if (use_screen) then
             write (*,*) "Stokes"
-            write (*,f13)  "    t_stokes: ", stokes_charac_time / asteroid_rotational_period, "[Prot]"
+            write (*,f13)  "    t_stokes: ", stokes_charac_time / unit_time, "[days]"
             write (*,f13)  "    C       : ", stokes_C
             write (*,f13)  "    alpha   : ", stokes_alpha
         end if
@@ -555,6 +556,7 @@ program main
         if (use_naive_stokes) then !!!! Naive-Stokes
             write (*,*) "Naive-Stokes (drag radial)"
             write (*,f13) "    Eta :", drag_coefficient
+            write (*,f13) " t_naive:", stokes_charac_time / unit_time, "[days]"
         end if
         if (use_J2) then
             write (*,*) "Geo-Potential (J2)"

@@ -63,7 +63,7 @@ module parameters
     real(kind=8) :: stokes_C, stokes_alpha
     !! Naive-Stokes (Drag)
     logical :: use_naive_stokes
-    real(kind=8) :: drag_coefficient     
+    real(kind=8) :: drag_coefficient, drag_charac_time
     !! Mass and omega damping
     real(kind=8) :: mass_exp_damping_time, omega_exp_damping_time
     real(kind=8) :: omega_linear_damping_time, omega_linear_damping_slope
@@ -302,6 +302,7 @@ module parameters
             !! Naive-Stokes
             use_naive_stokes = .False.
             drag_coefficient = cero
+            drag_charac_time = cero
             !! Dampings
             omega_linear_damping_time = infinity
             omega_exp_damping_time = infinity
@@ -489,8 +490,16 @@ module parameters
                             read (value_str, *) stokes_e_damping_time
                         case("F damping chara")
                             read (value_str, *) stokes_charac_time
-                        case("naive-stokes dr")
+                        case("include naive-s")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                use_naive_stokes = .True.
+                            else
+                                use_naive_stokes = .False.
+                            end if
+                        case("drag force coef")
                             read (value_str, *) drag_coefficient
+                        case("drag force char")
+                            read (value_str, *) drag_charac_time
                         case("rotation linear")
                             read (value_str, *) omega_linear_damping_time
                         case("rotation expone")
@@ -870,11 +879,13 @@ module parameters
             if ((abs(stokes_a_damping_time) < tini) .or. .not. use_stokes) stokes_a_damping_time = cero
             if ((abs(stokes_e_damping_time) < tini) .or. .not. use_stokes) stokes_e_damping_time = cero
             if ((abs(stokes_charac_time) < tini) .or. .not. use_stokes) stokes_charac_time = cero
-            if (((abs(stokes_a_damping_time) < tini) .and. &
-               & (abs(stokes_e_damping_time) < tini)) .or. (abs(stokes_charac_time) < tini)) &
-               & use_stokes = .False.
+            if (stokes_charac_time .le. cero) stokes_charac_time = infinity
+            if ((abs(stokes_a_damping_time) < tini) .and. (abs(stokes_e_damping_time) < tini)) use_stokes = .False.
             !!! Naive-stokes
-            if (abs(drag_coefficient) > tini) use_naive_stokes = .True.
+            if ((abs(drag_coefficient) < tini) .or. .not. use_naive_stokes) drag_coefficient = cero
+            if ((abs(drag_charac_time) < tini) .or. .not. use_naive_stokes) drag_charac_time = cero
+            if (drag_charac_time .le. cero) drag_charac_time = infinity
+            if (abs(drag_coefficient) < tini) use_naive_stokes = .False.
             !!! tau_m y tau_o
             if (abs(omega_linear_damping_time) < tini) omega_linear_damping_time = infinity
             if (abs(omega_exp_damping_time) < tini) omega_exp_damping_time = infinity
