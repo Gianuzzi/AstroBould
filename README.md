@@ -3,7 +3,7 @@ Repositorio con programa para integrar partículas gravitatoriamente alrededor d
 
 Los parámetros iniciales del sistema y la integración se modifican en el archivo: [config.ini](./config.ini)
 
-En caso de no utilizarlo, se usan los parámetros definidos en [main.F90](./src/main.F90), entre las líneas [22 a 118](./src/main.F90#L22#L118).
+En caso de no utilizarlo, se usan los parámetros definidos en [main.F90](./src/main.F90), entre las líneas [22 a 119](./src/main.F90#L22#L119).
 
 # Usage
 
@@ -90,7 +90,7 @@ Hay 2 posibilidad de ejecución en paralelo:
 - _Independiente_: Se realizan múltiples integraciones independientes, con una partícula cada una. Aquí cada integración se ejecuta en paralelo.
 
 En este caso se debe tener un **archivo con los datos de las partículas a integrar**.
-Este archivo se puede crear con el código [make_particles.py](./tools/make_particles.py). Su configuración se realiza en las líneas [70 a 104](./tools/make_particles.py#L70#L104), y si ejecució se realiza con:
+Este archivo se puede crear con el código [make_particles.py](./tools/make_particles.py). Su configuración se realiza en las líneas [70 a 106](./tools/make_particles.py#L70#L106), y si ejecució se realiza con:
 
 ``` console
 $ python make_particles.py
@@ -102,7 +102,7 @@ Para la integración _dependiente_ es necesario compilar usando _-fopenmp_, mien
 $ make parallel
 ```
 
-Para realizar la integración _independiente_, se provee el código en Python [launcher.py](./launcher.py). Más información se encuentra [al inicio](./launcher.py#L3#L47) de este archivo. Luego de configurarlo, editando las líneas [61 a 90](./launcher.py#L61#L90), su ejecución se realiza con:
+Para realizar la integración _independiente_, se provee el código en Python [launcher.py](./launcher.py). Más información se encuentra [al inicio](./launcher.py#L3#L47) de este archivo. Luego de configurarlo, editando las líneas [61 a 92](./launcher.py#L61#L92), su ejecución se realiza con:
 
 ``` console
 $ python launcher.py
@@ -122,7 +122,7 @@ $ ./ASTROBOULD [args] -parallel <number of cpus to use>
 ``` python
 all_in_one = True
 ```
-en la línea [90](./launcher.py#L90) de este archivo.
+en la línea [91](./launcher.py#L91) de este archivo.
 
 
 ### Archivo TOM (Tiempos, Omega, Masa agregada)
