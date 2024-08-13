@@ -132,7 +132,6 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_explicit_v1
         
         function dydt_implicit_v1 (t, y) result(dydt) ! Tienen un error sistemático que no detecto aún
@@ -148,7 +147,7 @@ module forces
             real(kind=8) :: rcm(2), vcm(2), raux(0:Nboulders,2), vaux(0:Nboulders,2)
             real(kind=8) :: omega, omega2, omegadot, inertia, angmom
             integer(kind=4) :: i, ineqs, particle_i
-            real(kind=8) :: dummy_real2(2)
+            real(kind=8) :: dummy_real2(2), aux_real
 
             dydt = cero
 
@@ -166,14 +165,19 @@ module forces
             end do
             rcm = rcm / asteroid_mass ! rcm = sum_i m_i * r_i / M
             vcm = vcm / asteroid_mass ! vcm = sum_i m_i * v_i / M
+            if (sqrt(sum(rcm * rcm)) < error_tolerance) rcm = cero ! Avoid numerical errors
+            if (sqrt(sum(vcm * vcm)) < error_tolerance) vcm = cero ! Avoid numerical errors
             ! Calculate angmom and inertia
+            aux_real = cero
             angmom = cero
             inertia = cero
             do i = 0, Nboulders
                 raux(i,:) = rib(i,:) - rcm
                 vaux(i,:) = vib(i,:) - vcm
+                ! aux_real = 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 ! Inertia Sphere
                 angmom = angmom + mass_ast_arr(i) * cross2D(raux(i,:), vaux(i,:)) ! Traslacional
-                inertia = inertia + mass_ast_arr(i) * sum(raux(i,:) * raux(i,:)) ! Inercia
+                ! angmom = angmom + aux_real * cross2D(raux(i,:), vaux(i,:))/sum(raux(i,:) * raux(i,:)) ! Rotacional (Sphere)
+                inertia = inertia + aux_real + mass_ast_arr(i) * sum(raux(i,:) * raux(i,:)) ! Sphere + Steiner
             end do
             !! Get Omega from L/I
             omega = angmom / inertia
@@ -218,7 +222,7 @@ module forces
                 dydt(ineqs+3) = -omega2 * raux(i,1) - omegadot * raux(i,2) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
                 dydt(ineqs+4) = -omega2 * raux(i,2) + omegadot * raux(i,1) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
             end do
-!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
+            ! print*, t, angmom/asteroid_angmom, inertia/asteroid_inertia, omega/asteroid_omega
         end function dydt_implicit_v1
         
         function dydt_explicit_v2 (t, y) result(dydt)
@@ -288,7 +292,6 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_explicit_v2
         
         function dydt_implicit_v2 (t, y) result(dydt)
@@ -359,7 +362,6 @@ module forces
             !$OMP END DO
             !$OMP END PARALLEL
             dydt(2) = domegadt(t, omega) + omegadot
-!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_implicit_v2      
         
         function dydt_no_boulders (t, y) result(dydt)
