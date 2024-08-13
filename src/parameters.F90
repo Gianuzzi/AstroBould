@@ -2110,8 +2110,8 @@ module parameters
             ! Calculate the center of mass of the asteroid and boulders
             rcm = cero
             do i = 0, Nboulders 
-                rib(i,0) = y((i * neqs) + 1)
-                rib(i,1) = y((i * neqs) + 2)
+                rib(i,1) = y((i * neqs) + 1)
+                rib(i,2) = y((i * neqs) + 2)
                 rcm = rcm + mass_ast_arr(i) * rib(i,:)
             end do
             rcm = rcm / asteroid_mass ! rcm = sum_i m_i * r_i / M
