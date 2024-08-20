@@ -1,7 +1,7 @@
 # Version: 8.0
 
 # DENTRO DE UN ENTORNO PYTHON
-# Ejecución: $ python parallel.py
+# Ejecución: $ python launcher.py
 
 # Este programa integra cada sistema (condición inicial) en
 # un archivo independiente,
