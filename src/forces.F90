@@ -50,7 +50,8 @@ module forces
         end function
 
         function domega_dt_linear (t, omega) result(domegadt)
-            ! Exponential omega damping
+            ! omega(t) = omega0 + omega_linear_damping_slope * t
+            ! domega/dt = omega_linear_damping_slope
             implicit none
             real(kind=8), intent(in) :: t, omega
             real(kind=8) :: domegadt
@@ -59,13 +60,29 @@ module forces
         end function domega_dt_linear
         
         function domega_dt_exponential (t, omega) result(domegadt)
-            ! Exponential omega damping
+            ! omega(t) = omega0 * exp (-(t-t0)/omega_exp_damping_time)
+            ! domega/dt = -exp(- (t-t0) / omega_exp_damping_time) * omega0 / omega_exp_damping_time = 
+            !           = - omega / omega_exp_damping_time
             implicit none
             real(kind=8), intent(in) :: t, omega
             real(kind=8) :: domegadt
             
-            domegadt = -exp (- (t - initial_time) / omega_exp_damping_time) * omega / omega_exp_damping_time
+            ! domegadt = -exp (- (t - initial_time) / omega_exp_damping_time) * &
+            !             & asteroid_initial_conditions(8) / omega_exp_damping_time
+            domegadt = - omega / omega_exp_damping_time
         end function domega_dt_exponential
+
+        function domega_dt_expoly (t, omega) result(domegadt)
+            ! omega(t) = omega0 * exp (A * (t-t0)**B)
+            ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
+            implicit none
+            real(kind=8), intent(in) :: t, omega
+            real(kind=8) :: domegadt
+            
+            ! domegadt = omega_exp_poly_A * omega_exp_poly_B * (t - initial_time + tini)**(omega_exp_poly_B - uno) * &
+            !            & exp(omega_exp_poly_A * (t - initial_time + tini)**omega_exp_poly_B) * asteroid_initial_conditions(8)
+            domegadt = omega_exp_poly_AB * (t - initial_time + tini)**(omega_exp_poly_B - uno) * omega
+        end function domega_dt_expoly
 
         function dmass_dt_exponential(t, mass) result(dmassdt)
             ! Exponential mass damping
@@ -222,7 +239,6 @@ module forces
                 dydt(ineqs+3) = -omega2 * raux(i,1) - omegadot * raux(i,2) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
                 dydt(ineqs+4) = -omega2 * raux(i,2) + omegadot * raux(i,1) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
             end do
-            ! print*, t, angmom/asteroid_angmom, inertia/asteroid_inertia, omega/asteroid_omega
         end function dydt_implicit_v1
         
         function dydt_explicit_v2 (t, y) result(dydt)
@@ -408,10 +424,7 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
         end function dydt_no_boulders
-        
-        
         
         
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -614,12 +627,15 @@ module forces
             drag_factor = uno2 * (uno + tanh(1.d1 * (uno - t / drag_charac_time)))
             Gmcm = G * mcm
             v2 = dot_product(v_from_cm, v_from_cm)
+
             ! Debemos chequear que la partícula no esté "desligada"
             aux_real = dos * Gmcm / dist_from_cm - v2
             if (aux_real < cero) return ! No se puede calcular
+
             mean_movement = aux_real**(1.5d0) / Gmcm ! n
             vel_radial = dot_product(v_from_cm, r_from_cm) / dist_from_cm 
             acc_radial = - drag_coefficient * mean_movement * vel_radial
+
             ab = ab + acc_radial * r_from_cm / dist_from_cm * drag_factor
         end subroutine naive_stokes_acceleration
 
@@ -633,7 +649,7 @@ module forces
             real(kind=8), intent(in) :: m0, r_from_primary(2), distance_from_primary
             real(kind=8), intent(inout) :: ab(2)
             
-            ab = ab - G * m0 * 1.5d0 * J2_coefficient * r_from_primary / distance_from_primary**5
+            ab = ab - G * m0 * J2_effective * r_from_primary / distance_from_primary**5
         end subroutine J2_acceleration       
     
 end module forces

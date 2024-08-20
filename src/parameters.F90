@@ -65,11 +65,13 @@ module parameters
     logical :: use_naive_stokes
     real(kind=8) :: drag_coefficient, drag_charac_time
     !! Mass and omega damping
+    logical :: use_omega_damping
     real(kind=8) :: mass_exp_damping_time, omega_exp_damping_time
+    real(kind=8) :: omega_exp_poly_A, omega_exp_poly_B, omega_exp_poly_AB
     real(kind=8) :: omega_linear_damping_time, omega_linear_damping_slope
     !! Geo-potential
     logical :: use_J2
-    real(kind=8) :: J2_coefficient
+    real(kind=8) :: J2_coefficient, J2_effective
 
     ! Bodies
     integer(kind=4) :: Ntotal
@@ -304,8 +306,11 @@ module parameters
             drag_coefficient = cero
             drag_charac_time = cero
             !! Dampings
+            use_omega_damping = .False.
             omega_linear_damping_time = infinity
             omega_exp_damping_time = infinity
+            omega_exp_poly_A = cero
+            omega_exp_poly_B = cero
             mass_exp_damping_time = infinity
             !! Geo-Potential
             use_J2 = .False.
@@ -500,10 +505,20 @@ module parameters
                             read (value_str, *) drag_coefficient
                         case("drag force char")
                             read (value_str, *) drag_charac_time
+                        case("include rotatio")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                use_omega_damping = .True.
+                            else
+                                use_omega_damping = .False.
+                            end if
                         case("rotation linear")
                             read (value_str, *) omega_linear_damping_time
                         case("rotation expone")
                             read (value_str, *) omega_exp_damping_time
+                        case("rotation A poly")
+                            read (value_str, *) omega_exp_poly_A
+                        case("rotation B poly")
+                            read (value_str, *) omega_exp_poly_B
                         case("mass exponentia")
                             read (value_str, *) mass_exp_damping_time
                         case("geo-potential J")
@@ -889,6 +904,12 @@ module parameters
             !!! tau_m y tau_o
             if (abs(omega_linear_damping_time) < tini) omega_linear_damping_time = infinity
             if (abs(omega_exp_damping_time) < tini) omega_exp_damping_time = infinity
+            if (abs(omega_exp_poly_A) < tini) omega_exp_poly_A = cero
+            if (abs(omega_exp_poly_B) < tini) omega_exp_poly_B = cero
+            if (.not. ((abs(omega_linear_damping_time) > tini) .and. (omega_linear_damping_time < infinity)) .and. &
+              & .not. ((abs(omega_exp_damping_time) > tini) .and. (omega_exp_damping_time < infinity)) .and. &
+              & .not. ((abs(omega_exp_poly_A) > tini) .and. (abs(omega_exp_poly_B) > tini))) &
+              & use_omega_damping = .False.
             if (abs(mass_exp_damping_time) < tini) mass_exp_damping_time = infinity
             !!! Geo-Potential
             if (abs(J2_coefficient) > tini) use_J2 = .True.

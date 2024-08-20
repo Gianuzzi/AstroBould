@@ -447,53 +447,88 @@ program main
         write (*,*) ACHAR(5)
     end if
 
-    !! Variación en masa o en omega (funciones del tiempo)
-    mass_exp_damping_time = cero !!! Deprecado
-    
-    if ((abs(omega_linear_damping_time) > tini) .and. (omega_linear_damping_time < infinity)) then
-        if (use_explicit_method) then
-            write (*,*) ACHAR(10)
-            write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
-            write (*,f13) "tau_o [Prot]:", omega_linear_damping_time * unit_time / asteroid_rotational_period
-            stop 1
-        end if
-        if (.not. use_boulders) then
-            write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
+    !! Variación en omega (funciones del tiempo)
+    if (use_omega_damping) then
+        ! Linear omega damping
+        if ((abs(omega_linear_damping_time) > tini) .and. (omega_linear_damping_time < infinity)) then
+            if (use_explicit_method) then
+                write (*,*) ACHAR(10)
+                write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
+                write (*,f13) "tau_o [Prot]:", omega_linear_damping_time * unit_time / asteroid_rotational_period
+                stop 1
+            end if
+            if (.not. use_boulders) then
+                write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
+                omega_linear_damping_time = infinity
+                omega_linear_damping_slope = cero
+            else
+                omega_linear_damping_time = omega_linear_damping_time * unit_time
+                omega_linear_damping_slope = - asteroid_omega / (omega_linear_damping_time - initial_time)
+                if (use_screen) then
+                    write (*,*) "Explicit omega linear damping"
+                    write (*,f13)  "    tau_o :", omega_linear_damping_time / asteroid_rotational_period, "[Prot]"
+                end if
+            end if
+        else
             omega_linear_damping_time = infinity
             omega_linear_damping_slope = cero
-        else
-            omega_linear_damping_time = omega_linear_damping_time * unit_time
-            omega_linear_damping_slope = - asteroid_omega / (omega_linear_damping_time - initial_time)
-            if (use_screen) then
-                write (*,*) "Explicit omega linear damping"
-                write (*,f13)  "    tau_o :", omega_linear_damping_time / asteroid_rotational_period, "[Prot]"
+        end if
+        ! Exponential omega damping
+        if ((abs(omega_exp_damping_time) > tini) .and. (omega_exp_damping_time < infinity)) then
+            if (use_explicit_method) then
+                write (*,*) ACHAR(10)
+                write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
+                write (*,f13) "tau_o [Prot]:", omega_exp_damping_time * unit_time / asteroid_rotational_period
+                stop 1
             end if
+            if (.not. use_boulders) then
+                write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
+                omega_exp_damping_time = infinity
+            else
+                omega_exp_damping_time = omega_exp_damping_time * unit_time
+                if (use_screen) then
+                    write (*,*) "Explicit omega exponential damping"
+                    write (*,f13)  "    tau_o :", omega_exp_damping_time / asteroid_rotational_period, "[Prot]"
+                end if
+            end if
+        else
+            omega_exp_damping_time = infinity
+        end if
+        ! Poly_exponential omega damping
+        if ((abs(omega_exp_poly_A) > tini) .and. (abs(omega_exp_poly_B) > tini)) then
+            if (use_explicit_method) then
+                write (*,*) ACHAR(10)
+                write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
+                write (*,f13) "poly exp coeff A:", omega_exp_poly_A
+                write (*,f13) "poly exp coeff B:", omega_exp_poly_B
+                stop 1
+            end if
+            if (.not. use_boulders) then
+                write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
+                omega_exp_poly_A = cero
+                omega_exp_poly_B = cero
+            else
+                if (use_screen) then
+                    write (*,*) "Explicit omega poly-exponential damping"
+                    write (*,f13)  "    A :", omega_exp_poly_A
+                    write (*,f13)  "    B :", omega_exp_poly_B
+                end if
+            end if
+            omega_exp_poly_AB = omega_exp_poly_A * omega_exp_poly_B ! Define AB
+        else
+            omega_exp_poly_A = cero
+            omega_exp_poly_B = cero
         end if
     else
         omega_linear_damping_time = infinity
         omega_linear_damping_slope = cero
-    end if
-    if ((abs(omega_exp_damping_time) > tini) .and. (omega_exp_damping_time < infinity)) then
-        if (use_explicit_method) then
-            write (*,*) ACHAR(10)
-            write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
-            write (*,f13) "tau_o [Prot]:", omega_exp_damping_time * unit_time / asteroid_rotational_period
-            stop 1
-        end if
-        if (.not. use_boulders) then
-            write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
-            omega_exp_damping_time = infinity
-        else
-            omega_exp_damping_time = omega_exp_damping_time * unit_time
-            if (use_screen) then
-                write (*,*) "Explicit omega exponential damping"
-                write (*,f13)  "    tau_o :", omega_exp_damping_time / asteroid_rotational_period, "[Prot]"
-            end if
-        end if
-    else
         omega_exp_damping_time = infinity
+        omega_exp_poly_A = cero
+        omega_exp_poly_B = cero
     end if
 
+    !! Mass exponential damping
+    mass_exp_damping_time = cero !!! Deprecado
     if ((abs(mass_exp_damping_time) > tini) .and. (mass_exp_damping_time < infinity)) then
         if (use_explicit_method) then
             write (*,*) ACHAR(10)
@@ -511,14 +546,16 @@ program main
     end if
 
     !!! Check not both omega dampings
-    if (omega_exp_damping_time < infinity .and. omega_linear_damping_time < infinity) then
+    if ((omega_exp_damping_time < infinity .and. omega_linear_damping_time < infinity) .or. &
+      & (omega_exp_damping_time < infinity .and. abs(omega_exp_poly_A) > tini) .or. &
+      & (omega_linear_damping_time < infinity .and. abs(omega_exp_poly_A) > tini)) then
         write (*,*) ACHAR(10)
         write (*,*) "ERROR: No se puede usar ambos decaimientos de omega (linear and exp) finitos."
         stop 1
     end if
 
     !!! Check que no esté torque también
-    if (use_torque .and. ((omega_exp_damping_time < infinity) .or. (omega_linear_damping_time < infinity))) then
+    if (use_torque .and. use_omega_damping) then
         write (*,*) ACHAR(10)
         write (*,*) "ERROR: No se puede usar torque y tau_o finito."
         stop 1
@@ -544,6 +581,8 @@ program main
         stokes_charac_time = cero
     end if
 
+    !! J2
+    J2_effective = 1.5d0 * J2_coefficient ! Define effective J2
 
     !! Torque
     if ((.not. use_boulders) .and. use_torque) then
@@ -565,8 +604,7 @@ program main
         if (use_torque) write (*,*) "Torque from particles to asteroid ACTIVATED"
 
         if (.not. any((/use_stokes, use_naive_stokes, use_J2, use_torque, &
-            & omega_linear_damping_time < infinity, &
-            & omega_exp_damping_time < infinity, &
+            & use_omega_damping, &
             & mass_exp_damping_time < infinity/))) then
             write (*,*) "No se aplicarán efectos ex/internos."
         end if
@@ -1097,6 +1135,8 @@ program main
             domegadt => domega_dt_exponential
         else if (omega_linear_damping_time < infinity) then
             domegadt => domega_dt_linear
+        else if (abs(omega_exp_poly_A) > tini) then
+            domegadt => domega_dt_expoly
         else 
             domegadt => dydt_single_null
         end if
