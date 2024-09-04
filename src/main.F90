@@ -1183,11 +1183,10 @@ program main
         write_i_to_general => do_not_write
     end if
     if (use_multiple_outputs) then
+        write_b_to_individual => write_coordinates_boulders
         if (use_elements_output) then
-            write_b_to_individual => do_not_write
             write_i_to_individual => write_elements
         else
-            write_b_to_individual => write_coordinates_boulders
             write_i_to_individual => write_coordinates_particle
         end if
     else 
