@@ -971,6 +971,7 @@ program main
         !!!!! Version 1: [x0, y0, vx0, vy0, x1, y1, vx1, vy1, ...]
         allocate(parameters_arr(4 * Ntotal))
         allocate(parameters_arr_new(4 * Ntotal))
+        allocate(parameters_der(4 * Ntotal))
         do i = 0, Nboulders
             parameters_arr(1 + 4 * i) = pos_ast_arr(i,1)
             parameters_arr(2 + 4 * i) = pos_ast_arr(i,2)
@@ -1220,7 +1221,17 @@ program main
 
 
     ! Set parameters new to the derivative
-    parameters_arr_new = dydt(initial_time, parameters_arr)
+    parameters_der = dydt(initial_time, parameters_arr)
+    parameters_arr_new = parameters_der
+
+    !!! Get particles accelerations (just for the output)
+    do i = 1, Nparticles
+        aux_integer = first_particle + 4 * (i - 1)
+        particles_acc(i,1:2) = parameters_der(aux_integer+2 : aux_integer+3)
+    end do
+
+    open(37, file="drag_force.txt", status="unknown", action="write") !!! QUITAR
+    write(37,*) time /unit_time, user_real_var2 / unit_acc !!! QUITAR
 
     !! Initial conditions Output
     !$OMP PARALLEL DEFAULT(SHARED) &
@@ -1300,8 +1311,8 @@ program main
         end do
         !$OMP END DO
         !$OMP END PARALLEL
-        
-        
+
+        !! Staying particles
         staying_particles = Nactive - discarded_particles
         !! Discard particles
         if (discarded_particles > 0) then
@@ -1374,6 +1385,7 @@ program main
             end if
         end if
         particles_hexit = 0 ! Resetear HardExit
+        
         
         ! Check if all done
         !! Time end
@@ -1458,6 +1470,7 @@ program main
 
         ! Update parameters
         time = time + timestep
+        parameters_der = dydt(time, parameters_arr_new)
         parameters_arr = parameters_arr_new
 
         ! Asteroid and boulders
@@ -1482,12 +1495,13 @@ program main
                         aux_integer = i * equation_size
                         pos_ast_arr(i,:) = parameters_arr(aux_integer+1 : aux_integer+2)
                         vel_ast_arr(i,:) = parameters_arr(aux_integer+3 : aux_integer+4)
+                        acc_ast_arr(i,:) = parameters_der(aux_integer+3 : aux_integer+4)
                     end do
                     call get_asteroid_from_boulders(mass_ast_arr, pos_ast_arr, vel_ast_arr, &
                                                     & asteroid_pos, asteroid_vel, asteroid_omega, asteroid_inertia)
                     do i = 0, Nboulders
                         dist_ast_arr(i) = sqrt(sum((pos_ast_arr(i,:) - asteroid_pos)**2))
-                        acc_ast_arr(i,:) = - (pos_ast_arr(i,:) - asteroid_pos) * asteroid_omega**2
+                        ! acc_ast_arr(i,:) = - (pos_ast_arr(i,:) - asteroid_pos) * asteroid_omega**2
                     end do
                     ! Definimos theta como la variación del ángulo de m0 respecto del asteroide, respecto a la condición inicial
                     asteroid_theta = mod(atan2(pos_ast_arr(0,2) - asteroid_pos(2), &
@@ -1534,17 +1548,17 @@ program main
         !$OMP PRIVATE(i,aux_integer)
         !$OMP DO SCHEDULE (STATIC)
         do i = 1, Nactive
-            aux_integer =  first_particle + 4 * (i - 1)
+            aux_integer = first_particle + 4 * (i - 1)
             !!! Coordinates
             particles_coord(i,1:2) = parameters_arr(aux_integer   : aux_integer+1)
             particles_coord(i,3:4) = parameters_arr(aux_integer+2 : aux_integer+3)
+            particles_acc(i,1:2) = parameters_der(aux_integer+2 : aux_integer+3)
             call get_elements_i(i) !!! Elements
             call get_chaos_i(i) !!! Chaos
             particles_dist(i) = sqrt(sum((particles_coord(i,1:2) - asteroid_pos)**2)) ! sqrt(x^2 + y^2)
         end do
         !$OMP END DO
         !$OMP END PARALLEL
-        
         
         ! Output
         if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) then
@@ -1581,16 +1595,18 @@ program main
             call flush_chaos(40) ! Update chaos
             !$OMP END SECTIONS
             !$OMP END PARALLEL
+            write(37,*) time /unit_time, user_real_var2 / unit_acc !!! QUITAR
         end if
 
         if (use_percentage) call percentage(time, final_time)
-        
 
         ! Update j; only if not HardExit
         if (.not. is_premature_exit) j = j + 1
         
     end do main_loop
 
+    close(37) !!! QUITAR
+    
     !! Update surviving particles times
     if (use_chaos) particles_times(1:Nactive) = final_time ! Update particle times
 
@@ -1711,6 +1727,7 @@ program main
     !!!!!!!! PARAMETROS !!!!!!!
     deallocate(parameters_arr)
     deallocate(parameters_arr_new)
+    deallocate(parameters_der)
     !!!!!!!!! INITIALS !!!!!!!!
     call free_initial_conditions()
     !!!!!!!!! POINTERS !!!!!!!!

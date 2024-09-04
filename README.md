@@ -21,7 +21,7 @@ Asimismo, recuerda ejecutar `make clean` en caso de realizar algún cambio de co
 La ejecución básica de una particula individual se realiza con
 
 ``` console
-$ ./main <a> <e> <M> <w> <R> [args]
+$ ./ASTROBOULD <a> <e> <M> <w> <R> [args]
 ```
 
 Los argumentos $a, e, M, \omega$ son los elementos orbitales, y $R$ (cociente de movimientos inicial $n_{part}/\Omega_{ast}$) es opcional.

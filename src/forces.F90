@@ -49,6 +49,8 @@ module forces
             dydt = cero
         end function
 
+        !! domega/dt
+
         function domega_dt_linear (t, omega) result(domegadt)
             ! omega(t) = omega0 + omega_linear_damping_slope * t
             ! domega/dt = omega_linear_damping_slope
@@ -58,7 +60,7 @@ module forces
             
             domegadt = omega_linear_damping_slope
         end function domega_dt_linear
-        
+    
         function domega_dt_exponential (t, omega) result(domegadt)
             ! omega(t) = omega0 * exp (-(t-t0)/omega_exp_damping_time)
             ! domega/dt = -exp(- (t-t0) / omega_exp_damping_time) * omega0 / omega_exp_damping_time = 
@@ -84,6 +86,8 @@ module forces
             domegadt = omega_exp_poly_AB * (t - initial_time + tini)**(omega_exp_poly_B - uno) * omega
         end function domega_dt_expoly
 
+        !! dmass/dt
+
         function dmass_dt_exponential(t, mass) result(dmassdt)
             ! Exponential mass damping
             implicit none
@@ -92,6 +96,8 @@ module forces
             
             dmassdt = -exp (- (t - initial_time) / mass_exp_damping_time) * mass / mass_exp_damping_time
         end function dmass_dt_exponential
+
+        !! dY/dt
 
         function dydt_explicit_v1 (t, y) result(dydt)
             !y = / x0, y0, vx0, vy0, Bould, Part, .../
@@ -583,7 +589,6 @@ module forces
             ab = ab + acc_grav * G
         end subroutine gravitational_acceleration_and_torque
         
-        
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!! STOKES !!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -612,7 +617,6 @@ module forces
             ab = ab - stokes_C * (v_from_cm - stokes_alpha * vel_circ) * stokes_factor ! =-C(v * - alpha*vc)
         end subroutine stokes_acceleration
 
-
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!! NAIVE-STOKES !!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -635,11 +639,11 @@ module forces
             mean_movement = aux_real**(1.5d0) / Gmcm ! n
             vel_radial = dot_product(v_from_cm, r_from_cm) / dist_from_cm 
             acc_radial = - drag_coefficient * mean_movement * vel_radial
-
+            
             ab = ab + acc_radial * r_from_cm / dist_from_cm * drag_factor
+            user_real_var2 = acc_radial * r_from_cm / dist_from_cm * drag_factor
         end subroutine naive_stokes_acceleration
 
-        
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!! GEO-POTENTIAL !!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

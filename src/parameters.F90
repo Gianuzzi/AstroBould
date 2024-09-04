@@ -80,7 +80,7 @@ module parameters
     real(kind=8) :: asteroid_omega, asteroid_rotational_period, lambda_kep, omega_kep
     real(kind=8) :: asteroid_a_corot 
     real(kind=8), dimension(2) :: asteroid_pos, asteroid_vel, asteroid_acc
-    real(kind=8) :: asteroid_theta, asteroid_theta_correction
+    real(kind=8) :: asteroid_theta, asteroid_theta_correction, asteroid_torque
     !!! Primary + boulders
     real(kind=8), dimension(:), allocatable :: mass_ast_arr, radius_ast_arr, mu_ast_arr, theta_ast_arr, dist_ast_arr
     real(kind=8), dimension(:,:), allocatable :: pos_ast_arr, vel_ast_arr, acc_ast_arr
@@ -110,6 +110,7 @@ module parameters
     real(kind=8), dimension(:), allocatable :: particles_mass
     !!!!! Coordenadas y elementos orbitales
     real(kind=8), dimension(:,:), allocatable :: particles_coord, particles_elem
+    real(kind=8), dimension(:,:), allocatable :: particles_acc
     real(kind=8), dimension(:), allocatable :: particles_MMR, particles_dist
     ! Bodies (AUX)
     !! Asteroid
@@ -151,9 +152,12 @@ module parameters
     logical :: hard_center
     logical :: use_elements
 
+    !!! User variables (JUST FOR DEBUGGING)
+    real(kind=8), dimension(2) :: user_real_var2
+
     ! PARAMETERS ARRAY
     integer, parameter :: equation_size = 4
-    real(kind=8), dimension(:), allocatable :: parameters_arr, parameters_arr_new
+    real(kind=8), dimension(:), allocatable :: parameters_arr, parameters_arr_new, parameters_der
     
     !!! Hard Exit
     logical :: is_premature_exit
@@ -1017,6 +1021,7 @@ module parameters
             allocate(particles_index(1:Nparticles))
             allocate(particles_mass(1:Nparticles))
             allocate(particles_coord(1:Nparticles,4), particles_elem(1:Nparticles,4))
+            allocate(particles_acc(1:Nparticles,2))
             allocate(particles_MMR(1:Nparticles))
             allocate(particles_dist(1:Nparticles))
             allocate(sorted_particles_index(1:Nparticles))
@@ -1050,6 +1055,7 @@ module parameters
 
             deallocate(particles_index, particles_mass)
             deallocate(particles_coord, particles_elem)
+            deallocate(particles_acc)
             deallocate(particles_MMR, particles_dist)
             deallocate(sorted_particles_index)
             deallocate(particles_outcome)
@@ -1485,7 +1491,7 @@ module parameters
             logical, intent(in) :: chaos
             integer(kind=4) :: tmp_integer, tmp_integer2
             integer(kind=4) :: aux_integeri, aux_integerj
-            real(kind=8), dimension(11) :: tmp_data
+            real(kind=8), dimension(13) :: tmp_data
             real(kind=8), dimension(5) :: tmp_chaos_data
             real(kind=8), dimension(4) :: tmp_parameters_arr
 
@@ -1502,6 +1508,7 @@ module parameters
             particles_elem(i,:) = particles_elem(j,:)
             particles_MMR(i) = particles_MMR(j)
             particles_dist(i) = particles_dist(j)
+            particles_acc(i,:) = particles_acc(j,:)
             particles_outcome(i) = particles_outcome(j)
 
             particles_index(j) = tmp_integer
@@ -1510,6 +1517,7 @@ module parameters
             particles_elem(j,:) = tmp_data(6:9)
             particles_MMR(j) = tmp_data(10)
             particles_dist(j) = tmp_data(11)
+            particles_acc(j,:) = tmp_data(12:13)
             particles_outcome(j) = tmp_integer2
 
             aux_integeri = first_particle + 4 * (i - 1)
@@ -1727,8 +1735,7 @@ module parameters
                 & time / unit_time, &
                 & particles_coord(aux_integer,1:2) / unit_dist, &
                 & particles_coord(aux_integer,3:4) / unit_vel, &
-                & cero, cero, &
-! & parameters_arr_new(first_particle + 4 * (i - 1) + 2 : first_particle + 4 * (i - 1) + 3) / unit_acc, &$
+                & particles_acc(aux_integer,1:2) / unit_acc, &
                 & particles_mass(aux_integer) / unit_mass, &
                 & particles_dist(aux_integer) / unit_dist
         end subroutine write_coordinates_particle
