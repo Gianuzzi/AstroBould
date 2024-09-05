@@ -82,7 +82,8 @@ module parameters
     real(kind=8), dimension(2) :: asteroid_pos, asteroid_vel, asteroid_acc
     real(kind=8) :: asteroid_theta, asteroid_theta_correction, asteroid_torque
     !!! Primary + boulders
-    real(kind=8), dimension(:), allocatable :: mass_ast_arr, radius_ast_arr, mu_ast_arr, theta_ast_arr, dist_ast_arr
+    real(kind=8), dimension(:), allocatable :: mass_ast_arr, radius_ast_arr, mu_ast_arr, theta_ast_arr
+    real(kind=8), dimension(:), allocatable :: dist_ast_arr, inertia_ast_arr
     real(kind=8), dimension(:,:), allocatable :: pos_ast_arr, vel_ast_arr, acc_ast_arr
     !!! Primary
     real(kind=8) :: mass_primary, radius_primary
@@ -1005,7 +1006,7 @@ module parameters
             !! Parámetros y auxiliares
             allocate(mass_ast_arr(0:Nboulders), radius_ast_arr(0:Nboulders), mu_ast_arr(0:Nboulders), Gmass_ast_arr(0:Nboulders))
             allocate(pos_ast_arr(0:Nboulders,2), vel_ast_arr(0:Nboulders,2), acc_ast_arr(0:Nboulders,2))
-            allocate(theta_ast_arr(0:Nboulders), dist_ast_arr(0:Nboulders))
+            allocate(theta_ast_arr(0:Nboulders), dist_ast_arr(0:Nboulders), inertia_ast_arr(0:Nboulders))
             if (Nboulders > 0) then
                 allocate(theta_from_primary(Nboulders), mu_from_primary(Nboulders))
                 allocate(pos_from_primary(Nboulders,2), vel_from_primary(Nboulders,2), acc_from_primary(Nboulders,2))
@@ -1046,7 +1047,7 @@ module parameters
                 deallocate(pos_from_primary, vel_from_primary, acc_from_primary)
             end if
             deallocate(pos_ast_arr, vel_ast_arr, acc_ast_arr)
-            deallocate(theta_ast_arr, dist_ast_arr)
+            deallocate(theta_ast_arr, dist_ast_arr, inertia_ast_arr)
         end subroutine free_asteroid_arrays
 
         ! 5.4 Liberar arrays particles

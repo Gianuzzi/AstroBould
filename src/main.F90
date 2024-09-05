@@ -378,10 +378,10 @@ program main
     asteroid_inertia = cero
     if (use_boulders) then
         do i = 0, Nboulders
-            aux_real = 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 ! Inertia Sphere
+            inertia_ast_arr(i) = 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 ! Inertia Sphere
             asteroid_angmom = asteroid_angmom + mass_ast_arr(i) * cross2D(pos_ast_arr(i,:), vel_ast_arr(i,:)) ! Traslacional
-            asteroid_angmom = asteroid_angmom + aux_real * asteroid_omega ! Rotacional (Sphere)
-            asteroid_inertia = asteroid_inertia + aux_real + mass_ast_arr(i) * dist_ast_arr(i)**2 ! Sphere + Steiner
+            asteroid_angmom = asteroid_angmom + inertia_ast_arr(i) * asteroid_omega ! Rotacional (Sphere)
+            asteroid_inertia = asteroid_inertia + inertia_ast_arr(i) + mass_ast_arr(i) * dist_ast_arr(i)**2 ! Sphere + Steiner
         end do
     else 
         asteroid_inertia = 0.4d0 *  mass_primary * radius_primary**2 ! Sphere
@@ -1561,7 +1561,6 @@ program main
         
         ! Output
         if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) then
-            
             !$OMP PARALLEL DEFAULT(SHARED) &
             !$OMP PRIVATE(i,aux_integer)
             !$OMP DO
