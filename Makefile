@@ -34,12 +34,15 @@ endif
 FIXED_SOURCES = $(wildcard $(SRC_DIR)/*.f)
 FREE_SOURCES = $(wildcard $(SRC_DIR)/*.F90)
 SRCS = $(FIXED_SOURCES) $(FREE_SOURCES)
+
 ## Objects
 FIXED_OBJECTS = $(addprefix $(OBJ_DIR)/,$(notdir $(FIXED_SOURCES:.f=.o)))
 FREE_OBJECTS = $(addprefix $(OBJ_DIR)/,$(notdir $(FREE_SOURCES:.F90=.o)))
 OBJECTS = $(FIXED_OBJECTS) $(FREE_OBJECTS)
+
 ## Modules
 MODULES = $(filter-out main.mod, $(notdir $(OBJECTS:.o=.mod)))
+
 ## Dependencies
 MAKE_DEP_FILE = $(DEP_FILE)
 
@@ -147,7 +150,7 @@ clean:
 #--------------------------------------------------------------------------
 
 # Include (or not) and create (if necessary) main.dep
-ifeq ($(filter-out main all,$(MAKECMDGOALS)),)
+ifeq ($(filter-out main all debug,$(MAKECMDGOALS)),)
 include $(DEP_FILE)
 endif
 
