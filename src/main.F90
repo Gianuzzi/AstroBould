@@ -77,6 +77,20 @@ program main
         !!!! Geo-Potential (J2)
         use_J2 = .False.
         J2_coefficient = cero
+        
+        !!!! Self-Gravity [BINS]
+        use_self_gravity = .False.
+        Norder_self_gravity = 3  ! Order of legendre expansion. MAX(30)
+        
+        !!!! Viscosity [BINS]
+        use_viscosity = .False.
+        viscosity = cero
+        
+        !!!!! BINS
+        Nbins = 3
+        binning_method = 1 ! 1 (equal dr) , 2 (equal dA) , 3 (equal Npart)
+        rmin_bins = - uno ! <=0 first particle (initial). =0 means FIXED over time
+        rmax_bins = - uno ! <=0 last particle (initial). =0 means FIXED over time
 
         !!! Parámetros corrida
         !!!! Tiempos
@@ -798,25 +812,99 @@ program main
     end if
     
 
-    !! Definimos Tipo 1 o Tipo 2, dependiendo si tienen masa
-    Nparticles_type1 = count(particles_mass > cero)
-    Nparticles_type2 = count(particles_mass <= cero)
+    ! Reordenamos las partículas, por distancia
+    if ((.not. use_single_particle))  then
+        call quickargsort(particles_dist, sorted_particles_index, 1, Nparticles)
+        do i = 1, Nparticles
+            particles_mass(i) = particles_mass(sorted_particles_index(i))
+            particles_elem(i,:) = particles_elem(sorted_particles_index(i),:)
+            particles_coord(i,:) = particles_coord(sorted_particles_index(i),:)
+            particles_dist(i) = particles_dist(sorted_particles_index(i))
+            particles_MMR(i) = particles_MMR(sorted_particles_index(i))
+        end do
+    else 
+        sorted_particles_index = particles_index
+    end if
 
-    ! ! ! Reordenamos las particulas, dependiendo si tienen masa o no [NO NECESSARY]
-    ! ! if ((.not. use_single_particle) .and. (Nparticles_type1 > 1))  then
-    ! !     call argsort(particles_mass, sorted_particles_index)
-    ! !     do i = 1, Nparticles
-    ! !         particles_mass(i) = particles_mass(sorted_particles_index(i))
-    ! !         particles_elem(i,:) = particles_elem(sorted_particles_index(i),:)
-    ! !         particles_coord(i,:) = particles_coord(sorted_particles_index(i),:)
-    ! !         particles_dist(i) = particles_dist(sorted_particles_index(i))
-    ! !         particles_MMR(i) = particles_MMR(sorted_particles_index(i))
-    ! !     end do
-    ! ! else 
-    ! !     sorted_particles_index = particles_index
-    ! ! end if
-
-
+    ! BINNEADO
+    !! Check self gravity
+    if (use_self_gravity) then
+        if (Norder_self_gravity < 0 .or. Norder_self_gravity > 30) then
+            write(*,*) "ERROR: Self gravity (legendre) order must fulfill 0 <= order <= 30."
+            stop 1
+        end if
+        Norder_self_gravity = Norder_self_gravity / 2 + 1  ! Only pair values are used
+    end if
+    !! Check viscosity
+    if (use_viscosity .and. viscosity < tini) then
+        write (*,*) "ERROR: La viscosidad debe ser un número positivo."
+        stop 1
+    end if
+    !! Check bins
+    if (use_bins) then
+        if (use_screen) then
+            write (*,*) ACHAR(5)
+            write (*,*) "---------- Preparando bines para disco ----------"
+        end if
+        if (use_single_particle) then
+            write (*,*) "ERROR: No se puede binnear si solo hay 1 partícula."
+            stop 1
+        end if
+        if (sum(particles_mass) < tini) then
+            write (*,*) "Particles have no mass. No self gravity nor viscosity is used."
+            use_bins = .False.
+        else
+            update_rmin_bins = rmin_bins < - tini
+            update_rmax_bins = rmax_bins < - tini
+            update_bins = update_rmin_bins .or. update_rmax_bins .or. binning_method == 3
+            if (rmin_bins < tini) then
+                rmin_bins = max(particles_dist(1), asteroid_radius)
+            else
+                rmin_bins = rmin_bins * unit_dist
+            end if
+            if (rmax_bins < tini) then
+                rmax_bins = particles_dist(Nparticles)
+            else 
+                rmax_bins = rmax_bins * unit_dist
+            end if
+            if (rmin_bins >= rmax_bins) then
+                write (*,*) "ERROR: rmin_bins must be lower than rmax_bins."
+                stop 1
+            end if
+            call disk_bins%allocate_bins(Nbins=Nbins, rmin=rmin_bins, rmax=rmax_bins, binning_method=binning_method)
+            call disk_bins%set_bins(particles_dist)
+            call disk_bins%get_particles_bins(particles_dist, particles_bins, .True.) ! True because dist is sorted
+            call disk_bins%calculate_mass(particles_dist, particles_mass, particles_bins)
+            if (use_screen) then
+                write (*,*) ACHAR(5)
+                write (*,f12) "Creados", Nbins, "bines."
+                if (binning_method == 1) then
+                    write (*,*) " Método de bineado (1): Binnes de igual dr."
+                else if (binning_method == 2) then
+                    write (*,*) " Método de bineado (2): Binnes de igual dA."
+                else
+                    write (*,*) " Método de bineado (3): Binnes de igual cantidad de partículas."
+                end if
+                write (*,f13) " Radio interno:", rmin_bins / unit_dist, "[km] = ", rmin_bins / asteroid_radius, "Rast,"
+                if (update_rmin_bins) then
+                    write (*,*) "  se actualizará en tiempo de ejecución."
+                else
+                    write (*,*) "  fijo durante toda l integración."
+                end if
+                write (*,f13) " Radio externo:", rmax_bins / unit_dist, "[km] = ", rmax_bins / asteroid_radius, "Rast,"
+                if (update_rmax_bins) then
+                    write (*,*) "  se actualizará en tiempo de ejecución."
+                else
+                    write (*,*) "  fijo durante toda l integración."
+                end if
+            end if
+            call disk_bins%duplicate(disk_in_force)
+        end if
+    end if
+    if (use_self_gravity .and. use_screen) then
+        write (*,*) ACHAR(5)
+        write (*,f12) "Utilizando Auto-Gravedad hasta orden", Norder_self_gravity*2 - 1, "de polinomio de Legendre."
+    end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!! FIN DE CÁLCULOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -962,8 +1050,7 @@ program main
         write (*,f12) "    n_out : ", output_number
         write (*,*) ACHAR(5)
     end if
-
-
+    
     
     !!!!!!!! VECTOR A INTEGRAR !!!!!!!
     !!!! Inicializamos vector
@@ -1229,8 +1316,8 @@ program main
         particles_acc(i,1:2) = parameters_der(aux_integer+2 : aux_integer+3)
     end do
 
-    open(37, file="drag_force.txt", status="unknown", action="write") !!! QUITAR
-    write(37,*) time /unit_time, user_real_var2 / unit_acc !!! QUITAR
+!     open(37, file="drag_force.txt", status="unknown", action="write") !!! QUITAR
+!     write(37,*) time /unit_time, user_real_var2 / unit_acc !!! QUITAR
 
     !! Initial conditions Output
     !$OMP PARALLEL DEFAULT(SHARED) &
@@ -1368,7 +1455,10 @@ program main
                 write (*,f12) "Quedan ", Nactive, " partículas activas."
                 write (*,*) ACHAR(5)
             end if
-            call argsort_int(particles_index(1:Nactive), sorted_particles_index(1:Nactive)) ! Get the sorted index
+            do i = 1, Nactive
+                sorted_particles_index(i) = i
+            end do
+            call quickargsort_int(particles_index(1:Nactive), sorted_particles_index(1:Nactive), 1, Nactive) ! Get the sorted index
             last_particle = first_particle + 4 * Nactive - 1 ! Redefine last_particle
 
             if (use_parallel) then
@@ -1593,7 +1683,7 @@ program main
             call flush_chaos(40) ! Update chaos
             !$OMP END SECTIONS
             !$OMP END PARALLEL
-            write(37,*) time /unit_time, user_real_var2 / unit_acc !!! QUITAR
+!             write(37,*) time /unit_time, user_real_var2 / unit_acc !!! QUITAR
         end if
 
         if (use_percentage) call percentage(time, final_time)
@@ -1603,7 +1693,7 @@ program main
         
     end do main_loop
 
-    close(37) !!! QUITAR
+!     close(37) !!! QUITAR
     
     !! Update surviving particles times
     if (use_chaos) particles_times(1:Nactive) = final_time ! Update particle times
@@ -1635,7 +1725,10 @@ program main
     if (use_chaos) then
         if (use_chaosfile) then
             !! Guardar archivo de caos
-            call argsort_int(particles_index, sorted_particles_index)
+            do i = 1, Nactive
+                sorted_particles_index(i) = i
+            end do
+            call quickargsort_int(particles_index, sorted_particles_index, 1, Nparticles)
             inquire (unit=40, opened=aux_logical)
             if (.not. aux_logical) then
                 open (unit=40, file=trim(chaosfile), status='unknown', action='write')
@@ -1733,6 +1826,9 @@ program main
     nullify(dydt)
     nullify(domegadt)
     nullify(dmassdt)
+    !!!!!!!!! BINNEADO !!!!!!!!
+    call disk_bins%free()
+    call disk_in_force%free()
 
     if (use_screen) then 
         write (*,*) ACHAR(5)

@@ -5,6 +5,7 @@ module forces
     procedure (dydt_template), pointer :: dydt => null ()
     procedure (dydt_single_template), pointer :: domegadt => null ()
     procedure (dydt_single_template), pointer :: dmassdt => null ()
+    type(my_bins) :: disk_in_force
     
     abstract interface
         ! Here must be every f_i defined explicitly
@@ -334,8 +335,12 @@ module forces
             real(kind=8) :: rb(2), vb(2), ab(2)
             real(kind=8) :: rcm(2), vcm(2)
             real(kind=8) :: theta, omega, omegadot
-            integer(kind=4) :: i, particle_i
+            integer(kind=4) :: i, aux, particle_i
             real(kind=8) :: dummy_real2(2)
+            
+            real(kind=8) :: particles_dist(1:Nactive)
+            integer(kind=4) :: order(1:Nactive)
+            logical :: ordered = .False.
 
             dydt = cero
 
@@ -363,6 +368,31 @@ module forces
             rcm = y(3:4)
             vcm = y(5:6)
             
+            if (use_bins) then
+                do i = 1, Nactive
+                    particle_i = i * equation_size + 2
+                    particles_dist(i) = sqrt(y(particle_i+1)*y(particle_i+1) + y(particle_i+2)*y(particle_i+2))
+                    order(i) = i
+                end do
+                if (update_bins) then
+                    dummy_real2 = (/rmin_bins, rmax_bins/)
+                    if (update_rmin_bins) dummy_real2(1) = max(minval(particles_dist), asteroid_radius)
+                    if (update_rmax_bins) dummy_real2(2) = maxval(particles_dist)
+                    if (disk_in_force%binning_method == 3) then
+                        call quickargsort(particles_dist, order, 1, Nactive)
+                        ordered = .True.
+                    end if
+                    call disk_in_force%free()                    
+                    call disk_in_force%allocate_bins(Nbins=Nbins, &
+                        & rmin=dummy_real2(1), &
+                        & rmax=dummy_real2(2), &
+                        & binning_method=binning_method)
+                    call disk_in_force%set_bins(particles_dist(order))
+                end if
+                call disk_in_force%get_particles_bins(particles_dist(order), particles_bins, ordered)
+                call disk_in_force%calculate_mass(particles_dist(order), particles_mass(order), particles_bins)
+            end if
+            
             ! Particles accelerations and omegadot
             omegadot = cero ! Init
             !$OMP PARALLEL DEFAULT(SHARED) &
@@ -384,6 +414,13 @@ module forces
                     & asteroid_mass, rcm, vcm, &
                     & asteroid_inertia, & ! inertia no varía
                     & omegadot, dummy_real2, ab)
+                ! Calculate Self-Gravity
+                if (use_bins) call disk_in_force%calculate_force ( &
+                    & particles_bins(order(i)), &
+                    & rb, &
+                    & particles_dist(i), &
+                    & Norder_self_gravity, &
+                    & ab)
                 dydt(particle_i+1) = vb(1)
                 dydt(particle_i+2) = vb(2)
                 dydt(particle_i+3) = ab(1)

@@ -1,11 +1,15 @@
 # This file is generated automatically. DO NOT EDIT!
 
 build/main :  \
+	build/bins.o \
 	build/constants.o \
 	build/forces.o \
 	build/integrators.o \
 	build/main.o \
 	build/parameters.o
+
+build/bins.o :  \
+	build/constants.o
 
 build/constants.o : 
 
@@ -19,4 +23,5 @@ build/main.o :  \
 	build/integrators.o
 
 build/parameters.o :  \
+	build/bins.o \
 	build/constants.o

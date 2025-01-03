@@ -1,5 +1,6 @@
 module parameters
     use constants
+    use bins
     use omp_lib
 
     implicit none
@@ -72,6 +73,21 @@ module parameters
     !! Geo-potential
     logical :: use_J2
     real(kind=8) :: J2_coefficient, J2_effective
+    !! Self-Gravity [Use BINS]
+    logical :: use_self_gravity
+    integer(kind=4) :: Norder_self_gravity
+    !! Viscosity [Use BINS]
+    logical :: use_viscosity
+    real(kind=8) :: viscosity
+    
+    !!! BINS
+    logical :: use_bins
+    integer(kind=4) :: Nbins, binning_method
+    real(kind=8) :: rmin_bins, rmax_bins
+    type(my_bins) :: disk_bins
+    logical :: update_rmin_bins, update_rmax_bins, update_bins
+    integer(kind=4), dimension(:), allocatable :: particles_bins
+    
 
     ! Bodies
     integer(kind=4) :: Ntotal
@@ -133,7 +149,7 @@ module parameters
     real(kind=8), dimension(:), allocatable :: particles_min_a, particles_min_e
     real(kind=8), dimension(:), allocatable :: particles_times
     integer(kind=4) :: discarded_particles, staying_particles
-
+    
 
     ! Extra/Auxiliar variables
     integer(kind=4) :: i, j, k
@@ -320,6 +336,17 @@ module parameters
             !! Geo-Potential
             use_J2 = .False.
             J2_coefficient = cero
+            !! Self Gravity
+            use_self_gravity = .False.
+            Norder_self_gravity = 3
+            !! Viscosity
+            use_viscosity = .False.
+            viscosity = - uno
+            !! BINS (only used if Self Gravity or Viscosity)
+            Nbins = 3
+            binning_method = 1
+            rmin_bins = - uno ! -1 means first particle (initial)
+            rmax_bins = - uno ! -1 means last particle (initial)
             ! Escape/Collision (and merge)
             min_distance = cero
             max_distance = infinity
@@ -528,6 +555,22 @@ module parameters
                             read (value_str, *) mass_exp_damping_time
                         case("geo-potential J")
                             read (value_str, *) J2_coefficient
+                        case("include self-gr")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                use_self_gravity = .True.
+                            else
+                                use_self_gravity = .False.
+                            end if
+                        case("max Legendre ex")
+                            read (value_str, *) Norder_self_gravity
+                        case("total bins used")
+                            read (value_str, *) Nbins
+                        case("binning method ")
+                            read (value_str, *) binning_method
+                        case("inner bin edge")
+                            read (value_str, *) rmin_bins
+                        case("outer bin edge")
+                            read (value_str, *) rmax_bins
                         ! case("include tri-axi")
                         !     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         !         loTriAx = .True.
@@ -928,6 +971,24 @@ module parameters
             !     write (*,*) "ERROR: No se puede usar triaxialidad con boulders."
             !     stop 1
             ! end if
+            
+            ! Self-Gravity or Viscosity
+            if (use_self_gravity .or. use_viscosity) then
+                use_bins = .True.
+                !! Check
+                if (binning_method < 1 .or. binning_method > 3) then
+                    write (*,*) "ERROR: binning_method must be 1 (equal dr), 2 (equal dA) or 3 (equal Npart)."
+                    stop 1
+                end if
+                if (Nbins < 2) then
+                    write (*,*) "ERROR: No se puede crear menos de 2 bines."
+                    stop 1
+                end if
+                !! Set default update values
+                update_rmin_bins = rmin_bins < - tini
+                update_rmax_bins = rmax_bins < - tini
+                update_bins = update_rmin_bins .or. update_rmax_bins .or. binning_method == 3
+            end if         
 
             !! Error
             if (error_digits < 1) then
@@ -1035,6 +1096,7 @@ module parameters
             end if
             allocate(particles_hexit(0:Nparticles))
             particles_hexitptr => particles_hexit(0) ! Puntero a Hard Exit (NO TOCAR) !!! Ya está en default
+            allocate(particles_bins(1:Nparticles))  ! Unused if use_bins is False
         end subroutine allocate_particles
 
         ! 5.3 Liberar arrays asteroide
@@ -1067,6 +1129,7 @@ module parameters
                 deallocate(particles_min_e, particles_max_e)
             end if
             deallocate(particles_hexit)
+            deallocate(particles_bins)  ! Unused if use_bins is False
         end subroutine free_particles
 
         ! 6. Setear los tiempos de salida
@@ -1373,57 +1436,7 @@ module parameters
             real(kind=8) :: res
 
             res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
-        end function cross2D
-        
-        ! 11.x Subroutines to argsort arrays
-
-        ! 11.1 Calcular indices de elementos ordenados en un arreglo
-        subroutine argsort(a, b)
-            implicit none
-            real(kind=8), intent(in) :: a(:)   ! array of numbers
-            integer(kind=4), intent(out) :: b(size(a))  ! indices into the array 'a' that sort it
-            integer :: N, i, imin, temp1
-            real(kind=8) :: temp2, a2(size(a))
-
-            a2 = a
-            N = size(a)
-            do i = 1, N
-                b(i) = i
-            end do
-            do i = 1, N-1
-                ! find ith smallest in 'a'
-                imin = minloc(a2(i:), 1) + i - 1
-                ! swap to position i in 'a' and 'b', if not already there
-                if (imin /= i) then
-                    temp2 = a2(i); a2(i) = a2(imin); a2(imin) = temp2
-                    temp1 = b(i); b(i) = b(imin); b(imin) = temp1
-                end if
-            end do
-        end subroutine argsort
-
-        ! 11.2 Calcular indices de elementos ordenados en un arreglo de enteros
-        subroutine argsort_int(a, b)
-            implicit none
-            integer(kind=4), intent(in) :: a(:)   ! array of numbers
-            integer(kind=4), intent(out) :: b(size(a))  ! indices into the array 'a' that sort it
-            integer :: N, i, imin, temp1
-            integer(kind=4) :: temp2, a2(size(a))
-
-            a2 = a
-            N = size(a)
-            do i = 1, N
-                b(i) = i
-            end do
-            do i = 1, N-1
-                ! find ith smallest in 'a'
-                imin = minloc(a2(i:), 1) + i - 1
-                ! swap to position i in 'a' and 'b', if not already there
-                if (imin /= i) then
-                    temp2 = a2(i); a2(i) = a2(imin); a2(imin) = temp2
-                    temp1 = b(i); b(i) = b(imin); b(imin) = temp1
-                end if
-            end do
-        end subroutine argsort_int
+        end function cross2D    
 
         ! 12. Obtener centro de masas de asteroide
         subroutine get_center_of_mass(m, rib, vib, mcm, rcm, vcm)
@@ -1549,59 +1562,143 @@ module parameters
         
         ! 17.x Subroutines to sort arrays
 
-        ! 17.1 Ordenar valores reales
-        recursive subroutine quicksort(a, first, last)
+        ! 17.1 Devuelve índices de ordenado
+        recursive subroutine quickargsort(a, b, first, last)
             implicit none
-            real(kind=8), dimension(:), intent(inout) ::  a
-            integer(kind=4), intent(in):: first, last
-            real(kind=8) :: x, t
-            integer(kind=4) :: i, j
+            real(kind=8), intent(in) :: a(:)          ! Input array (not modified)
+            integer(kind=4), intent(inout) :: b(size(a))    ! Indices array to be sorted
+            integer(kind=4), intent(in) :: first, last
+            real(kind=8) :: pivot
+            integer(kind=4) :: i, j, temp
 
-            x = a(floor((first + last) * uno2))
+            ! Pivot selection
+            pivot = a(b(floor((first + last) * uno2)))
             i = first
             j = last
             do
-                do while (a(i) < x)
-                    i=i+1
+                do while (a(b(i)) < pivot)
+                    i = i + 1
                 end do
-                do while (x < a(j))
-                    j=j-1
+                do while (a(b(j)) > pivot)
+                    j = j - 1
                 end do
                 if (i >= j) exit
-                t = a(i);  a(i) = a(j);  a(j) = t
-                i=i+1
-                j=j-1
+
+                ! Swap indices in 'b' array
+                temp = b(i)
+                b(i) = b(j)
+                b(j) = temp
+
+                i = i + 1
+                j = j - 1
             end do
-            if (first < i-1) call quicksort(a, first, i-1)
-            if (j+1 < last)  call quicksort(a, j+1, last)
+
+            ! Recursive calls
+            if (first < i - 1) call quickargsort(a, b, first, i - 1)
+            if (j + 1 < last)  call quickargsort(a, b, j + 1, last)
+        end subroutine quickargsort
+
+
+        ! 17.2 Devuelve índices de ordenado (entero)
+        recursive subroutine quickargsort_int(a, b, first, last)
+            implicit none
+            integer(kind=4), intent(in) :: a(:)    ! Input array (not modified)
+            integer(kind=4), intent(inout) :: b(size(a)) ! Indices array to be sorted
+            integer(kind=4), intent(in) :: first, last
+            integer(kind=4) :: pivot
+            integer(kind=4) :: i, j, temp
+
+            ! Pivot selection
+            pivot = a(b(floor((first + last) * uno2)))
+            i = first
+            j = last
+            do
+                do while (a(b(i)) < pivot)
+                    i = i + 1
+                end do
+                do while (a(b(j)) > pivot)
+                    j = j - 1
+                end do
+                if (i >= j) exit
+
+                ! Swap indices in 'b' array
+                temp = b(i)
+                b(i) = b(j)
+                b(j) = temp
+
+                i = i + 1
+                j = j - 1
+            end do
+
+            ! Recursive calls
+            if (first < i - 1) call quickargsort_int(a, b, first, i - 1)
+            if (j + 1 < last)  call quickargsort_int(a, b, j + 1, last)
+        end subroutine quickargsort_int
+        
+        ! 17.3 Sort an array
+        subroutine quicksort(a, first, last)
+            implicit none
+            real(kind=8), intent(inout) :: a(:)          ! Input array
+            integer(kind=4), intent(in) :: first, last   ! First and last indices
+            integer(kind=4), allocatable :: b(:)         ! Indices of array to be sorted
+            real(kind=8), allocatable :: a_copy(:)       ! Temporary copy of the array
+            integer(kind=4) :: n_sort
+            
+            ! Total amount of values to sort
+            n_sort = last - first + 1
+            
+            ! Allocate and initialize the indices array
+            allocate(b(1 : n_sort))
+            allocate(a_copy(1 : n_sort))
+            
+            ! Initialize indices to [first, first+1, ..., last]
+            do i = 1, n_sort
+                b(i) = i
+                a_copy(i) = a(first + i - 1)
+            end do
+
+            ! Sort indices using the quickargsort subroutine
+            call quickargsort(a_copy, b, 1, n_sort)
+
+            ! Copy the sorted values back to the original array
+            a(first:last) = a_copy(b)
+
+            ! Deallocate temporary arrays
+            deallocate(b, a_copy)
         end subroutine quicksort
-
-        ! 17.2 Ordenar valores enteros
-        recursive subroutine quicksort_int(a, first, last)
+        
+        ! 17.4 Sort and integer array
+        subroutine quicksort_int(a, first, last)
             implicit none
-            integer(kind=4), dimension(:), intent(inout) ::  a
-            integer(kind=4), intent(in):: first, last
-            integer(kind=4) :: x, t
-            integer(kind=4) :: i, j
+            integer(kind=4), intent(inout) :: a(:)       ! Input array
+            integer(kind=4), intent(in) :: first, last   ! First and last indices
+            integer(kind=4), allocatable :: b(:)         ! Indices of array to be sorted
+            integer(kind=4), allocatable :: a_copy(:)    ! Temporary copy of the array
+            integer(kind=4) :: n_sort
 
-            x = a(ceiling((first + last) * uno2))
-            i = first
-            j = last
-            do
-                do while (a(i) < x)
-                    i=i+1
-                end do
-                do while (x < a(j))
-                    j=j-1
-                end do
-                if (i >= j) exit
-                t = a(i);  a(i) = a(j);  a(j) = t
-                i=i+1
-                j=j-1
+            ! Total amount of values to sort
+            n_sort = last - first + 1
+            
+            ! Allocate and initialize the indices array
+            allocate(b(1 : n_sort))
+            allocate(a_copy(1 : n_sort))
+            
+            ! Initialize indices to [first, first+1, ..., last]
+            do i = 1, n_sort
+                b(i) = i
+                a_copy(i) = a(first + i - 1)
             end do
-            if (first < i-1) call quicksort_int(a, first, i-1)
-            if (j+1 < last)  call quicksort_int(a, j+1, last)
-        end subroutine quicksort_int
+
+            ! Sort indices using the quickargsort subroutine
+            call quickargsort_int(a_copy, b, 1, n_sort)
+
+            ! Copy the sorted values back to the original array
+            a(first:last) = a_copy(b)
+
+            ! Deallocate temporary arrays
+            deallocate(b, a_copy)
+        end subroutine quicksort_int           
+            
 
         ! 18 Hacer merger de masa (y ang mom) con asteroide
         subroutine merge_into_asteroid(mass, angmom)
@@ -1772,7 +1869,10 @@ module parameters
 
             ! Sort particles by index
             allocate (my_sorted_particles_index(Nparticles))
-            call argsort_int(particles_index, my_sorted_particles_index)
+            do i = 1, Nparticles
+                my_sorted_particles_index = i
+            end do
+            call quickargsort_int(particles_index, my_sorted_particles_index, 1, Nparticles)
             call fseek(unit_file, 0, 0)       ! move to beginning
             ! Remember that Initial conditions were not swapped
             do i = 1, Nparticles
@@ -2224,7 +2324,6 @@ module parameters
             if (.not. keep_going) particles_hexit(0) = 1
             
         end function check_continue_v2
-        
         
         ! 99 Subrutina para pointer vacío (no hace nada) con input i
         subroutine do_nothing_i(i)
