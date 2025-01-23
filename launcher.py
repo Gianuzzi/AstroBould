@@ -19,20 +19,21 @@
 # se creará un archivo llamado salida[id].out por cada partícula.
 
 # Este código crea un archivo de caos (chaos[id].out) por cada partícula.
-# Luego los concatena en un solo archivo <final_chaos>,con el siguiente formato:
-## 0    ! Numero de partícula / simulación
-## 1    ! bad? (0: no, 1: collision, 2: ejection)
-## 2    ! total time to integrate
-## 3    ! initial (Asteroid): angular momentum
-## 4-9  ! initial: mass, a, e, M, omega, MMR
-## 10   ! initial: angular momentum per unit mass
-## 11   ! surviving time
-## 12-16! final: a, e, M, omega, MMR
-## 17   ! final: angular momentum per unit mass
-## 18-19! a_min, a_max
-## 20-21! e_min, e_max
-## 22   ! Delta a
-## 23   ! Delta e
+# Luego los concatena en un solo archivo <final_chaos>,
+# con el siguiente formato:
+# 0    ! Numero de partícula / simulación
+# 1    ! bad? (0: no, 1: collision, 2: ejection)
+# 2    ! total time to integrate
+# 3    ! initial (Asteroid): angular momentum
+# 4-9  ! initial: mass, a, e, M, omega, MMR
+# 10   ! initial: angular momentum per unit mass
+# 11   ! surviving time
+# 12-16! final: a, e, M, omega, MMR
+# 17   ! final: angular momentum per unit mass
+# 18-19! a_min, a_max
+# 20-21! e_min, e_max
+# 22   ! Delta a
+# 23   ! Delta e
 
 # Excepto <final_chaos>, el resto de los archivos estarán en carpetas creadas
 # con nombre 'dpi[pid]' asociado al ID del procesador que ejecutó el sistema.
@@ -46,8 +47,8 @@
 # Observación: Si es integración con tomfile, los directorios creados
 # serán tomd[pid] en vez de dpy[pid].
 
-##############################################################################
-##############################################################################
+#
+#
 
 # Importamos #
 
@@ -62,33 +63,33 @@ from concurrent.futures import ProcessPoolExecutor
 # Parámetros #
 program = "ASTROBOULD"  # Nombre del ejecutable
 
-## Configuración de integración ##
-workers = 2  # Número de procesadores a usar (workers)
+# Configuración de integración #
+workers = 6  # Número de procesadores a usar (workers)
 explicit = False  # Método: True (cos, sin), False (integra boulders y m0)
 version1 = False  # Versión del código (1 o 2)
 
-## Torque and merge ##
-torque = False  # Si se quiere usar torque
-merge = False  # Si se quiere usar merge
+# Torque and merge #
+torque = True  # Si se quiere usar torque
+merge = True  # Si se quiere usar merge
 
-## Input ## ("" o False si no se usa)
-config = "config.ini"  # Nombre del archivo de configuración
-partfile = "particles.in"  # Nombre del archivo de partículas
-tomfile = ""  # Nombre del archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
+# Input # ("" o False si no se usa)
+config = "config.ini"  # Archivo de configuración
+partfile = "particles.in"  # Archivo de partículas
+tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
-## Output ## ("" o False si no se usa)
-new_dir = True  # Puede ser un string con el nombre de la carpeta a crear. Default: "simulation"
+# Output # ("" o False si no se usa)
+new_dir = True  # Directorio donde volcar las salidas. Default: "simulation"
 datafile = "salida"  # Nombre del archivo de salida de datos (sin extensión)
 final_chaos = "sump"  # Final Chaos Summary Output file name (sin extensión)
 suffix = ""  # Suffix for the output files
-## Screen ##
-screen_info = True  # Si se quiere ver la información en pantalla (requires all_in_one=True)
-screen_data = False  # Si se quiere ver los datos en pantalla # "%" para porcentaje (requires all_in_one=True)
-## Elements ##
+# Screen #  (both require all_in_one=True)
+screen_info = True  # Información en pantalla?
+screen_data = False  # Datos en pantalla?  "%" para porcentaje
+# Elements #
 elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 
-### If all particles must be run in same integration (requires parallel)
-all_in_one = False
+# If all particles must be run in same integration (requires parallel)
+all_in_one = True
 
 # ----------------------------------------------------------------------
 # -------------------- No tocar de aquí en adelante --------------------
@@ -124,7 +125,7 @@ otom = os.path.join(
 )  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 # Checkeamos los archivos
-## Configuración
+# Configuración
 existe_ocini = os.path.isfile(ocini)
 if not existe_ocini:
     print("WARNING: Configuration file {} does not exist.".format(ocini))
@@ -134,21 +135,21 @@ if not existe_ocini:
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
         sys.exit()
-## Ejecutable
+# Ejecutable
 if not os.path.isfile(oprogr):
     msg = "Executable file {} does not exist.".format(oprogr)
     raise FileNotFoundError(msg)
-## Partículas
+# Partículas
 if not os.path.isfile(oparticles):
     msg = "Particles file {} does not exist.".format(oparticles)
     raise FileNotFoundError(msg)
-## Tomfile
+# Tomfile
 existe_otom = os.path.isfile(otom)
 if tomfile and (not existe_otom):
     print("ERROR: Tau-Omega-Mass file {} does not exist.".format(otom))
     print("Saliendo.")
     sys.exit()
-## Chaosfile
+# Chaosfile
 if final_chaos is None:
     final_chaos = "sump"
 if os.path.isfile(os.path.join(wrk_dir, "%s.out" % final_chaos)):
@@ -168,7 +169,7 @@ if os.path.isfile(os.path.join(wrk_dir, "%s.out" % final_chaos)):
         final_chaos = unique_file
 
 # Checks #
-## Si hay torque, entonces explicit debe ser false
+# Si hay torque, entonces explicit debe ser false
 if torque and explicit:
     print("WARNING: Torque is active. Explicit mode will be deactivated.")
     explicit = False
@@ -179,7 +180,8 @@ if torque and explicit:
 
 if all_in_one and (not torque):
     print(
-        "WARNING: All particles will be integrated together, but without torque."
+        "WARNING: All particles will be integrated together, " +
+        "but without torque."
     )
     yes_no = input("Do you want to continue? y/[n]\n")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
@@ -196,7 +198,7 @@ if torque and (not all_in_one):
 
 
 # Leemos input
-## Partículas
+# Partículas
 with open(oparticles, "r") as f:
     lines = f.readlines()
 # Arreglamos por si hay "e" en vez de "d"
@@ -243,15 +245,19 @@ if (
             if subdir.startswith(pref):
                 subdir_path = os.path.join(wrk_dir, subdir)
                 # Recorre todos los archivos en la subcarpeta
-                this_list = [os.path.join(subdir_path, "done.txt")
-                             for f in os.listdir(subdir_path)
-                             if f == "done.txt"]
+                this_list = [
+                    os.path.join(subdir_path, "done.txt")
+                    for f in os.listdir(subdir_path)
+                    if f == "done.txt"
+                ]
             file_list.extend(this_list)
-            
+
         done = []
         for file in file_list:
             with open(file, "r") as f:
-                done.extend([int(cint) for cint in f.readlines() if cint != ""])
+                done.extend(
+                    [int(cint) for cint in f.readlines() if cint != ""]
+                )
         missing_lines = [x for x in range(1, nsys + 1) if x not in done]
         print("   Cantidad de sistemas ya integrados: {}".format(len(done)))
         nsys = len(missing_lines)
@@ -264,7 +270,9 @@ if len(missing_lines) == 0:
     print("Ya se han integrado todas las partículas.")
 else:
     # Obtener el número de workers
-    workers = min(max(1, min(int(workers), len(os.sched_getaffinity(0)))), nsys)
+    workers = min(
+        max(1, min(int(workers), len(os.sched_getaffinity(0)))), nsys
+    )
     print("Workers: {}\n".format(workers))
 
 # Argumentos. Estos son:
@@ -279,7 +287,9 @@ if all_in_one:
     args += " -partfile %s" % partfile
     args += " -datafile %s.out" % datafile if datafile else " --nodataf"
     args += " -parallel %d" % workers
-    args += " -chaosfile %s.out" % final_chaos if final_chaos else " --nochaosf"
+    args += (
+        " -chaosfile %s.out" % final_chaos if final_chaos else " --nochaosf"
+    )
 else:
     args += " --noscreen --nodatascr --noperc --noparallel --nopartfile"
 args += " --explicit" if explicit else " --implicit"
@@ -316,12 +326,19 @@ def integrate_n(i):
             % (datafile if isinstance(datafile, str) else "salida", i, suffix)
         )
     )
+    # Define my_line
+    my_line = ""
+    # Extract the data from the lines
+    data = str(
+        lines[i - 1]
+    ).split()  # -1 porque la lista arranca de 0 y los sistemas de 1
+    if len(data) == 7:  # The mass in present in the first column
+        my_line += " -mpart %s" % data.pop(0)  # Update my_line
+    # Update my_line with the orbital parameters in data
+    my_line += " ".join(data)
     print("Running system %d\n" % (i))
-    my_line = " ".join(
-        lines[i - 1].split()[1:]
-    )  # -1 porque la lsita arranca de 0 #Elimina el primer valor (en caso que fuese la masa...)
     # ESTO SE ESTÁ EJECUTANDO EN LA SHELL #
-    # print("Running: ./%s %s %s %s"%(program, args, this_args, my_line))
+    print("Running: ./%s %s %s %s" % (program, args, this_args, my_line))
     # (Lines debe ser último porque termina en "\n") #
     try:
         p = subprocess.run(
@@ -330,8 +347,10 @@ def integrate_n(i):
             check=True,
             shell=True,
         )
-    except:
+        p.check_returncode()
+    except subprocess.CalledProcessError as e:
         print("The system %d has failed." % i)
+        print("Error: %s" % e)
         return
     print("System %d has been integrated." % i)
     with open(os.path.join(dirp, "done.txt"), "a") as f:
@@ -382,20 +401,25 @@ def make_sum(final_chaos, suffix=""):
     outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
     outs.insert(-1, ".out")
     final_chaos = "".join(outs)
-    command = ' '.join([file for file in file_list])
+    command = " ".join([file for file in file_list])
     try:
         p = subprocess.run(
             ["cat %s > %s" % (command, final_chaos)],
-            cwd=wrk_dir, check=True, shell=True
+            cwd=wrk_dir,
+            check=True,
+            shell=True,
         )
-    except:
-        print("Could not create %s with cat."%final_chaos)
+        p.check_returncode()
+    except subprocess.CalledProcessError as e:
+        print("Could not create %s with cat." % final_chaos)
+        print(" Error: %s" % e)
         print(" Trying with pure python...")
         with open(os.path.join(wrk_dir, final_chaos), "w") as f_out:
             for file in file_list:
                 with open(file, "r") as f_in:
                     for line in f_in:
                         f_out.write("{}".format(line))
+
 
 # Crear archivo salida final
 def make_sal(salida, suffix=""):
@@ -440,21 +464,24 @@ def make_sal(salida, suffix=""):
     outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
     outs.insert(-1, ".out")
     salida = "".join(outs)
-    command = ' '.join([file for file in file_list])
+    command = " ".join([file for file in file_list])
     try:
         p = subprocess.run(
             ["cat %s > %s" % (command, salida)],
-            cwd=wrk_dir, check=True, shell=True
+            cwd=wrk_dir,
+            check=True,
+            shell=True,
         )
-    except:
-        print("Could not create %s with cat."%salida)
+        p.check_returncode()
+    except subprocess.CalledProcessError as e:
+        print("Could not create %s with cat." % salida)
+        print(" Error: %s" % e)
         print(" Trying with pure python...")
         with open(os.path.join(wrk_dir, salida), "w") as f_out:
             for file in file_list:
                 with open(file, "r") as f_in:
                     for line in f_in:
                         f_out.write("{}".format(line))
-
 
 
 # Definir nombre único para wrk_dir
@@ -471,21 +498,23 @@ if __name__ == "__main__":
     if new_simulation and (not os.path.exists(wrk_dir)):
         os.mkdir(wrk_dir)  # Creamos directorio donde volcaremos todo
         print("Directory  '% s' created\n" % os.path.basename(wrk_dir))
-    if not os.path.samefile(wrk_dir, cwd): # Pasamos todo al dir de trabajo (organizado)
-        ## Programa
+    if not os.path.samefile(
+        wrk_dir, cwd
+    ):  # Pasamos todo al dir de trabajo (organizado)
+        # Programa
         nprogr = os.path.join(wrk_dir, program)
         subprocess.run(["cp", oprogr, nprogr], check=True)
         oprogr = nprogr
-        ## Archivo de configuracion inicial
+        # Archivo de configuracion inicial
         if existe_ocini:
             ncini = os.path.join(wrk_dir, config)
             subprocess.run(["cp", ocini, ncini], check=True)
             ocini = ncini
-        ## Partículas
+        # Partículas
         nparticles = os.path.join(wrk_dir, partfile)
         subprocess.run(["cp", oparticles, nparticles], check=True)
         oparticles = nparticles
-        ## Archivo TOM
+        # Archivo TOM
         if existe_otom:
             ntom = os.path.join(wrk_dir, tomfile)
             subprocess.run(["cp", otom, ntom], check=True)
@@ -495,15 +524,21 @@ if __name__ == "__main__":
             results = executor.map(integrate_n, missing_lines)
         if datafile:
             print("")
-            print("Creando archivo resumen %s.out\n"%datafile)
-            if os.path.isfile(os.path.join(wrk_dir, "%s.out"%datafile)):
-                print("WARNING: Se ha reemplazando archivo %s.out ya existente."%datafile)
+            print("Creando archivo resumen %s.out\n" % datafile)
+            if os.path.isfile(os.path.join(wrk_dir, "%s.out" % datafile)):
+                print(
+                    "WARNING: Se ha reemplazando archivo %s.out ya existente."
+                    % datafile
+                )
             make_sal(datafile, suffix)
         if final_chaos:
             print("")
-            print("Creando archivo resumen %s.out"%final_chaos)
-            if os.path.isfile(os.path.join(wrk_dir, "%s.out"%final_chaos)):
-                print("WARNING: Se ha reemplazando archivo %s.out ya existente."%final_chaos)
+            print("Creando archivo resumen %s.out" % final_chaos)
+            if os.path.isfile(os.path.join(wrk_dir, "%s.out" % final_chaos)):
+                print(
+                    "WARNING: Se ha reemplazando archivo %s.out ya existente."
+                    % final_chaos
+                )
             make_sum(final_chaos, suffix)
     else:
         print("Running all systems in one process.")
