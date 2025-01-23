@@ -115,7 +115,8 @@ contains
         end if
 
         if (particles_dist_sorted(size(particles_dist_sorted)) < this%rmin) then
-            write(*, *) "Error: rmin", this%rmin, "further than furthest particle", particles_dist_sorted(size(particles_dist_sorted)
+            write(*, *) "Error: rmin", this%rmin, "further than furthest particle", &
+                    & particles_dist_sorted(size(particles_dist_sorted))
             stop 3
         end if
 
@@ -294,7 +295,7 @@ contains
     subroutine duplicate_impl(source, dest)
         implicit none
         class(my_bins), intent(in) :: source
-        class(my_bins), intent(out) :: dest
+        class(my_bins), intent(inout) :: dest
 
         ! Allocate destination bins if not already allocated
         if (.not. allocated(dest%edges)) allocate(dest%edges(size(source%edges)))
