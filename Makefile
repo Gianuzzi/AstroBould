@@ -10,22 +10,61 @@ EXE_FILE = ASTROBOULD # Name of the executable
 #--------------------------------------------------------------------------
 #--------------------------------------------------------------------------
 
-# Compiler
-FC = gfortran -g
+# Compilator configuration
+ifndef IFORT
+	IFORT = 0  # Default
+endif
+
+## Check if environment variable SETVARS_COMPLETED
+#ifeq ($(SETVARS_COMPLETED), 1)
+#	IFORT = 1
+#endif
+
+# Check if GCC variable defined
+ifdef GCC
+	IFORT = 0
+endif
+
+# Compilator
+ifeq ($(IFORT),1)
+# Use Intel Fortran Compiler if setvars is completed
+FC = ifx
+else
+# Default to GNU Fortran Compiler
+FC = gfortran
+endif
+
 
 # Debug
 ifdef DEBUG
-	MYFFLAGS := -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow
-	MYLDFLAGS := -O0 -pg
+MYLDFLAGS := -O0 -g
+ifeq ($(IFORT),1)
+MYFFLAGS := -traceback -fpe0 -fp-model=source -check all
 else
-	MYFFLAGS := -ffinite-math-only -funsafe-math-optimizations -funroll-loops
-	MYLDFLAGS := -O2
+MYFFLAGS := -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow
+endif
+else  # No debug
+ifeq ($(IFORT),1)
+MYFFLAGS := -fimf-domain-exclusion=15
+MYLDFLAGS := -O3
+else
+MYFFLAGS := -ffinite-math-only -funsafe-math-optimizations -funroll-loops
+MYLDFLAGS := -O3
+endif
 endif
 
 # Serial
 ifdef PARALLEL
-	MYFFLAGS += -fopenmp
+MYFFLAGS += -fopenmp
 endif
+
+# Compiler flags
+ifeq ($(IFORT),1)
+FFLAGS := -warn -march=x86-64-v3 -nogen-interfaces $(MYFFLAGS)
+else
+FFLAGS := -Wall -Wextra -march=native $(MYFFLAGS)
+endif
+LDFLAGS = $(MYLDFLAGS)
 
 #--------------------------------------------------------------------------
 
@@ -45,10 +84,6 @@ MODULES = $(filter-out main.mod, $(notdir $(OBJECTS:.o=.mod)))
 
 ## Dependencies
 MAKE_DEP_FILE = $(DEP_FILE)
-
-# Compiler flags
-FFLAGS = -Wall -Wextra -march=native $(MYFFLAGS)
-LDFLAGS = $(MYLDFLAGS)
 
 #--------------------------------------------------------------------------
 #--------------------------------------------------------------------------
@@ -79,6 +114,13 @@ $(OBJECTS): | $(OBJ_DIR)
 # Create build directory
 $(OBJ_DIR): 
 	@mkdir -p $(OBJ_DIR)
+	@{ \
+	if [ $(IFORT) -eq 1 ]; then \
+		echo "Compiling using: Intel Fortran Compiler"; \
+	else \
+		echo "Compiling using: GNU Fortran Compiler"; \
+	fi;\
+	}
 
 # Compile source files .f to objects
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.f
