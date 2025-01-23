@@ -72,21 +72,12 @@ module integrators
             ! Here must be every f_i defined explicitly
         end function dydt_tem
 
-        ! in (t, y__, dt, f_i, ynew) -> ynew, dt
-        subroutine integ_tem_i (t, y, der, dt, dydt, ynew)
-            implicit none
-            real(kind=8), intent(in)               :: t, dt
-            real(kind=8), intent(out)              :: ynew
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), dimension(size (y))      :: der
-            procedure(dydt_i_tem)                  :: dydt
-        end subroutine integ_tem_i
-
         ! in (t, y__, dt, f__, ynew__) -> ynew__
         ! Remember that, in this case,
         !  f__ == (f_1, ..., f_N) must be
         !  pre-defined explicitly
         subroutine integ_tem (t, y, der, dt, dydt, ynew)
+            import :: dydt_tem
             implicit none
             real(kind=8), intent(in)                       :: t, dt
             real(kind=8), dimension(:), intent(in)         :: y
@@ -100,6 +91,7 @@ module integrators
         !  f__ == (f_1, ..., f_N) must be
         !  pre-defined explicitly
         subroutine embedded_tem (t, y, der, dt, dydt, osol, oaux, yaux, ynew)
+            import :: dydt_tem
             implicit none
             real(kind=8), intent(in)                       :: t, dt
             real(kind=8), dimension(:), intent(in)         :: y
@@ -110,6 +102,7 @@ module integrators
         end subroutine embedded_tem
 
         subroutine leapfrog_tem (t, y, der, dt, dydt, ynew)
+            import :: dydt_tem
             implicit none
             real(kind=8), intent(in)                       :: t, dt
             real(kind=8), dimension(:), intent(in)         :: y
@@ -119,71 +112,14 @@ module integrators
         end subroutine leapfrog_tem
 
         subroutine calc_rk (t, y, dt, dydt, kin, kout)
+            import :: dydt_tem
             implicit none
             real(kind=8), intent(in)                                          :: t, dt
             procedure(dydt_tem)                                               :: dydt
             real(kind=8), dimension(:, :), intent(in)                         :: kin
             real(kind=8), dimension(size (kin, 1)), intent(in)                :: y
             real(kind=8), dimension(size (kin, 1), size (kin,2)), intent(out) :: kout
-        end subroutine calc_rk 
-
-        !---------------------------------------------------------------------------------------------
-        ! WRAPPERS (Unused in the current version)
-        !---------------------------------------------------------------------------------------------
-
-        ! Here dydt_vec is a pointer to an array of (f__1, ..., f__N)
-        !  so this is kind of a wrapper.
-        ! dydt_tem_w (t, y__, =>f__)
-        !   CREATE F (t, y__) = (f__1 (t, y__), ..., f__N (t, y__)) = der__
-        !   --> (f__1 (t, y__), ..., f__N (t, y__)) 
-        !   --> (der_1, ..., der_N) = der__
-        function dydt_tem_w (t, y, dydt) result (der)
-            import :: dydt_i
-            implicit none
-            real(kind=8), intent(in)                :: t
-            real(kind=8), dimension(:), intent(in)  :: y
-            type(dydt_i), dimension(size (y))       :: dydt
-            real(kind=8), dimension(size (y))       :: der
-        end function dydt_tem_w
-
-        ! Here dydt_vec is a pointer to an array of (f__1, ..., f__N);
-        !  so this is kind of a wrapper.
-        ! integ_tem_w (t, y__, dt, =>f__, integ, ynew__) -->
-        !   CREATE F (t, y__) = (f__1 (t, y__), ..., f__N (t, y__))
-        !     --> integ (t, y__, dt, F__, ynew__) --> ynew__
-        subroutine integ_tem_w (t, y, dt, dydt, integ, ynew)
-            import :: dydt_i
-            implicit none
-            real(kind=8), intent(in)                       :: t, dt
-            real(kind=8), dimension(:), intent(in)         :: y
-            type(dydt_i), dimension(size (y))              :: dydt
-            procedure(integ_tem)                           :: integ
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
-        end subroutine integ_tem_w
-
-        ! Same as before, but for embedded_integrators
-        subroutine embedded_tem_w (t, y, dt_adap, dydt, e_tol, beta, dt_min, dt_used, integ, ynew)
-            import :: dydt_i
-            implicit none
-            real(kind=8), intent(in)                       :: t, e_tol, beta, dt_min
-            real(kind=8), intent(inout)                    :: dt_adap, dt_used 
-            real(kind=8), dimension(:), intent(in)         :: y
-            type(dydt_i), dimension(size (y))              :: dydt
-            procedure(embedded_tem)                        :: integ
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
-        end subroutine embedded_tem_w
-        
-        ! Same as before, but for rk_adap
-        subroutine rk_adap_w (t, y, dt_adap, dydt, integ, p, e_tol, beta, dt_min, dt_used, ynew)
-            import :: dydt_i
-            integer(kind=4), intent(in)                    :: p
-            real(kind=8), intent(in)                       :: t, e_tol, beta, dt_min
-            procedure(integ_tem)                           :: integ
-            real(kind=8), dimension(:), intent(in)         :: y
-            type(dydt_i), dimension(size (y))              :: dydt
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8), intent(inout)                    :: dt_adap, dt_used        
-        end subroutine rk_adap_w
+        end subroutine calc_rk
 
     end interface
 
