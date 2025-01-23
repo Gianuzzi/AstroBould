@@ -3,6 +3,7 @@ program main
     use integrators
     
     implicit none
+    external :: create_map   ! Declare the external function
 
     call init_default_parameters()  ! Inicializamos parámetros
 
@@ -741,10 +742,10 @@ program main
         particles_elem(Nparticles,3) = single_part_elem_M * radian    ! M
         particles_elem(Nparticles,4) = single_part_elem_w * radian    ! w
         if (single_part_MMR > tini) then
-            particles_elem(Nparticles,1) = single_part_MMR**(2/3.) * asteroid_a_corot
-            particles_MMR(Nparticles) = single_part_MMR
+            particles_elem(Nparticles,1) = single_part_MMR**(2/3.) * asteroid_a_corot  ! a
+            particles_MMR(Nparticles) = single_part_MMR  ! MMR
         else
-            particles_MMR(Nparticles) = (particles_elem(Nparticles,1) / asteroid_a_corot)**(1.5)
+            particles_MMR(Nparticles) = (particles_elem(Nparticles,1) / asteroid_a_corot)**(1.5)  ! MMR
         end if
     end if
 
@@ -815,15 +816,22 @@ program main
     ! Reordenamos las partículas, por distancia
     if ((.not. use_single_particle))  then
         call quickargsort(particles_dist, sorted_particles_index, 1, Nparticles)
-        do i = 1, Nparticles
-            particles_mass(i) = particles_mass(sorted_particles_index(i))
-            particles_elem(i,:) = particles_elem(sorted_particles_index(i),:)
-            particles_coord(i,:) = particles_coord(sorted_particles_index(i),:)
-            particles_dist(i) = particles_dist(sorted_particles_index(i))
-            particles_MMR(i) = particles_MMR(sorted_particles_index(i))
-        end do
+        call reorder(particles_mass, sorted_particles_index, Nparticles)
+        call reorder2D(particles_elem, sorted_particles_index, Nparticles)
+        call reorder2D(particles_coord, sorted_particles_index, Nparticles)
+        call reorder(particles_dist, sorted_particles_index, Nparticles)
+        call reorder(particles_MMR, sorted_particles_index, Nparticles)
+        call reorder_int(particles_index, sorted_particles_index, Nparticles)
+        ! do i = 1, Nparticles
+        !     particles_mass(i) = particles_mass(sorted_particles_index(i))
+        !     particles_elem(i,:) = particles_elem(sorted_particles_index(i),:)
+        !     particles_coord(i,:) = particles_coord(sorted_particles_index(i),:)
+        !     particles_dist(i) = particles_dist(sorted_particles_index(i))
+        !     particles_MMR(i) = particles_MMR(sorted_particles_index(i))
+        !     particles_index(i) = particles_index(sorted_particles_index(i))
+        ! end do
     else 
-        sorted_particles_index = particles_index
+        sorted_particles_index = 1
     end if
 
     ! BINNEADO
@@ -1371,7 +1379,7 @@ program main
         do i = 1, Nactive
             if ((particles_dist(i) < min_distance) .or. (particles_hexit(i) .eq. 1)) then
                 if (use_screen) then
-                    write (*,f125131) "Colisión de la partícula ", i, "(", particles_index(i), ") en t = ", &
+                    write (*,f125131) " Colisión de la partícula ", i, "(", particles_index(i), ") en t = ", &
                     & time / unit_time, "[días], y r = ", particles_dist(i) / unit_dist, "[km]"
                     write (*,*) ACHAR(5)
                 end if
@@ -1383,7 +1391,7 @@ program main
                 call resolve_merge(i, mass_to_merge, angular_momentum_to_merge)
             else if ((particles_dist(i) > max_distance) .or. (particles_hexit(i) .eq. 2)) then
                 if (use_screen) then
-                    write (*,f125131) "Escape de la partícula ", i, "(", particles_index(i), ") en t = ", &
+                    write (*,f125131) " Escape de la partícula ", i, "(", particles_index(i), ") en t = ", &
                     & time / unit_time, "[días], y r = ", particles_dist(i) / unit_dist, "[km]"
                     write (*,*) ACHAR(5)
                 end if
@@ -1406,9 +1414,10 @@ program main
             if (use_merge .and. (merged_particles > 0)) then
                 call merge_into_asteroid(mass_to_merge, angular_momentum_to_merge) ! Merge particles into asteroid
                 if (use_screen) then
-                    write(*,f12) "Merged", merged_particles, "particles into the asteroid"
-                    write(*,f13) " New mass :", asteroid_mass / unit_mass, "[kg]"
-                    write(*,f13) " New omega:", asteroid_omega * unit_time, "[rad/día]"
+                    write(*,f12) " Merged", merged_particles, "particles into the asteroid"
+                    write(*,f13) "  New mass :", asteroid_mass / unit_mass, "[kg]"
+                    write(*,f13) "  New omega:", asteroid_omega * unit_time, "[rad/día]"
+                    write(*,*) ACHAR(5)
                 end if                
             end if
             call quicksort_int(ij_to_swap(1:discarded_particles,1), 1, discarded_particles) ! Sort particles to discard
@@ -1450,25 +1459,28 @@ program main
                 !$OMP END DO
                 !$OMP END PARALLEL
                 Nactive = Nactive - discarded_particles
-            end if
-            if (use_screen) then
-                write (*,f12) "Quedan ", Nactive, " partículas activas."
-                write (*,*) ACHAR(5)
-            end if
-            do i = 1, Nactive
-                sorted_particles_index(i) = i
-            end do
-            call quickargsort_int(particles_index(1:Nactive), sorted_particles_index(1:Nactive), 1, Nactive) ! Get the sorted index
-            last_particle = first_particle + 4 * Nactive - 1 ! Redefine last_particle
+                
+                if (use_screen) then
+                    write (*,f12) " Quedan ", Nactive, " partículas activas."
+                    write (*,*) ACHAR(5)
+                end if
+                
+                ! Reset sorted index
+                do i = 1, Nactive
+                    sorted_particles_index(i) = i
+                end do
+                call quickargsort_int(particles_index(1:Nactive), sorted_particles_index(1:Nactive), 1, Nactive) ! Get the sorted index
+                last_particle = first_particle + 4 * Nactive - 1 ! Redefine last_particle
 
-            if (use_parallel) then
-                aux_integer = MIN(MAX(Nactive, 3), my_threads)
-                if (aux_integer .ne. my_threads) then
-                    my_threads = aux_integer
-                    !$ call OMP_SET_NUM_THREADS(my_threads)
-                    if (use_screen) then
-                        write (*,f12) "WARNING: Se reducen a ", my_threads, " hilos para la integración."
-                        write (*,*) ACHAR(5)
+                if (use_parallel) then
+                    aux_integer = MIN(MAX(Nactive, 3), my_threads)
+                    if (aux_integer .ne. my_threads) then
+                        my_threads = aux_integer
+                        !$ call OMP_SET_NUM_THREADS(my_threads)
+                        if (use_screen) then
+                            write (*,f12) " WARNING: Se reducen a ", my_threads, " hilos para la integración."
+                            write (*,*) ACHAR(5)
+                        end if
                     end if
                 end if
             end if
@@ -1489,7 +1501,8 @@ program main
         if (Nactive == 0) then
             if (use_screen) then
                 write (*,*) ACHAR(5) 
-                write (*,*) "No quedan partículas activas."
+                write (*,*) " No quedan partículas activas."
+                write (*,*) ACHAR(5) 
                 write (*,f13) "Finalizó la integración en t = ", time / unit_time, "[días]"
             end if
             exit main_loop
@@ -1837,42 +1850,6 @@ program main
     end if
     
 end program main
-
-subroutine percentage (tout,tstop)   ! version para gfortran
-    implicit none
-    real(kind=8), intent(in) :: tout, tstop
-    integer(kind=4) :: iper, i
-    character(len=1)  :: cret
-    character(len=99) :: guiones
-    character(len=3)  :: cestado
-    save :: iper,guiones
-    
-    cret = achar(13)          ! generate carriage return
-    
-    iper = int(100.0*tout/tstop)
-    guiones = ''
-    do i = 1,iper
-        guiones = trim(guiones)//'.'
-    end do
-    
-    open (66,status='scratch')
-    if (iper < 10) then
-        write (66,'(i2)') iper
-    else
-        write (66,'(i3)') iper
-    end if
-    rewind (66)
-    read (66,'(a)') cestado
-    close (66)
-    
-    110 format (2a)
-    if (iper < 100) then
-        write (*,110,advance='no') cret,trim(guiones)//trim(cestado)//'%'
-    else
-        write (*,110,advance='no') cret,trim(guiones)//'. FIN'
-        write (*,*)
-    end if
-end subroutine percentage
 
 subroutine create_map(Nboul,ngx,ngy,xmin,xmax,ymin,ymax,mib,rib,vib,map_file)
     use parameters, only: G, cero, radius_primary, use_screen
