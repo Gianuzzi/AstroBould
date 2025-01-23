@@ -1697,9 +1697,55 @@ module parameters
 
             ! Deallocate temporary arrays
             deallocate(b, a_copy)
-        end subroutine quicksort_int           
-            
+        end subroutine quicksort_int
+        
+        ! 17.5 Reorder from given order
+        subroutine reorder(array,  order, n)
+            real(kind=8), dimension(:), intent(inout) :: array
+            integer(kind=4), dimension(:), intent(in) :: order
+            integer(kind=4), intent(in) :: n
+            real(kind=8), dimension(n) :: tmp
+            integer(kind=4) :: i
 
+            ! Loop and reorder
+            do i = 1, n
+                tmp(i) = array(order(i))
+            end do
+            array(1:n) = tmp
+        end subroutine reorder
+
+        ! 17.5 Reorder from given order
+        subroutine reorder_int(array,  order, n)
+            integer(kind=4), dimension(:), intent(inout) :: array
+            integer(kind=4), dimension(:), intent(in) :: order
+            integer(kind=4), intent(in) :: n
+            integer(kind=4), dimension(n) :: tmp
+            integer(kind=4) :: i
+
+            ! Loop and reorder
+            do i = 1, n
+                tmp(i) = array(order(i))
+            end do
+            array(1:n) = tmp
+        end subroutine reorder_int
+
+        ! 17.6 Reorder 2D from given order
+        subroutine reorder2D(array, order, n)
+            real(kind=8), dimension(:,:), intent(inout) :: array
+            integer(kind=4), dimension(:), intent(in) :: order
+            integer(kind=4), intent(in) :: n
+            real(kind=8), dimension(n, size(array, 2)) :: tmp
+            integer(kind=4) :: i
+        
+            ! Loop and reorder the first axis based on the order array
+            do i = 1, n
+                tmp(i, :) = array(order(i), :)
+            end do
+        
+            ! Copy the reordered array back
+            array(1:n, :) = tmp
+        end subroutine reorder2D
+        
         ! 18 Hacer merger de masa (y ang mom) con asteroide
         subroutine merge_into_asteroid(mass, angmom)
             implicit none
@@ -1806,7 +1852,7 @@ module parameters
         subroutine write_elements(i, unit_file)
             implicit none
             integer(kind=4), intent(in) :: i, unit_file
-
+            
             aux_integer = sorted_particles_index(i)
             write (unit_file,f233) &
                 & particles_index(aux_integer), &
@@ -2330,5 +2376,27 @@ module parameters
             implicit none
             integer(kind=4), intent(in) :: i
         end subroutine do_nothing_i
+
+
+        ! 101 Escribir porcentaje
+        subroutine percentage(tout, tstop)
+            implicit none
+            real(kind=8), intent(in) :: tout, tstop
+            integer(kind=4) :: iper
+            character(len=100) :: guiones
+            character(len=4) :: cestado
+        
+            iper = int(100.0 * tout / tstop)
+            guiones = repeat('.', iper)
+        
+            if (iper < 100) then
+                write(cestado, '(i3)') iper
+                write(*, '(a)', advance='no') char(13) // trim(guiones) // trim(adjustl(cestado)) // '%'
+            else
+                write(*, '(a)', advance='no') char(13) // trim(guiones) // '. FIN'
+                write(*, *)
+            end if
+        end subroutine percentage
+        
 
 end module parameters
