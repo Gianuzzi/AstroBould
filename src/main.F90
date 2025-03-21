@@ -187,10 +187,16 @@ program main
         end if
     end if
 
-    if (.not. any((/use_single_particle, use_particlesfile/))) then ! No tiene sentido hacer nada
-        write (*,*) ACHAR(10)
-        write (*,*)  "EXITING: No se integrará ninguna partícula."
-        stop 1
+    if (.not. any((/use_single_particle, use_particlesfile/))) then ! Hay partículas para integrar?
+        if (.not. use_potential_map) then
+            write (*,*) ACHAR(10)
+            write (*,*)  "EXITING: No se integrará ninguna partícula."
+            stop 1
+        end if
+        only_potential_map = .True.
+        if (use_screen) then
+            write (*,*)  "WARNING: Solo se escribirá el mapa de potencial."
+        end if
     end if
     
     ! Mensaje
@@ -625,6 +631,38 @@ program main
         end if
     end if
 
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    ! Escape/Colisión
+    if (min_distance < cero) then
+        min_distance = asteroid_radius * abs(min_distance)
+    else if (min_distance < tini) then
+        min_distance = asteroid_radius
+    else
+        min_distance = min_distance * unit_dist
+    end if
+    if (max_distance < cero) then
+        max_distance = asteroid_radius * abs(max_distance)
+    else 
+        max_distance = max_distance * unit_dist
+    end if
+    if (max_distance <= min_distance) then
+        write (*,*) ACHAR(10)
+        write (*,*) "ERROR: rmax <= rmin"
+        stop 1
+    end if
+    if (use_screen) then
+        write (*,*) "Condición escape/colisión"
+        write (*,f13) "    rmin : ", min_distance / unit_dist, "[km] =", min_distance / asteroid_radius, "[Rast]"
+        write (*,f13) "    rmax : ", max_distance / unit_dist, "[km] =", max_distance / asteroid_radius, "[Rast]"
+        if (use_merge) then
+            write (*,*) "  Las colisiones se resolverán como mergers al asteroide."
+        else
+            write (*,*) "  Las colisiones NO se resolverán."
+        end if
+        write (*,*) ACHAR(5)
+    end if
+
 
     !!!!!!!!!!!!!!!!!!!!! MAPA Potencial y Aceleraciones !!!!!!!!!!!!!!!!!!!!!!
     if (use_potential_map) then
@@ -644,6 +682,13 @@ program main
             write (*,*) "Guardado en el archivo: ", trim(mapfile)
             write (*,*) ACHAR(5)
         end if
+    end if
+    if (only_potential_map) then
+        if (use_screen) then
+            write (*,*) "END: Solo se ha creado el mapa de potencial."
+            write (*,*) ACHAR(5)
+        end if
+        stop 0
     end if
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -934,36 +979,6 @@ program main
         write (*,*) ACHAR(5)
     end if
 
-    
-    ! Escape/Colisión
-    if (min_distance < cero) then
-        min_distance = asteroid_radius * abs(min_distance)
-    else if (min_distance < tini) then
-        min_distance = asteroid_radius
-    else
-        min_distance = min_distance * unit_dist
-    end if
-    if (max_distance < cero) then
-        max_distance = asteroid_radius * abs(max_distance)
-    else 
-        max_distance = max_distance * unit_dist
-    end if
-    if (max_distance <= min_distance) then
-        write (*,*) ACHAR(10)
-        write (*,*) "ERROR: rmax <= rmin"
-        stop 1
-    end if
-    if (use_screen) then
-        write (*,*) "Condición escape/colisión"
-        write (*,f13) "    rmin : ", min_distance / unit_dist, "[km] =", min_distance / asteroid_radius, "[Rast]"
-        write (*,f13) "    rmax : ", max_distance / unit_dist, "[km] =", max_distance / asteroid_radius, "[Rast]"
-        if (use_merge) then
-            write (*,*) "  Las colisiones se resolverán como mergers al asteroide."
-        else
-            write (*,*) "  Las colisiones NO se resolverán."
-        end if
-        write (*,*) ACHAR(5)
-    end if
 
     !!!!!!!! TIEMPOS !!!!!!!
 
@@ -1880,6 +1895,10 @@ subroutine create_map(Nboul,ngx,ngy,xmin,xmax,ymin,ymax,mib,rib,vib,map_file)
     pot_at_R = - mib(0) / radius_primary
     asteroid_mass = sum(mib)
 
+
+    !$OMP PARALLEL DEFAULT(SHARED) &
+    !$OMP PRIVATE(i,j,k,rb,dist,dummy,dummy2,dumint,cero2)
+    !$OMP DO SCHEDULE (STATIC)
     do i = 1, ngx
         do j = 1, ngy
             rb(1) = xmin + i * (xmax - xmin) / ngx
@@ -1895,11 +1914,17 @@ subroutine create_map(Nboul,ngx,ngy,xmin,xmax,ymin,ymax,mib,rib,vib,map_file)
                 dist = sqrt((rb(1)-rib(k,1))**2 + (rb(2)-rib(k,2))**2)
                 xyb(i,j) = xyb(i,j) - mib(k) / dist
             end do
+            dumint = 0  ! Reset dummy integer
+            cero2 = cero ! Reset dummy vector
             call apply_force(cero, mib, cero, dumint, rb, cero2, rib, vib, asteroid_mass, &
                             &  cero2, cero2, dummy, dummy, dummy2, acb(i,j,:))
         end do
     end do
-    xyb = xyb * G
+    !$OMP END DO
+    !$OMP END PARALLEL
+
+    xyb = xyb * G  ! Convertimos a unidades correctas
+    
     if (use_screen) write (*,*) "   Potencial calculado. Escribiendo..."
     open (unit=50, file=trim(map_file), status='replace', action='write')
     do i = 1, ngx

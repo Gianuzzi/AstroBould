@@ -45,6 +45,7 @@ module parameters
     character(30) :: datafile, chaosfile, mapfile, multfile
     character(30) :: tomfile, particlesfile
     logical :: use_flush_output
+    logical :: only_potential_map = .False.
     !! Tomfile
     integer(kind=4) :: tom_index_number, tom_total_number
     real(kind=8), dimension(:), allocatable :: tom_times, tom_deltaomega, tom_deltamass
