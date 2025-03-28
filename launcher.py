@@ -326,16 +326,14 @@ def integrate_n(i):
             % (datafile if isinstance(datafile, str) else "salida", i, suffix)
         )
     )
-    # Define my_line
-    my_line = ""
     # Extract the data from the lines
     data = str(
         lines[i - 1]
     ).split()  # -1 porque la lista arranca de 0 y los sistemas de 1
     if len(data) == 6:  # The mass in present in the first column
-        my_line += " -mpart %s" % data.pop(0)  # Update my_line
-    # Update my_line with the orbital parameters in data
-    my_line += " ".join(data)
+        this_args += " -mpart %s" % data.pop(0)  # Update my_line
+    # Define my_line with the orbital parameters in data
+    my_line = " ".join(data)
     print("Running system %d\n" % (i))
     # ESTO SE ESTÁ EJECUTANDO EN LA SHELL #
     # print("Running: ./%s %s %s %s" % (program, args, this_args, my_line))
