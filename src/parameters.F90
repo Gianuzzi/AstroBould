@@ -588,7 +588,7 @@ module parameters
                             read (value_str, *) min_distance
                         case("max distance fr")
                             read (value_str, *) max_distance
-                        case("merge collsions")
+                        case("merge collision")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 use_merge = .True.
                             else
@@ -621,7 +621,7 @@ module parameters
                                 use_datafile = .True.
                                 datafile = trim(value_str)
                             end if
-                        case("idividual file")
+                        case("individual file")
                             if ((to_lower(trim(value_str)) == "n") .or. &
                               & (to_lower(trim(value_str)) == "no")) then
                                 use_multiple_outputs = .False.
@@ -868,7 +868,7 @@ module parameters
                         write (*,*) "    --noparallel : No usar paralelización para partículas"
                         write (*,*) "    --help       : Mostrar esta ayuda"
                         stop 0
-                    case default
+                    case default  ! Si no es un argumento reconocido...
                         is_number = .False.
                         call get_command_argument(i, aux_character30)
                         do j = 0, 9
