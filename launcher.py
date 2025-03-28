@@ -69,8 +69,8 @@ explicit = False  # Método: True (cos, sin), False (integra boulders y m0)
 version1 = False  # Versión del código (1 o 2)
 
 # Torque and merge #
-torque = True  # Si se quiere usar torque
-merge = True  # Si se quiere usar merge
+torque = False  # Si se quiere usar torque
+merge = False  # Si se quiere usar merge
 
 # Input # ("" o False si no se usa)
 config = "config.ini"  # Archivo de configuración
@@ -78,7 +78,7 @@ partfile = "particles.in"  # Archivo de partículas
 tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 # Output # ("" o False si no se usa)
-new_dir = True  # Directorio donde volcar las salidas. Default: "simulation"
+new_dir = True  # Directorio donde volcar las salidas.
 datafile = "salida"  # Nombre del archivo de salida de datos (sin extensión)
 final_chaos = "sump"  # Final Chaos Summary Output file name (sin extensión)
 suffix = ""  # Suffix for the output files
@@ -89,7 +89,7 @@ screen_data = False  # Datos en pantalla?  "%" para porcentaje
 elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 
 # If all particles must be run in same integration (requires parallel)
-all_in_one = True
+all_in_one = False
 
 # ----------------------------------------------------------------------
 # -------------------- No tocar de aquí en adelante --------------------
@@ -332,13 +332,13 @@ def integrate_n(i):
     data = str(
         lines[i - 1]
     ).split()  # -1 porque la lista arranca de 0 y los sistemas de 1
-    if len(data) == 7:  # The mass in present in the first column
+    if len(data) == 6:  # The mass in present in the first column
         my_line += " -mpart %s" % data.pop(0)  # Update my_line
     # Update my_line with the orbital parameters in data
     my_line += " ".join(data)
     print("Running system %d\n" % (i))
     # ESTO SE ESTÁ EJECUTANDO EN LA SHELL #
-    print("Running: ./%s %s %s %s" % (program, args, this_args, my_line))
+    # print("Running: ./%s %s %s %s" % (program, args, this_args, my_line))
     # (Lines debe ser último porque termina en "\n") #
     try:
         p = subprocess.run(
