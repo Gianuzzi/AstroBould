@@ -2017,6 +2017,11 @@ module parameters
                 u = dm + e * sin(u0)
                 dif = abs(u - u0)
                 u0 = u
+                i = i + 1
+                if (i > MAX_ITER) then
+                    print*, 'aver: too many iterations'
+                    exit
+                end if
             end do
             seno = sqrt(uno + e) * sin(uno2 * u)
             cose = sqrt(uno - e) * cos(uno2 * u)
