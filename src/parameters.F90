@@ -2010,6 +2010,7 @@ module parameters
             real(kind=8), intent(in)  :: dm, e
             real(kind=8), intent(out) :: u, f
             real(kind=8) :: u0, dif, seno, cose
+            integer(kind=4) :: i, MAX_ITER = 50
             
             u0 = dm
             dif = uno
