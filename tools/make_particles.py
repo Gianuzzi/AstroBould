@@ -85,12 +85,12 @@ unit_angle = deg
 data_in = {}
 names = ["mass", "a", "e", "M", "w", "R"]
 # PARÁMETROS A VARIAR (Poner unidades de ser necesario)
-data_in["mass"] = [rndm(0.0, 1.)]
+data_in["mass"] = [rndm(0.0, 1.0)]
 data_in["a"] = [0.0]
 data_in["e"] = [0.0]  # Podría ser: rayleigh_dist(0, 0.1, 1)
 data_in["M"] = [rndm(0.0, 360.0)]
 data_in["w"] = [rndm(0.0, 360.0)]
-data_in["R"] = [n_steps(1.4, 4, 30)]
+data_in["R"] = [n_steps(1.4, 4, 5)]
 
 # Disk mass (in kg)
 disk_mass = 6.3e15
@@ -180,14 +180,12 @@ def make_ic(data_in):
 def check_continue(outfile):
     if os.path.isfile(outfile):
         print(f"WARNING: File {outfile} already exist.")
-        print("Do yo want to overwrite it? y/[n]\n")
-        q = input()
+        q = input("Do yo want to overwrite it? [y/[n]]: ")
         ntry = 3
         while q.lower() not in ["y", "yes", "s", "si", "n", "no"]:
             print(f"{q} is not a valid answer.")
             print(f" ({ntry:1d} attempts left)")
-            print("Do yo want to overwrite it? Y/[N]\n")
-            q = input()
+            q = input("Do yo want to overwrite it? [y/[n]]: ")
             ntry -= 1
             if ntry == 0:
                 raise Exception("Wrong input.")

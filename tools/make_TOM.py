@@ -8,7 +8,7 @@ import numpy as np
 
 # Para crearlo, necesitamos:
 #  (1) Nombre de archivo TOM a crear
-#  (2) El archuvo 'sump' creado con parallel.
+#  (2) El archivo 'chaos' creado con parallel.
 #  (3) Parámetros del disco a crear (masa, y perfil).
 #  (4) Información de las condiciones iniciales.
 #        Para esto último hay 2 opciones de uso:
@@ -18,8 +18,8 @@ import numpy as np
 # (1) Archivo TOM a crear
 tomfile = "tomfile.dat"
 
-# (2) Archivo sump a utilizar para crear TOM
-sump_file = "sump.out"
+# (2) Archivo chaos a utilizar para crear TOM
+chaos_file = "chaos.out"
 
 # (3) Parámetros del disco a crear
 mu_d = 0.01  # Cociente de masas de disco a asteroide (mDisk = mu_D * m0)
@@ -177,21 +177,21 @@ if __name__ == "__main__":
     else:
         Omega0 = 2 * np.pi / Prot
 
-    # Read sump sump_file
-    ## 0    ! i
-    ## 1    ! bad
-    ## 2    ! total time to integrate
-    ## 3    ! initial (Asteroid): angular momentum
-    ## 4-9  ! initial: mass, a, e, M, omega, MMR
-    ## 10   ! initial: angular momentum per unit mass
-    ## 11   ! surviving time
-    ## 12-16! final: a, e, M, omega, MMR
-    ## 17   ! final: angular momentum per unit mass
-    ## 18-19! a_min, a_max
-    ## 20-21! e_min, e_max
-    ## 22   ! Delta a
-    ## 23   ! Delta e
-    data = np.genfromtxt("sump.out")
+    # Read chaos chaos_file
+    # 0    ! i
+    # 1    ! bad
+    # 2    ! total time to integrate
+    # 3    ! initial (Asteroid): angular momentum
+    # 4-9  ! initial: mass, a, e, M, omega, MMR
+    # 10   ! initial: angular momentum per unit mass
+    # 11   ! surviving time
+    # 12-16! final: a, e, M, omega, MMR
+    # 17   ! final: angular momentum per unit mass
+    # 18-19! a_min, a_max
+    # 20-21! e_min, e_max
+    # 22   ! Delta a
+    # 23   ! Delta e
+    data = np.genfromtxt("chaos.out")
 
     idx = data[:, 0].astype(int)
     bad = data[:, 1].astype(int)
@@ -255,11 +255,12 @@ if __name__ == "__main__":
     mpart = mbin3  # Asignamos el método 3
 
     # Create mass profile file
-    massdata = np.vstack(
-        (aini / unit_r, mpart / unit_m, abins / unit_r**2)
-    ).T
+    massdata = np.vstack((aini / unit_r, mpart / unit_m, abins / unit_r**2)).T
     np.savetxt("massfile.dat", massdata, delimiter=" ")
-    print("Se ha creado el archivo de perfil de masa: massfile.dat [a, mpart, dA]")
+    print(
+        "Se ha creado el archivo de perfil de masa: "
+        + "massfile.dat [a, mpart, dA]"
+    )
 
     # Set each particle event Omega, and Delta M #
 
@@ -309,7 +310,9 @@ if __name__ == "__main__":
             elif bad[j] == 2:  # Escape
                 Mast[i] = Mast[i - 1]
                 Inertia[i] = Inertia[i - 1]
-                omega_tom[i] = omega_tom[i - 1] - mpart[j] * deltal / Inertia[i]
+                omega_tom[i] = (
+                    omega_tom[i - 1] - mpart[j] * deltal / Inertia[i]
+                )
             else:  # ERROR
                 raise ValueError(
                     "Bad '%d' no reconocido en partícula '%d'."
