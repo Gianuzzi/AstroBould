@@ -2014,6 +2014,7 @@ module parameters
             
             u0 = dm
             dif = uno
+            i = 0
             do while (dif > epsilon)
                 u = dm + e * sin(u0)
                 dif = abs(u - u0)
