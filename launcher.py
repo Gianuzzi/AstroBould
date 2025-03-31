@@ -1,4 +1,4 @@
-# Version: 9.0
+# Version: 10.0
 
 # DENTRO DE UN ENTORNO PYTHON
 # Ejecución: $ python launcher.py
@@ -91,6 +91,9 @@ elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 # If all particles must be run in same integration (requires parallel)
 all_in_one = False
 
+# Chunk size for cat
+chunk_size = 500  # Chunk size for file concatenation
+
 # ----------------------------------------------------------------------
 # -------------------- No tocar de aquí en adelante --------------------
 # ----------------------------------------------------------------------
@@ -146,7 +149,7 @@ if not os.path.isfile(oparticles):
 # Tomfile
 existe_otom = os.path.isfile(otom)
 if tomfile and (not existe_otom):
-    print(f"ERROR: Tau-Omega-Mass file {otom} does not exist.")
+    print(f"ERROR: Tau-Omega-Mass file '{otom}' does not exist.")
     print("Saliendo.")
     sys.exit()
 # Datafile
@@ -156,9 +159,9 @@ if datafile is None:
 if final_chaos is None:
     final_chaos = ""
 if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
-    print(f"WARNING: Chaos Output file {final_chaos} already exist.")
+    print(f"WARNING: Chaos Output file '{final_chaos}' already exist.")
     if datafile:
-        print(f"  Independently, <{datafile}> will be replaced (if exists).")
+        print(f"  Independently, '{datafile}' will be replaced (if exists).")
     yes_no = input("Do you want to overwrite it? [y/[n]]: ")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         i = 1
@@ -215,7 +218,7 @@ for i in range(len(lines)):
 ntot = len(lines)
 nsys = ntot
 if nsys == 0:
-    print(f"No hay partículas para integrar en el archivo {partfile}.")
+    print(f"No hay partículas para integrar en el archivo '{partfile}'.")
     print("Saliendo.")
     sys.exit()
 else:
@@ -452,17 +455,29 @@ def make_chaos(final_chaos, suffix=""):
     outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
     outs.insert(-1, ".out")
     final_chaos = "".join(outs)
-    command = " ".join([file for file in file_list])
+    # Process in chunks
+    num_chunks = len(file_list) // chunk_size + (
+        len(file_list) % chunk_size > 0
+    )
     try:
-        p = subprocess.run(
-            [f"cat {command} > {final_chaos}"],
-            cwd=wrk_dir,
-            check=True,
-            shell=True,
-        )
-        p.check_returncode()
-    except subprocess.CalledProcessError as e:
-        print(f"Could not create {final_chaos} with cat.")
+        with open(os.path.join(wrk_dir, final_chaos), "wb") as outfile:
+            for i in range(num_chunks):
+                this_chunk = file_list[i * chunk_size : (i + 1) * chunk_size]
+                print(
+                    f"Processing chunk {i+1}/{num_chunks} "
+                    + f"with {len(this_chunk)} files..."
+                )
+
+                # Run `cat` on the current chunk (passing list directly)
+                p = subprocess.run(
+                    ["cat"] + this_chunk,
+                    stdout=outfile,
+                    cwd=wrk_dir,
+                    check=True,
+                )
+                p.check_returncode()
+    except (subprocess.CalledProcessError, OSError) as e:
+        print(f"Could not create '{final_chaos}' with cat.")
         print(f" Error: {e}")
         print(" Trying with pure python...")
         with open(os.path.join(wrk_dir, final_chaos), "w") as f_out:
@@ -516,17 +531,29 @@ def make_sal(salida, suffix=""):
     outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
     outs.insert(-1, ".out")
     salida = "".join(outs)
-    command = " ".join([file for file in file_list])
+    # Process in chunks
+    num_chunks = len(file_list) // chunk_size + (
+        len(file_list) % chunk_size > 0
+    )
     try:
-        p = subprocess.run(
-            [f"cat {command} > {salida}"],
-            cwd=wrk_dir,
-            check=True,
-            shell=True,
-        )
-        p.check_returncode()
-    except subprocess.CalledProcessError as e:
-        print(f"Could not create {salida} with cat.")
+        with open(os.path.join(wrk_dir, salida), "wb") as outfile:
+            for i in range(num_chunks):
+                this_chunk = file_list[i * chunk_size : (i + 1) * chunk_size]
+                print(
+                    f"Processing chunk {i+1}/{num_chunks} "
+                    + f"with {len(this_chunk)} files..."
+                )
+
+                # Run `cat` on the current chunk (passing list directly)
+                p = subprocess.run(
+                    ["cat"] + this_chunk,
+                    stdout=outfile,
+                    cwd=wrk_dir,
+                    check=True,
+                )
+                p.check_returncode()
+    except (subprocess.CalledProcessError, OSError) as e:
+        print(f"Could not create '{salida}' with cat.")
         print(f" Error: {e}")
         print(" Trying with pure python...")
         with open(os.path.join(wrk_dir, salida), "w") as f_out:
@@ -556,7 +583,7 @@ if __name__ == "__main__":
         nprogr = os.path.join(wrk_dir, program)
         # Checkeamos si existe el ejecutable
         if os.path.isfile(nprogr):
-            print(f"Executable file {nprogr} already exists in {wrk_dir}.")
+            print(f"Executable file '{nprogr}' already exists in {wrk_dir}.")
             print("Do you want to overwrite it?")
             print("If NOT, the existing one will be used.")
             yes_no = input("[y/[n]]: ")
@@ -573,7 +600,8 @@ if __name__ == "__main__":
             # Chequeamos si existe el archivo de configuración
             if os.path.isfile(ncini):
                 print(
-                    f"Configuration file {ncini} already exists in {wrk_dir}."
+                    f"Configuration file '{ncini}' "
+                    + f"already exists in {wrk_dir}."
                 )
                 print("Do you want to overwrite it?")
                 print("If NOT, the existing one will be used.")
@@ -589,7 +617,10 @@ if __name__ == "__main__":
         nparticles = os.path.join(wrk_dir, partfile)
         # Chequeamos si existe el archivo de partículas
         if os.path.isfile(nparticles):
-            print(f"Particles file {nparticles} already exists in {wrk_dir}.")
+            print(
+                f"Particles file '{nparticles}' "
+                + f"already exists in {wrk_dir}."
+            )
             print("Do you want to overwrite it?")
             print("If NOT, the existing one will be used.")
             yes_no = input("[y/[n]]: ")
@@ -624,7 +655,7 @@ if __name__ == "__main__":
         # Creamos el archivo de salida
         if datafile:
             print("")
-            print(f"Creando archivo chaos {datafile}.out")
+            print(f"Creando archivo chaos '{datafile}.out'")
             if os.path.isfile(os.path.join(wrk_dir, f"{datafile}.out")):
                 print(
                     "WARNING: Se ha reemplazando archivo "
@@ -634,7 +665,7 @@ if __name__ == "__main__":
         # Creamos el archivo de caos
         if final_chaos:
             print("")
-            print(f"Creando archivo chaos {final_chaos}.out")
+            print(f"Creando archivo chaos '{final_chaos}.out'")
             if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
                 print(
                     "WARNING: Se ha reemplazando archivo "
