@@ -48,7 +48,7 @@ ifeq ($(IFORT),1)
 MYFFLAGS := -fimf-domain-exclusion=15
 MYLDFLAGS := -O3
 else
-MYFFLAGS := -ffinite-math-only -funsafe-math-optimizations -funroll-loops
+MYFFLAGS := -ffinite-math-only -funsafe-math-optimizations -funroll-loops -finit-real=zero
 MYLDFLAGS := -O3
 endif
 endif
