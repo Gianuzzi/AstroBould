@@ -560,7 +560,7 @@ if __name__ == "__main__":
             print("Do you want to overwrite it?")
             print("If NOT, the existing one will be used.")
             yes_no = input("[y/[n]]: ")
-            if yes_no.lower() not in ["y", "yes", "s", "si"]:
+            if yes_no.lower() in ["y", "yes", "s", "si"]:
                 # Copiamos el ejecutable
                 subprocess.run(["cp", oprogr, nprogr], check=True)
         else:
@@ -578,7 +578,7 @@ if __name__ == "__main__":
                 print("Do you want to overwrite it?")
                 print("If NOT, the existing one will be used.")
                 yes_no = input("[y/[n]]: ")
-                if yes_no.lower() not in ["y", "yes", "s", "si"]:
+                if yes_no.lower() in ["y", "yes", "s", "si"]:
                     # Copiamos el archivo de configuración
                     subprocess.run(["cp", ocini, ncini], check=True)
             else:
@@ -593,7 +593,7 @@ if __name__ == "__main__":
             print("Do you want to overwrite it?")
             print("If NOT, the existing one will be used.")
             yes_no = input("[y/[n]]: ")
-            if yes_no.lower() not in ["y", "yes", "s", "si"]:
+            if yes_no.lower() in ["y", "yes", "s", "si"]:
                 # Copiamos el archivo de partículas
                 subprocess.run(["cp", oparticles, nparticles], check=True)
         else:
