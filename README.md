@@ -1,37 +1,56 @@
 # AstroBould
-Repositorio con programa para integrar partículas gravitatoriamente alrededor de un asteroide con boulders
 
-Los parámetros iniciales del sistema y la integración se modifican en el archivo: [config.ini](./config.ini)
+**AstroBould** is a code designed to integrate particles that gravitationally interact with an asteroid featuring mass anomalies.
 
-En caso de no utilizarlo, se usan los parámetros definidos en [main.F90](./src/main.F90), entre las líneas [22 a 119](./src/main.F90#L22#L119).
+The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
+
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [24 and 134](./src/main.F90#L24-L134).
+
+---
 
 # Usage
 
-## Compile
-``` console
+## 🧑‍💻 Compiling
+
+To compile the code, run:
+
+```bash
 make
 ```
 
-Recuerda volver a ejecutar `make` cada vez que se realice un cambio en algún .F90.
+> ⚠️ **Note**: Remember to run `make clean` followed by `make` every time you modify any `.F90` source file.
 
-Asimismo, recuerda ejecutar `make clean` en caso de realizar algún cambio de compilación.
+Default copilator is GNU (_gfortran_). If available, the compilation could be made using the IntelFortranCompiler (_ifx_), by running
 
-## Run
-
-La ejecución básica de una particula individual se realiza con
-
-``` console
-$ ./ASTROBOULD <a> <e> <M> <w> <R> [args]
+```bash
+make IFORT=1
 ```
 
-Los argumentos $a, e, M, \omega$ son los elementos orbitales, y $R$ (cociente de movimientos inicial $n_{part}/\Omega_{ast}$) es opcional.
-En caso de usarlo, calcula y reemplaza el valor de $a$.
+## 🏃🏼 Running
 
-Una ayuda puede obtenerse con 
+To execute the code with a single particle, use the following command:
+
+```bash
+./ASTROBOULD <a> <e> <M> <w> <R> [args]
+```
+
+Here:
+
+- `<a>` = semi-major axis
+- `<e>` = eccentricity
+- `<M>` = mean anomaly
+- `<w>` = argument of periapsis
+- `<R>` = initial spin-orbit ratio \( n_\text{part} / \Omega_\text{ast} \) (optional)
+
+> If `<R>` is provided, it overrides the value of `<a>`.
+
+## 🆘 Help
+For basic help in Spanish just run:
 
 ``` console
 $ ./ASTROBOULD --help
-Uso: ./ASTROBOULD <ea> <ee> <eM> <ew> <eR> [args]
+
+ Uso: ./ASTROBOULD <ea> <ee> <eM> <ew> <eR> [args]
      ea  : Elemento a de la partícula (km)
      ee  : Elemento e de la partícula
      eM  : Elemento M de la partícula (deg)
@@ -73,63 +92,57 @@ Uso: ./ASTROBOULD <ea> <ee> <eM> <ew> <eR> [args]
      --noparallel : No usar paralelización para partículas
      --help       : Mostrar esta ayuda
 
-```
+``` 
 
-### Cofigurations file
+## 🛠️ Configuration
 
-Para definir los parámetros de una integración a realizar, es posible editar el [archivo de configuraciones](./config.ini). Este archivo será leído por el ejecutable al comenzar la ejecución.
+To define the parameters of an integration, you can edit the [configuration file](./config.ini). This file is read by the executable at runtime.
 
-Es importante tener en cuenta que algunas de las configuraciones aquí seteadas serán anuladas y sobreescritas por las introducidas en [launcher.py](./launcher.py), en caso de utilizar este segundo método para integración en paralelo (ver abajo).
+> ⚠️ Note: Some settings defined in `config.ini` may be overridden by those specified in [launcher.py](./launcher.py) if using parallel execution via Python (see below).
 
+## ⛓️ Parallel Execution
 
-### Parallel 
+There are two modes for parallel execution:
+- Dependant 
+- Independant (default)
 
-Hay 2 posibilidad de ejecución en paralelo:
-     
-- _Dependiente_: Se realiza una sola integración, incluyendo un asteroide y muchas partículas al mismo tiempo. Aquí se paralelizan las tareas relacionadas a cada partícula por separado (i.e, cálculo de aceleraciones, elementos orbitales, etc.).
-- _Independiente_: Se realizan múltiples integraciones independientes, con una partícula cada una. Aquí cada integración se ejecuta en paralelo.
+⌨️ **Particles Input File**
 
-En este caso se debe tener un **archivo con los datos de las partículas a integrar**.
-Este archivo se puede crear con el código [make_particles.py](./tools/make_particles.py). Su configuración se realiza en las líneas [70 a 106](./tools/make_particles.py#L70#L106), y si ejecució se realiza con:
+Both modes require the existence of a particles file (e.g. _particles.in_) containing all particles (initial conditions) to be integrated. You can generate this file using [make_particles.py](./tools/make_particles.py). Configuration is found between lines [87 and 93](./tools/make_particles.py#L87#L93).
 
-``` console
-$ python make_particles.py
-```
+### 1. **Dependent Mode**
 
-Para la integración _dependiente_ es necesario compilar usando _-fopenmp_, mientras que para la independiente (default) no es necesario. Para el primer caso, se debe compilar ejecutando
-
-``` console
+- A single integration is performed, including the asteroid and many particles simultaneously.
+- Tasks related to each particle (e.g., force calculations, orbital elements, etc.) are parallelized internally.
+- Requires OpenMP support. Compile using:
+```console
 $ make parallel
 ```
+To run:
+```console
+$ ./ASTROBOULD [args] -parallel <number_of_cpus> -partfile <particles_file>
+```
+or edit [config.ini](./config.ini) and set "use parallel threads" to the desired value (see line [17](./config.ini#L17)), and "particles input file" to the particles file name (see line [58](./config.ini#L58)). Then simply run
+```console
+$ ./ASTROBOULD [args]
+```
 
-Para realizar la integración _independiente_, se provee el código en Python [launcher.py](./launcher.py). Más información se encuentra [al inicio](./launcher.py#L3#L47) de este archivo. Luego de configurarlo, editando las líneas [61 a 92](./launcher.py#L61#L92), su ejecución se realiza con:
+### 2. **Independent Mode (default)**
 
-``` console
+- Multiple independent integrations are performed, one particle per run.
+- Each integration is executed in parallel (e.g., across multiple CPU cores).
+- Does not require _-fopenmp_.
+
+The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [60 to 95](./launcher.py#L60#L95). More information (in spannish) is available at the top of the file(see lines [3 to 48](./launcher.py#L3#L48)).
+
+To run:
+```console
 $ python launcher.py
 ```
-
-(Recordar estar en algún entorno de python)
-
-Para realizar una integración _dependiente_, hay dos posibilidades: 
-1) Editar el número de cpus en el [archivo de configuraciones](./config.ini) ([use parallel threads](./config.ini#L17)), o ejecutar directamente en la terminal:
-
-``` console
-$ ./ASTROBOULD [args] -parallel <number of cpus to use>
-```
-
-2) Utilzar el código [launcher.py](./launcher.py) para esta integración, seteando
-
-``` python
-all_in_one = True
-```
-en la línea [91](./launcher.py#L91) de este archivo.
+💡 Make sure to run inside a Python virtual environment. 🐍
+> ⚠️ Make sure that ```all_in_one = False``` in [launcher.py](./launcher.py#L92) for this mode.
 
 
-### Archivo TOM (Tiempos, Omega, Masa agregada)
-
-Para crear este archivo se puede usar [make_TOM.py](./tools/make_TOM.py), luego de configurarlo (líneas [18 a 42](./tools/make_TOM.py#L18#L42)). Se puede encontrar más información [al inicio](./tools/make_TOM.py#L6#L16) de este archivo. 
-
-Por otro lado, también  se puede usar [make_TOM.f90](./tools/make_TOM.f90), de C. Beaugé. Se debe configurar manualmente, para luego compilar y ejecutar.
 
 # Author
 Emmanuel Gianuzzi
