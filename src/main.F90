@@ -79,16 +79,16 @@ program main
         use_J2 = .False.
         J2_coefficient = cero
         
-        !!!! Self-Gravity [BINS]
+        !!!! Self-Gravity [BINS] [Not available yet.]
         use_self_gravity = .False.
         Norder_self_gravity = 3  ! Order of legendre expansion. MAX(30)
         
-        !!!! Viscosity [BINS]
+        !!!! Viscosity [BINS] [Not available yet.]
         use_viscosity = .False.
         viscosity = cero
         
-        !!!!! BINS
-        Nbins = 3
+        !!!!! BINS [Not available yet.]
+        Nbins = 0
         binning_method = 1 ! 1 (equal dr) , 2 (equal dA) , 3 (equal Npart)
         rmin_bins = - uno ! <=0 first particle (initial). =0 means FIXED over time
         rmax_bins = - uno ! <=0 last particle (initial). =0 means FIXED over time
@@ -1339,8 +1339,6 @@ program main
         particles_acc(i,1:2) = parameters_der(aux_integer+2 : aux_integer+3)
     end do
 
-!     open(37, file="drag_force.txt", status="unknown", action="write") !!! QUITAR
-!     write(37,*) time /unit_time, user_real_var2 / unit_acc !!! QUITAR
 
     !! Initial conditions Output
     !$OMP PARALLEL DEFAULT(SHARED) &
@@ -1711,7 +1709,6 @@ program main
             call flush_chaos(40) ! Update chaos
             !$OMP END SECTIONS
             !$OMP END PARALLEL
-!             write(37,*) time /unit_time, user_real_var2 / unit_acc !!! QUITAR
         end if
 
         if (use_percentage) call percentage(time, final_time)
@@ -1720,8 +1717,6 @@ program main
         if (.not. is_premature_exit) j = j + 1
         
     end do main_loop
-
-!     close(37) !!! QUITAR
     
     !! Update surviving particles times
     if (use_chaos) particles_times(1:Nactive) = final_time ! Update particle times
@@ -1855,8 +1850,10 @@ program main
     nullify(domegadt)
     nullify(dmassdt)
     !!!!!!!!! BINNEADO !!!!!!!!
-    call disk_bins%free()
-    call disk_in_force%free()
+    if (use_bins) then
+        call disk_bins%free()
+        call disk_in_force%free()
+    end if
 
     if (use_screen) then 
         write (*,*) ACHAR(5)

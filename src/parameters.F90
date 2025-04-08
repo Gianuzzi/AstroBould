@@ -74,14 +74,14 @@ module parameters
     !! Geo-potential
     logical :: use_J2
     real(kind=8) :: J2_coefficient, J2_effective
-    !! Self-Gravity [Use BINS]
+    !! Self-Gravity [Use BINS] [Not available yet]
     logical :: use_self_gravity
     integer(kind=4) :: Norder_self_gravity
-    !! Viscosity [Use BINS]
+    !! Viscosity [Use BINS] [Not available yet]
     logical :: use_viscosity
     real(kind=8) :: viscosity
     
-    !!! BINS
+    !! BINS [Not available yet]
     logical :: use_bins
     integer(kind=4) :: Nbins, binning_method
     real(kind=8) :: rmin_bins, rmax_bins
@@ -170,8 +170,6 @@ module parameters
     logical :: hard_center
     logical :: use_elements
 
-    !!! User variables (JUST FOR DEBUGGING)
-    real(kind=8), dimension(2) :: user_real_var2
 
     ! PARAMETERS ARRAY
     integer, parameter :: equation_size = 4
@@ -343,8 +341,8 @@ module parameters
             !! Viscosity
             use_viscosity = .False.
             viscosity = - uno
-            !! BINS (only used if Self Gravity or Viscosity)
-            Nbins = 3
+            ! !! BINS (only used if Self Gravity or Viscosity)
+            Nbins = 0
             binning_method = 1
             rmin_bins = - uno ! -1 means first particle (initial)
             rmax_bins = - uno ! -1 means last particle (initial)
@@ -572,18 +570,6 @@ module parameters
                             read (value_str, *) rmin_bins
                         case("outer bin edge")
                             read (value_str, *) rmax_bins
-                        ! case("include tri-axi")
-                        !     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                        !         loTriAx = .True.
-                        !     else
-                        !         loTriAx = .False.
-                        !     end if
-                        ! case("first ellipsoid")
-                        !     read (value_str, *) tria
-                        ! case("second ellipsoi")
-                        !     read (value_str, *) trib
-                        ! case("third ellipsoid")
-                        !     read (value_str, *) tric
                         case("min distance fr")
                             read (value_str, *) min_distance
                         case("max distance fr")
@@ -962,16 +948,6 @@ module parameters
             if (abs(mass_exp_damping_time) < tini) mass_exp_damping_time = infinity
             !!! Geo-Potential
             if (abs(J2_coefficient) > tini) use_J2 = .True.
-            ! !!! Triaxial
-            ! if ((tria < tini) .or. .not. loTriAx) tria = cero
-            ! if ((trib < tini) .or. .not. loTriAx) trib = cero
-            ! if ((tric < tini) .or. .not. loTriAx) tric = cero
-            ! if ((abs(tria) < tini) .or. (abs(trib) < tini) .or. (abs(tric) < tini)) loTriAx = .False.
-
-            ! if (loTriAx .and. (Nboulders > 0)) then
-            !     write (*,*) "ERROR: No se puede usar triaxialidad con boulders."
-            !     stop 1
-            ! end if
             
             ! Self-Gravity or Viscosity
             if (use_self_gravity .or. use_viscosity) then
@@ -1097,7 +1073,7 @@ module parameters
             end if
             allocate(particles_hexit(0:Nparticles))
             particles_hexitptr => particles_hexit(0) ! Puntero a Hard Exit (NO TOCAR) !!! Ya está en default
-            allocate(particles_bins(1:Nparticles))  ! Unused if use_bins is False
+            if (use_bins) allocate(particles_bins(1:Nparticles))  ! Unused if use_bins is False
         end subroutine allocate_particles
 
         ! 5.3 Liberar arrays asteroide
@@ -1130,7 +1106,7 @@ module parameters
                 deallocate(particles_min_e, particles_max_e)
             end if
             deallocate(particles_hexit)
-            deallocate(particles_bins)  ! Unused if use_bins is False
+            if (use_bins) deallocate(particles_bins)  ! Unused if use_bins is False
         end subroutine free_particles
 
         ! 6. Setear los tiempos de salida

@@ -368,30 +368,30 @@ module forces
             rcm = y(3:4)
             vcm = y(5:6)
             
-            if (use_bins) then
-                do i = 1, Nactive
-                    particle_i = i * equation_size + 2
-                    particles_dist(i) = sqrt(y(particle_i+1)*y(particle_i+1) + y(particle_i+2)*y(particle_i+2))
-                    order(i) = i
-                end do
-                if (update_bins) then
-                    dummy_real2 = (/rmin_bins, rmax_bins/)
-                    if (update_rmin_bins) dummy_real2(1) = max(minval(particles_dist), asteroid_radius)
-                    if (update_rmax_bins) dummy_real2(2) = maxval(particles_dist)
-                    if (disk_in_force%binning_method == 3) then
-                        call quickargsort(particles_dist, order, 1, Nactive)
-                        ordered = .True.
-                    end if
-                    call disk_in_force%free()                    
-                    call disk_in_force%allocate_bins(Nbins=Nbins, &
-                        & rmin=dummy_real2(1), &
-                        & rmax=dummy_real2(2), &
-                        & binning_method=binning_method)
-                    call disk_in_force%set_bins(particles_dist(order))
-                end if
-                call disk_in_force%get_particles_bins(particles_dist(order), particles_bins, ordered)
-                call disk_in_force%calculate_mass(particles_dist(order), particles_mass(order), particles_bins)
-            end if
+!             if (use_bins) then
+!                 do i = 1, Nactive
+!                     particle_i = i * equation_size + 2
+!                     particles_dist(i) = sqrt(y(particle_i+1)*y(particle_i+1) + y(particle_i+2)*y(particle_i+2))
+!                     order(i) = i
+!                 end do
+!                 if (update_bins) then
+!                     dummy_real2 = (/rmin_bins, rmax_bins/)
+!                     if (update_rmin_bins) dummy_real2(1) = max(minval(particles_dist), asteroid_radius)
+!                     if (update_rmax_bins) dummy_real2(2) = maxval(particles_dist)
+!                     if (disk_in_force%binning_method == 3) then
+!                         call quickargsort(particles_dist, order, 1, Nactive)
+!                         ordered = .True.
+!                     end if
+!                     call disk_in_force%free()
+!                     call disk_in_force%allocate_bins(Nbins=Nbins, &
+!                         & rmin=dummy_real2(1), &
+!                         & rmax=dummy_real2(2), &
+!                         & binning_method=binning_method)
+!                     call disk_in_force%set_bins(particles_dist(order))
+!                 end if
+!                 call disk_in_force%get_particles_bins(particles_dist(order), particles_bins, ordered)
+!                 call disk_in_force%calculate_mass(particles_dist(order), particles_mass(order), particles_bins)
+!             end if
             
             ! Particles accelerations and omegadot
             omegadot = cero ! Init
@@ -414,13 +414,13 @@ module forces
                     & asteroid_mass, rcm, vcm, &
                     & asteroid_inertia, & ! inertia no varía
                     & omegadot, dummy_real2, ab)
-                ! Calculate Self-Gravity
-                if (use_bins) call disk_in_force%calculate_force ( &
-                    & particles_bins(order(i)), &
-                    & rb, &
-                    & particles_dist(i), &
-                    & Norder_self_gravity, &
-                    & ab)
+!                 ! Calculate Self-Gravity
+!                 if (use_bins) call disk_in_force%calculate_force ( &
+!                     & particles_bins(order(i)), &
+!                     & rb, &
+!                     & particles_dist(i), &
+!                     & Norder_self_gravity, &
+!                     & ab)
                 dydt(particle_i+1) = vb(1)
                 dydt(particle_i+2) = vb(2)
                 dydt(particle_i+3) = ab(1)
@@ -521,7 +521,7 @@ module forces
                 end if
                 r_from_cm = rb - rcm
                 v_from_cm = vb - vcm
-            else 
+            else
                 r_from_cm = rb
                 v_from_cm = vb
             end if
@@ -532,7 +532,7 @@ module forces
             if (dist_from_cm < min_distance) hexit_p = 1
             if (dist_from_cm > max_distance) hexit_p = 2
             if (hexit_p > 0) return
-        
+
             ! Calculate gravity (and torque if needed)
             if (use_torque .and. (mp > tini)) then
                 torque = cero
@@ -689,7 +689,6 @@ module forces
             acc_radial = - drag_coefficient * mean_movement * vel_radial
             
             ab = ab + acc_radial * r_from_cm / dist_from_cm * drag_factor
-            user_real_var2 = acc_radial * r_from_cm / dist_from_cm * drag_factor
         end subroutine naive_stokes_acceleration
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
