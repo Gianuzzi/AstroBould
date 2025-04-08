@@ -1,5 +1,6 @@
 module parameters
     use constants
+    use bins
     use omp_lib
 
     implicit none
@@ -44,6 +45,7 @@ module parameters
     character(30) :: datafile, chaosfile, mapfile, multfile
     character(30) :: tomfile, particlesfile
     logical :: use_flush_output
+    logical :: only_potential_map = .False.
     !! Tomfile
     integer(kind=4) :: tom_index_number, tom_total_number
     real(kind=8), dimension(:), allocatable :: tom_times, tom_deltaomega, tom_deltamass
@@ -65,11 +67,28 @@ module parameters
     logical :: use_naive_stokes
     real(kind=8) :: drag_coefficient, drag_charac_time
     !! Mass and omega damping
+    logical :: use_omega_damping
     real(kind=8) :: mass_exp_damping_time, omega_exp_damping_time
+    real(kind=8) :: omega_exp_poly_A, omega_exp_poly_B, omega_exp_poly_AB
     real(kind=8) :: omega_linear_damping_time, omega_linear_damping_slope
     !! Geo-potential
     logical :: use_J2
-    real(kind=8) :: J2_coefficient
+    real(kind=8) :: J2_coefficient, J2_effective
+    !! Self-Gravity [Use BINS] [Not available yet]
+    logical :: use_self_gravity
+    integer(kind=4) :: Norder_self_gravity
+    !! Viscosity [Use BINS] [Not available yet]
+    logical :: use_viscosity
+    real(kind=8) :: viscosity
+    
+    !! BINS [Not available yet]
+    logical :: use_bins
+    integer(kind=4) :: Nbins, binning_method
+    real(kind=8) :: rmin_bins, rmax_bins
+    type(my_bins) :: disk_bins
+    logical :: update_rmin_bins, update_rmax_bins, update_bins
+    integer(kind=4), dimension(:), allocatable :: particles_bins
+    
 
     ! Bodies
     integer(kind=4) :: Ntotal
@@ -78,9 +97,10 @@ module parameters
     real(kind=8) :: asteroid_omega, asteroid_rotational_period, lambda_kep, omega_kep
     real(kind=8) :: asteroid_a_corot 
     real(kind=8), dimension(2) :: asteroid_pos, asteroid_vel, asteroid_acc
-    real(kind=8) :: asteroid_theta, asteroid_theta_correction
+    real(kind=8) :: asteroid_theta, asteroid_theta_correction, asteroid_torque
     !!! Primary + boulders
-    real(kind=8), dimension(:), allocatable :: mass_ast_arr, radius_ast_arr, mu_ast_arr, theta_ast_arr, dist_ast_arr
+    real(kind=8), dimension(:), allocatable :: mass_ast_arr, radius_ast_arr, mu_ast_arr, theta_ast_arr
+    real(kind=8), dimension(:), allocatable :: dist_ast_arr, inertia_ast_arr
     real(kind=8), dimension(:,:), allocatable :: pos_ast_arr, vel_ast_arr, acc_ast_arr
     !!! Primary
     real(kind=8) :: mass_primary, radius_primary
@@ -108,6 +128,7 @@ module parameters
     real(kind=8), dimension(:), allocatable :: particles_mass
     !!!!! Coordenadas y elementos orbitales
     real(kind=8), dimension(:,:), allocatable :: particles_coord, particles_elem
+    real(kind=8), dimension(:,:), allocatable :: particles_acc
     real(kind=8), dimension(:), allocatable :: particles_MMR, particles_dist
     ! Bodies (AUX)
     !! Asteroid
@@ -129,7 +150,7 @@ module parameters
     real(kind=8), dimension(:), allocatable :: particles_min_a, particles_min_e
     real(kind=8), dimension(:), allocatable :: particles_times
     integer(kind=4) :: discarded_particles, staying_particles
-
+    
 
     ! Extra/Auxiliar variables
     integer(kind=4) :: i, j, k
@@ -149,9 +170,10 @@ module parameters
     logical :: hard_center
     logical :: use_elements
 
+
     ! PARAMETERS ARRAY
     integer, parameter :: equation_size = 4
-    real(kind=8), dimension(:), allocatable :: parameters_arr, parameters_arr_new
+    real(kind=8), dimension(:), allocatable :: parameters_arr, parameters_arr_new, parameters_der
     
     !!! Hard Exit
     logical :: is_premature_exit
@@ -304,12 +326,26 @@ module parameters
             drag_coefficient = cero
             drag_charac_time = cero
             !! Dampings
+            use_omega_damping = .False.
             omega_linear_damping_time = infinity
             omega_exp_damping_time = infinity
+            omega_exp_poly_A = cero
+            omega_exp_poly_B = cero
             mass_exp_damping_time = infinity
             !! Geo-Potential
             use_J2 = .False.
             J2_coefficient = cero
+            !! Self Gravity
+            use_self_gravity = .False.
+            Norder_self_gravity = 3
+            !! Viscosity
+            use_viscosity = .False.
+            viscosity = - uno
+            ! !! BINS (only used if Self Gravity or Viscosity)
+            Nbins = 0
+            binning_method = 1
+            rmin_bins = - uno ! -1 means first particle (initial)
+            rmax_bins = - uno ! -1 means last particle (initial)
             ! Escape/Collision (and merge)
             min_distance = cero
             max_distance = infinity
@@ -500,31 +536,45 @@ module parameters
                             read (value_str, *) drag_coefficient
                         case("drag force char")
                             read (value_str, *) drag_charac_time
+                        case("include rotatio")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                use_omega_damping = .True.
+                            else
+                                use_omega_damping = .False.
+                            end if
                         case("rotation linear")
                             read (value_str, *) omega_linear_damping_time
                         case("rotation expone")
                             read (value_str, *) omega_exp_damping_time
+                        case("rotation A poly")
+                            read (value_str, *) omega_exp_poly_A
+                        case("rotation B poly")
+                            read (value_str, *) omega_exp_poly_B
                         case("mass exponentia")
                             read (value_str, *) mass_exp_damping_time
                         case("geo-potential J")
                             read (value_str, *) J2_coefficient
-                        ! case("include tri-axi")
-                        !     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                        !         loTriAx = .True.
-                        !     else
-                        !         loTriAx = .False.
-                        !     end if
-                        ! case("first ellipsoid")
-                        !     read (value_str, *) tria
-                        ! case("second ellipsoi")
-                        !     read (value_str, *) trib
-                        ! case("third ellipsoid")
-                        !     read (value_str, *) tric
+                        case("include self-gr")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                use_self_gravity = .True.
+                            else
+                                use_self_gravity = .False.
+                            end if
+                        case("max Legendre ex")
+                            read (value_str, *) Norder_self_gravity
+                        case("total bins used")
+                            read (value_str, *) Nbins
+                        case("binning method ")
+                            read (value_str, *) binning_method
+                        case("inner bin edge")
+                            read (value_str, *) rmin_bins
+                        case("outer bin edge")
+                            read (value_str, *) rmax_bins
                         case("min distance fr")
                             read (value_str, *) min_distance
                         case("max distance fr")
                             read (value_str, *) max_distance
-                        case("merge collsions")
+                        case("merge collision")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 use_merge = .True.
                             else
@@ -557,7 +607,7 @@ module parameters
                                 use_datafile = .True.
                                 datafile = trim(value_str)
                             end if
-                        case("idividual file")
+                        case("individual file")
                             if ((to_lower(trim(value_str)) == "n") .or. &
                               & (to_lower(trim(value_str)) == "no")) then
                                 use_multiple_outputs = .False.
@@ -804,7 +854,7 @@ module parameters
                         write (*,*) "    --noparallel : No usar paralelización para partículas"
                         write (*,*) "    --help       : Mostrar esta ayuda"
                         stop 0
-                    case default
+                    case default  ! Si no es un argumento reconocido...
                         is_number = .False.
                         call get_command_argument(i, aux_character30)
                         do j = 0, 9
@@ -889,19 +939,33 @@ module parameters
             !!! tau_m y tau_o
             if (abs(omega_linear_damping_time) < tini) omega_linear_damping_time = infinity
             if (abs(omega_exp_damping_time) < tini) omega_exp_damping_time = infinity
+            if (abs(omega_exp_poly_A) < tini) omega_exp_poly_A = cero
+            if (abs(omega_exp_poly_B) < tini) omega_exp_poly_B = cero
+            if (.not. ((abs(omega_linear_damping_time) > tini) .and. (omega_linear_damping_time < infinity)) .and. &
+              & .not. ((abs(omega_exp_damping_time) > tini) .and. (omega_exp_damping_time < infinity)) .and. &
+              & .not. ((abs(omega_exp_poly_A) > tini) .and. (abs(omega_exp_poly_B) > tini))) &
+              & use_omega_damping = .False.
             if (abs(mass_exp_damping_time) < tini) mass_exp_damping_time = infinity
             !!! Geo-Potential
             if (abs(J2_coefficient) > tini) use_J2 = .True.
-            ! !!! Triaxial
-            ! if ((tria < tini) .or. .not. loTriAx) tria = cero
-            ! if ((trib < tini) .or. .not. loTriAx) trib = cero
-            ! if ((tric < tini) .or. .not. loTriAx) tric = cero
-            ! if ((abs(tria) < tini) .or. (abs(trib) < tini) .or. (abs(tric) < tini)) loTriAx = .False.
-
-            ! if (loTriAx .and. (Nboulders > 0)) then
-            !     write (*,*) "ERROR: No se puede usar triaxialidad con boulders."
-            !     stop 1
-            ! end if
+            
+            ! Self-Gravity or Viscosity
+            if (use_self_gravity .or. use_viscosity) then
+                use_bins = .True.
+                !! Check
+                if (binning_method < 1 .or. binning_method > 3) then
+                    write (*,*) "ERROR: binning_method must be 1 (equal dr), 2 (equal dA) or 3 (equal Npart)."
+                    stop 1
+                end if
+                if (Nbins < 2) then
+                    write (*,*) "ERROR: No se puede crear menos de 2 bines."
+                    stop 1
+                end if
+                !! Set default update values
+                update_rmin_bins = rmin_bins < - tini
+                update_rmax_bins = rmax_bins < - tini
+                update_bins = update_rmin_bins .or. update_rmax_bins .or. binning_method == 3
+            end if         
 
             !! Error
             if (error_digits < 1) then
@@ -980,7 +1044,7 @@ module parameters
             !! Parámetros y auxiliares
             allocate(mass_ast_arr(0:Nboulders), radius_ast_arr(0:Nboulders), mu_ast_arr(0:Nboulders), Gmass_ast_arr(0:Nboulders))
             allocate(pos_ast_arr(0:Nboulders,2), vel_ast_arr(0:Nboulders,2), acc_ast_arr(0:Nboulders,2))
-            allocate(theta_ast_arr(0:Nboulders), dist_ast_arr(0:Nboulders))
+            allocate(theta_ast_arr(0:Nboulders), dist_ast_arr(0:Nboulders), inertia_ast_arr(0:Nboulders))
             if (Nboulders > 0) then
                 allocate(theta_from_primary(Nboulders), mu_from_primary(Nboulders))
                 allocate(pos_from_primary(Nboulders,2), vel_from_primary(Nboulders,2), acc_from_primary(Nboulders,2))
@@ -996,6 +1060,7 @@ module parameters
             allocate(particles_index(1:Nparticles))
             allocate(particles_mass(1:Nparticles))
             allocate(particles_coord(1:Nparticles,4), particles_elem(1:Nparticles,4))
+            allocate(particles_acc(1:Nparticles,2))
             allocate(particles_MMR(1:Nparticles))
             allocate(particles_dist(1:Nparticles))
             allocate(sorted_particles_index(1:Nparticles))
@@ -1008,6 +1073,7 @@ module parameters
             end if
             allocate(particles_hexit(0:Nparticles))
             particles_hexitptr => particles_hexit(0) ! Puntero a Hard Exit (NO TOCAR) !!! Ya está en default
+            if (use_bins) allocate(particles_bins(1:Nparticles))  ! Unused if use_bins is False
         end subroutine allocate_particles
 
         ! 5.3 Liberar arrays asteroide
@@ -1020,7 +1086,7 @@ module parameters
                 deallocate(pos_from_primary, vel_from_primary, acc_from_primary)
             end if
             deallocate(pos_ast_arr, vel_ast_arr, acc_ast_arr)
-            deallocate(theta_ast_arr, dist_ast_arr)
+            deallocate(theta_ast_arr, dist_ast_arr, inertia_ast_arr)
         end subroutine free_asteroid_arrays
 
         ! 5.4 Liberar arrays particles
@@ -1029,6 +1095,7 @@ module parameters
 
             deallocate(particles_index, particles_mass)
             deallocate(particles_coord, particles_elem)
+            deallocate(particles_acc)
             deallocate(particles_MMR, particles_dist)
             deallocate(sorted_particles_index)
             deallocate(particles_outcome)
@@ -1039,6 +1106,7 @@ module parameters
                 deallocate(particles_min_e, particles_max_e)
             end if
             deallocate(particles_hexit)
+            if (use_bins) deallocate(particles_bins)  ! Unused if use_bins is False
         end subroutine free_particles
 
         ! 6. Setear los tiempos de salida
@@ -1345,57 +1413,7 @@ module parameters
             real(kind=8) :: res
 
             res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
-        end function cross2D
-        
-        ! 11.x Subroutines to argsort arrays
-
-        ! 11.1 Calcular indices de elementos ordenados en un arreglo
-        subroutine argsort(a, b)
-            implicit none
-            real(kind=8), intent(in) :: a(:)   ! array of numbers
-            integer(kind=4), intent(out) :: b(size(a))  ! indices into the array 'a' that sort it
-            integer :: N, i, imin, temp1
-            real(kind=8) :: temp2, a2(size(a))
-
-            a2 = a
-            N = size(a)
-            do i = 1, N
-                b(i) = i
-            end do
-            do i = 1, N-1
-                ! find ith smallest in 'a'
-                imin = minloc(a2(i:), 1) + i - 1
-                ! swap to position i in 'a' and 'b', if not already there
-                if (imin /= i) then
-                    temp2 = a2(i); a2(i) = a2(imin); a2(imin) = temp2
-                    temp1 = b(i); b(i) = b(imin); b(imin) = temp1
-                end if
-            end do
-        end subroutine argsort
-
-        ! 11.2 Calcular indices de elementos ordenados en un arreglo de enteros
-        subroutine argsort_int(a, b)
-            implicit none
-            integer(kind=4), intent(in) :: a(:)   ! array of numbers
-            integer(kind=4), intent(out) :: b(size(a))  ! indices into the array 'a' that sort it
-            integer :: N, i, imin, temp1
-            integer(kind=4) :: temp2, a2(size(a))
-
-            a2 = a
-            N = size(a)
-            do i = 1, N
-                b(i) = i
-            end do
-            do i = 1, N-1
-                ! find ith smallest in 'a'
-                imin = minloc(a2(i:), 1) + i - 1
-                ! swap to position i in 'a' and 'b', if not already there
-                if (imin /= i) then
-                    temp2 = a2(i); a2(i) = a2(imin); a2(imin) = temp2
-                    temp1 = b(i); b(i) = b(imin); b(imin) = temp1
-                end if
-            end do
-        end subroutine argsort_int
+        end function cross2D    
 
         ! 12. Obtener centro de masas de asteroide
         subroutine get_center_of_mass(m, rib, vib, mcm, rcm, vcm)
@@ -1464,7 +1482,7 @@ module parameters
             logical, intent(in) :: chaos
             integer(kind=4) :: tmp_integer, tmp_integer2
             integer(kind=4) :: aux_integeri, aux_integerj
-            real(kind=8), dimension(11) :: tmp_data
+            real(kind=8), dimension(13) :: tmp_data
             real(kind=8), dimension(5) :: tmp_chaos_data
             real(kind=8), dimension(4) :: tmp_parameters_arr
 
@@ -1481,6 +1499,7 @@ module parameters
             particles_elem(i,:) = particles_elem(j,:)
             particles_MMR(i) = particles_MMR(j)
             particles_dist(i) = particles_dist(j)
+            particles_acc(i,:) = particles_acc(j,:)
             particles_outcome(i) = particles_outcome(j)
 
             particles_index(j) = tmp_integer
@@ -1489,6 +1508,7 @@ module parameters
             particles_elem(j,:) = tmp_data(6:9)
             particles_MMR(j) = tmp_data(10)
             particles_dist(j) = tmp_data(11)
+            particles_acc(j,:) = tmp_data(12:13)
             particles_outcome(j) = tmp_integer2
 
             aux_integeri = first_particle + 4 * (i - 1)
@@ -1519,60 +1539,190 @@ module parameters
         
         ! 17.x Subroutines to sort arrays
 
-        ! 17.1 Ordenar valores reales
-        recursive subroutine quicksort(a, first, last)
+        ! 17.1 Devuelve índices de ordenado
+        recursive subroutine quickargsort(a, b, first, last)
             implicit none
-            real(kind=8), dimension(:), intent(inout) ::  a
-            integer(kind=4), intent(in):: first, last
-            real(kind=8) :: x, t
-            integer(kind=4) :: i, j
+            real(kind=8), intent(in) :: a(:)          ! Input array (not modified)
+            integer(kind=4), intent(inout) :: b(size(a))    ! Indices array to be sorted
+            integer(kind=4), intent(in) :: first, last
+            real(kind=8) :: pivot
+            integer(kind=4) :: i, j, temp
 
-            x = a(floor((first + last) * uno2))
+            ! Pivot selection
+            pivot = a(b(floor((first + last) * uno2)))
             i = first
             j = last
             do
-                do while (a(i) < x)
-                    i=i+1
+                do while (a(b(i)) < pivot)
+                    i = i + 1
                 end do
-                do while (x < a(j))
-                    j=j-1
+                do while (a(b(j)) > pivot)
+                    j = j - 1
                 end do
                 if (i >= j) exit
-                t = a(i);  a(i) = a(j);  a(j) = t
-                i=i+1
-                j=j-1
+
+                ! Swap indices in 'b' array
+                temp = b(i)
+                b(i) = b(j)
+                b(j) = temp
+
+                i = i + 1
+                j = j - 1
             end do
-            if (first < i-1) call quicksort(a, first, i-1)
-            if (j+1 < last)  call quicksort(a, j+1, last)
+
+            ! Recursive calls
+            if (first < i - 1) call quickargsort(a, b, first, i - 1)
+            if (j + 1 < last)  call quickargsort(a, b, j + 1, last)
+        end subroutine quickargsort
+
+
+        ! 17.2 Devuelve índices de ordenado (entero)
+        recursive subroutine quickargsort_int(a, b, first, last)
+            implicit none
+            integer(kind=4), intent(in) :: a(:)    ! Input array (not modified)
+            integer(kind=4), intent(inout) :: b(size(a)) ! Indices array to be sorted
+            integer(kind=4), intent(in) :: first, last
+            integer(kind=4) :: pivot
+            integer(kind=4) :: i, j, temp
+
+            ! Pivot selection
+            pivot = a(b(floor((first + last) * uno2)))
+            i = first
+            j = last
+            do
+                do while (a(b(i)) < pivot)
+                    i = i + 1
+                end do
+                do while (a(b(j)) > pivot)
+                    j = j - 1
+                end do
+                if (i >= j) exit
+
+                ! Swap indices in 'b' array
+                temp = b(i)
+                b(i) = b(j)
+                b(j) = temp
+
+                i = i + 1
+                j = j - 1
+            end do
+
+            ! Recursive calls
+            if (first < i - 1) call quickargsort_int(a, b, first, i - 1)
+            if (j + 1 < last)  call quickargsort_int(a, b, j + 1, last)
+        end subroutine quickargsort_int
+        
+        ! 17.3 Sort an array
+        subroutine quicksort(a, first, last)
+            implicit none
+            real(kind=8), intent(inout) :: a(:)          ! Input array
+            integer(kind=4), intent(in) :: first, last   ! First and last indices
+            integer(kind=4), allocatable :: b(:)         ! Indices of array to be sorted
+            real(kind=8), allocatable :: a_copy(:)       ! Temporary copy of the array
+            integer(kind=4) :: n_sort
+            
+            ! Total amount of values to sort
+            n_sort = last - first + 1
+            
+            ! Allocate and initialize the indices array
+            allocate(b(1 : n_sort))
+            allocate(a_copy(1 : n_sort))
+            
+            ! Initialize indices to [first, first+1, ..., last]
+            do i = 1, n_sort
+                b(i) = i
+                a_copy(i) = a(first + i - 1)
+            end do
+
+            ! Sort indices using the quickargsort subroutine
+            call quickargsort(a_copy, b, 1, n_sort)
+
+            ! Copy the sorted values back to the original array
+            a(first:last) = a_copy(b)
+
+            ! Deallocate temporary arrays
+            deallocate(b, a_copy)
         end subroutine quicksort
-
-        ! 17.2 Ordenar valores enteros
-        recursive subroutine quicksort_int(a, first, last)
+        
+        ! 17.4 Sort and integer array
+        subroutine quicksort_int(a, first, last)
             implicit none
-            integer(kind=4), dimension(:), intent(inout) ::  a
-            integer(kind=4), intent(in):: first, last
-            integer(kind=4) :: x, t
-            integer(kind=4) :: i, j
+            integer(kind=4), intent(inout) :: a(:)       ! Input array
+            integer(kind=4), intent(in) :: first, last   ! First and last indices
+            integer(kind=4), allocatable :: b(:)         ! Indices of array to be sorted
+            integer(kind=4), allocatable :: a_copy(:)    ! Temporary copy of the array
+            integer(kind=4) :: n_sort
 
-            x = a(ceiling((first + last) * uno2))
-            i = first
-            j = last
-            do
-                do while (a(i) < x)
-                    i=i+1
-                end do
-                do while (x < a(j))
-                    j=j-1
-                end do
-                if (i >= j) exit
-                t = a(i);  a(i) = a(j);  a(j) = t
-                i=i+1
-                j=j-1
+            ! Total amount of values to sort
+            n_sort = last - first + 1
+            
+            ! Allocate and initialize the indices array
+            allocate(b(1 : n_sort))
+            allocate(a_copy(1 : n_sort))
+            
+            ! Initialize indices to [first, first+1, ..., last]
+            do i = 1, n_sort
+                b(i) = i
+                a_copy(i) = a(first + i - 1)
             end do
-            if (first < i-1) call quicksort_int(a, first, i-1)
-            if (j+1 < last)  call quicksort_int(a, j+1, last)
-        end subroutine quicksort_int
 
+            ! Sort indices using the quickargsort subroutine
+            call quickargsort_int(a_copy, b, 1, n_sort)
+
+            ! Copy the sorted values back to the original array
+            a(first:last) = a_copy(b)
+
+            ! Deallocate temporary arrays
+            deallocate(b, a_copy)
+        end subroutine quicksort_int
+        
+        ! 17.5 Reorder from given order
+        subroutine reorder(array,  order, n)
+            real(kind=8), dimension(:), intent(inout) :: array
+            integer(kind=4), dimension(:), intent(in) :: order
+            integer(kind=4), intent(in) :: n
+            real(kind=8), dimension(n) :: tmp
+            integer(kind=4) :: i
+
+            ! Loop and reorder
+            do i = 1, n
+                tmp(i) = array(order(i))
+            end do
+            array(1:n) = tmp
+        end subroutine reorder
+
+        ! 17.5 Reorder from given order
+        subroutine reorder_int(array,  order, n)
+            integer(kind=4), dimension(:), intent(inout) :: array
+            integer(kind=4), dimension(:), intent(in) :: order
+            integer(kind=4), intent(in) :: n
+            integer(kind=4), dimension(n) :: tmp
+            integer(kind=4) :: i
+
+            ! Loop and reorder
+            do i = 1, n
+                tmp(i) = array(order(i))
+            end do
+            array(1:n) = tmp
+        end subroutine reorder_int
+
+        ! 17.6 Reorder 2D from given order
+        subroutine reorder2D(array, order, n)
+            real(kind=8), dimension(:,:), intent(inout) :: array
+            integer(kind=4), dimension(:), intent(in) :: order
+            integer(kind=4), intent(in) :: n
+            real(kind=8), dimension(n, size(array, 2)) :: tmp
+            integer(kind=4) :: i
+        
+            ! Loop and reorder the first axis based on the order array
+            do i = 1, n
+                tmp(i, :) = array(order(i), :)
+            end do
+        
+            ! Copy the reordered array back
+            array(1:n, :) = tmp
+        end subroutine reorder2D
+        
         ! 18 Hacer merger de masa (y ang mom) con asteroide
         subroutine merge_into_asteroid(mass, angmom)
             implicit none
@@ -1679,7 +1829,7 @@ module parameters
         subroutine write_elements(i, unit_file)
             implicit none
             integer(kind=4), intent(in) :: i, unit_file
-
+            
             aux_integer = sorted_particles_index(i)
             write (unit_file,f233) &
                 & particles_index(aux_integer), &
@@ -1706,8 +1856,7 @@ module parameters
                 & time / unit_time, &
                 & particles_coord(aux_integer,1:2) / unit_dist, &
                 & particles_coord(aux_integer,3:4) / unit_vel, &
-                & cero, cero, &
-! & parameters_arr_new(first_particle + 4 * (i - 1) + 2 : first_particle + 4 * (i - 1) + 3) / unit_acc, &$
+                & particles_acc(aux_integer,1:2) / unit_acc, &
                 & particles_mass(aux_integer) / unit_mass, &
                 & particles_dist(aux_integer) / unit_dist
         end subroutine write_coordinates_particle
@@ -1743,7 +1892,10 @@ module parameters
 
             ! Sort particles by index
             allocate (my_sorted_particles_index(Nparticles))
-            call argsort_int(particles_index, my_sorted_particles_index)
+            do i = 1, Nparticles
+                my_sorted_particles_index = i
+            end do
+            call quickargsort_int(particles_index, my_sorted_particles_index, 1, Nparticles)
             call fseek(unit_file, 0, 0)       ! move to beginning
             ! Remember that Initial conditions were not swapped
             do i = 1, Nparticles
@@ -1834,13 +1986,20 @@ module parameters
             real(kind=8), intent(in)  :: dm, e
             real(kind=8), intent(out) :: u, f
             real(kind=8) :: u0, dif, seno, cose
+            integer(kind=4) :: i, MAX_ITER = 50
             
             u0 = dm
             dif = uno
+            i = 0
             do while (dif > epsilon)
                 u = dm + e * sin(u0)
                 dif = abs(u - u0)
                 u0 = u
+                i = i + 1
+                if (i > MAX_ITER) then
+                    print*, 'aver: too many iterations'
+                    exit
+                end if
             end do
             seno = sqrt(uno + e) * sin(uno2 * u)
             cose = sqrt(uno - e) * cos(uno2 * u)
@@ -2196,11 +2355,32 @@ module parameters
             
         end function check_continue_v2
         
-        
         ! 99 Subrutina para pointer vacío (no hace nada) con input i
         subroutine do_nothing_i(i)
             implicit none
             integer(kind=4), intent(in) :: i
         end subroutine do_nothing_i
+
+
+        ! 101 Escribir porcentaje
+        subroutine percentage(tout, tstop)
+            implicit none
+            real(kind=8), intent(in) :: tout, tstop
+            integer(kind=4) :: iper
+            character(len=100) :: guiones
+            character(len=4) :: cestado
+        
+            iper = int(100.0 * tout / tstop)
+            guiones = repeat('.', iper)
+        
+            if (iper < 100) then
+                write(cestado, '(i3)') iper
+                write(*, '(a)', advance='no') char(13) // trim(guiones) // trim(adjustl(cestado)) // '%'
+            else
+                write(*, '(a)', advance='no') char(13) // trim(guiones) // '. FIN'
+                write(*, *)
+            end if
+        end subroutine percentage
+        
 
 end module parameters

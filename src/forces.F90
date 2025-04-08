@@ -5,6 +5,7 @@ module forces
     procedure (dydt_template), pointer :: dydt => null ()
     procedure (dydt_single_template), pointer :: domegadt => null ()
     procedure (dydt_single_template), pointer :: dmassdt => null ()
+    type(my_bins) :: disk_in_force
     
     abstract interface
         ! Here must be every f_i defined explicitly
@@ -49,23 +50,44 @@ module forces
             dydt = cero
         end function
 
+        !! domega/dt
+
         function domega_dt_linear (t, omega) result(domegadt)
-            ! Exponential omega damping
+            ! omega(t) = omega0 + omega_linear_damping_slope * t
+            ! domega/dt = omega_linear_damping_slope
             implicit none
             real(kind=8), intent(in) :: t, omega
             real(kind=8) :: domegadt
             
             domegadt = omega_linear_damping_slope
         end function domega_dt_linear
-        
+    
         function domega_dt_exponential (t, omega) result(domegadt)
-            ! Exponential omega damping
+            ! omega(t) = omega0 * exp (-(t-t0)/omega_exp_damping_time)
+            ! domega/dt = -exp(- (t-t0) / omega_exp_damping_time) * omega0 / omega_exp_damping_time = 
+            !           = - omega / omega_exp_damping_time
             implicit none
             real(kind=8), intent(in) :: t, omega
             real(kind=8) :: domegadt
             
-            domegadt = -exp (- (t - initial_time) / omega_exp_damping_time) * omega / omega_exp_damping_time
+            ! domegadt = -exp (- (t - initial_time) / omega_exp_damping_time) * &
+            !             & asteroid_initial_conditions(8) / omega_exp_damping_time
+            domegadt = - omega / omega_exp_damping_time
         end function domega_dt_exponential
+
+        function domega_dt_expoly (t, omega) result(domegadt)
+            ! omega(t) = omega0 * exp (A * (t-t0)**B)
+            ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
+            implicit none
+            real(kind=8), intent(in) :: t, omega
+            real(kind=8) :: domegadt
+            
+            ! domegadt = omega_exp_poly_A * omega_exp_poly_B * (t - initial_time + tini)**(omega_exp_poly_B - uno) * &
+            !            & exp(omega_exp_poly_A * (t - initial_time + tini)**omega_exp_poly_B) * asteroid_initial_conditions(8)
+            domegadt = omega_exp_poly_AB * (t - initial_time + tini)**(omega_exp_poly_B - uno) * omega
+        end function domega_dt_expoly
+
+        !! dmass/dt
 
         function dmass_dt_exponential(t, mass) result(dmassdt)
             ! Exponential mass damping
@@ -75,6 +97,8 @@ module forces
             
             dmassdt = -exp (- (t - initial_time) / mass_exp_damping_time) * mass / mass_exp_damping_time
         end function dmass_dt_exponential
+
+        !! dY/dt
 
         function dydt_explicit_v1 (t, y) result(dydt)
             !y = / x0, y0, vx0, vy0, Bould, Part, .../
@@ -90,6 +114,7 @@ module forces
             integer(kind=4) :: i, ineqs, particle_i
             real(kind=8) :: dummy_real, dummy_real2(2)
 
+            ! Initialize
             dydt = cero            
 
             ! Explicit positions, velocities and accelerations for boulders
@@ -132,6 +157,7 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
+
         end function dydt_explicit_v1
         
         function dydt_implicit_v1 (t, y) result(dydt) ! Tienen un error sistemático que no detecto aún
@@ -149,6 +175,7 @@ module forces
             integer(kind=4) :: i, ineqs, particle_i
             real(kind=8) :: dummy_real2(2), aux_real
 
+            ! Initialize
             dydt = cero
 
             ! Calculate the center of mass of the asteroid
@@ -165,8 +192,10 @@ module forces
             end do
             rcm = rcm / asteroid_mass ! rcm = sum_i m_i * r_i / M
             vcm = vcm / asteroid_mass ! vcm = sum_i m_i * v_i / M
+
             if (sqrt(sum(rcm * rcm)) < error_tolerance) rcm = cero ! Avoid numerical errors
             if (sqrt(sum(vcm * vcm)) < error_tolerance) vcm = cero ! Avoid numerical errors
+
             ! Calculate angmom and inertia
             aux_real = cero
             angmom = cero
@@ -174,10 +203,10 @@ module forces
             do i = 0, Nboulders
                 raux(i,:) = rib(i,:) - rcm
                 vaux(i,:) = vib(i,:) - vcm
-                ! aux_real = 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 ! Inertia Sphere
-                angmom = angmom + mass_ast_arr(i) * cross2D(raux(i,:), vaux(i,:)) ! Traslacional
+                aux_real = 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 ! Inertia Sphere
+                angmom = angmom + mass_ast_arr(i) * cross2D(rib(i,:), vib(i,:)) ! Traslacional (+ Rotational)
                 ! angmom = angmom + aux_real * cross2D(raux(i,:), vaux(i,:))/sum(raux(i,:) * raux(i,:)) ! Rotacional (Sphere)
-                inertia = inertia + aux_real + mass_ast_arr(i) * sum(raux(i,:) * raux(i,:)) ! Sphere + Steiner
+                inertia = inertia + inertia_ast_arr(i) + mass_ast_arr(i) * sum(raux(i,:) * raux(i,:)) ! Sphere + Steiner
             end do
             !! Get Omega from L/I
             omega = angmom / inertia
@@ -212,7 +241,8 @@ module forces
             !$OMP END DO
             !$OMP END PARALLEL
 
-            omegadot = domegadt(t, omega) + omegadot ! Update omega
+            ! Update omega
+            omegadot = domegadt(t, omega) + omegadot 
 
             ! Set bodies accelerations (acá al final porque necesitamos omegadot)
             do i = 0, Nboulders 
@@ -222,7 +252,7 @@ module forces
                 dydt(ineqs+3) = -omega2 * raux(i,1) - omegadot * raux(i,2) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
                 dydt(ineqs+4) = -omega2 * raux(i,2) + omegadot * raux(i,1) ! a_i = -w^2 * r_i + dw/dt * (-ry,rx)
             end do
-            ! print*, t, angmom/asteroid_angmom, inertia/asteroid_inertia, omega/asteroid_omega
+
         end function dydt_implicit_v1
         
         function dydt_explicit_v2 (t, y) result(dydt)
@@ -292,6 +322,7 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
+
         end function dydt_explicit_v2
         
         function dydt_implicit_v2 (t, y) result(dydt)
@@ -304,8 +335,12 @@ module forces
             real(kind=8) :: rb(2), vb(2), ab(2)
             real(kind=8) :: rcm(2), vcm(2)
             real(kind=8) :: theta, omega, omegadot
-            integer(kind=4) :: i, particle_i
+            integer(kind=4) :: i, aux, particle_i
             real(kind=8) :: dummy_real2(2)
+            
+            real(kind=8) :: particles_dist(1:Nactive)
+            integer(kind=4) :: order(1:Nactive)
+            logical :: ordered = .False.
 
             dydt = cero
 
@@ -333,6 +368,31 @@ module forces
             rcm = y(3:4)
             vcm = y(5:6)
             
+!             if (use_bins) then
+!                 do i = 1, Nactive
+!                     particle_i = i * equation_size + 2
+!                     particles_dist(i) = sqrt(y(particle_i+1)*y(particle_i+1) + y(particle_i+2)*y(particle_i+2))
+!                     order(i) = i
+!                 end do
+!                 if (update_bins) then
+!                     dummy_real2 = (/rmin_bins, rmax_bins/)
+!                     if (update_rmin_bins) dummy_real2(1) = max(minval(particles_dist), asteroid_radius)
+!                     if (update_rmax_bins) dummy_real2(2) = maxval(particles_dist)
+!                     if (disk_in_force%binning_method == 3) then
+!                         call quickargsort(particles_dist, order, 1, Nactive)
+!                         ordered = .True.
+!                     end if
+!                     call disk_in_force%free()
+!                     call disk_in_force%allocate_bins(Nbins=Nbins, &
+!                         & rmin=dummy_real2(1), &
+!                         & rmax=dummy_real2(2), &
+!                         & binning_method=binning_method)
+!                     call disk_in_force%set_bins(particles_dist(order))
+!                 end if
+!                 call disk_in_force%get_particles_bins(particles_dist(order), particles_bins, ordered)
+!                 call disk_in_force%calculate_mass(particles_dist(order), particles_mass(order), particles_bins)
+!             end if
+            
             ! Particles accelerations and omegadot
             omegadot = cero ! Init
             !$OMP PARALLEL DEFAULT(SHARED) &
@@ -354,6 +414,13 @@ module forces
                     & asteroid_mass, rcm, vcm, &
                     & asteroid_inertia, & ! inertia no varía
                     & omegadot, dummy_real2, ab)
+!                 ! Calculate Self-Gravity
+!                 if (use_bins) call disk_in_force%calculate_force ( &
+!                     & particles_bins(order(i)), &
+!                     & rb, &
+!                     & particles_dist(i), &
+!                     & Norder_self_gravity, &
+!                     & ab)
                 dydt(particle_i+1) = vb(1)
                 dydt(particle_i+2) = vb(2)
                 dydt(particle_i+3) = ab(1)
@@ -361,7 +428,9 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-            dydt(2) = domegadt(t, omega) + omegadot
+
+            dydt(2) = domegadt(t, omega) + omegadot ! Update omega
+
         end function dydt_implicit_v2      
         
         function dydt_no_boulders (t, y) result(dydt)
@@ -408,10 +477,8 @@ module forces
             end do
             !$OMP END DO
             !$OMP END PARALLEL
-!             if (any(particles_hexit(1:Nactive) .ne. 0)) particles_hexit(0) = 1
+            
         end function dydt_no_boulders
-        
-        
         
         
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -454,7 +521,7 @@ module forces
                 end if
                 r_from_cm = rb - rcm
                 v_from_cm = vb - vcm
-            else 
+            else
                 r_from_cm = rb
                 v_from_cm = vb
             end if
@@ -465,7 +532,7 @@ module forces
             if (dist_from_cm < min_distance) hexit_p = 1
             if (dist_from_cm > max_distance) hexit_p = 2
             if (hexit_p > 0) return
-        
+
             ! Calculate gravity (and torque if needed)
             if (use_torque .and. (mp > tini)) then
                 torque = cero
@@ -570,7 +637,6 @@ module forces
             ab = ab + acc_grav * G
         end subroutine gravitational_acceleration_and_torque
         
-        
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!! STOKES !!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -599,7 +665,6 @@ module forces
             ab = ab - stokes_C * (v_from_cm - stokes_alpha * vel_circ) * stokes_factor ! =-C(v * - alpha*vc)
         end subroutine stokes_acceleration
 
-
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!! NAIVE-STOKES !!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -614,16 +679,18 @@ module forces
             drag_factor = uno2 * (uno + tanh(1.d1 * (uno - t / drag_charac_time)))
             Gmcm = G * mcm
             v2 = dot_product(v_from_cm, v_from_cm)
+
             ! Debemos chequear que la partícula no esté "desligada"
             aux_real = dos * Gmcm / dist_from_cm - v2
             if (aux_real < cero) return ! No se puede calcular
+
             mean_movement = aux_real**(1.5d0) / Gmcm ! n
             vel_radial = dot_product(v_from_cm, r_from_cm) / dist_from_cm 
             acc_radial = - drag_coefficient * mean_movement * vel_radial
+            
             ab = ab + acc_radial * r_from_cm / dist_from_cm * drag_factor
         end subroutine naive_stokes_acceleration
 
-        
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!! GEO-POTENTIAL !!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -633,7 +700,7 @@ module forces
             real(kind=8), intent(in) :: m0, r_from_primary(2), distance_from_primary
             real(kind=8), intent(inout) :: ab(2)
             
-            ab = ab - G * m0 * 1.5d0 * J2_coefficient * r_from_primary / distance_from_primary**5
+            ab = ab - G * m0 * J2_effective * r_from_primary / distance_from_primary**5
         end subroutine J2_acceleration       
     
 end module forces
