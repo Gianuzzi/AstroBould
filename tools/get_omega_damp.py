@@ -8,8 +8,12 @@ import matplotlib.pyplot as plt
 # tau = - Omega0 / dOmegadt
 # factor = Omega_end / Omega0
 
+# Set real parameters
+P_real = 7.004 / 24.  # [days]
+Omega_real = 2 * np.pi / P_real  # [Rad/day]
+
 # Set actual parameters
-P_actual = 0.25  # [days]
+P_actual = P_real
 Omega_actual = 2 * np.pi / P_actual  # [Rad/day]
 
 # Example parameters
@@ -36,9 +40,9 @@ if as_example:
 else:
 
     # Set my parameters
-    Omega0 = 0  # [Rad/day]
+    Omega0 = Omega_actual+0.25  # [Rad/day]
     Omega_end = Omega_actual  # [Rad/day]
-    factor = 0.85  # Omega_end = Omega0 * factor
+    factor = 0.9  # Omega_end = Omega0 * factor
 
     # Calculate my initial Omega or end Omega
     if Omega0 <= 0 and Omega_end <= 0:
@@ -63,11 +67,14 @@ tau = -Omega0 / dOmegadt
 # Calculate change rate
 change_ratio = Omega0 / Omega_actual
 
+# Calculate characteristic time (intersection Real and dOmegadt)
+t_intersect = (Omega_actual - Omega0) / dOmegadt
+
 # Print results
 print(f"dOmegadt = {dOmegadt:.4e} rad/day^2")
 print(f"Change rate = {change_ratio:.7f} == {change_ratio*100:.7f}%")
 print(f"Time_end = {time_end:.5e} days")
-print("Actual parameters")
+print("Real parameters")
 print(f" Omega = {Omega_actual:.7f}")
 print(f" Prot = {P_actual:.7f} days")
 print("My parameters")
@@ -76,6 +83,7 @@ print(f" Prot0 = {2*np.pi/Omega0:.7f} days")
 print(f" Omega_end = {Omega_end:.7f}")
 print(f" Prot_end = {2*np.pi/Omega_end:.7f} days")
 print(f" tau_omega = {tau:.4e} days")
+print(f" characteristic time = {t_intersect:.4e} days")
 print("Example parameters")
 print(f" Omega0 = {Omega0_example:.7f}")
 print(f" Prot0 = {2*np.pi/Omega0_example:.7f} days")
@@ -104,6 +112,13 @@ plt.figure(dpi=120, figsize=(8, 6))
 
 ax = plt.gca()
 
+
+ax.axhline(
+    Omega_actual,
+    color="g",
+    ls="-",
+    label=f"Real: {Omega_actual:.2f} rad/day " + f"({P_real:.5f} days)",
+)
 ax.axhline(
     Omega0,
     color="r",
@@ -111,12 +126,20 @@ ax.axhline(
     label=f"Initial: {Omega0:.2f} rad/day " + f"({2*np.pi/Omega0:.5f} days)",
 )
 ax.axhline(
-    Omega_actual,
+    Omega_end,
     color="k",
     ls="--",
-    label=f"Actual: {Omega_actual:.2f} rad/day " + f"({P_actual:.5f} days)",
+    label=f"Final: {Omega_end:.2f} rad/day " + f"({2*np.pi/Omega_end:.5f} days)",
 )
 
+# Annotate t_intersect
+ax.annotate(
+    f"t_intersect = {t_intersect:.4e} days",
+    xy=(t_intersect/365.25, Omega_actual),
+    xytext=(t_intersect/365.25*0.7, Omega_actual + 0.03),
+    arrowprops=dict(arrowstyle="->"),
+    fontsize=10,
+)
 if as_example:
     plt.plot(time / 365.25, Omega0_example, label="Example")
 plt.plot(time / 365.25, Omega, label="Mine")

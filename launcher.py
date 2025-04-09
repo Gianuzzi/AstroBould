@@ -655,7 +655,7 @@ if __name__ == "__main__":
         # Creamos el archivo de salida
         if datafile:
             print("")
-            print(f"Creando archivo salida '{datafile}.out'")
+            print(f"Creando archivo de salida '{datafile}.out'")
             if os.path.isfile(os.path.join(wrk_dir, f"{datafile}.out")):
                 print(
                     "WARNING: Se ha reemplazando archivo "
@@ -665,7 +665,7 @@ if __name__ == "__main__":
         # Creamos el archivo de caos
         if final_chaos:
             print("")
-            print(f"Creando archivo chaos '{final_chaos}.out'")
+            print(f"Creando archivo de caos '{final_chaos}.out'")
             if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
                 print(
                     "WARNING: Se ha reemplazando archivo "
