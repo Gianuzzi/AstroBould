@@ -58,8 +58,10 @@ module forces
             implicit none
             real(kind=8), intent(in) :: t, omega
             real(kind=8) :: domegadt
+            real(kind=8) :: factor
             
-            domegadt = omega_linear_damping_slope
+            factor = uno2 * (uno + tanh(1.d1 * (uno - t / omega_charac_time)))
+            domegadt = omega_linear_damping_slope * factor
         end function domega_dt_linear
     
         function domega_dt_exponential (t, omega) result(domegadt)

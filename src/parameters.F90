@@ -68,9 +68,11 @@ module parameters
     real(kind=8) :: drag_coefficient, drag_charac_time
     !! Mass and omega damping
     logical :: use_omega_damping
-    real(kind=8) :: mass_exp_damping_time, omega_exp_damping_time
+    real(kind=8) :: omega_charac_time
+    real(kind=8) :: omega_exp_damping_time
     real(kind=8) :: omega_exp_poly_A, omega_exp_poly_B, omega_exp_poly_AB
     real(kind=8) :: omega_linear_damping_time, omega_linear_damping_slope
+    real(kind=8) :: mass_exp_damping_time
     !! Geo-potential
     logical :: use_J2
     real(kind=8) :: J2_coefficient, J2_effective
@@ -327,6 +329,7 @@ module parameters
             drag_charac_time = cero
             !! Dampings
             use_omega_damping = .False.
+            omega_charac_time = cero
             omega_linear_damping_time = infinity
             omega_exp_damping_time = infinity
             omega_exp_poly_A = cero
@@ -550,6 +553,8 @@ module parameters
                             read (value_str, *) omega_exp_poly_A
                         case("rotation B poly")
                             read (value_str, *) omega_exp_poly_B
+                        case("omega damping c")
+                            read (value_str, *) omega_charac_time
                         case("mass exponentia")
                             read (value_str, *) mass_exp_damping_time
                         case("geo-potential J")
@@ -937,10 +942,12 @@ module parameters
             if (drag_charac_time .le. cero) drag_charac_time = infinity
             if (abs(drag_coefficient) < tini) use_naive_stokes = .False.
             !!! tau_m y tau_o
-            if (abs(omega_linear_damping_time) < tini) omega_linear_damping_time = infinity
-            if (abs(omega_exp_damping_time) < tini) omega_exp_damping_time = infinity
-            if (abs(omega_exp_poly_A) < tini) omega_exp_poly_A = cero
-            if (abs(omega_exp_poly_B) < tini) omega_exp_poly_B = cero
+            if ((abs(omega_charac_time) < tini) .or. .not. use_omega_damping) omega_charac_time = cero
+            if (omega_charac_time .le. cero) omega_charac_time = infinity
+            if ((abs(omega_linear_damping_time) < tini) .or. .not. use_omega_damping) omega_linear_damping_time = infinity
+            if ((abs(omega_exp_damping_time) < tini) .or. .not. use_omega_damping) omega_exp_damping_time = infinity
+            if ((abs(omega_exp_poly_A) < tini) .or. .not. use_omega_damping) omega_exp_poly_A = cero
+            if ((abs(omega_exp_poly_B) < tini) .or. .not. use_omega_damping) omega_exp_poly_B = cero
             if (.not. ((abs(omega_linear_damping_time) > tini) .and. (omega_linear_damping_time < infinity)) .and. &
               & .not. ((abs(omega_exp_damping_time) > tini) .and. (omega_exp_damping_time < infinity)) .and. &
               & .not. ((abs(omega_exp_poly_A) > tini) .and. (abs(omega_exp_poly_B) > tini))) &
