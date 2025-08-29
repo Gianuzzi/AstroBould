@@ -4,7 +4,6 @@ module auxiliar
     
     contains
 
-
         ! From lower to upper case
         function to_upper(strIn) result(strOut)
             ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
@@ -295,5 +294,81 @@ module auxiliar
             res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
         end function cross2D
         
+        ! Read a file with data structured in columns
+        subroutine read_columns_file(file_name, values_arr, method)
+            implicit none
+            character(LEN=*), intent(in) :: file_name
+            real(kind=8), dimension(:,:), allocatable, intent(out) :: values_arr
+            integer(kind=4), optional :: method
+            integer(kind=4), parameter :: MAX_COLS = 8, MAX_ROWS = 10000
+            real(kind=8), dimension(:,:), allocatable :: aux_real_arr
+            integer(kind=4) :: ncols, nrows, i, j, io, my_method
+            real(kind=8) :: aux_real
+            character(260) :: auxstr
+            logical :: existe
+           
+            if (present(method)) then
+                my_method = method
+            else
+                my_method = 0
+            end if
+
+            inquire (file=trim(file_name), exist=existe)
+            if (.not. existe) then
+                write (*,*) "ERROR: File not found: ", trim(file_name)
+                stop 1
+            end if
+
+            open (unit=20, file=trim(file_name), status="old", action="read")
+
+            !! Count number of columns
+            ncols = 0
+            read (20, '(A)') auxstr
+            do i = 1,MAX_COLS
+                io = 0
+                read (auxstr, *, iostat=io) (aux_real, j=1,i)
+                if (io .ne. 0) exit
+            end do
+            if (io .eq. 0) then 
+                ncols = i
+            else
+                ncols = i - 1
+            end if
+            
+            rewind (20) ! Go to the beginning of the file
+            
+            if (my_method .eq. 0) then
+
+                !! Count number of rows
+                nrows = 0
+                do ! Count number of (valid) lines 
+                    read (20, *, iostat=io) aux_real
+                    if (is_iostat_end(io)) exit
+                    nrows = nrows + 1
+                end do
+
+                ! Allocate arrays
+                allocate (values_arr(nrows, ncols))
+                rewind (20) ! Go to the beginning of the file
+                do i = 1, nrows
+                    read (20, *) (values_arr(i,j), j=1,ncols)
+                end do
+
+            else
+                ! Allocate auxiliar array
+                allocate (aux_real_arr(MAX_ROWS, ncols))
+                nrows = 0
+                do i = 1, MAX_ROWS
+                    read (20, *, iostat=io) (aux_real_arr(i,j), j=1,ncols)
+                    if (is_iostat_end(io)) exit
+                    nrows = nrows + 1
+                end do
+                ! Allocate arrays
+                allocate (values_arr(nrows, ncols))
+                values_arr = aux_real_arr(1:nrows, 1:ncols)
+                deallocate (aux_real_arr)
+            end if
+            close (20)
+        end subroutine read_columns_file
 
 end module auxiliar

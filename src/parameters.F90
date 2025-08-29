@@ -5,134 +5,113 @@ module parameters
     use omp_lib
 
     implicit none
+
+    
+    logical :: existe_configfile = .False.  ! Wether if config file exists
+    
+    ! This contains only the input parameters
+    type :: params
+        ! Times for the integration - 
+        real(kind=8) :: initial_time = cero
+        real(kind=8) :: final_time = cero
+        real(kind=8) :: output_timestep = cero
+        real(kind=8) :: output_number = cero
+        integer(kind=4) :: case_output_type = 2
+        ! Parameters for the Integration - 
+        logical :: use_parallel = .False.
+        integer(kind=4) :: requested_threads = 1
+        ! Adaptive step integrations - 
+        integer(kind=4) :: error_digits = 12
+        real(kind=8) :: learning_rate = uno
+        ! The primary -
+        real(kind=8) :: mass_primary = cero
+        real(kind=8) :: radius_primary = cero
+        ! Rotation -
+        real(kind=8) :: lambda_kep = cero
+        real(kind=8) :: asteroid_rotational_period = cero
+        ! Moons - 
+        logical :: use_moonsfile = .False.
+        character(30) :: moonsfile = ""
+        ! Particles - 
+        logical :: use_particlesfile = .False.
+        character(30) :: particlesfile = ""
+        ! Extra forces/effects - 
+        real(kind=8) :: use_stokes = .False.
+        real(kind=8) :: stokes_a_damping_time = infinity
+        real(kind=8) :: stokes_e_damping_time = infinity
+        real(kind=8) :: stokes_charac_time = cero
+        logical :: use_naive_stokes = .False.
+        real(kind=8) :: drag_coefficient = cero
+        real(kind=8) :: drag_charac_time = cero
+        logical :: use_omega_damping = .False.
+        real(kind=8) :: omega_linear_damping_time = infinity
+        real(kind=8) :: omega_exp_damping_time = infinity
+        real(kind=8) :: omega_exp_poly_A = cero
+        real(kind=8) :: omega_exp_poly_B = cero
+        real(kind=8) :: omega_charac_time = cero
+        real(kind=8) :: mass_exp_damping_time = infinity
+        real(kind=8) :: J2_coefficient = cero
+        ! Binned forces/effects - [NOT AVAILABLE YET. STILL UNDER DEVELOPMENT]
+        logical :: use_self_gravity = .False.
+        integer(kind=4) :: Norder_self_gravity = 3
+        integer(kind=8) :: Nbins = 0
+        integer(kind=4) :: binning_method = 1
+        real(kind=8) :: rmin_bins = - uno ! -1 means first particle (initial)
+        real(kind=8) :: rmax_bins = - uno ! -1 means last particle (initial)
+        ! Conditions for Collision/Escape - 
+        real(kind=8) :: min_distance = cero
+        real(kind=8) :: max_distance = infinity
+        logical :: use_merge = .False.
+        ! Manual |(t)imes omega(t) mass_add(t)| file -
+        logical :: use_tomfile = .False.
+        character(30) :: tomfile = ""
+        ! Output -
+        logical :: use_screen = .False.
+        logical :: use_datafile = .False.
+        character(30) :: datafile = ""
+        logical :: use_multiple_outputs = .False.
+        character(30) :: multfile = ""
+        logical :: use_chaosfile = .False.
+        character(30) :: chaosfile = ""
+        logical :: use_datascreen = .True.
+        logical :: use_percentage = .False.
+        logical :: use_elements_output = .True.
+        logical :: use_potential_map = .False.
+        character(30) :: mapfile = ""
+        integer(kind=4) :: map_grid_size_x = 500
+        integer(kind=4) :: map_grid_size_y = 500
+        integer(kind=4) :: map_min_x = -300
+        integer(kind=4) :: map_max_x = 300
+        integer(kind=4) :: map_min_y = -300
+        integer(kind=4) :: map_max_y = 300
+        ! < Number of bodies >
+        integer(kind=4) :: Nboulders = 0
+        integer(kind=4) :: Nmoons = 0
+        integer(kind=4) :: Nparticles = 0
+        !! < Arrays with of bodies >
+        real(kind=8), dimension(:,:), allocatable :: boulders_in !! mass, radius, theta
+        real(kind=8), dimension(:,:), allocatable :: moons_in !! mass, a, e, M, w, Radius, MRR
+        real(kind=8), dimension(:,:), allocatable :: particles_in !! a, e, M, w, MRR
+    end type params
     
     ! Simulation
-    integer(kind=4) :: simulation_number  ! Número de simulación
+    integer(kind=4) :: simulation_number
 
-    ! Variables globales. Varias dentro de la subrutina read_conf_file
-    logical :: existe_configfile = .False.  ! Existe archivo config  
+    ! Integration dynamical variables
+    real(kind=8) :: time  ! Actual time of the integration
+    real(kind=8) :: timestep  ! This timestep 
+    real(kind=8) :: adaptive_timestep  ! This adaptive timestep
+    integer(kind=4) :: checkpoint_number  ! Number of actual timestep
+    real(kind=8) :: min_timestep  ! Minimum timestep
 
-    ! Configuración de integración
-    real(kind=8) :: initial_time  ! Tiempo inicial de integración
-    real(kind=8) :: final_time  ! Tiempo final de integración
-    real(kind=8) :: output_timestep  ! Paso de tiempo
-    integer(kind=4) :: output_number  ! Cantida de pasos de tiempo
-    integer(kind=4) :: case_output_type  ! 0 => linear, 1 => log, 2 => combination
-
-    !!!! Dinámico
-    real(kind=8) :: min_timestep  ! Paso de tiempo mínimo (cero por ahora)
-    real(kind=8) :: time  ! Tiempo de simulación
-    real(kind=8) :: timestep  ! Paso de tiempo de simulación
-    real(kind=8) :: adaptive_timestep  ! Paso de tiempo variable de la simulación
-    integer(kind=4) :: checkpoint_number  ! Número del paso de tiempo actual
-
-    !! Parámetros de error
-    integer(kind=4) :: error_digits  ! Dígitos de error en cálculo de parámetros
-    real(kind=8) :: learning_rate  ! Tasa de aprendizaje de paso adaptativo
-    !!!! Dinámico
-    real(kind=8) :: error_tolerance  ! 10**error
-    real(kind=8) :: min_distance  ! Distancia mínima hasta el asteroide
-    real(kind=8) :: max_distance  ! Distancia máxima hasta el asteroide
-    
-    !! Parámetros de paralelismo
-    real(kind=8) :: requested_threads  ! Cantidad de cpus pedidos
-    logical :: use_parallel  ! Usar version en paralelo con openmp
-    !!!! Dinámico
-    integer(kind=4) :: available_threads  ! Cpus disponibles
-    real(kind=8) :: my_threads  ! Cantidad de cpus usados
-    logical :: compiled_with_openmp = .False.  ! Logical si se usó openmp
+    integer(kind=4) :: available_threads  ! Avaliable threads to use
+    real(kind=8) :: my_threads  ! Amount of threads actually used
+    logical :: compiled_with_openmp = .False.  ! Flag of compiple with OpenMP
 
     ! Bodies
-    integer(kind=4) :: Ntotal  ! TODOS LOS CUERPOS (Asteroide es 1 solo)
-    integer(kind=4) :: Nactive ! Cuerpos activos
-
-    !! Asteroid
-    real(kind=8) :: asteroid_mass  ! Masa total del asteroide
-    real(kind=8) :: asteroid_radius  ! Radio máximo del asteroide
-
-    real(kind=8) :: asteroid_inertia  ! Momento de inercia del asteroide
-    real(kind=8) :: asteroid_angmom  ! Momento angular del asteroide
-    real(kind=8) :: asteroid_omega  ! Spin (Omega) del asteroide
-    real(kind=8) :: asteroid_rotational_period  ! Periodo rotacional del asteroide
-    real(kind=8) :: omega_kep  ! Omega Kepleriano del asteroide
-    real(kind=8) :: lambda_kep  ! Cociente de Omega a Omega Kepleriano del asteroide
-    real(kind=8) :: asteroid_a_corot  ! Semieje de co-rotación del asteroide
-
-    real(kind=8), dimension(2) :: asteroid_pos  ! Posición Xa, Ya del asteroide
-    real(kind=8), dimension(2) :: asteroid_vel  ! Velocidad VXa, VYa del asteroide
-    real(kind=8), dimension(2) :: asteroid_acc  ! Aceleración AXa, AYa del asteroide
-
-    real(kind=8) :: asteroid_theta  ! Ángulo de posición del asteroide respecto al eje x
-    real(kind=8) :: asteroid_theta_correction  ! Correción al ángulo de posición del asteroide respecto al eje x
-    real(kind=8) :: asteroid_torque  ! Torque sobre el asteroide
-
-    real(kind=8), dimension(4) :: asteroid_coord  ! Coordenadas de asteroide
-    real(kind=8), dimension(4) :: asteroid_elem  ! Elementos orbitales de asteroide
-
-    !!! Primary (0) + boulders
-    real(kind=8), dimension(:), allocatable :: mass_ast_arr  ! Masas de 0 y los boulders
-    real(kind=8), dimension(:), allocatable :: radius_ast_arr  ! Radios de 0 y los boulders
-    real(kind=8), dimension(:), allocatable :: mu_ast_arr  ! Cociente de masas de 0 y los boulders respecto al asteroide
-    real(kind=8), dimension(:), allocatable :: theta_ast_arr  ! Ángulo de posicón de 0 y los boulders respecto a eje x
-    real(kind=8), dimension(:), allocatable :: dist_ast_arr  ! Distancia de 0 y los boulders al centro de masas del asteride
-    real(kind=8), dimension(:), allocatable :: inertia_ast_arr  ! Inercia de 0 y los boulders desde el centro de masas del asteroide
-    real(kind=8), dimension(:,:), allocatable :: pos_ast_arr  ! Posición de 0 y los boulders respecto al centro de masas del asteroide
-    real(kind=8), dimension(:,:), allocatable :: vel_ast_arr  ! Posición de 0 y os boulders respecto al centro de masas del asteroide
-    real(kind=8), dimension(:,:), allocatable :: acc_ast_arr  ! Posición de 0 y los boulders respecto al centro de masas del asteroide
-
-    !!! Primary
-    real(kind=8) :: mass_primary  ! masa de 0
-    real(kind=8) :: radius_primary  ! radio de 0
-
-    !!! Boulders
-    logical :: use_boulders  ! Usar boulders
-    integer(kind=4) :: Nboulders  ! Cantidad de boulders
-    real(kind=8), dimension(:), allocatable :: theta_from_primary  ! Ángulo de posición de los boulders respecto a 0
-    real(kind=8), dimension(:), allocatable :: mu_from_primary  ! Cociente de masas de los boulders respecto a 0
-    real(kind=8), dimension(:,:), allocatable :: pos_from_primary  ! Posición de los boulders respecto a 0
-    real(kind=8), dimension(:,:), allocatable :: vel_from_primary  ! Velocidad de los boulders respecto a 0
-    real(kind=8), dimension(:,:), allocatable :: acc_from_primary  ! Aceleración de los boulders respecto a 0
-
-    !! Moons (massive)
-    logical :: use_moons  ! Usar lunas
-    integer(kind=4) :: Nmoons  ! Cantidad total de lunas
-
-    integer(kind=4), dimension(:), allocatable :: moons_index  ! Índices de lunas
-    integer(kind=4), dimension(:), allocatable :: sorted_moons_index  ! Índices ordenados de lunas
-    real(kind=8), dimension(:), allocatable :: moons_mass  ! Masas de lunas
-    real(kind=8), dimension(:), allocatable :: moons_mass_ratios  ! Cocientes de masas de lunas respecto a 0
-    real(kind=8), dimension(:), allocatable :: moons_radii  ! Radius de lunas
-    real(kind=8), dimension(:,:), allocatable :: moons_coord  ! Coordenadas de lunas
-    real(kind=8), dimension(:,:), allocatable :: moons_elem  ! Elementos orbitales de lunas
-    real(kind=8), dimension(:,:), allocatable :: moons_acc  ! Aceleración de lunas
-    real(kind=8), dimension(:), allocatable :: moons_MMR  ! MMR de lunas
-    real(kind=8), dimension(:), allocatable :: moons_dist  ! Distancia de lunas al centro de masas
-
-    !! Particles (massless)
-    logical :: use_particles  ! Usar partículas
-    integer(kind=4) :: Nparticles  ! Cantidad total de partículas
-
-    integer(kind=4), dimension(:), allocatable :: particles_index  ! Índices de partículas
-    integer(kind=4), dimension(:), allocatable :: sorted_particles_index  ! Índices ordenados de partículas
-    real(kind=8), dimension(:,:), allocatable :: particles_coord  ! Coordenadas de partículas
-    real(kind=8), dimension(:,:), allocatable :: particles_elem  ! Elementos orbitales de partículas
-    real(kind=8), dimension(:,:), allocatable :: particles_acc  ! Aceleración de partículas
-    real(kind=8), dimension(:), allocatable :: particles_MMR  ! MMR de partículas
-    real(kind=8), dimension(:), allocatable :: particles_dist  ! Distancia de partículas al centro de masas
+    integer(kind=4) :: Ntotal  ! Amount of all bodies (asteroid is just 1)
+    integer(kind=4) :: Nactive ! Active bodies
     
-   
-    ! Bodies (AUX)
-    !! Asteroid
-    real(kind=8) :: Gasteroid_mass  ! G * mAst
-    real(kind=8) :: asteroid_omega2  ! OmegaAst**2
-    real(kind=8) :: pos_ast_from_primary(2)  ! r0 -> rAst
-    real(kind=8) :: vel_ast_from_primary(2)  ! v0 -> vAst
-    real(kind=8) :: acc_ast_from_primary(2)  ! a0 -> aAst
-    real(kind=8) :: theta_ast_from_primary  ! theta0 -> thetaAst
-    !!! Primary + boulders
-    real(kind=8), dimension(:), allocatable :: Gmass_ast_arr  ! G * (m0, m1, ...)
-    !!! Particles
-    real(kind=8), dimension(:,:), allocatable :: aux_particles_arr
     integer(kind=4) :: first_particle
     integer(kind=4) :: last_particle
     integer(kind=4), dimension(:), allocatable :: particles_outcome
@@ -457,7 +436,7 @@ module parameters
 
             inquire(file=trim(file_name), exist=existe)
             if (.not. existe) then
-                if (use_screen) write (*,*) "El archivo ", trim(file_name), " no existe."
+                if (use_screen) write (*,*) "File ", trim(file_name), " does not exists."
                 return
             end if
 
@@ -955,22 +934,20 @@ module parameters
                         write (*,*) "    --nomapf     : No guardar mapas de potencial"
                         write (*,*) "    --implicit   : Usar método implícito (integra) [default]"
                         write (*,*) "    --explicit   : Usar método explícito (cos, sen)"
-                        write (*,*) "    --elem       : Imprimir elementos orbitales (solo partículas) [default]"
+                        write (*,*) "    --elem       : Imprimir elementos orbitales (lunas/partículas) [default]"
                         write (*,*) "    --noelem     : Imprimir coordenadas baricéntricas"
                         write (*,*) "    -tomfile     : Utilizar archivo de (t)iempos|omega|masa que sigue"
                         write (*,*) "    --notomfile  : No utilizar archivo de (t)iempos|omega|masa"
+                        write (*,*) "    -moonfile    : Utilizar archivo de lunas que sigue"
+                        write (*,*) "    --nomoonfile : No utilizar archivo de lunas"
                         write (*,*) "    -partfile    : Utilizar archivo de partículas que sigue"
                         write (*,*) "    --nopartfile : No utilizar archivo de partículas"
                         write (*,*) "    --noconfig   : No leer archivo de configuración"
-                        write (*,*) "    --version1   : Usar versión 1: y=(B0, B1, ..., P0, ...)"
-                        write (*,*) "    --version2   : Usar versión 2: y=(θ, ω, P0, ...) [default]"
-                        write (*,*) "    --merge      : Incluir asociar colisiones de partículas a asteroide"
-                        write (*,*) "    --nomerge    : No asociar colisiones de partículas"
-                        write (*,*) "    --torque     : Incluir torque de partículas hacia el asteroide"
-                        write (*,*) "    --notorque   : No incluir torque de partículas hacia el asteroide"
+                        write (*,*) "    --merge      : Incluir asociar colisiones de lunas/partículas a asteroide"
+                        write (*,*) "    --nomerge    : No asociar colisiones de lunas/partículas"
                         write (*,*) "    -parallel    : Paralelizar usando la cantida de thread que sique"                        
                         write (*,*) "    --parallel   : Paralelizar usando todos los threads disponibles"
-                        write (*,*) "    --noparallel : No usar paralelización para partículas"
+                        write (*,*) "    --noparallel : No usar paralelización para lunas/partículas"
                         write (*,*) "    --help       : Mostrar esta ayuda"
                         stop 0
                     case default  ! Si no es un argumento reconocido...

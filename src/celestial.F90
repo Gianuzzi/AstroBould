@@ -5,7 +5,6 @@ module celestial
     
     contains
 
-
         ! Get corotation a from rotating body
         function get_a_corot(mass, omega) result(acorot)
             implicit none
