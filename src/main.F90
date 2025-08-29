@@ -34,46 +34,57 @@ program main
         Nboulders = 1 ! Número de boulders
 
         if (Nboulders > 0) then
-        
-            !! Alocamos (No tocar)
-            call allocate_asteriod_arrays(Nboulders)
+            call allocate_asteriod_arrays(Nboulders)!! Alocatamos (No tocar)
 
-            !!!!! COCIENTE DE MASAS
             mu_from_primary(1) = 1.d-1        ! Cociente de masas entre boulder 1 y primary
-            ! mu_from_primary(2) = 1.d-6        ! Cociente de masas entre boulder 2 y primary
-            ! mu_from_primary(3) = 1.d-4        ! Cociente de masas entre boulder 3 y primary
-            ! mu_from_primary(4) = 1.d-7        ! Cociente de masas entre boulder 4 y primary
+            theta_from_primary(1) = cero   ! Ángulo de fase del boulder 1 [deg]
+            radius_ast_arr(1) = 2.5d0   ! Radio del boulder 1 [km]       
 
-            !!! ÁNGULOS DE FASE RESPECTO AL ORIGEN [deg]
-            theta_from_primary(1) = cero   ! Ángulo de fase del boulder 1[deg]
-            ! theta_from_primary(2) = 90     ! Ángulo de fase del boulder 2[deg]
-            ! theta_from_primary(3) = 180    ! Ángulo de fase del boulder 3[deg]
-            ! theta_from_primary(4) = 270    ! Ángulo de fase del boulder 4[deg]
+        end if
 
-            !!! RADIOS
-            radius_ast_arr(1) = 2.5d0   ! Radio del boulder 1 [km]
-            ! radius_ast_arr(2) = 1.5d0   ! Radio del boulder 2 [km]
-            ! radius_ast_arr(3) = 3.5d0   ! Radio del boulder 3 [km]
-            ! radius_ast_arr(4) = 2.5d0   ! Radio del boulder 3 [km]
-        
+        !! Moons
+        Nmoons = 0 ! Número de boulders
+
+        if (Nmoons > 0) then
+            call allocate_moons_arrays(Nmoons)!! Alocatamos (No tocar)
+
+            moons_mass_ratios(1) = 1.d-6 ! Cociente de masas entre luna 1 y asteroide
+            moons_elem(1,1) = cero  ! Semieje [km]
+            moons_elem(1,2) = cero  ! Eccentricidad
+            moons_elem(1,3) = cero  ! M [deg]
+            moons_elem(1,4) = cero  ! w [deg]
+            moons_radii(1) = cero  ! radius [km]
+            moons_MMR(1) = 3.1d0  ! MMR
+
+        end if
+
+        !! Particles
+        Nparticles = 0 ! Número de boulders
+
+        if (Nparticles > 0) then
+            call allocate_moons_arrays(Nparticles)!! Alocatamos (No tocar)
+
+            particles_elem(1,1) = cero  ! Semieje [km]
+            particles_elem(1,2) = cero  ! Eccentricidad
+            particles_elem(1,3) = cero  ! M [deg]
+            particles_elem(1,4) = cero  ! w [deg]
+            particles_MMR(1) = 4.1d0  ! MMR
+            
         end if
 
         !!!! Merges (colliding particles into asteroid)
-        use_merge = .True. ! Merge particles into asteroid
-
-        !!!! Torque
-        use_torque = .False. ! Cant be used with explicit method, or exponential omega damping
+        use_merge = .False. ! Merge particles into asteroid
         
         !!!! Stokes
         use_stokes = .False.
         stokes_a_damping_time = infinity                     ! [day]
         stokes_e_damping_time = stokes_a_damping_time / 1.d2 ! [day]
-        stokes_charac_time = cero                            ! [day] Tiempo que actua stokes
+        stokes_charac_time = cero                            ! [day] Tiempo que actúa stokes
 
         !!!! Naive-Stokes (drag)
         use_naive_stokes = .False.
         drag_coefficient = cero  ! Eta
-        drag_charac_time = cero  ! [day] Tiempo que actua drag
+        drag_charac_time = cero  ! [day] Tiempo que actúa drag
 
         !!!! Geo-Potential (J2)
         use_J2 = .False.
@@ -94,6 +105,7 @@ program main
         rmax_bins = - uno ! <=0 last particle (initial). =0 means FIXED over time
 
         !!! Parámetros corrida
+
         !!!! Tiempos
         initial_time = cero      ! Initial time [day]
         final_time = 2.d3        ! Final time [day]
@@ -101,33 +113,29 @@ program main
         case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
         output_number = 10000    ! Number of outputs (if dt_out=0)
         output_timestep = cero   ! Output timestep [day] (used if case_output_type != 1)
+
         !!!! Error
         learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
         error_digits = 12        ! [For adaptive step integrators] Digits for relative error
+
         !!!! Colision y escape
         min_distance = -1.5d0    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
         max_distance = -1.d2     ! Max distance before escape [km] ! -x => R0 * x
-        
-        !!!! Particle elements
-        use_single_particle = .False.          ! Single particle? (THIS ONE BELOW)
-        single_part_mass = 6.3e14              ! Mass of the particle [kg]
-        single_part_elem_a = cero              ! Element a of the particle [km]
-        single_part_elem_e = cero !0.1d0       ! ecc
-        single_part_elem_M = cero              ! Mean anomaly (deg)
-        single_part_elem_w = cero              ! Pericenter argument (deg)
-        single_part_MMR = 5.2d0 !1.001d0 !3.3d0 ! resonancia nominal correspondiente
 
         !!! Output: "" or "no", if not used
         datafile = ""
         chaosfile = ""
         mapfile = ""
         multfile = ""
+
         !!!!! Screeen
         use_datascreen = .True. ! Print data in screen
         use_screen = .True. ! Print info in screen
+
         !!! Input: "" or "no", if not used
         tomfile = ""
         particlesfile = ""
+        moonsfile = ""
 
         !!! Parallel
         use_parallel = .False.
@@ -171,6 +179,11 @@ program main
     else 
         use_tomfile = .False.
     end if
+    if ((trim(moonsfile) /= "") .and. (trim(moonsfile) /= "no")) then
+        use_moonsfile = .True.
+    else 
+        use_moonsfile = .False.
+    end if
     if ((trim(particlesfile) /= "") .and. (trim(particlesfile) /= "no")) then
         use_particlesfile = .True.
     else 
@@ -187,10 +200,10 @@ program main
         end if
     end if
 
-    if (.not. any((/use_single_particle, use_particlesfile/))) then ! Hay partículas para integrar?
+    if (Ntotal - 1 == 0) then ! Hay partículas para integrar?
         if (.not. use_potential_map) then
             write (*,*) ACHAR(10)
-            write (*,*)  "EXITING: No se integrará ninguna partícula."
+            write (*,*)  "EXITING: No se integrará ninguna luna/partícula ."
             stop 1
         end if
         only_potential_map = .True.
@@ -244,12 +257,10 @@ program main
     
     !!!!!!!!!!!!!!!!!!!!!!!!!! Asteroide y Boulders !!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    ! Radios (unidades)
+    ! Radios
     radius_primary = radius_primary * unit_dist ! Unidades según G
     radius_ast_arr = radius_ast_arr * unit_dist ! Unidades según G  
     radius_ast_arr(0) = radius_primary ! Radio del cuerpo 0  
-
-
 
     ! Masas
     mass_primary = mass_primary * unit_mass ! Unidades según G
@@ -263,8 +274,6 @@ program main
     mu_ast_arr = mass_ast_arr / asteroid_mass ! Mues respecto a mcm
     Gmass_ast_arr = G * mass_ast_arr
     Gasteroid_mass = G * asteroid_mass
-    
-
 
     ! Rotaciones
     omega_kep = sqrt(Gasteroid_mass / radius_primary**3) / unit_time ! Movimiento medio (kepleriano) que tendrían los boulder
@@ -276,7 +285,7 @@ program main
         lambda_kep = asteroid_omega / omega_kep ! Cociente de velocidades
     end if
     asteroid_omega2 = asteroid_omega * asteroid_omega
-    asteroid_a_corot = (Gasteroid_mass / asteroid_omega2)**(1/3.)
+    asteroid_a_corot = get_a_corot(asteroid_mass, asteroid_omega)**(1/3.)
 
     !! Mensaje
     if (use_screen) then
@@ -287,8 +296,8 @@ program main
         write (*,f13) "  lambda_kep:", lambda_kep
         write (*,f13) "  Period    :", asteroid_rotational_period * 24 * unit_time, "[hs]"
         write (*,*) ACHAR(5)
-        write (*,f13) "Masa cuerpo central    :", mass_primary / unit_mass, "[kg]"
-        write (*,f13) "Radio de cuerpo central:", radius_primary / unit_dist, "[km]"
+        write (*,f13) "Masa de primary 0:", mass_primary / unit_mass, "[kg]"
+        write (*,f13) "Radio de primary 0:", radius_primary / unit_dist, "[km]"
         write (*,*) ACHAR(5)
         if (.not. use_boulders) then
             write(*,*) "La rotación se considera solo para definir parámetros iniciales."
@@ -296,12 +305,9 @@ program main
         end if
     end if
 
-
-
-    ! Coordenadas (Solo tienen sentido con boulders)
+    ! Coordenadas primary-céntricas (Solo tienen sentido con boulders)
     if (use_boulders) then
         theta_from_primary = theta_from_primary * radian ! Ángulos de fase de los boulders [rad]
-
         !! Astrocentricas
         do i = 1, Nboulders
             pos_from_primary(i,1) = radius_primary * cos(theta_from_primary(i)) ! Posición x del boulder i
@@ -327,7 +333,7 @@ program main
         end if
     end if
 
-    !! Centro de masas, desde primary
+    !! Centro de masas de asteroide, desde primary
     pos_ast_from_primary = cero
     vel_ast_from_primary = cero
     acc_ast_from_primary = cero
@@ -340,7 +346,7 @@ program main
     if (use_boulders) theta_ast_from_primary = atan2(pos_ast_from_primary(2), pos_ast_from_primary(1)) ! Ángulo del asteroide
     !!! Mensaje
     if (use_screen .and. use_boulders) then
-        write (*,*) "   Centro de masas desde m0: [x, y, vx, vy, ax, ay, mass]"
+        write (*,*) "   Centro de masas de asteroide desde primary: [x, y, vx, vy, ax, ay, mass]"
         write (*,f133) "         CM", pos_ast_from_primary / unit_dist, &
                                 & vel_ast_from_primary / unit_vel, &
                                 & acc_ast_from_primary / unit_acc, &
@@ -348,8 +354,7 @@ program main
         write (*,*) ACHAR(5)
     end if
 
-
-    !! Baricentricas
+    !! Asteroid-céntricas
     !!! Inicializamos asteroide
     pos_ast_arr(0,:) = - pos_ast_from_primary
     vel_ast_arr(0,:) = - vel_ast_from_primary
@@ -365,7 +370,7 @@ program main
     end do
     !!! Mensaje
     if (use_screen .and. use_boulders) then
-        write (*,*) "   Baricentricas: [x, y, vx, vy, ax, ay, mass, distance, theta]"
+        write (*,*) "   Asteroid-céntricas: [x, y, vx, vy, ax, ay, mass, distance, theta]"
         do i = 0, Nboulders
             write (*,f233) i, &
                      & pos_ast_arr(i,:) / unit_dist, &
@@ -377,7 +382,6 @@ program main
         end do
         write (*,*) ACHAR(5)
     end if
-
 
     ! Define asteroid radius
     if (use_boulders) then
@@ -392,36 +396,7 @@ program main
         write (*,*) ACHAR(5)
     end if
 
-    
-
-    ! Angular momentum and Inertia
-    asteroid_angmom = cero
-    asteroid_inertia = cero
-    if (use_boulders) then
-        do i = 0, Nboulders
-            inertia_ast_arr(i) = 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 ! Inertia Sphere
-            asteroid_angmom = asteroid_angmom + mass_ast_arr(i) * cross2D(pos_ast_arr(i,:), vel_ast_arr(i,:)) ! Traslacional
-            asteroid_angmom = asteroid_angmom + inertia_ast_arr(i) * asteroid_omega ! Rotacional (Sphere)
-            asteroid_inertia = asteroid_inertia + inertia_ast_arr(i) + mass_ast_arr(i) * dist_ast_arr(i)**2 ! Sphere + Steiner
-        end do
-    else 
-        asteroid_inertia = 0.4d0 *  mass_primary * radius_primary**2 ! Sphere
-        asteroid_angmom = asteroid_inertia * asteroid_omega ! Spin
-    end if
-    !! Mensaje
-    if (use_screen) then
-        write (*,f13) "Momento angular total    :", asteroid_angmom / unit_mass / (unit_dist**2) * unit_time, "[kg km^2 / day]"
-        write (*,f13) "Momento inercia asteroide:", asteroid_inertia / (unit_mass * unit_dist**2), "[kg km^2]"
-        write (*,*) "Check:"
-        write (*,f13) "    L / (I * omega):", asteroid_angmom / asteroid_inertia / asteroid_omega
-        write (*,f13) "    Relative error :", abs(asteroid_omega - (asteroid_angmom / asteroid_inertia)) / asteroid_omega
-        write (*,*) ACHAR(5)
-    end if
-
-
-
-
-    ! Asteroide, desde centro del sistema
+    ! Definimos al asteroide en (0,0) [Más adelante agregamos lunas]
     asteroid_pos = cero
     asteroid_vel = cero
     asteroid_acc = cero
@@ -458,6 +433,198 @@ program main
         end if
     end if
 
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Lunas !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    if (use_screen) then
+        write (*,*) ACHAR(5)
+        write (*,*) "---------- Preparando lunas ----------"
+        write (*,*) ACHAR(5)
+    end if
+
+    ! Desde archivo
+    if (use_moonsfile) then
+        if (Nmoons > 0) then
+            write (*,*) ACHAR(10)
+            write (*,*) "ERROR: No se pueden usar lunas de archivo y de config."
+            stop 1
+        end if
+        if (use_screen) write (*,*) "Leyendo lunas desde archivo: ", trim(moonsfile)
+        !!!! Formato: [mu, a, e, M, w, radius, (MMR)]
+        call read_columns_file(moonsfile, aux_particles_arr)
+        Nmoons = size(aux_particles_arr, 1)
+        if (Nmoons .eq. 0) then
+            write (*,*) ACHAR(10)
+            write (*,*) "ERROR: No se han leído lunas en el archivo moonfile."
+            stop 1
+        end if
+        if (use_screen) then
+            write (*,f12) "  Se han leído ", Nmoons, " filas."
+            write (*,f12) "  Se han leído ", size(aux_particles_arr, 2), " columnas."
+        end if
+        call allocate_moons_arrays(Nmoons)  ! Alocate arrays
+        ! Fill the arrays
+        moons_mass_ratios(:Nmoons) = aux_particles_arr(:,1) ! mu
+        moons_elem(:Nmoons,1) = aux_particles_arr(:,2)      ! a
+        moons_elem(:Nmoons,2) = aux_particles_arr(:,3)      ! e
+        moons_elem(:Nmoons,3) = aux_particles_arr(:,4)      ! M 
+        moons_elem(:Nmoons,4) = aux_particles_arr(:,5)      ! w
+        moons_radii(:Nmoons) = aux_particles_arr(:,6)       ! Radius
+        !! Check if MMR included
+        if (size(aux_particles_arr, 2) > 6) then
+            do i = 1, Nmoons
+                moons_MMR(i) = aux_particles_arr(i,7) ! MMR
+            end do
+        else
+            moons_MMR = cero
+        end if
+        ! Dealocatamos
+        deallocate(aux_particles_arr)
+    end if
+
+    ! Cast units
+    moons_elem(:Nmoons,1) = moons_elem(:Nmoons,1) * unit_dist  ! a
+    moons_elem(:Nmoons,3) = moons_elem(:Nmoons,3) * radian     ! M 
+    moons_elem(:Nmoons,4) = moons_elem(:Nmoons,4) * radian     ! w
+    moons_radii(:Nmoons) = moons_radii(:Nmoons) * unit_dist   ! Radius
+
+    !! Fill derived arrays
+    do i = 1, Nmoons
+        moons_index(i) = i
+        sorted_moons_index(i) = i
+        moons_mass(i) = moons_mass_ratios(i) * asteroid_mass
+        if (moons_MMR(i) > tini) then
+            moons_elem(i,1) = moons_MMR(i)**(2/3.) * get_a_corot(asteroid_mass + moons_mass(i), asteroid_omega)  ! a
+        else
+            moons_MMR(i) = (moons_elem(i,1) / get_a_corot(asteroid_mass + moons_mass(i), asteroid_omega))**(1.5) ! MMR 
+        end if
+    end do
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Partículas !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    if (use_screen) then
+        write (*,*) ACHAR(5)
+        write (*,*) "---------- Preparando partículas ----------"
+        write (*,*) ACHAR(5)
+    end if
+
+    ! Desde archivo
+    if (use_particlesfile) then
+        if (Nparticles > 0) then
+            write (*,*) ACHAR(10)
+            write (*,*) "ERROR: No se pueden usar partículas de archivo y de config."
+            stop 1
+        end if
+        if (use_screen) write (*,*) "Leyendo partículas desde archivo: ", trim(particlesfile)
+        !!!! Formato: [mu, a, e, M, w, radius, (MMR)]
+        call read_columns_file(particlesfile, aux_particles_arr)
+        Nparticles = size(aux_particles_arr, 1)
+        if (Nparticles .eq. 0) then
+            write (*,*) ACHAR(10)
+            write (*,*) "ERROR: No se han leído partículas en el archivo moonfile."
+            stop 1
+        end if
+        if (use_screen) then
+            write (*,f12) "  Se han leído ", Nparticles, " filas."
+            write (*,f12) "  Se han leído ", size(aux_particles_arr, 2), " columnas."
+        end if
+        call allocate_particles_arrays(Nparticles)  ! Alocate arrays
+        ! Fill the arrays
+        particles_elem(:Nparticles,1) = aux_particles_arr(:,1)  ! a
+        particles_elem(:Nparticles,2) = aux_particles_arr(:,2)  ! e
+        particles_elem(:Nparticles,3) = aux_particles_arr(:,3)  ! M 
+        particles_elem(:Nparticles,4) = aux_particles_arr(:,4)  ! w
+        !! Check if MMR included
+        if (size(aux_particles_arr, 2) > 4) then
+            do i = 1, Nparticles
+                particles_MMR(i) = aux_particles_arr(i,5) ! MMR
+            end do
+        else
+            particles_MMR = cero
+        end if
+        ! Dealocatamos
+        deallocate(aux_particles_arr)
+    end if
+
+    ! Cast units
+    particles_elem(:Nparticles,1) = particles_elem(:Nparticles,1) * unit_dist  ! a
+    particles_elem(:Nparticles,3) = particles_elem(:Nparticles,3) * radian     ! M 
+    particles_elem(:Nparticles,4) = particles_elem(:Nparticles,4) * radian     ! w
+
+    !! Fill derived arrays
+    do i = 1, Nparticles
+        particles_index(i) = i
+        sorted_particles_index(i) = i
+        if (particles_MMR(i) > tini) then
+            particles_elem(i,1) = particles_MMR(i)**(2/3.) * asteroid_a_corot  ! a
+        else
+            particles_MMR(i) = (particles_elem(i,1) / asteroid_a_corot)**(1.5) ! MMR 
+        end if
+    end do
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! All bodies !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+    Ntotal = 1 + Nmoons + Nparticles  ! 1 is the asteroid
+    Nactive = Nmoons + Nparticles  ! Do not count the asteroid here
+
+    if (Nactive .eq. 0) then
+        write (*,*) ACHAR(10)
+        write (*,*) "ERROR: No hay partículas ni lunas para integrar."
+        stop 1
+    end if
+
+    ! Redefine OMP threads if necessary. Lower equal to particle number
+    if ((use_parallel) .and. ((Ntotal - 1) < my_threads)) then
+        my_threads = Ntotal - 1
+        if (use_screen) then
+            write (*,f12) "WARNING: Se reducen los threads a ", my_threads
+            write (*,*) ACHAR(5)
+        end if
+        !$ call omp_set_num_threads(my_threads)
+    end if
+
+    ! Creamos vectores auxiliares: índices, coordenadas, distancias
+    aux_real_arr6 = cero
+    !$OMP PARALLEL DEFAULT(NONE) &
+    !$OMP PRIVATE(i,aux_real_arr6) &
+    !$OMP SHARED(Nparticles,asteroid_mass,particles_mass,particles_elem,particles_coord)
+    !$OMP DO SCHEDULE (STATIC)
+    do i = 1, Nparticles
+        !!! Coordenadas y vectores
+        call coord(asteroid_mass + particles_mass(i), & ! Masa
+                  & particles_elem(i,1), particles_elem(i,2), cero, & ! a, e, i
+                  & particles_elem(i,3), particles_elem(i,4), cero, & ! M, w, Omega
+                  & aux_real_arr6)
+        particles_coord(i,:) = (/aux_real_arr6(1:2), aux_real_arr6(4:5)/) ! [x, y, vx, vy]
+    end do
+    !$OMP END DO
+    !$OMP END PARALLEL
+    
+    !! Crear vector distancias
+    particles_dist = sqrt(sum(particles_coord(:,1:2) * particles_coord(:,1:2), 2)) ! sqrt(x^2 + y^2)
+
+    ! Angular momentum and Inertia
+    asteroid_angmom = cero
+    asteroid_inertia = cero
+    if (use_boulders) then
+        do i = 0, Nboulders
+            inertia_ast_arr(i) = 0.4d0 * mass_ast_arr(i) * radius_ast_arr(i)**2 ! Inertia Sphere
+            asteroid_angmom = asteroid_angmom + mass_ast_arr(i) * cross2D(pos_ast_arr(i,:), vel_ast_arr(i,:)) ! Traslacional
+            asteroid_angmom = asteroid_angmom + inertia_ast_arr(i) * asteroid_omega ! Rotacional (Sphere)
+            asteroid_inertia = asteroid_inertia + inertia_ast_arr(i) + mass_ast_arr(i) * dist_ast_arr(i)**2 ! Sphere + Steiner
+        end do
+    else 
+        asteroid_inertia = 0.4d0 *  mass_primary * radius_primary**2 ! Sphere
+        asteroid_angmom = asteroid_inertia * asteroid_omega ! Spin
+    end if
+    !! Mensaje
+    if (use_screen) then
+        write (*,f13) "Momento angular total    :", asteroid_angmom / unit_mass / (unit_dist**2) * unit_time, "[kg km^2 / day]"
+        write (*,f13) "Momento inercia asteroide:", asteroid_inertia / (unit_mass * unit_dist**2), "[kg km^2]"
+        write (*,*) "Check:"
+        write (*,f13) "    L / (I * omega):", asteroid_angmom / asteroid_inertia / asteroid_omega
+        write (*,f13) "    Relative error :", abs(asteroid_omega - (asteroid_angmom / asteroid_inertia)) / asteroid_omega
+        write (*,*) ACHAR(5)
+    end if
     
 
     ! EFECTOS EXTERNOS
@@ -701,116 +868,98 @@ program main
 
 
 
-    ! Particle(s)
-    Nparticles = 0
-    !! Partiles?
-    if (use_single_particle) Nparticles = Nparticles + 1
-    if (use_particlesfile) then
-        if (use_screen) write (*,*) "Leyendo partículas desde archivo: ", trim(particlesfile)
-        !!!! Formato: [mass, a, e, M, w, (MMR)]
-        call read_columns_file(particlesfile, aux_particles_arr)
-        Narticles_in_partfile = size(aux_particles_arr, 1)
-        if (use_screen) then
-            write (*,f12) "  Se han leído ", Narticles_in_partfile, " filas."
-            write (*,f12) "  Se han leído ", size(aux_particles_arr, 2), " columnas."
-        end if
-        ! [Remember to free memory later...]
-    else 
-        Narticles_in_partfile = 0
-    end if
+    ! ! Particle(s)
+    ! Nparticles = 0
+    ! !! Partiles?
+    ! if (use_single_particle) Nparticles = Nparticles + 1
+    ! if (use_particlesfile) then
+    !     if (use_screen) write (*,*) "Leyendo partículas desde archivo: ", trim(particlesfile)
+    !     !!!! Formato: [mass, a, e, M, w, (MMR)]
+    !     call read_columns_file(particlesfile, aux_particles_arr)
+    !     Nparticles_in_partfile = size(aux_particles_arr, 1)
+    !     if (use_screen) then
+    !         write (*,f12) "  Se han leído ", Nparticles_in_partfile, " filas."
+    !         write (*,f12) "  Se han leído ", size(aux_particles_arr, 2), " columnas."
+    !     end if
+    !     ! [Remember to free memory later...]
+    ! else 
+    !     Nparticles_in_partfile = 0
+    ! end if
 
-    !!! Sumamos
-    Nparticles = Nparticles + Narticles_in_partfile
+    ! !!! Sumamos
+    ! Nparticles = Nparticles + Nparticles_in_partfile
 
     !!!! Redefine Chaos (needed to allocate arrays)
     use_chaos = (use_chaosfile .or. (use_datascreen .and. (Nparticles .eq. 1))) .or. use_chaos
 
-    !! Allocate
-    if (Nparticles > 0) then
-        call allocate_particles(Nparticles)
-    else 
-        write (*,*) ACHAR(10)
-        write (*,*) "ERROR: No hay partículas para integrar."
-        stop 1
-    end if
-
-    !! Redefine OMP threads if necessary. Lower equal to particle number
-    if ((use_parallel) .and. (Nparticles < my_threads)) then
-        my_threads = Nparticles
-        if (use_screen) then
-            write (*,f12) "WARNING: Se reducen los threads a ", my_threads
-            write (*,*) ACHAR(5)
-        end if
-        !$ call omp_set_num_threads(my_threads)
-    end if
 
     
-    !! Create Index
-    do i = 1, Nparticles
-        particles_index(i) = i
-        sorted_particles_index(i) = i
-    end do
-    if (use_particlesfile) then
-        particles_mass(:Narticles_in_partfile) = aux_particles_arr(:,1) * unit_mass   ! Masa
-        particles_elem(:Narticles_in_partfile,1) = aux_particles_arr(:,2) * unit_dist ! a
-        particles_elem(:Narticles_in_partfile,2) = aux_particles_arr(:,3)             ! e
-        particles_elem(:Narticles_in_partfile,3) = aux_particles_arr(:,4) * radian    ! M
-        particles_elem(:Narticles_in_partfile,4) = aux_particles_arr(:,5) * radian    ! w
-        if (size(aux_particles_arr, 2) > 5) then
-            !$OMP PARALLEL DEFAULT(SHARED) &
-            !$OMP PRIVATE(i)
-            !$OMP DO SCHEDULE (STATIC)
-            do i = 1, Narticles_in_partfile
-                if (aux_particles_arr(i,6) > tini) then
-                    particles_MMR(i) = aux_particles_arr(i,6) ! MMR
-                    particles_elem(i,1) = particles_MMR(i)**(2/3.) * asteroid_a_corot ! a
-                else
-                    particles_MMR(i) = (particles_elem(i,1) / asteroid_a_corot)**(1.5) ! MMR
-                end if
-            end do
-            !$OMP END DO
-            !$OMP END PARALLEL
-        else 
-            particles_MMR(:Narticles_in_partfile) = (particles_elem(:Narticles_in_partfile,1) / asteroid_a_corot)**(1.5)
-        end if
-        !! Deallocatamos
-        deallocate(aux_particles_arr)
-    end if
+    ! !! Create Index
+    ! do i = 1, Nparticles
+    !     particles_index(i) = i
+    !     sorted_particles_index(i) = i
+    ! end do
+    ! if (use_particlesfile) then
+    !     particles_mass(:Nparticles_in_partfile) = aux_particles_arr(:,1) * unit_mass   ! Masa
+    !     particles_elem(:Nparticles_in_partfile,1) = aux_particles_arr(:,2) * unit_dist ! a
+    !     particles_elem(:Nparticles_in_partfile,2) = aux_particles_arr(:,3)             ! e
+    !     particles_elem(:Nparticles_in_partfile,3) = aux_particles_arr(:,4) * radian    ! M
+    !     particles_elem(:Nparticles_in_partfile,4) = aux_particles_arr(:,5) * radian    ! w
+    !     if (size(aux_particles_arr, 2) > 5) then
+    !         !$OMP PARALLEL DEFAULT(SHARED) &
+    !         !$OMP PRIVATE(i)
+    !         !$OMP DO SCHEDULE (STATIC)
+    !         do i = 1, Nparticles_in_partfile
+    !             if (aux_particles_arr(i,6) > tini) then
+    !                 particles_MMR(i) = aux_particles_arr(i,6) ! MMR
+    !                 particles_elem(i,1) = particles_MMR(i)**(2/3.) * asteroid_a_corot ! a
+    !             else
+    !                 particles_MMR(i) = (particles_elem(i,1) / asteroid_a_corot)**(1.5) ! MMR
+    !             end if
+    !         end do
+    !         !$OMP END DO
+    !         !$OMP END PARALLEL
+    !     else 
+    !         particles_MMR(:Nparticles_in_partfile) = (particles_elem(:Nparticles_in_partfile,1) / asteroid_a_corot)**(1.5)
+    !     end if
+    !     !! Deallocatamos
+    !     deallocate(aux_particles_arr)
+    ! end if
     
-    if (use_single_particle) then
-        if (use_elements_output) particles_index(Nparticles) = simulation_number
-        !! Masa
-        particles_mass(Nparticles) = single_part_mass * unit_mass     ! Masa
-        !! Elementos orbitales
-        particles_elem(Nparticles,1) = single_part_elem_a * unit_dist ! a
-        particles_elem(Nparticles,2) = single_part_elem_e             ! e
-        particles_elem(Nparticles,3) = single_part_elem_M * radian    ! M
-        particles_elem(Nparticles,4) = single_part_elem_w * radian    ! w
-        if (single_part_MMR > tini) then
-            particles_elem(Nparticles,1) = single_part_MMR**(2/3.) * asteroid_a_corot  ! a
-            particles_MMR(Nparticles) = single_part_MMR  ! MMR
-        else
-            particles_MMR(Nparticles) = (particles_elem(Nparticles,1) / asteroid_a_corot)**(1.5)  ! MMR
-        end if
-    end if
+    ! if (use_single_particle) then
+    !     if (use_elements_output) particles_index(Nparticles) = simulation_number
+    !     !! Masa
+    !     particles_mass(Nparticles) = single_part_mass * unit_mass     ! Masa
+    !     !! Elementos orbitales
+    !     particles_elem(Nparticles,1) = single_part_elem_a * unit_dist ! a
+    !     particles_elem(Nparticles,2) = single_part_elem_e             ! e
+    !     particles_elem(Nparticles,3) = single_part_elem_M * radian    ! M
+    !     particles_elem(Nparticles,4) = single_part_elem_w * radian    ! w
+    !     if (single_part_MMR > tini) then
+    !         particles_elem(Nparticles,1) = single_part_MMR**(2/3.) * asteroid_a_corot  ! a
+    !         particles_MMR(Nparticles) = single_part_MMR  ! MMR
+    !     else
+    !         particles_MMR(Nparticles) = (particles_elem(Nparticles,1) / asteroid_a_corot)**(1.5)  ! MMR
+    !     end if
+    ! end if
 
 
-    !! Crear vector de coordenadas
-    aux_real_arr6 = cero
-    !$OMP PARALLEL DEFAULT(NONE) &
-    !$OMP PRIVATE(i,aux_real_arr6) &
-    !$OMP SHARED(Nparticles,asteroid_mass,particles_mass,particles_elem,particles_coord)
-    !$OMP DO SCHEDULE (STATIC)
-    do i = 1, Nparticles
-        !!! Coordenadas y vectores
-        call coord(asteroid_mass + particles_mass(i), & ! Masa
-                  & particles_elem(i,1), particles_elem(i,2), cero, & ! a, e, i
-                  & particles_elem(i,3), particles_elem(i,4), cero, & ! M, w, Omega
-                  & aux_real_arr6)
-        particles_coord(i,:) = (/aux_real_arr6(1:2), aux_real_arr6(4:5)/) ! [x, y, vx, vy]
-    end do
-    !$OMP END DO
-    !$OMP END PARALLEL
+    ! !! Crear vector de coordenadas
+    ! aux_real_arr6 = cero
+    ! !$OMP PARALLEL DEFAULT(NONE) &
+    ! !$OMP PRIVATE(i,aux_real_arr6) &
+    ! !$OMP SHARED(Nparticles,asteroid_mass,particles_mass,particles_elem,particles_coord)
+    ! !$OMP DO SCHEDULE (STATIC)
+    ! do i = 1, Nparticles
+    !     !!! Coordenadas y vectores
+    !     call coord(asteroid_mass + particles_mass(i), & ! Masa
+    !               & particles_elem(i,1), particles_elem(i,2), cero, & ! a, e, i
+    !               & particles_elem(i,3), particles_elem(i,4), cero, & ! M, w, Omega
+    !               & aux_real_arr6)
+    !     particles_coord(i,:) = (/aux_real_arr6(1:2), aux_real_arr6(4:5)/) ! [x, y, vx, vy]
+    ! end do
+    ! !$OMP END DO
+    ! !$OMP END PARALLEL
     
     !! Crear vector distancias
     particles_dist = sqrt(sum(particles_coord(:,1:2) * particles_coord(:,1:2), 2)) ! sqrt(x^2 + y^2)

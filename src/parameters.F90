@@ -1,81 +1,221 @@
 module parameters
     use constants
+    use auxiliar
     use bins
     use omp_lib
 
     implicit none
-
+    
     ! Simulation
-    integer(kind=4) :: simulation_number
-    integer(kind=4) :: Nactive
+    integer(kind=4) :: simulation_number  ! Número de simulación
 
     ! Variables globales. Varias dentro de la subrutina read_conf_file
-    logical :: existe_configfile
-    
+    logical :: existe_configfile = .False.  ! Existe archivo config  
+
     ! Configuración de integración
-    !! Tiempos
-    real(kind=8) :: initial_time, final_time, output_timestep
-    real(kind=8) :: min_timestep
-    integer(kind=4) :: output_number
-    integer(kind=4) :: case_output_type ! 0 => linear, 1 => log, 2 => combination
-    real(kind=8), dimension(:), allocatable :: output_times
-    real(kind=8) :: time, timestep
-    real(kind=8) :: adaptive_timestep
-    real(kind=8), dimension(:), allocatable :: checkpoint_times
-    integer(kind=4) :: checkpoint_number
-    !! Parámetros
-    integer(kind=4) :: error_digits
-    real(kind=8) :: error_tolerance
-    real(kind=8) :: learning_rate
-    real(kind=8) :: min_distance, max_distance
-    !! Integración
-    logical :: use_explicit_method
-    logical :: use_version_1
-    logical :: use_parallel
-    !!! Parallel
-    integer(kind=4) :: available_threads, requested_threads, my_threads
-    logical :: compiled_with_openmp = .False.
+    real(kind=8) :: initial_time  ! Tiempo inicial de integración
+    real(kind=8) :: final_time  ! Tiempo final de integración
+    real(kind=8) :: output_timestep  ! Paso de tiempo
+    integer(kind=4) :: output_number  ! Cantida de pasos de tiempo
+    integer(kind=4) :: case_output_type  ! 0 => linear, 1 => log, 2 => combination
+
+    !!!! Dinámico
+    real(kind=8) :: min_timestep  ! Paso de tiempo mínimo (cero por ahora)
+    real(kind=8) :: time  ! Tiempo de simulación
+    real(kind=8) :: timestep  ! Paso de tiempo de simulación
+    real(kind=8) :: adaptive_timestep  ! Paso de tiempo variable de la simulación
+    integer(kind=4) :: checkpoint_number  ! Número del paso de tiempo actual
+
+    !! Parámetros de error
+    integer(kind=4) :: error_digits  ! Dígitos de error en cálculo de parámetros
+    real(kind=8) :: learning_rate  ! Tasa de aprendizaje de paso adaptativo
+    !!!! Dinámico
+    real(kind=8) :: error_tolerance  ! 10**error
+    real(kind=8) :: min_distance  ! Distancia mínima hasta el asteroide
+    real(kind=8) :: max_distance  ! Distancia máxima hasta el asteroide
+    
+    !! Parámetros de paralelismo
+    real(kind=8) :: requested_threads  ! Cantidad de cpus pedidos
+    logical :: use_parallel  ! Usar version en paralelo con openmp
+    !!!! Dinámico
+    integer(kind=4) :: available_threads  ! Cpus disponibles
+    real(kind=8) :: my_threads  ! Cantidad de cpus usados
+    logical :: compiled_with_openmp = .False.  ! Logical si se usó openmp
+
+    ! Bodies
+    integer(kind=4) :: Ntotal  ! TODOS LOS CUERPOS (Asteroide es 1 solo)
+    integer(kind=4) :: Nactive ! Cuerpos activos
+
+    !! Asteroid
+    real(kind=8) :: asteroid_mass  ! Masa total del asteroide
+    real(kind=8) :: asteroid_radius  ! Radio máximo del asteroide
+
+    real(kind=8) :: asteroid_inertia  ! Momento de inercia del asteroide
+    real(kind=8) :: asteroid_angmom  ! Momento angular del asteroide
+    real(kind=8) :: asteroid_omega  ! Spin (Omega) del asteroide
+    real(kind=8) :: asteroid_rotational_period  ! Periodo rotacional del asteroide
+    real(kind=8) :: omega_kep  ! Omega Kepleriano del asteroide
+    real(kind=8) :: lambda_kep  ! Cociente de Omega a Omega Kepleriano del asteroide
+    real(kind=8) :: asteroid_a_corot  ! Semieje de co-rotación del asteroide
+
+    real(kind=8), dimension(2) :: asteroid_pos  ! Posición Xa, Ya del asteroide
+    real(kind=8), dimension(2) :: asteroid_vel  ! Velocidad VXa, VYa del asteroide
+    real(kind=8), dimension(2) :: asteroid_acc  ! Aceleración AXa, AYa del asteroide
+
+    real(kind=8) :: asteroid_theta  ! Ángulo de posición del asteroide respecto al eje x
+    real(kind=8) :: asteroid_theta_correction  ! Correción al ángulo de posición del asteroide respecto al eje x
+    real(kind=8) :: asteroid_torque  ! Torque sobre el asteroide
+
+    real(kind=8), dimension(4) :: asteroid_coord  ! Coordenadas de asteroide
+    real(kind=8), dimension(4) :: asteroid_elem  ! Elementos orbitales de asteroide
+
+    !!! Primary (0) + boulders
+    real(kind=8), dimension(:), allocatable :: mass_ast_arr  ! Masas de 0 y los boulders
+    real(kind=8), dimension(:), allocatable :: radius_ast_arr  ! Radios de 0 y los boulders
+    real(kind=8), dimension(:), allocatable :: mu_ast_arr  ! Cociente de masas de 0 y los boulders respecto al asteroide
+    real(kind=8), dimension(:), allocatable :: theta_ast_arr  ! Ángulo de posicón de 0 y los boulders respecto a eje x
+    real(kind=8), dimension(:), allocatable :: dist_ast_arr  ! Distancia de 0 y los boulders al centro de masas del asteride
+    real(kind=8), dimension(:), allocatable :: inertia_ast_arr  ! Inercia de 0 y los boulders desde el centro de masas del asteroide
+    real(kind=8), dimension(:,:), allocatable :: pos_ast_arr  ! Posición de 0 y los boulders respecto al centro de masas del asteroide
+    real(kind=8), dimension(:,:), allocatable :: vel_ast_arr  ! Posición de 0 y os boulders respecto al centro de masas del asteroide
+    real(kind=8), dimension(:,:), allocatable :: acc_ast_arr  ! Posición de 0 y los boulders respecto al centro de masas del asteroide
+
+    !!! Primary
+    real(kind=8) :: mass_primary  ! masa de 0
+    real(kind=8) :: radius_primary  ! radio de 0
+
+    !!! Boulders
+    logical :: use_boulders  ! Usar boulders
+    integer(kind=4) :: Nboulders  ! Cantidad de boulders
+    real(kind=8), dimension(:), allocatable :: theta_from_primary  ! Ángulo de posición de los boulders respecto a 0
+    real(kind=8), dimension(:), allocatable :: mu_from_primary  ! Cociente de masas de los boulders respecto a 0
+    real(kind=8), dimension(:,:), allocatable :: pos_from_primary  ! Posición de los boulders respecto a 0
+    real(kind=8), dimension(:,:), allocatable :: vel_from_primary  ! Velocidad de los boulders respecto a 0
+    real(kind=8), dimension(:,:), allocatable :: acc_from_primary  ! Aceleración de los boulders respecto a 0
+
+    !! Moons (massive)
+    logical :: use_moons  ! Usar lunas
+    integer(kind=4) :: Nmoons  ! Cantidad total de lunas
+
+    integer(kind=4), dimension(:), allocatable :: moons_index  ! Índices de lunas
+    integer(kind=4), dimension(:), allocatable :: sorted_moons_index  ! Índices ordenados de lunas
+    real(kind=8), dimension(:), allocatable :: moons_mass  ! Masas de lunas
+    real(kind=8), dimension(:), allocatable :: moons_mass_ratios  ! Cocientes de masas de lunas respecto a 0
+    real(kind=8), dimension(:), allocatable :: moons_radii  ! Radius de lunas
+    real(kind=8), dimension(:,:), allocatable :: moons_coord  ! Coordenadas de lunas
+    real(kind=8), dimension(:,:), allocatable :: moons_elem  ! Elementos orbitales de lunas
+    real(kind=8), dimension(:,:), allocatable :: moons_acc  ! Aceleración de lunas
+    real(kind=8), dimension(:), allocatable :: moons_MMR  ! MMR de lunas
+    real(kind=8), dimension(:), allocatable :: moons_dist  ! Distancia de lunas al centro de masas
+
+    !! Particles (massless)
+    logical :: use_particles  ! Usar partículas
+    integer(kind=4) :: Nparticles  ! Cantidad total de partículas
+
+    integer(kind=4), dimension(:), allocatable :: particles_index  ! Índices de partículas
+    integer(kind=4), dimension(:), allocatable :: sorted_particles_index  ! Índices ordenados de partículas
+    real(kind=8), dimension(:,:), allocatable :: particles_coord  ! Coordenadas de partículas
+    real(kind=8), dimension(:,:), allocatable :: particles_elem  ! Elementos orbitales de partículas
+    real(kind=8), dimension(:,:), allocatable :: particles_acc  ! Aceleración de partículas
+    real(kind=8), dimension(:), allocatable :: particles_MMR  ! MMR de partículas
+    real(kind=8), dimension(:), allocatable :: particles_dist  ! Distancia de partículas al centro de masas
+    
+   
+    ! Bodies (AUX)
+    !! Asteroid
+    real(kind=8) :: Gasteroid_mass  ! G * mAst
+    real(kind=8) :: asteroid_omega2  ! OmegaAst**2
+    real(kind=8) :: pos_ast_from_primary(2)  ! r0 -> rAst
+    real(kind=8) :: vel_ast_from_primary(2)  ! v0 -> vAst
+    real(kind=8) :: acc_ast_from_primary(2)  ! a0 -> aAst
+    real(kind=8) :: theta_ast_from_primary  ! theta0 -> thetaAst
+    !!! Primary + boulders
+    real(kind=8), dimension(:), allocatable :: Gmass_ast_arr  ! G * (m0, m1, ...)
+    !!! Particles
+    real(kind=8), dimension(:,:), allocatable :: aux_particles_arr
+    integer(kind=4) :: first_particle
+    integer(kind=4) :: last_particle
+    integer(kind=4), dimension(:), allocatable :: particles_outcome
+    integer(kind=4), dimension(:,:), allocatable :: ij_to_swap
+
 
     ! I/O
-    logical :: use_screen, use_datascreen, use_percentage
-    logical :: use_elements_output
-    logical :: use_datafile, use_chaosfile, use_potential_map
-    logical :: use_tomfile, use_particlesfile
-    logical :: use_multiple_outputs
-    character(30) :: datafile, chaosfile, mapfile, multfile
-    character(30) :: tomfile, particlesfile
-    logical :: use_flush_output
-    logical :: only_potential_map = .False.
-    !! Tomfile
-    integer(kind=4) :: tom_index_number, tom_total_number
-    real(kind=8), dimension(:), allocatable :: tom_times, tom_deltaomega, tom_deltamass
-    logical, dimension(:), allocatable :: checkpoint_is_tom, checkpoint_is_output
+    !! Pantalla
+    logical :: use_screen  ! Imprimir mensajes en pantalla
+    logical :: use_datascreen  ! Imprimir salida de datos en pantalla
+    logical :: use_percentage  ! Imprimir porcentaje en pantalla
+    !! Archivos de salida
+    !!! Logicals
+    logical :: use_datafile  ! Escribir archivo de salida
+    logical :: use_chaosfile  ! Escribir archivo de caos
+    logical :: use_multiple_outputs  ! Múltiples salidas. 1 por partículas (body)
+    logical :: use_potential_map  ! Escribir archio de potencial
+    !!! Nombres
+    character(30) :: datafile  ! Nombre de archivo de salida
+    character(30) :: chaosfile  ! Nombre de archivo de caos
+    character(30) :: multfile  ! Nombre base de archivo de múltiples
+    character(30) :: mapfile  ! Nombre de archivo mapa
+    !! Configuración de salida
+    logical :: use_elements_output  ! Salida de datos en elementos orbitales
+    logical :: use_flush_output  ! Hacer flush en los archivos manualmente
+    logical :: use_update_chaos  ! Actualziar valores de chaos en cada timestep
+    logical :: only_potential_map = .False.  ! Calcular solamente el potencial
+    !! Archivos de entrada
+    !!! TOM
+    logical :: use_tomfile  ! Usar archivo TOM
+    character(30) :: tomfile  ! Nombre de archivo TOM
+    !!!! Auxiliares
+    integer(kind=4) :: tom_index_number  ! Índice para contar que TOM row está activa
+    integer(kind=4) :: tom_total_number  ! Total de líneas en TOM
+    real(kind=8), dimension(:), allocatable :: tom_times  ! Tiempos en TOM
+    real(kind=8), dimension(:), allocatable :: tom_deltaomega  ! Delta Omega en TOM
+    real(kind=8), dimension(:), allocatable :: tom_deltamass  ! Delta Mass en TOM
     real(kind=8) :: tom_mass_growth_param
+    logical, dimension(:), allocatable :: checkpoint_is_tom  ! Si este checkpoint es TOM
+    logical, dimension(:), allocatable :: checkpoint_is_output ! Si este checkpoint es output
+    !!! Lunas
+    logical :: use_moonsfile  ! Usar archivo con partículas
+    character(30) :: moonsfile  ! Nombre de archivo de partículas
+    !!! Partículas
+    logical :: use_particlesfile  ! Usar archivo con partículas
+    character(30) :: particlesfile  ! Nombre de archivo de partículas
     !! Mapa
-    integer(kind=4) :: map_grid_size_x, map_grid_size_y
-    real(kind=8) :: map_min_x, map_max_x, map_min_y, map_max_y
+    integer(kind=4) :: map_grid_size_x
+    integer(kind=4) :: map_grid_size_y
+    real(kind=8) :: map_min_x
+    real(kind=8) :: map_max_x
+    real(kind=8) :: map_min_y
+    real(kind=8) :: map_max_y
 
     ! Forces
-    !!Internal forces
+    !! Internal forces
     logical :: use_torque
     ! External forces
     !! Stokes
     logical :: use_stokes
-    real(kind=8) :: stokes_a_damping_time, stokes_e_damping_time, stokes_charac_time
-    real(kind=8) :: stokes_C, stokes_alpha
+    real(kind=8) :: stokes_a_damping_time
+    real(kind=8) :: stokes_e_damping_time
+    real(kind=8) :: stokes_charac_time
+    real(kind=8) :: stokes_C
+    real(kind=8) :: stokes_alpha
     !! Naive-Stokes (Drag)
     logical :: use_naive_stokes
-    real(kind=8) :: drag_coefficient, drag_charac_time
+    real(kind=8) :: drag_coefficient
+    real(kind=8) :: drag_charac_time
     !! Mass and omega damping
     logical :: use_omega_damping
     real(kind=8) :: omega_charac_time
     real(kind=8) :: omega_exp_damping_time
-    real(kind=8) :: omega_exp_poly_A, omega_exp_poly_B, omega_exp_poly_AB
-    real(kind=8) :: omega_linear_damping_time, omega_linear_damping_slope
+    real(kind=8) :: omega_exp_poly_A
+    real(kind=8) :: omega_exp_poly_B
+    real(kind=8) :: omega_exp_poly_AB
+    real(kind=8) :: omega_linear_damping_time
+    real(kind=8) :: omega_linear_damping_slope
     real(kind=8) :: mass_exp_damping_time
     !! Geo-potential
     logical :: use_J2
-    real(kind=8) :: J2_coefficient, J2_effective
+    real(kind=8) :: J2_coefficient
+    real(kind=8) :: J2_effective
     !! Self-Gravity [Use BINS] [Not available yet]
     logical :: use_self_gravity
     integer(kind=4) :: Norder_self_gravity
@@ -85,87 +225,45 @@ module parameters
     
     !! BINS [Not available yet]
     logical :: use_bins
-    integer(kind=4) :: Nbins, binning_method
-    real(kind=8) :: rmin_bins, rmax_bins
+    integer(kind=4) :: Nbins
+    integer(kind=4) :: binning_method
+    real(kind=8) :: rmin_bins
+    real(kind=8) :: rmax_bins
     type(my_bins) :: disk_bins
-    logical :: update_rmin_bins, update_rmax_bins, update_bins
+    logical :: update_rmin_bins
+    logical :: update_rmax_bins
+    logical :: update_bins
     integer(kind=4), dimension(:), allocatable :: particles_bins
     
 
-    ! Bodies
-    integer(kind=4) :: Ntotal
-    !! Asteroid
-    real(kind=8) :: asteroid_mass, asteroid_radius, asteroid_inertia, asteroid_angmom
-    real(kind=8) :: asteroid_omega, asteroid_rotational_period, lambda_kep, omega_kep
-    real(kind=8) :: asteroid_a_corot 
-    real(kind=8), dimension(2) :: asteroid_pos, asteroid_vel, asteroid_acc
-    real(kind=8) :: asteroid_theta, asteroid_theta_correction, asteroid_torque
-    !!! Primary + boulders
-    real(kind=8), dimension(:), allocatable :: mass_ast_arr, radius_ast_arr, mu_ast_arr, theta_ast_arr
-    real(kind=8), dimension(:), allocatable :: dist_ast_arr, inertia_ast_arr
-    real(kind=8), dimension(:,:), allocatable :: pos_ast_arr, vel_ast_arr, acc_ast_arr
-    !!! Primary
-    real(kind=8) :: mass_primary, radius_primary
-    !!! Boulders
-    logical :: use_boulders
-    integer(kind=4) :: Nboulders
-    real(kind=8), dimension(:), allocatable :: theta_from_primary, mu_from_primary
-    real(kind=8), dimension(:,:), allocatable :: pos_from_primary
-    real(kind=8), dimension(:,:), allocatable :: vel_from_primary
-    real(kind=8), dimension(:,:), allocatable :: acc_from_primary
-    !! Single particle
-    logical :: use_single_particle
-    !!! Masa
-    real(kind=8) :: single_part_mass
-    !!! Elementos orbitales
-    real(kind=8) :: single_part_elem_a, single_part_elem_e
-    real(kind=8) :: single_part_elem_M, single_part_elem_w
-    real(kind=8) :: single_part_MMR
-    !!!! Varias partículas
-    integer(kind=4) :: Nparticles, Nparticles_type1, Nparticles_type2, Narticles_in_partfile
-    !!!!! Indices
-    integer(kind=4), dimension(:), allocatable :: particles_index
-    integer(kind=4), dimension(:), allocatable :: sorted_particles_index
-    !!!!! Masas
-    real(kind=8), dimension(:), allocatable :: particles_mass
-    !!!!! Coordenadas y elementos orbitales
-    real(kind=8), dimension(:,:), allocatable :: particles_coord, particles_elem
-    real(kind=8), dimension(:,:), allocatable :: particles_acc
-    real(kind=8), dimension(:), allocatable :: particles_MMR, particles_dist
-    ! Bodies (AUX)
-    !! Asteroid
-    real(kind=8) :: Gasteroid_mass
-    real(kind=8) :: asteroid_omega2
-    real(kind=8) :: pos_ast_from_primary(2), vel_ast_from_primary(2), acc_ast_from_primary(2)
-    real(kind=8) :: theta_ast_from_primary
-    !!! Primary + boulders
-    real(kind=8), dimension(:), allocatable :: Gmass_ast_arr
-    !!! Particles
-    real(kind=8), dimension(:,:), allocatable :: aux_particles_arr
-    integer(kind=4) :: first_particle, last_particle
-    integer(kind=4), dimension(:), allocatable :: particles_outcome
-    integer(kind=4), dimension(:,:), allocatable :: ij_to_swap
-
     ! Chaos
-    logical :: use_chaos, use_update_chaos
-    real(kind=8), dimension(:), allocatable :: particles_max_a, particles_max_e
-    real(kind=8), dimension(:), allocatable :: particles_min_a, particles_min_e
+    logical :: use_chaos  ! Calcular valores para chaos
+    real(kind=8), dimension(:), allocatable :: particles_max_a
+    real(kind=8), dimension(:), allocatable :: particles_max_e
+    real(kind=8), dimension(:), allocatable :: particles_min_a
+    real(kind=8), dimension(:), allocatable :: particles_min_e
     real(kind=8), dimension(:), allocatable :: particles_times
-    integer(kind=4) :: discarded_particles, staying_particles
+    integer(kind=4) :: discarded_particles
+    integer(kind=4) :: staying_particles
     
 
     ! Extra/Auxiliar variables
-    integer(kind=4) :: i, j, k
+    integer(kind=4) :: i
+    integer(kind=4) :: j
+    integer(kind=4) :: k
     !! Arguments
     integer(kind=4) :: arguments_number
     !! Auxiliar
-    logical :: aux_logical, is_number
-    real(kind=8) :: aux_real, dummy_real, dummy_real2
+    logical :: aux_logical
+    logical :: is_number
+    real(kind=8) :: aux_real
+    real(kind=8) :: dummy_real
+    real(kind=8) :: dummy_real2
     integer(kind=4) :: aux_integer
-    character(1)    :: aux_character1
-    character(2)    :: aux_character2
-    character(20)   :: aux_character20
-    character(30)   :: aux_character30
+    character(1) :: aux_character1
+    character(2) :: aux_character2
+    character(20) :: aux_character20
+    character(30) :: aux_character30
     real(kind=8), dimension(2) :: distance_to_primary
     real(kind=8), dimension(2) :: aux_real_arr2
     real(kind=8), dimension(6) :: aux_real_arr6
@@ -175,7 +273,9 @@ module parameters
 
     ! PARAMETERS ARRAY
     integer, parameter :: equation_size = 4
-    real(kind=8), dimension(:), allocatable :: parameters_arr, parameters_arr_new, parameters_der
+    real(kind=8), dimension(:), allocatable :: parameters_arr
+    real(kind=8), dimension(:), allocatable :: parameters_arr_new
+    real(kind=8), dimension(:), allocatable :: parameters_der
     
     !!! Hard Exit
     logical :: is_premature_exit
@@ -184,9 +284,10 @@ module parameters
     procedure (check_continue_template), pointer :: check_continue_ptr => null ()
     
     !!! INITIAL CONDITIONS (Here we store the initial conditions of everything)
-    real(kind=8), dimension(:,:), allocatable :: particles_initial_conditions !! mass, a, e, M, w, MRR
-    real(kind=8), dimension(:,:), allocatable :: m0_and_boulders_initial_conditions !! mass, radius, theta
     real(kind=8), dimension(:), allocatable :: asteroid_initial_conditions !! mass, radius, pos, vel, theta, omega, inertia, angmom, Prot, acorot
+    real(kind=8), dimension(:,:), allocatable :: m0_and_boulders_initial_conditions !! mass, radius, theta
+    real(kind=8), dimension(:,:), allocatable :: moons_initial_conditions !! mass, a, e, M, w, Radius, MRR
+    real(kind=8), dimension(:,:), allocatable :: particles_initial_conditions !! a, e, M, w, MRR
     
 
     !!! GENERAL element PTRs
@@ -255,132 +356,91 @@ module parameters
     end interface
 
     contains
-
-        ! 1. Inicializar los parámetros por defecto
-        subroutine init_default_parameters()
+    
+        ! 0. Init default config
+        subroutine init_default_config()
             implicit none
-
-            ! Simulation
-            simulation_number = 1
-            ! Times
+            ! Times for the integration - 
             initial_time = cero
             final_time = cero
             output_timestep = cero
-            min_timestep = cero
-            output_number = 0
-            case_output_type = 0 ! 0 => linear, 1 => log, 2 => combination
-            ! Parameters
-            use_explicit_method = .False.
-            use_version_1 = .False.
+            output_number = cero
+            case_output_type = 2
+            ! Parameters for the Integration - 
             use_parallel = .False.
-            !! Parallel
             requested_threads = 1
-            my_threads = 1
-            !$ compiled_with_openmp = .True. !! Parece comentado, pero es asi
-            ! Adaptive configuration
+            ! Adaptive step integrations - 
             error_digits = 12
             learning_rate = uno
-            ! Bodies
-            !! Primary
-            mass_primary = cero 
-            radius_primary = cero 
-            !! Rotation
-            lambda_kep = cero ! Ratio of omega to keplerian 
-            asteroid_rotational_period = cero ! Rotational period
-            !! Boulders
-            use_boulders = .False.
-            Nboulders = 0
-            !! Particles
-            Nparticles = 0
-            Nparticles_type1 = 0
-            Nparticles_type2 = 0
-            !!! Single
-            use_single_particle = .False.
-            single_part_mass = cero ! Masa
-            single_part_elem_a = cero ! Semieje mayor
-            single_part_elem_e = cero ! Excentricidad
-            single_part_elem_M = cero ! Anomalía media
-            single_part_elem_w = cero ! Argumento del perihelio
-            single_part_MMR = cero ! Mean Motion Resonance!! Particles
-            !!! Particulas en archivo
-            Narticles_in_partfile = 0
-            particlesfile = "" ! Archivo de partículas
-            !! ASTEROID
-            asteroid_mass = cero
-            asteroid_radius = cero
-            asteroid_inertia = cero
-            asteroid_pos = (/cero, cero/)
-            asteroid_vel = (/cero, cero/)
-            asteroid_acc = (/cero, cero/)
-            asteroid_theta = cero
-            asteroid_theta_correction = cero
-            ! Forces
-            !! InternalForces
-            use_torque = .False.
-            ! ExternalForces
-            !! Stokes
+            ! The primary -
+            mass_primary = cero
+            radius_primary = cero
+            ! Rotation - 
+            lambda_kep = cero
+            asteroid_rotational_period = cero
+            ! Moons - 
+            use_moonsfile = .False.
+            moonsfile = ""
+            ! Particles - 
+            use_particlesfile = .False.
+            particlesfile = ""
+            ! Extra forces/effects - 
             use_stokes = .False.
-            stokes_charac_time = cero
             stokes_a_damping_time = infinity
             stokes_e_damping_time = infinity
-            !! Naive-Stokes
+            stokes_charac_time = cero
             use_naive_stokes = .False.
             drag_coefficient = cero
             drag_charac_time = cero
-            !! Dampings
             use_omega_damping = .False.
-            omega_charac_time = cero
             omega_linear_damping_time = infinity
             omega_exp_damping_time = infinity
             omega_exp_poly_A = cero
             omega_exp_poly_B = cero
+            omega_charac_time = cero
             mass_exp_damping_time = infinity
-            !! Geo-Potential
-            use_J2 = .False.
             J2_coefficient = cero
-            !! Self Gravity
+            ! Binned forces/effects - [NOT AVAILABLE YET. STILL UNDER DEVELOPMENT]
             use_self_gravity = .False.
             Norder_self_gravity = 3
-            !! Viscosity
-            use_viscosity = .False.
-            viscosity = - uno
-            ! !! BINS (only used if Self Gravity or Viscosity)
             Nbins = 0
             binning_method = 1
             rmin_bins = - uno ! -1 means first particle (initial)
             rmax_bins = - uno ! -1 means last particle (initial)
-            ! Escape/Collision (and merge)
+            ! Conditions for Collision/Escape - 
             min_distance = cero
             max_distance = infinity
             use_merge = .False.
-            ! Tomfile
-            tomfile = "" ! Archivo de t_TOM, domega(t_TOM), dm(t_TOM)
-            ! I/O
-            use_screen  = .False. ; use_percentage = .False. ! Pantalla, porcentaje
-            use_datascreen = .False. ! Salida de datos en pantalla
-            use_elements_output  = .True. ! Salida en elementos orbitales
-            use_multiple_outputs = .False. ! Salida en múltiples archivos
-            !! Output (Poner "" o "no" para no crear archivo)
-            datafile = ""! Archivo de datos
-            chaosfile = "" ! Archivo de datos
-            multfile = "" ! Prefijo de archivos de salida individuales
-            !!! Mapa de potencial
-            mapfile = "" ! Archivo de mapas
-            map_grid_size_x = 500 ; map_grid_size_y = 500
-            map_min_x = -300. ; map_max_x = 300.
-            map_min_y = -300. ; map_max_y = 300.
+            ! Manual |(t)imes omega(t) mass_add(t)| file -
+            use_tomfile = .False.
+            tomfile = ""
+            ! Output -
+            use_screen = .False.
+            use_datafile = .False.
+            datafile = ""
+            use_multiple_outputs = .False.
+            multfile = ""
+            use_chaosfile = .False.
+            chaosfile = ""
+            use_datascreen = .True.
+            use_percentage = .False.
+            use_elements_output = .True.
+            use_potential_map = .False.
+            mapfile = ""
+            map_grid_size_x = 500
+            map_grid_size_y = 500
+            map_min_x = -300
+            map_max_x = 300
+            map_min_y = -300
+            map_max_y = 300
 
-
-            ! Extras, fuera de Config.ini. Se editan solo acá
-            !! Centrar CM?
-            hard_center = .True.
-            !! Update chaos at every output timestep, instead of waiting to the end of the run
-            use_update_chaos = .True.
-            !! Flush output at every output timestep (even though the buffer is not full) 
-            use_flush_output = .True.
-        end subroutine init_default_parameters
-
-        ! 2. Leer el archivo de configuración
+            ! < Number of bodies >
+            Nboulders = 0
+            Nmoons = 0
+            Nparticles = 0
+        end subroutine init_default_config
+        
+        ! 1. Read config file
         subroutine read_config_file(file_name, existe)
             implicit none
             character(LEN=*), intent(in) :: file_name
@@ -432,18 +492,6 @@ module parameters
                             read (value_str, *) output_number
                         case("output distribu")
                             read (value_str, *) case_output_type
-                        case("use implicit me")
-                            if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                use_explicit_method = .False.
-                            else
-                                use_explicit_method = .True.
-                            end if
-                        case("use version 2 o")
-                            if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                use_version_1 = .False.
-                            else
-                                use_version_1 = .True.
-                            end if
                         case("use parallel th")
                             read (value_str,'(i10)',iostat=aux_integer) requested_threads
                             if (aux_integer /= 0) then
@@ -469,36 +517,18 @@ module parameters
                             read (value_str, *) lambda_kep
                         case("rotational peri")
                             read (value_str, *) asteroid_rotational_period
-                        case("number of bould")
-                            read (value_str, *) Nboulders
-                            if (Nboulders < 0) then
-                                write (*,*) "El número de boulders debe ser mayor que 0."
-                                stop 1
-                            end if
-                            !! Allocamos
-                            if (.not. allocated(mass_ast_arr)) then
-                                call allocate_asteriod_arrays(Nboulders)
-                            else 
-                                write (*,*) "ERROR: Redefinido."
-                            end if
-                        case("use single part")
-                            if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                                use_single_particle = .True.
+                        case("moons input fil")
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
+                                use_moonsfile = .False.
+                                moonsfile = ""
+                            else if (len(trim(value_str)) > 0) then
+                                use_moonsfile = .True.
+                                moonsfile = trim(value_str)
                             else
-                                use_single_particle = .False.
+                                use_moonsfile = .False.
+                                moonsfile = ""
                             end if
-                        case("mass of particl")
-                            read (value_str, *) single_part_mass
-                        case("semi-major axis")
-                            read (value_str, *) single_part_elem_a
-                        case("eccentricity of")
-                            read (value_str, *) single_part_elem_e
-                        case("mean anomaly of")
-                            read (value_str, *) single_part_elem_M
-                        case("pericenter long")
-                            read (value_str, *) single_part_elem_w
-                        case("mean motion rat")
-                            read (value_str, *) single_part_MMR
                         case("particles input")
                             if ((to_lower(trim(value_str)) == "n") .or. &
                               & (to_lower(trim(value_str)) == "no")) then
@@ -510,12 +540,6 @@ module parameters
                             else
                                 use_particlesfile = .False.
                                 particlesfile = ""
-                            end if
-                        case("include torque")
-                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                                use_torque = .True.
-                            else
-                                use_torque = .False.
                             end if
                         case("include stokes-")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
@@ -672,29 +696,101 @@ module parameters
                         case default
                             write (*,*) "WARNING: Parámetro no reconocido: ", trim(param_str)
                     end select
-                else
+                else  ! Read boulders, moons or particles
                     param_str = trim(adjustl(line)) 
-                    if (param_str(1:7) .eq. "mass_m0") then
-                        if (Nboulders < 0) then
-                            write (*,*) "ERROR: El número de boulders debe especificarse antes que los parametros."
-                            stop 1
-                        else if (Nboulders == 0) then
-                            write (*,*) "WARNING: No se leen boulders."
-                        end if
-                        do j = 1, Nboulders
-                            io = 0
-                            check: do while (io == 0)
-                                nlines = nlines + 1
-                                read (10, '(A)') line
-                                if ((len_trim(line) == 0) .or. (line(:2) == "c ") .or. (line(:2) == "! ")) cycle
-                                backspace (10)
-                                read (10, *, iostat=io) mu_from_primary(j), radius_ast_arr(j), theta_from_primary(j)
-                                if (io /= 0) then
-                                    write (*,*) "ERROR: Al leer boulder. Línea: ", nlines
-                                    stop 1
-                                end if
-                                io = 1
-                            end do check
+                    if (param_str(1:7) .eq. "mass_m0") then  ! Leeemos boulders
+                        aux_integer = nlines  ! Save the nlines where to read from (later)
+                        Nboulders = 0 ! This will be the boulder count
+                        io = 0  ! This is be the reading status
+                        do while (io == 0)
+                            nlines = nlines + 1  ! Don't forget to count the lines....
+                            read (10, '(A)') line
+                            if ((line(:2) == "c ") .or. (line(:2) == "! ")) cycle  ! Skip commented
+                            if (io == 0) Nboulders = Nboulders + 1
+                        end do
+                        ! Alocate
+                        call allocate_asteriod_arrays(Nboulders)
+                        ! Backspace to read again
+                        do j = aux_integer, nlines
+                            backspace (10)
+                        end do
+                        ! Read again and store
+                        j = 1  ! This is be the amount of boulders read
+                        do while (j <= Nboulders)
+                            read (10, '(A)') line
+                            if ((line(:2) == "c ") .or. (line(:2) == "! ")) cycle  ! Skip commented
+                            read (10, *, iostat=io) mu_from_primary(j), radius_ast_arr(j), theta_from_primary(j)
+                            if (io /= 0) then
+                                write (*,*) "ERROR: Al leer boulder:", j
+                                stop 1
+                            end if
+                            j = j + 1
+                        end do
+                    end if
+                    if (param_str(1:9) .eq. "mass_mAst") then  ! Leeemos las lunas
+                        aux_integer = nlines  ! Save the nlines where to read from (later)
+                        Nmoons = 0 ! This will be the moon count
+                        io = 0  ! This is be the reading status
+                        do while (io == 0)
+                            nlines = nlines + 1  ! Don't forget to count the lines....
+                            read (10, '(A)') line
+                            if ((line(:2) == "c ") .or. (line(:2) == "! ")) cycle  ! Skip commented
+                            if (io == 0) Nmoons = Nmoons + 1
+                        end do
+                        ! Alocate
+                        call allocate_moons_arrays(Nmoons)
+                        ! Backspace to read again
+                        do j = aux_integer, nlines
+                            backspace (10)
+                        end do
+                        ! Read again and store
+                        j = 1  ! This is be the amount of moons read
+                        do while (j <= Nmoons)
+                            read (10, '(A)') line
+                            if ((line(:2) == "c ") .or. (line(:2) == "! ")) cycle  ! Skip commented
+                            read (10, *, iostat=io) &
+                                & moons_mass_ratios(j), &
+                                & moons_elem(j,1), moons_elem(j,2), &
+                                & moons_elem(j,3), moons_elem(j,4), &
+                                & moons_radii(j), &
+                                & moons_MMR(j)
+                            if (io /= 0) then
+                                write (*,*) "ERROR: Al leer luna:", j
+                                stop 1
+                            end if
+                            j = j + 1
+                        end do
+                    end if
+                    if (param_str(1:5) .eq. "a(km)") then  ! Leeemos las partículas
+                        aux_integer = nlines  ! Save the nlines where to read from (later)
+                        Nparticles = 0 ! This will be the particles count
+                        io = 0  ! This is be the reading status
+                        do while (io == 0)
+                            nlines = nlines + 1  ! Don't forget to count the lines....
+                            read (10, '(A)') line
+                            if ((line(:2) == "c ") .or. (line(:2) == "! ")) cycle  ! Skip commented
+                            if (io == 0) Nparticles = Nparticles + 1
+                        end do
+                        ! Alocate
+                        call allocate_particles_arrays(Nparticles)
+                        ! Backspace to read again
+                        do j = aux_integer, nlines
+                            backspace (10)
+                        end do
+                        ! Read again and store
+                        j = 1  ! This is be the amount of particles read
+                        do while (j <= Nparticles)
+                            read (10, '(A)') line
+                            if ((line(:2) == "c ") .or. (line(:2) == "! ")) cycle  ! Skip commented
+                            read (10, *, iostat=io) &
+                                & particles_elem(j,1), particles_elem(j,2), &
+                                & particles_elem(j,3), particles_elem(j,4), &
+                                & particles_MMR(j)
+                            if (io /= 0) then
+                                write (*,*) "ERROR: Al leer partícula:", j
+                                stop 1
+                            end if
+                            j = j + 1
                         end do
                     end if
                 end if
@@ -702,9 +798,36 @@ module parameters
             98 close (10)
         end subroutine read_config_file
 
-        ! 3 Leer entradas por linea de comandos
-        subroutine load_command_line_arguments()
+        ! 2. Init default hidden (and command line) default parameters
+        subroutine init_default_parameters()
             implicit none
+
+            ! Simulation
+            simulation_number = 1
+
+            ! Times
+            min_timestep = cero
+            
+            ! OmenMP
+            !$ compiled_with_openmp = .True. !! Parece comentado, pero es asi
+
+            ! Forces
+            !! Viscosity [unsed yet]
+            use_viscosity = .False.
+            viscosity = - uno
+
+
+            ! Extras, fuera de Config.ini. Se editan solo acá
+            !! Update chaos at every output timestep, instead of waiting to the end of the run
+            use_update_chaos = .True.
+            !! Flush output at every output timestep (even though the buffer is not full) 
+            use_flush_output = .True.
+        end subroutine init_default_parameters
+
+        ! 3 Leer entradas por linea de comandos
+        subroutine load_command_line_arguments(existe_configfile)
+            implicit none
+            logical :: existe_configfile
 
             ! Leemos de la línea de comandos
             arguments_number = command_argument_count()
@@ -719,10 +842,6 @@ module parameters
                     end if
                     call get_command_argument(i, aux_character30)
                     select case (trim(aux_character30))
-                    case ("-mpart")
-                        call get_command_argument(i+1, aux_character20)
-                        read (aux_character20,*) single_part_mass
-                        aux_integer = 1
                     case ("-nsim")
                         call get_command_argument(i+1, aux_character20)
                         read (aux_character20,*) simulation_number
@@ -768,10 +887,6 @@ module parameters
                     case ("--nomapf")
                         use_potential_map = .False.
                         mapfile = ""
-                    case ("--implicit")
-                        use_explicit_method = .False.
-                    case ("--explicit")
-                        use_explicit_method = .True.
                     case ("--elem")
                         use_elements_output = .True.
                     case ("--noelem")
@@ -783,6 +898,13 @@ module parameters
                     case ("--notomfile")
                         use_tomfile = .False.
                         tomfile = ""
+                    case ("-moonfile")
+                        use_moonsfile = .True.
+                        call get_command_argument(i+1, moonsfile)
+                        aux_integer = 1
+                    case ("--moonfile")
+                        use_moonsfile = .False.
+                        moonsfile = ""
                     case ("-partfile")
                         use_particlesfile = .True.
                         call get_command_argument(i+1, particlesfile)
@@ -792,18 +914,10 @@ module parameters
                         particlesfile = ""
                     case ("--noconfig")
                         existe_configfile = .False.
-                    case ("--version1")
-                        use_version_1 = .True.
-                    case ("--version2")
-                        use_version_1 = .False.
                     case ("--merge")
                         use_merge = .True.
                     case ("--nomerge")
                         use_merge = .False.
-                    case ("--torque")
-                        use_torque = .True.
-                    case ("--notorque")
-                        use_torque = .False.
                     case ("-parallel")
                         use_parallel = .True.
                         call get_command_argument(i+1, aux_character20)
@@ -863,7 +977,7 @@ module parameters
                         is_number = .False.
                         call get_command_argument(i, aux_character30)
                         do j = 0, 9
-                            if (aux_character30(1:1) == char(48 + j)) then !check if it's a number
+                            if (aux_character30(1:1) == char(48 + j)) then ! check if it's a number
                                 is_number = .True.
                                 exit
                             end if
@@ -881,27 +995,28 @@ module parameters
                                 write (*,'(A,I0,A)') "        Faltan ", 4-arguments_number, " elementos."
                                 write (*,*) "Saliendo."
                                 stop 1
-                            else ! Leo los argumentos numéricos
+                            else ! Leo los argumentos numéricos. Considero que es 1 sola partícula
+                                Nparticles = 1
+                                call allocate_particles_arrays(Nparticles)
                                 call get_command_argument(i, aux_character20)
-                                read (aux_character20,*) single_part_elem_a
+                                read (aux_character20,*) particles_elem(1,1)
                                 call get_command_argument(i+1, aux_character20)
-                                read (aux_character20,*) single_part_elem_e
+                                read (aux_character20,*) particles_elem(1,2)
                                 call get_command_argument(i+2, aux_character20)
-                                read (aux_character20,*) single_part_elem_M
+                                read (aux_character20,*) particles_elem(1,3)
                                 call get_command_argument(i+3, aux_character20)
-                                read (aux_character20,*) single_part_elem_w
+                                read (aux_character20,*) particles_elem(1,4)
                                 aux_integer = 3
                                 aux_logical = .True.
-                                use_single_particle = .True.
-                                single_part_MMR = cero
+                                particles_MMR(1) = cero
                             end if
                         else ! Ya leí los numéricos. Falta leer eR
                             call get_command_argument(i, aux_character20)
-                            read (aux_character20,*) single_part_MMR
+                            read (aux_character20,*) particles_MMR(1)
                         end if
                     end select
                 end do
-            else
+            else if (existe_configfile) then
                 print*, "WARNING: No hay argumentos de entrada."
                 print*, "¿Está seguro que desea continuar? [y/N]"
                 read (*,*) aux_character1
@@ -916,11 +1031,13 @@ module parameters
         subroutine set_derived_parameters()
             implicit none
 
+
             !! Times
             if ((case_output_type < 0) .or. (case_output_type > 2)) then
                 write (*,*) "ERROR: Tipo de distribución para tiempos de salida no reconocido."
                 stop 1
             end if
+
 
             !! Boulders
             if (Nboulders < 0) then
@@ -928,7 +1045,26 @@ module parameters
                 stop 1
             end if
             use_boulders = (Nboulders > 0)
-                        
+
+            ! -----------------------------------------------------------------
+            ! Acá hay que configurar moons y particles en caso de moons sin masa
+            ! -----------------------------------------------------------------
+
+            !! Moons
+            if (Nmoons < 0) then
+                write (*,*) "ERROR: Nmoons < 0"
+                stop 1
+            end if
+            use_moons = (Nmoons > 0)
+
+            !! Moons
+            if (Nparticles < 0) then
+                write (*,*) "ERROR: Nparticles < 0"
+                stop 1
+            end if
+            use_particles = (Nparticles > 0)
+                       
+            
             !! Forces
             !!! stokes_a_damping_time y stokes_e_damping_time
             if ((abs(stokes_a_damping_time) < tini) .or. .not. use_stokes) stokes_a_damping_time = cero
@@ -936,11 +1072,13 @@ module parameters
             if ((abs(stokes_charac_time) < tini) .or. .not. use_stokes) stokes_charac_time = cero
             if (stokes_charac_time .le. cero) stokes_charac_time = infinity
             if ((abs(stokes_a_damping_time) < tini) .and. (abs(stokes_e_damping_time) < tini)) use_stokes = .False.
+
             !!! Naive-stokes
             if ((abs(drag_coefficient) < tini) .or. .not. use_naive_stokes) drag_coefficient = cero
             if ((abs(drag_charac_time) < tini) .or. .not. use_naive_stokes) drag_charac_time = cero
             if (drag_charac_time .le. cero) drag_charac_time = infinity
             if (abs(drag_coefficient) < tini) use_naive_stokes = .False.
+
             !!! tau_m y tau_o
             if ((abs(omega_charac_time) < tini) .or. .not. use_omega_damping) omega_charac_time = cero
             if (omega_charac_time .le. cero) omega_charac_time = infinity
@@ -953,6 +1091,7 @@ module parameters
               & .not. ((abs(omega_exp_poly_A) > tini) .and. (abs(omega_exp_poly_B) > tini))) &
               & use_omega_damping = .False.
             if (abs(mass_exp_damping_time) < tini) mass_exp_damping_time = infinity
+
             !!! Geo-Potential
             if (abs(J2_coefficient) > tini) use_J2 = .True.
             
@@ -992,18 +1131,13 @@ module parameters
                 write (*,*) "ERROR: El radio del cuerpo central debe ser positivo."
                 stop 1
             end if
-            
-            !! Torque
-            if (use_torque .and. use_explicit_method) then
-                write (*,*) "ERROR: No se puede usar torque con el método explícito."
-                stop 1
-            end if
 
             ! Output
             if (use_datascreen .and. use_percentage) then
                 write (*,*) "ERROR: No se puede imprimir porcentaje y datos en pantalla."
                 stop 1
             end if
+            
             ! Auxiliares lógicos
             use_chaos = use_chaosfile .or. use_chaos
             use_elements = use_elements_output .or. use_chaos
@@ -1030,15 +1164,6 @@ module parameters
                 my_threads = 1
             end if
 
-            ! Single particle
-            if (.not. use_single_particle) then
-                single_part_mass = cero
-                single_part_elem_a = cero
-                single_part_elem_e = cero
-                single_part_elem_M = cero
-                single_part_elem_w = cero
-                single_part_MMR = cero
-            end if
         end subroutine set_derived_parameters
         
         ! 5.x Subroutines to allocate arrays
@@ -1048,140 +1173,155 @@ module parameters
             implicit none
             integer(kind=4), intent(in) :: Nboulders
 
-            !! Parámetros y auxiliares
-            allocate(mass_ast_arr(0:Nboulders), radius_ast_arr(0:Nboulders), mu_ast_arr(0:Nboulders), Gmass_ast_arr(0:Nboulders))
-            allocate(pos_ast_arr(0:Nboulders,2), vel_ast_arr(0:Nboulders,2), acc_ast_arr(0:Nboulders,2))
-            allocate(theta_ast_arr(0:Nboulders), dist_ast_arr(0:Nboulders), inertia_ast_arr(0:Nboulders))
+            if (allocated(mass_ast_arr)) then
+                write (*,*) "ERROR: Number of boulder already defined."
+                STOP 1
+            end if
+
+            allocate(mass_ast_arr(0:Nboulders))
+            allocate(Gmass_ast_arr(0:Nboulders))
+            allocate(mu_ast_arr(0:Nboulders))
+            allocate(radius_ast_arr(0:Nboulders))
+            allocate(pos_ast_arr(0:Nboulders,2))
+            allocate(vel_ast_arr(0:Nboulders,2))
+            allocate(acc_ast_arr(0:Nboulders,2))
+            allocate(theta_ast_arr(0:Nboulders))
+            allocate(dist_ast_arr(0:Nboulders))
+            allocate(inertia_ast_arr(0:Nboulders))
+            
             if (Nboulders > 0) then
-                allocate(theta_from_primary(Nboulders), mu_from_primary(Nboulders))
-                allocate(pos_from_primary(Nboulders,2), vel_from_primary(Nboulders,2), acc_from_primary(Nboulders,2))
+                allocate(theta_from_primary(Nboulders))
+                allocate(mu_from_primary(Nboulders))
+                allocate(pos_from_primary(Nboulders,2))
+                allocate(vel_from_primary(Nboulders,2))
+                allocate(acc_from_primary(Nboulders,2))
             end if
         end subroutine allocate_asteriod_arrays
 
-        ! 5.2 Alocatar particulas
-        subroutine allocate_particles(Nparticles)
+        ! 5.2 Alocatar arrays lunas
+        subroutine allocate_moons_arrays(Nmoons)
+            implicit none
+            integer(kind=4), intent(in) :: Nmoons
+            
+            if (Nmoons > 0) then
+                if (allocated(moons_index)) then
+                    write (*,*) "ERROR: Number of moons already defined."
+                    write (*,*) "        Use moons file or config file; not both."
+                    STOP 1
+                end if
+
+                allocate(moons_index(1:Nmoons))
+                allocate(sorted_moons_index(1:Nmoons))
+                allocate(moons_mass(1:Nmoons))
+                allocate(moons_mass_ratios(1:Nmoons))
+                allocate(moons_radii(1:Nmoons))
+                allocate(moons_coord(1:Nmoons,4))
+                allocate(moons_elem(1:Nmoons,4))
+                allocate(moons_acc(1:Nmoons,2))
+                allocate(moons_MMR(1:Nmoons))
+                allocate(moons_dist(1:Nmoons))
+            end if
+        end subroutine allocate_moons_arrays
+
+        ! 5.3 Alocatar particulas
+        subroutine allocate_particles_arrays(Nparticles)
             implicit none
             integer(kind=4), intent(in) :: Nparticles
 
-            !! Parámetros y auxiliares
-            allocate(particles_index(1:Nparticles))
-            allocate(particles_mass(1:Nparticles))
-            allocate(particles_coord(1:Nparticles,4), particles_elem(1:Nparticles,4))
-            allocate(particles_acc(1:Nparticles,2))
-            allocate(particles_MMR(1:Nparticles))
-            allocate(particles_dist(1:Nparticles))
-            allocate(sorted_particles_index(1:Nparticles))
-            allocate(particles_outcome(1:Nparticles))
-            allocate(ij_to_swap(1:Nparticles,2))
-            if (use_chaos) then
-                allocate(particles_times(1:Nparticles))
-                allocate(particles_min_a(1:Nparticles), particles_max_a(1:Nparticles))
-                allocate(particles_min_e(1:Nparticles), particles_max_e(1:Nparticles))
+            if (Nparticles > 0) then
+                if (allocated(particles_index)) then
+                    write (*,*) "ERROR: Number of particles already defined."
+                    write (*,*) "        Use particles file or config file; not both."
+                    STOP 1
+                end if
+                !! Parámetros y auxiliares
+                allocate(particles_index(1:Nparticles))
+                allocate(sorted_particles_index(1:Nparticles))
+                allocate(particles_coord(1:Nparticles,4))
+                allocate(particles_elem(1:Nparticles,4))
+                allocate(particles_acc(1:Nparticles,2))
+                allocate(particles_MMR(1:Nparticles))
+                allocate(particles_dist(1:Nparticles))
             end if
-            allocate(particles_hexit(0:Nparticles))
-            particles_hexitptr => particles_hexit(0) ! Puntero a Hard Exit (NO TOCAR) !!! Ya está en default
-            if (use_bins) allocate(particles_bins(1:Nparticles))  ! Unused if use_bins is False
-        end subroutine allocate_particles
+                ! allocate(particles_outcome(1:Nparticles))
+                ! allocate(ij_to_swap(1:Nparticles,2))
+                ! if (use_chaos) then
+                !     allocate(particles_times(1:Nparticles))
+                !     allocate(particles_min_a(1:Nparticles), particles_max_a(1:Nparticles))
+                !     allocate(particles_min_e(1:Nparticles), particles_max_e(1:Nparticles))
+                ! end if
+                ! allocate(particles_hexit(0:Nparticles))
+                ! particles_hexitptr => particles_hexit(0) ! Puntero a Hard Exit (NO TOCAR) !!! Ya está en default
+                ! if (use_bins) allocate(particles_bins(1:Nparticles))  ! Unused if use_bins is False
+        end subroutine allocate_particles_arrays
 
-        ! 5.3 Liberar arrays asteroide
+        ! 5.4 Liberar arrays asteroide
         subroutine free_asteroid_arrays()
             implicit none
 
-            deallocate(mass_ast_arr, radius_ast_arr, mu_ast_arr, Gmass_ast_arr)
+            deallocate(mass_ast_arr)
+            deallocate(Gmass_ast_arr)
+            deallocate(mu_ast_arr)
+            deallocate(radius_ast_arr)
+            deallocate(pos_ast_arr)
+            deallocate(vel_ast_arr)
+            deallocate(acc_ast_arr)
+            deallocate(theta_ast_arr)
+            deallocate(dist_ast_arr)
+            deallocate(inertia_ast_arr)
+            
             if (use_boulders) then
-                deallocate(theta_from_primary, mu_from_primary)
-                deallocate(pos_from_primary, vel_from_primary, acc_from_primary)
+                deallocate(theta_from_primary)
+                deallocate(mu_from_primary)
+                deallocate(pos_from_primary)
+                deallocate(vel_from_primary)
+                deallocate(acc_from_primary)
             end if
-            deallocate(pos_ast_arr, vel_ast_arr, acc_ast_arr)
-            deallocate(theta_ast_arr, dist_ast_arr, inertia_ast_arr)
         end subroutine free_asteroid_arrays
 
-        ! 5.4 Liberar arrays particles
-        subroutine free_particles()
+        ! 5.5 Liberar arrays particles
+        subroutine free_moons_arrays()
             implicit none
 
-            deallocate(particles_index, particles_mass)
-            deallocate(particles_coord, particles_elem)
-            deallocate(particles_acc)
-            deallocate(particles_MMR, particles_dist)
-            deallocate(sorted_particles_index)
-            deallocate(particles_outcome)
-            deallocate(ij_to_swap)
-            if (use_chaos) then
-                deallocate(particles_times)
-                deallocate(particles_min_a, particles_max_a)
-                deallocate(particles_min_e, particles_max_e)
+            if (allocated(moons_index)) then
+                deallocate(moons_index)
+                deallocate(sorted_moons_index)
+                deallocate(moons_mass)
+                deallocate(moons_mass_ratios)
+                deallocate(moons_radii)
+                deallocate(moons_coord)
+                deallocate(moons_elem)
+                deallocate(moons_acc)
+                deallocate(moons_MMR)
+                deallocate(moons_dist)
             end if
-            deallocate(particles_hexit)
-            if (use_bins) deallocate(particles_bins)  ! Unused if use_bins is False
-        end subroutine free_particles
+        end subroutine free_moons_arrays
 
-        ! 6. Setear los tiempos de salida
-        subroutine set_output_times(t0, tf, n_out, dt_out, case_dist, t_out)
+        ! 5.6 Liberar arrays particles
+        subroutine free_particles_arrays()
             implicit none
-            real(kind=8), intent(in) :: t0, tf
-            integer(kind=4), intent(inout) :: n_out
-            real(kind=8), intent(inout) :: dt_out
-            integer(kind=4), intent(in) :: case_dist
-            real(kind=8), dimension(:), allocatable, intent(out) :: t_out
-            real(kind=8) :: t_aux, t_add
-            integer(kind=4) :: i
-            real(kind=8) :: npointsr
 
-            if (dt_out > 0.d0) then
-                if (dt_out > tf - t0) then
-                    write (*,*) "ERROR: dt_out >= (tf - t0)"
-                    stop 1
-                end if
-                n_out = int((tf - t0) / dt_out) + 1
-                npointsr = n_out * 1.d0
-            else
-                npointsr = n_out * 1.d0
-                dt_out = (tf - t0) / (npointsr - 1.d0)
+            if (allocated(particles_index)) then
+                deallocate(particles_index)
+                deallocate(particles_coord)
+                deallocate(particles_elem)
+                deallocate(particles_acc)
+                deallocate(particles_MMR)
+                deallocate(particles_dist)
+                deallocate(sorted_particles_index)
+                ! if (use_chaos) then
+                !     deallocate(particles_times)
+                !     deallocate(particles_min_a)
+                !     deallocate(particles_max_a)
+                !     deallocate(particles_min_e)
+                !     deallocate(particles_max_e)
+                ! end if
+                ! deallocate(particles_outcome)
+                ! deallocate(ij_to_swap)
+                ! deallocate(particles_hexit)
+                ! if (use_bins) deallocate(particles_bins)  ! Unused if use_bins is False
             end if
-            if (n_out < 2) then
-                write (*,*) "ERROR: n_out < 2"
-                stop 1
-            end if
-            allocate (t_out(n_out))
-            select case (case_dist)
-            case(0) ! Lineal
-                t_aux = (tf - t0) / (npointsr - uno)
-                do i = 2, n_out - 1
-                    t_out(i) = t0 + t_aux * (i-1)
-                end do
-            case(1) ! Logarítmico
-                t_aux = exp (log (tf - t0 + 1.) / npointsr)
-                t_add = t_aux
-                do i = 2, n_out - 1
-                    t_add    = t_add * t_aux
-                    t_out(i) = t0 + t_add - 1.
-                end do
-            case(2) ! Combinado
-                !! Teniendo en cuenta que 0 es t0 y n_out es tf, si se pide
-                !!  una cantidad impar n_out de puntos, se van a hacer 
-                !!  lin = (n_out-1)/2 puntos lineales y log = lin-1 puntos logarítmicos
-                !!  Si se pide una cantidad par, lin = log = n_out/2
-                ! Primero lineal
-                npointsr = uno * (ceiling(npointsr * uno2 - tini) + 1) ! - tini para evitar errores de redondeo
-                t_aux = (tf - t0) / (npointsr - uno)
-                do i = 2, ceiling(npointsr - tini) - 1 ! - tini para evitar errores de redondeo
-                    t_out(i) = t0 + t_aux * (i-1)
-                end do
-                ! Luego logarítmico
-                if (mod(n_out, 2) .ne. 0) npointsr = npointsr - uno
-                t_aux = exp (log (tf - t0 + 1.) / npointsr)
-                t_add = t_aux
-                do i = n_out - floor(npointsr + tini) + 2, n_out - 1 ! + tini para evitar errores de redondeo
-                    t_add    = t_add * t_aux
-                    t_out(i) = t0 + t_add - 1.
-                end do
-                ! Y al final ordenamos
-                call quicksort(t_out, 2, n_out-1)
-            end select
-            t_out(1) = t0
-            t_out(n_out) = tf
-        end subroutine set_output_times
+        end subroutine free_particles_arrays
 
         ! 7. Leer un archivo con datos en columnas
         subroutine read_columns_file(file_name, values_arr, method)
@@ -1351,76 +1491,14 @@ module parameters
             close (30)
         end subroutine read_tomfile
 
-        ! 9. Combinar, ordenar y eliminar duplicados de dos arreglos
-        subroutine merge_sort_and_unique(a, b, ina, inb, c, kfin)
+        ! 11. Obtener a de corotación (respecto al asteroide)
+        function get_a_corot(masstot, omega1) result(acorot)
             implicit none
-            real(kind=8), dimension(:), intent(in) :: a, b ! Arreglos de reales
-            logical, dimension(:), allocatable, intent(out) :: ina, inb ! Booleanos de elementos en a y b
-            real(kind=8), dimension(:), allocatable, intent(out) :: c ! Arreglo combinado
-            integer(kind=4), intent(out) :: kfin ! Número de elementos en c
-            logical, dimension(:), allocatable :: ina0, inb0
-            real(kind=8), dimension(:), allocatable :: c0
-            integer(kind=4) :: i, j, k
+            real(kind=8), intent(in) :: masstot, omega1
+            real(kind=8) :: acorot
 
-            allocate (c0(size(a)+size(b)))
-            allocate (ina0(size(c0)))
-            allocate (inb0(size(c0)))
-            c0 = 0.
-            ina0 = .False.
-            inb0 = .False.
-            i = 1
-            j = 1
-            do k = 1, size(c0)
-                if (i > size(a)) then
-                    if (j > size(b)) then
-                        kfin = k - 1
-                        exit
-                    else
-                        c0(k) = b(j)
-                        j = j + 1
-                        inb0(k) = .True.
-                    end if
-                else if (j > size(b)) then
-                    c0(k) = a(i)
-                    i = i + 1
-                    ina0(k) = .True.
-                else if (a(i) < b(j)) then
-                    c0(k) = a(i)
-                    i = i + 1
-                    ina0(k) = .True.
-                else if (a(i) > b(j)) then
-                    c0(k) = b(j)
-                    j = j + 1
-                    inb0(k) = .True.
-                else
-                    c0(k) = a(i)
-                    i = i + 1
-                    j = j + 1
-                    ina0(k) = .True.
-                    inb0(k) = .True.
-                end if
-                kfin = k
-            end do
-
-            allocate (c(kfin))
-            allocate (ina(kfin))
-            allocate (inb(kfin))
-            c = c0(1:kfin)
-            ina = ina0(1:kfin)
-            inb = inb0(1:kfin)
-            deallocate (c0)
-            deallocate (ina0)
-            deallocate (inb0)
-        end subroutine merge_sort_and_unique
-
-        ! 10. Calcular productro vectorial 2D
-        function cross2D(a, b) result(res)
-            implicit none
-            real(kind=8), dimension(2), intent(in) :: a, b
-            real(kind=8) :: res
-
-            res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
-        end function cross2D    
+            acorot = (G * masstot / (omega1 * omega1))**(1/3.)
+        end function get_a_corot
 
         ! 12. Obtener centro de masas de asteroide
         subroutine get_center_of_mass(m, rib, vib, mcm, rcm, vcm)
@@ -1461,16 +1539,6 @@ module parameters
             !! Get Omega from L/I
             omega = angmom / inertia
         end subroutine get_asteroid_from_boulders
-
-        ! 14. Liberar arrays de tiempos
-        subroutine free_times_arrays()
-            implicit none
-
-            deallocate(output_times)
-            deallocate(checkpoint_times)
-            deallocate(checkpoint_is_output)
-            deallocate(checkpoint_is_tom)
-        end subroutine free_times_arrays
 
         ! 15. Setear min y max para caos
         subroutine free_initial_conditions()
@@ -1544,191 +1612,6 @@ module parameters
             particles_hexit(j) = tmp_integer
         end subroutine swap_particles
         
-        ! 17.x Subroutines to sort arrays
-
-        ! 17.1 Devuelve índices de ordenado
-        recursive subroutine quickargsort(a, b, first, last)
-            implicit none
-            real(kind=8), intent(in) :: a(:)          ! Input array (not modified)
-            integer(kind=4), intent(inout) :: b(size(a))    ! Indices array to be sorted
-            integer(kind=4), intent(in) :: first, last
-            real(kind=8) :: pivot
-            integer(kind=4) :: i, j, temp
-
-            ! Pivot selection
-            pivot = a(b(floor((first + last) * uno2)))
-            i = first
-            j = last
-            do
-                do while (a(b(i)) < pivot)
-                    i = i + 1
-                end do
-                do while (a(b(j)) > pivot)
-                    j = j - 1
-                end do
-                if (i >= j) exit
-
-                ! Swap indices in 'b' array
-                temp = b(i)
-                b(i) = b(j)
-                b(j) = temp
-
-                i = i + 1
-                j = j - 1
-            end do
-
-            ! Recursive calls
-            if (first < i - 1) call quickargsort(a, b, first, i - 1)
-            if (j + 1 < last)  call quickargsort(a, b, j + 1, last)
-        end subroutine quickargsort
-
-
-        ! 17.2 Devuelve índices de ordenado (entero)
-        recursive subroutine quickargsort_int(a, b, first, last)
-            implicit none
-            integer(kind=4), intent(in) :: a(:)    ! Input array (not modified)
-            integer(kind=4), intent(inout) :: b(size(a)) ! Indices array to be sorted
-            integer(kind=4), intent(in) :: first, last
-            integer(kind=4) :: pivot
-            integer(kind=4) :: i, j, temp
-
-            ! Pivot selection
-            pivot = a(b(floor((first + last) * uno2)))
-            i = first
-            j = last
-            do
-                do while (a(b(i)) < pivot)
-                    i = i + 1
-                end do
-                do while (a(b(j)) > pivot)
-                    j = j - 1
-                end do
-                if (i >= j) exit
-
-                ! Swap indices in 'b' array
-                temp = b(i)
-                b(i) = b(j)
-                b(j) = temp
-
-                i = i + 1
-                j = j - 1
-            end do
-
-            ! Recursive calls
-            if (first < i - 1) call quickargsort_int(a, b, first, i - 1)
-            if (j + 1 < last)  call quickargsort_int(a, b, j + 1, last)
-        end subroutine quickargsort_int
-        
-        ! 17.3 Sort an array
-        subroutine quicksort(a, first, last)
-            implicit none
-            real(kind=8), intent(inout) :: a(:)          ! Input array
-            integer(kind=4), intent(in) :: first, last   ! First and last indices
-            integer(kind=4), allocatable :: b(:)         ! Indices of array to be sorted
-            real(kind=8), allocatable :: a_copy(:)       ! Temporary copy of the array
-            integer(kind=4) :: n_sort
-            
-            ! Total amount of values to sort
-            n_sort = last - first + 1
-            
-            ! Allocate and initialize the indices array
-            allocate(b(1 : n_sort))
-            allocate(a_copy(1 : n_sort))
-            
-            ! Initialize indices to [first, first+1, ..., last]
-            do i = 1, n_sort
-                b(i) = i
-                a_copy(i) = a(first + i - 1)
-            end do
-
-            ! Sort indices using the quickargsort subroutine
-            call quickargsort(a_copy, b, 1, n_sort)
-
-            ! Copy the sorted values back to the original array
-            a(first:last) = a_copy(b)
-
-            ! Deallocate temporary arrays
-            deallocate(b, a_copy)
-        end subroutine quicksort
-        
-        ! 17.4 Sort and integer array
-        subroutine quicksort_int(a, first, last)
-            implicit none
-            integer(kind=4), intent(inout) :: a(:)       ! Input array
-            integer(kind=4), intent(in) :: first, last   ! First and last indices
-            integer(kind=4), allocatable :: b(:)         ! Indices of array to be sorted
-            integer(kind=4), allocatable :: a_copy(:)    ! Temporary copy of the array
-            integer(kind=4) :: n_sort
-
-            ! Total amount of values to sort
-            n_sort = last - first + 1
-            
-            ! Allocate and initialize the indices array
-            allocate(b(1 : n_sort))
-            allocate(a_copy(1 : n_sort))
-            
-            ! Initialize indices to [first, first+1, ..., last]
-            do i = 1, n_sort
-                b(i) = i
-                a_copy(i) = a(first + i - 1)
-            end do
-
-            ! Sort indices using the quickargsort subroutine
-            call quickargsort_int(a_copy, b, 1, n_sort)
-
-            ! Copy the sorted values back to the original array
-            a(first:last) = a_copy(b)
-
-            ! Deallocate temporary arrays
-            deallocate(b, a_copy)
-        end subroutine quicksort_int
-        
-        ! 17.5 Reorder from given order
-        subroutine reorder(array,  order, n)
-            real(kind=8), dimension(:), intent(inout) :: array
-            integer(kind=4), dimension(:), intent(in) :: order
-            integer(kind=4), intent(in) :: n
-            real(kind=8), dimension(n) :: tmp
-            integer(kind=4) :: i
-
-            ! Loop and reorder
-            do i = 1, n
-                tmp(i) = array(order(i))
-            end do
-            array(1:n) = tmp
-        end subroutine reorder
-
-        ! 17.5 Reorder from given order
-        subroutine reorder_int(array,  order, n)
-            integer(kind=4), dimension(:), intent(inout) :: array
-            integer(kind=4), dimension(:), intent(in) :: order
-            integer(kind=4), intent(in) :: n
-            integer(kind=4), dimension(n) :: tmp
-            integer(kind=4) :: i
-
-            ! Loop and reorder
-            do i = 1, n
-                tmp(i) = array(order(i))
-            end do
-            array(1:n) = tmp
-        end subroutine reorder_int
-
-        ! 17.6 Reorder 2D from given order
-        subroutine reorder2D(array, order, n)
-            real(kind=8), dimension(:,:), intent(inout) :: array
-            integer(kind=4), dimension(:), intent(in) :: order
-            integer(kind=4), intent(in) :: n
-            real(kind=8), dimension(n, size(array, 2)) :: tmp
-            integer(kind=4) :: i
-        
-            ! Loop and reorder the first axis based on the order array
-            do i = 1, n
-                tmp(i, :) = array(order(i), :)
-            end do
-        
-            ! Copy the reordered array back
-            array(1:n, :) = tmp
-        end subroutine reorder2D
         
         ! 18 Hacer merger de masa (y ang mom) con asteroide
         subroutine merge_into_asteroid(mass, angmom)
@@ -1943,232 +1826,6 @@ module parameters
 
         ! 22.x Subroutines to get coordinates and elements from a body
 
-        ! 22.1 Get coordinates from a body
-        subroutine coord(msum, a, e, inc, capm, omega, capom, xc)
-            implicit none
-            real(kind=8), intent(in)  :: msum, a, e, inc, capm, omega, capom
-            real(kind=8), intent(out) :: xc(6)
-            real(kind=8) :: sp, cp, so, co, si, ci
-            real(kind=8) :: d11, d12, d13, d21, d22, d23
-            real(kind=8) :: cape, dummy, scap, ccap, sqe, sqgma
-            real(kind=8) :: ri, xfac1, xfac2, vfac1, vfac2
-            
-            ! Generate rotation matrices (on p. 42 of Fitzpatrick)
-            sp = sin(omega)
-            cp = cos(omega)
-            so = sin(capom)
-            co = cos(capom)
-            si = sin(inc)
-            ci = cos(inc)
-            d11 = cp * co - sp * so * ci
-            d12 = cp * so + sp * co * ci
-            d13 = sp * si
-            d21 = -sp * co - cp * so * ci
-            d22 = -sp * so + cp * co * ci
-            d23 = cp * si
-            
-            ! Get the other quantities depending on orbit type (i.e. ialpha)
-            call aver(capm, e, cape, dummy)
-            scap = sin(cape)
-            ccap = cos(cape)
-            sqe = sqrt(uno - e * e)
-            sqgma = sqrt(G * msum * a)
-            xfac1 = a * (ccap - e)
-            xfac2 = a * sqe * scap
-            ri = uno / (a * (uno - e * ccap))
-            vfac1 = -ri * sqgma * scap
-            vfac2 = ri * sqgma * sqe * ccap
-            
-            xc(1) = d11 * xfac1 + d21 * xfac2
-            xc(2) = d12 * xfac1 + d22 * xfac2
-            xc(3) = d13 * xfac1 + d23 * xfac2
-            xc(4) = d11 * vfac1 + d21 * vfac2
-            xc(5) = d12 * vfac1 + d22 * vfac2
-            xc(6) = d13 * vfac1 + d23 * vfac2
-        end subroutine coord
-
-        ! 22.2 Get true f and g from a body
-        subroutine aver(dm, e, u, f)
-            implicit none
-            real(kind=8), intent(in)  :: dm, e
-            real(kind=8), intent(out) :: u, f
-            real(kind=8) :: u0, dif, seno, cose
-            integer(kind=4) :: i, MAX_ITER = 50
-            
-            u0 = dm
-            dif = uno
-            i = 0
-            do while (dif > epsilon)
-                u = dm + e * sin(u0)
-                dif = abs(u - u0)
-                u0 = u
-                i = i + 1
-                if (i > MAX_ITER) then
-                    print*, 'aver: too many iterations'
-                    exit
-                end if
-            end do
-            seno = sqrt(uno + e) * sin(uno2 * u)
-            cose = sqrt(uno - e) * cos(uno2 * u)
-            f = dos * atan2(seno, cose)
-        end subroutine aver
-
-        ! 22.3 Get elements from a body
-        subroutine elem(msum, xc, a, e, inc, capm, omega, capom)
-            implicit none
-            real(kind=8), intent(in)  :: msum, xc(6)
-            real(kind=8), intent(out) :: a, e, inc, capm, omega, capom
-            real(kind=8) :: gmsum
-            real(kind=8) :: x, y, z, vx, vy, vz
-            real(kind=8) :: hx, hy, hz, h2, h, fac, u
-            real(kind=8) :: r, v, v2, vdotr, energy
-            real(kind=8) :: cape, cw, sw, w, face, capf, tmpf
-            integer(kind=4) :: ialpha = 0
-                
-            gmsum = G * msum
-            x = xc(1)
-            y = xc(2)
-            z = xc(3)
-            vx = xc(4)
-            vy = xc(5)
-            vz = xc(6)
-            
-            hx = y * vz - z * vy
-            hy = z * vx - x * vz
-            hz = x * vy - y * vx
-            h2 = hx * hx + hy * hy + hz * hz
-            h = sqrt(h2)
-            inc = acos(hz / h)
-            
-            fac = sqrt(hx*hx + hy*hy) / h
-            if (fac < epsilon) then
-                capom = cero
-                u = atan2(y, x)
-                if (abs(inc - pi) < 10.d0 * epsilon) then
-                    u = -u
-                end if
-            else
-                capom = atan2(hx, -hy)
-                u = atan2(z / sin(inc), x * cos(capom) + y * sin(capom))
-            end if
-            
-            if (capom < cero) then
-                capom = capom + twopi
-            end if
-            if (u < cero) then
-                u = u + twopi
-            end if
-            
-            r = sqrt(x * x + y * y + z * z)
-            v2 = vx * vx + vy * vy + vz * vz
-            v = sqrt(v2)
-            vdotr = x * vx + y * vy + z * vz
-            energy = uno2 * v2 - gmsum / r
-            
-            if (abs(energy * r / gmsum) < sqrt(epsilon)) then
-                ialpha = 0
-            else
-                if (energy < cero) then
-                    ialpha = -1
-                else if (energy > cero) then
-                    ialpha = 1
-                end if
-            end if
-            
-            !! Ellipse
-            if (ialpha == -1) then
-                a = -uno2 * gmsum / energy
-                fac = uno - h2 / (gmsum * a)
-                if (fac > epsilon) then
-                    e = sqrt(fac)
-                    face = (a - r) / (a * e)
-                    if (face > uno) then
-                        cape = cero
-                    else
-                        if (face > -uno) then
-                            cape = acos(face)
-                        else
-                            cape = pi
-                        end if
-                    end if
-                    if (vdotr < cero) then
-                        cape = twopi - cape
-                    end if
-                    cw = (cos(cape) - e) / (uno - e * cos(cape))
-                    sw = sqrt(uno - e * e) * sin(cape) / (uno - e * cos(cape))
-                    w = atan2(sw, cw)
-                    if (w < cero) then
-                        w = w + twopi
-                    end if
-                else
-                    e = cero
-                    w = u
-                    cape = u
-                end if
-                capm = cape - e * sin(cape)
-                omega = u - w
-                if (omega < cero) then
-                    omega = omega + twopi
-                end if
-                omega = omega - int(omega / twopi) * twopi
-            end if
-            
-            !! Hypérbola
-            if (ialpha == 1) then
-                a = uno2 * gmsum / energy
-                fac = h2 / (gmsum * a)
-                if (fac > epsilon) then
-                    e = sqrt(uno + fac)
-                    tmpf = (a + r) / (a * e)
-                    if (tmpf < uno) then
-                        tmpf = uno
-                    end if
-                    capf = log(tmpf + sqrt(tmpf * tmpf - uno))
-                    if (vdotr < cero) then
-                        capf = -capf
-                    end if
-                    cw = (e - cosh(capf)) / (e * cosh(capf) - uno)
-                    sw = sqrt(e * e - uno) * sinh(capf) / (e * cosh(capf) - uno)
-                    w = atan2(sw, cw)
-                    if (w < cero) then
-                        w = w + twopi
-                    end if
-                else
-                    e = uno
-                    tmpf = uno2 * h2 / gmsum
-                    w = acos(dos * tmpf / r - uno)
-                    if (vdotr < cero) then
-                        w = twopi - w
-                    end if
-                    tmpf = (a + r) / (a * e)
-                    capf = log(tmpf + sqrt(tmpf * tmpf - uno))
-                end if
-                capm = e * sinh(capf) - capf
-                omega = u - w
-                if (omega < cero) then
-                    omega = omega + twopi
-                end if
-                omega = omega - int(omega / twopi) * twopi
-            end if
-
-            !! Parábola    
-            if (ialpha == 0) then
-                a = uno2 * h2 / gmsum
-                e = uno
-                w = acos(dos * a / r - uno)
-                if (vdotr < cero) then
-                    w = twopi - w
-                end if
-                tmpf = tan(uno2 * w)
-                capm = tmpf * (uno + tmpf * tmpf / 3.d0)
-                omega = u - w
-                if (omega < cero) then 
-                    omega = omega + twopi
-                end if
-                omega = omega - int(omega / twopi) * twopi
-            end if
-        end subroutine elem
-
         ! 23. Obtener elementos de partícula i
         subroutine calculate_elements_i(i)
             implicit none
@@ -2212,42 +1869,6 @@ module parameters
         end subroutine nullify_pointers
         
         ! 26.x Subroutines to switch between lower and upper case
-
-        ! 26.1 Go from lower to upper case
-        function to_upper(strIn) result(strOut)
-            ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
-            ! Original author: Clive Page
-            implicit none
-            character(len=*), intent(in) :: strIn
-            character(len=len(strIn)) :: strOut
-            integer :: i,j
-    
-            do i = 1, len(strIn)
-                j = iachar(strIn(i:i))
-                if (j>= iachar("a") .and. j<=iachar("z") ) then
-                    strOut(i:i) = achar(iachar(strIn(i:i))-32)
-                else
-                    strOut(i:i) = strIn(i:i)
-                end if
-            end do
-        end function to_upper
-
-        ! 26.2 Go from lower to upper case
-        function to_lower(strIn) result(strOut)
-            implicit none
-            character(len=*), intent(in) :: strIn
-            character(len=len(strIn)) :: strOut
-            integer :: i,j
-    
-            do i = 1, len(strIn)
-                j = iachar(strIn(i:i))
-                if (j>= iachar("A") .and. j<=iachar("Z") ) then
-                    strOut(i:i) = achar(iachar(strIn(i:i))+32)
-                else
-                    strOut(i:i) = strIn(i:i)
-                end if
-            end do
-        end function to_lower
 
         ! 27. Flush to a file
         subroutine flush_to_file(unit_file)

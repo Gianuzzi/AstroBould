@@ -690,23 +690,23 @@ module integrators
             ynew = y + dt * (der * 0.17476028d0 - k2 * 0.55148066d0 + k3 * 1.20553560d0 + k4 * 0.17118478d0)
         end subroutine Ralston4
 
-        subroutine Lobatto4 (t, y, der, dt, dydt, ynew) ! Implicit
-            implicit none
-            real(kind=8), intent(in)                       :: t, dt
-            real(kind=8), dimension(:), intent(in)         :: y
-            real(kind=8), dimension(size (y)), intent(in)  :: der
-            procedure(dydt_tem)                            :: dydt
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8), dimension(size (y))              :: kaux, k2, k3
-            real(kind=8), parameter                        :: aux = C1_4
+        ! subroutine Lobatto4 (t, y, der, dt, dydt, ynew) ! Implicit
+        !     implicit none
+        !     real(kind=8), intent(in)                       :: t, dt
+        !     real(kind=8), dimension(:), intent(in)         :: y
+        !     real(kind=8), dimension(size (y)), intent(in)  :: der
+        !     procedure(dydt_tem)                            :: dydt
+        !     real(kind=8), dimension(size (y)), intent(out) :: ynew
+        !     real(kind=8), dimension(size (y))              :: kaux, k2, k3
+        !     real(kind=8), parameter                        :: aux = C1_4
 
-            ! k1   = dydt (t, y)
-            kaux = der * C1_4
-            call solve_1k_implicit (t + dt * C1_2, y, dt, dydt, kaux, aux, k2)
-            k3 = dydt (t + dt, y + dt * k2)
+        !     ! k1   = dydt (t, y)
+        !     kaux = der * C1_4
+        !     call solve_1k_implicit (t + dt * C1_2, y, dt, dydt, kaux, aux, k2)
+        !     k3 = dydt (t + dt, y + dt * k2)
 
-            ynew = y + dt * (der + k2 * FOUR + k3) * C1_6
-        end subroutine Lobatto4
+        !     ynew = y + dt * (der + k2 * FOUR + k3) * C1_6
+        ! end subroutine Lobatto4
 
         subroutine Runge_Kutta4 (t, y, der, dt, dydt, ynew)
             implicit none
@@ -815,7 +815,7 @@ module integrators
             ynew = y + dt * ((rk(:,1) + rk(:,3)) * FIVE + rk(:,2) * 8.d0) * C1_18
 
             contains
-                subroutine FunK_GL6 (t, y, dt, dydt, kin, kout)  !!! Funk for Gauss_Legendre5
+                subroutine FunK_GL6 (t, y, dt, dydt, kin, kout)  !!! Funk for Gauss_Legendre6
                     implicit none
                     real(kind=8), intent(in)                                          :: t, dt
                     procedure(dydt_tem)                                               :: dydt
@@ -838,47 +838,46 @@ module integrators
                 end subroutine FunK_GL6
         end subroutine Gauss_Legendre6 
 
-        ! subroutine Runge_Kutta6 (t, y, der, dt, dydt, ynew)
-        !     implicit none
-        !     real(kind=8), intent(in)                       :: t, dt
-        !     real(kind=8), dimension(:), intent(in)         :: y
-        !     real(kind=8), dimension(size (y)), intent(in)  :: der
-        !     procedure(dydt_tem)                            :: dydt
-        !     real(kind=8), dimension(size (y)), intent(out) :: ynew
-        !     real(kind=8), dimension(size (y))              :: k2, k3, k4, k5, k6, k7
-              
-        !     ! k1 = dydt (t,             y)
-        !     k2 = dydt (t + dt * C1_3, y + dt * der * C1_3)
-        !     k3 = dydt (t + dt * C2_3, y + dt * k2 * C2_3)
-        !     k4 = dydt (t + dt * C1_3, y + dt * (der + k2 * FOUR - k3) * C1_12)
-        !     k5 = dydt (t + dt * C5_6, y + dt * (der * 25.d0 - k2 * 1.1d2 + k3 * 35.d0 + k4 * 9.d1) * C1_48)
-        !     k6 = dydt (t + dt * C1_6, y + dt * (der * THREE + k4 * 1.d1 + k5 * TWO) * 5.d-2 + (-k2 * 11.d0 - k3 * THREE)/24.d0)
-        !     k7 = dydt (t + dt,        y + dt * (- der * 30.75d0 + k2 * 495.d0 + k3 * 53.75d0 - k4 * 5.9d2 + k5 * 3.2d1 + &
-        !     & k6 * 4.d2)/195.d0)
-        
-        !     ynew = y + dt * ((der + k7) * 13.d0/2.d2 + (k3 + k4) * 11.d0/4.d1 + (k5 + k6) * FOUR/25.d0)
-        ! end subroutine Runge_Kutta6
+        subroutine Runge_Kutta6 (t, y, der, dt, dydt, ynew)
+            implicit none
+            real(kind=8), intent(in)                       :: t, dt
+            real(kind=8), dimension(:), intent(in)         :: y
+            real(kind=8), dimension(size (y)), intent(in)  :: der
+            procedure(dydt_tem)                            :: dydt
+            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(kind=8), dimension(size (y))              :: k2, k3, k4, k5, k6, k7
 
-        ! subroutine Abbas6 (t, y, der, dt, dydt, ynew)
-        !     implicit none
-        !     real(kind=8), intent(in)                       :: t, dt
-        !     real(kind=8), dimension(:), intent(in)         :: y
-        !     real(kind=8), dimension(size (y)), intent(in)  :: der
-        !     procedure(dydt_tem)                            :: dydt
-        !     real(kind=8), dimension(size (y)), intent(out) :: ynew
-        !     real(kind=8), dimension(size (y))              :: k2, k3, k4, k5, k6, k7
+            ! k1 = dydt(t, y)
+            k2 = dydt(t + dt * C1_3, y + dt * C1_3 * der)
+            k3 = dydt(t + dt * C1_3, y + dt * C1_3 * k2)
+            k4 = dydt(t + dt * C1_2, y + dt * C1_2 * k3)
+            k5 = dydt(t + dt * C2_3, y + dt * C2_3 * k4)
+            k6 = dydt(t + dt, y + dt * k5)
+            k7 = dydt(t + dt, y + dt * k6)
+
+            ynew = y + dt * (C1_12 * der + C1_3 * k4 + C1_3 * k5 + C1_12 * k7)
+        end subroutine Runge_Kutta6
+
+        subroutine Abbas6 (t, y, der, dt, dydt, ynew)
+            implicit none
+            real(kind=8), intent(in)                       :: t, dt
+            real(kind=8), dimension(:), intent(in)         :: y
+            real(kind=8), dimension(size (y)), intent(in)  :: der
+            procedure(dydt_tem)                            :: dydt
+            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(kind=8), dimension(size (y))              :: k2, k3, k4, k5, k6, k7
               
-        !     ! k1 = dydt (t,             y)
-        !     k2 = dydt (t + dt * C1_3, y + dt * der * C1_3)
-        !     k3 = dydt (t + dt * C2_3, y + dt * k2 * C2_3)
-        !     k4 = dydt (t + dt * C1_3, y + dt * (der + k2 * FOUR - k3) * C1_12)
-        !     k5 = dydt (t + dt * C5_6, y + dt * (der * 25.d0 - k2 * 1.1d2 + k3 * 35.d0 + k4 * 90.d0)/48.d0)
-        !     k6 = dydt (t + dt * C1_6, y + dt * (der * 0.15d0 - k2 * 0.55d0 - k3 * C1_8 + k4 * C1_2 + k5 * 0.1d0))
-        !     k7 = dydt (t + dt,        y + dt * (- der * 195.75d0 + k2 * 495.d0 + k3 * 53.75d0 - k4 * 590.d0 + k5 * 32.d0 + &
-        !     & k6 * 4.d2)/195.d0)
+            ! k1 = dydt (t,             y)
+            k2 = dydt (t + dt * C1_3, y + dt * der * C1_3)
+            k3 = dydt (t + dt * C2_3, y + dt * k2 * C2_3)
+            k4 = dydt (t + dt * C1_3, y + dt * (der + k2 * FOUR - k3) * C1_12)
+            k5 = dydt (t + dt * C5_6, y + dt * (der * 25.d0 - k2 * 1.1d2 + k3 * 35.d0 + k4 * 90.d0)/48.d0)
+            k6 = dydt (t + dt * C1_6, y + dt * (der * 0.15d0 - k2 * 0.55d0 - k3 * C1_8 + k4 * C1_2 + k5 * 0.1d0))
+            k7 = dydt (t + dt,        y + dt * (- der * 195.75d0 + k2 * 495.d0 + k3 * 53.75d0 - k4 * 590.d0 + k5 * 32.d0 + &
+            & k6 * 4.d2)/195.d0)
         
-        !     ynew = y + dt * ((der + k7) * 13.d0 + (k3 + k4) * 55.d0 + (k5 + k6) * 32.d0) * 5.d-3
-        ! end subroutine Abbas6
+            ynew = y + dt * ((der + k7) * 13.d0 + (k3 + k4) * 55.d0 + (k5 + k6) * 32.d0) * 5.d-3
+        end subroutine Abbas6
 
         !!
 
@@ -1597,7 +1596,7 @@ module integrators
 
         !!! Leap Frog (KDK)
 
-        subroutine leapfrof_KDK (t, y, der, dt, dydt, ynew)
+        subroutine leapfrog_KDK (t, y, der, dt, dydt, ynew)
             implicit none
             real(kind=8), intent(in)                       :: t, dt
             real(kind=8), dimension(:), intent(in)         :: y
@@ -1656,11 +1655,11 @@ module integrators
                         a(2,i) = der(4*i)
                     end do
                 end function get_a
-        end subroutine leapfrof_KDK
+        end subroutine leapfrog_KDK
 
         !!! Leap Frog (DKD)
 
-        subroutine leapfrof_DKD (t, y, der, dt, dydt, ynew)
+        subroutine leapfrog_DKD (t, y, der, dt, dydt, ynew)
             implicit none
             real(kind=8), intent(in)                       :: t, dt
             real(kind=8), dimension(:), intent(in)         :: y
@@ -1718,7 +1717,7 @@ module integrators
                         a(2,i) = der(4*i)
                     end do
                 end function get_a
-        end subroutine leapfrof_DKD
+        end subroutine leapfrog_DKD
 
         !---------------------------------------------------------------------------------------------
         ! CALLERS:
