@@ -10,9 +10,9 @@ module constants
     real(kind=8), parameter :: pi         = uno2 * twopi
     real(kind=8), parameter :: radian     = twopi / 360.0d0
     real(kind=8), parameter :: infinity   = 1.0d50  ! Infinito
-    real(kind=8), parameter :: epsilon    = 1.0d-17 ! Precisión / Error [Usado en elem y coord]
-    real(kind=8), parameter :: tini       = 1.d-50 ! Lowest value
-    real(kind=8), parameter :: unit_mass  = 1.d-17 ! [kg]
+    real(kind=8), parameter :: epsilon    = 1.0d-12 ! Precisión / Error [Usado en elem y coord]
+    real(kind=8), parameter :: tini       = 1.d-30 ! Lowest value
+    real(kind=8), parameter :: unit_mass  = 1.d0   ! [kg]
     real(kind=8), parameter :: unit_dist  = 1.d0   ! [km]
     real(kind=8), parameter :: unit_time  = 1.d0   ! [day]
     real(kind=8), parameter :: unit_vel   = unit_dist / unit_time ! [km/day]

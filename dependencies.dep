@@ -1,27 +1,41 @@
 # This file is generated automatically. DO NOT EDIT!
 
 build/main :  \
-	build/bins.o \
+	build/auxiliar.o \
+	build/bodies.o \
+	build/celestial.o \
 	build/constants.o \
-	build/forces.o \
 	build/integrators.o \
 	build/main.o \
-	build/parameters.o
+	build/parameters.o \
+	build/times.o
+
+build/auxiliar.o : 
 
 build/bins.o :  \
 	build/constants.o
 
-build/constants.o : 
+build/bodies.o :  \
+	build/celestial.o \
+	build/constants.o
 
-build/forces.o :  \
-	build/parameters.o
+build/celestial.o :  \
+	build/constants.o
+
+build/constants.o : 
 
 build/integrators.o : 
 
 build/main.o :  \
-	build/forces.o \
-	build/integrators.o
+	build/integrators.o \
+	build/parameters.o \
+	build/times.o
 
 build/parameters.o :  \
-	build/bins.o \
+	build/auxiliar.o \
+	build/bodies.o \
+	build/constants.o
+
+build/times.o :  \
+	build/auxiliar.o \
 	build/constants.o

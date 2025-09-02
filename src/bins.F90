@@ -18,7 +18,7 @@ module bins
             procedure :: get_particles_bins => get_particles_bins_impl
             procedure :: calculate_mass => calculate_mass_impl
             procedure :: calculate_force => calculate_force_impl
-            procedure :: free => free_impl
+            procedure :: free => free_bins_impl
             procedure :: duplicate => duplicate_impl
     end type my_bins
     real(kind=8), dimension(0:15), parameter :: P2_2k = (/ &  ! P_{2k}^2(0)
@@ -318,7 +318,7 @@ contains
     end subroutine duplicate_impl
     
     ! Free memory for bins
-    subroutine free_impl(this)
+    subroutine free_bins_impl(this)
         implicit none
         class(my_bins), intent(inout) :: this
 
@@ -326,5 +326,5 @@ contains
         if (allocated(this%centers)) deallocate(this%centers)
         if (allocated(this%areas)) deallocate(this%areas)
         if (allocated(this%mass)) deallocate(this%mass)
-    end subroutine free_impl
+    end subroutine free_bins_impl
 end module bins

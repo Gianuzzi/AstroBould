@@ -285,14 +285,23 @@ module auxiliar
             deallocate (inb0)
         end subroutine merge_sort_and_unique
 
-        ! Calculate 2D cross product
-        function cross2D(a, b) result(res)
+        ! Calculate z component of 2D cross product
+        function cross2D_z(a, b) result(res)
             implicit none
             real(kind=8), dimension(2), intent(in) :: a, b
             real(kind=8) :: res
 
             res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
-        end function cross2D
+        end function cross2D_z
+
+        ! Calculate z component of 3D cross product
+        function cross3D_z(a, b) result(res)
+            implicit none
+            real(kind=8), dimension(3), intent(in) :: a, b
+            real(kind=8) :: res
+
+            res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
+        end function cross3D_z
         
         ! Read a file with data structured in columns
         subroutine read_columns_file(file_name, values_arr, method)
@@ -370,5 +379,29 @@ module auxiliar
             end if
             close (20)
         end subroutine read_columns_file
+
+        ! Write percentage to file unit or std out
+        subroutine percentage(tout, tstop, file_unit)
+            implicit none
+            real(kind=8), intent(in) :: tout, tstop
+            integer(kind=4), intent(in), optional :: file_unit
+            integer(kind=4) :: funit = 6  ! 6 is STD_OUTPUT
+            integer(kind=4) :: iper
+            character(len=100) :: guiones
+            character(len=4) :: cestado
+
+            if (present(file_unit)) funit = file_unit
+        
+            iper = int(100.0 * tout / tstop)
+            guiones = repeat('.', iper)
+        
+            if (iper < 100) then
+                write(cestado, '(i3)') iper
+                write(funit, '(a)', advance='no') char(13) // trim(guiones) // trim(adjustl(cestado)) // '%'
+            else
+                write(funit, '(a)', advance='no') char(13) // trim(guiones) // '. FIN'
+                write(funit, *)
+            end if
+        end subroutine percentage
 
 end module auxiliar

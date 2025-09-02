@@ -1,6 +1,6 @@
 !> Module with coordinates, and some cel-mech routines
 module celestial
-    use constants, only: G, pi, twopi, cero, uno, dos, epsilon, uno2
+    use constants
     implicit none
     
     contains
@@ -10,14 +10,16 @@ module celestial
             implicit none
             real(kind=8), intent(in) :: mass, omega
             real(kind=8) :: acorot
-
-            acorot = (G * mass / (omega * omega))**(1/3.)
+            if (omega < epsilon) then
+                acorot = cero
+            else 
+                acorot = (G * mass / (omega * omega))**(1/3.)
+            end if
         end function get_a_corot
 
         ! Get center of mass from masses, positions and velocities
-        subroutine get_center_of_mass(N, mass, rib, vib, mcm, rcm, vcm)
+        subroutine get_center_of_mass(mass, rib, vib, mcm, rcm, vcm)
             implicit none
-            integer(kind=4),intent(in) :: N  ! Amount of data to use
             real(kind=8), intent(in) :: mass(:), rib(:,:), vib(:,:)
             real(kind=8), intent(out) :: mcm, rcm(2), vcm(2)
             integer(kind=4) :: i
@@ -25,7 +27,7 @@ module celestial
             rcm = cero
             vcm = cero
             mcm = cero
-            do i = 1, N
+            do i = 1, size(mass)
                 rcm = rcm + mass(i) * rib(i,:)
                 vcm = vcm + mass(i) * vib(i,:)
                 mcm = mcm + mass(i)
@@ -33,6 +35,27 @@ module celestial
             rcm = rcm / mcm ! rcm = sum_i m_i * r_i / M
             vcm = vcm / mcm ! vcm = sum_i m_i * v_i / M
         end subroutine get_center_of_mass
+
+        ! Get acceleration and potential energy from single mass (Missing G)
+        subroutine get_acc_and_pot_single(mass, rib, xy_target, dr_max, acc, pot, inside)
+            implicit none
+            real(kind=8), intent(in) :: mass, rib(2), xy_target(2), dr_max
+            real(kind=8), intent(inout) :: acc(2), pot
+            logical, intent(inout), optional :: inside
+            real(kind=8) :: dx, dy, dr, dr2
+
+            dx = rib(1) - xy_target(1)
+            dy = rib(2) - xy_target(2)
+            dr2 = dx * dx + dy * dy
+            dr = sqrt(dr2)
+            if (dr < max(dr_max, tini)) then
+                if (present(inside)) inside = .True.
+                return
+            end if
+            acc = acc - (mass / (dr2 * dr)) * (/dx, dy/)
+            pot = pot - mass / dr
+            if (present(inside)) inside = .False.
+        end subroutine get_acc_and_pot_single
 
         ! Get coordinates from a body
         subroutine coord(msum, a, e, inc, capm, omega, capom, xc)
