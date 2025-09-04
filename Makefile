@@ -46,7 +46,7 @@ else
 MYFFLAGS := -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow
 endif
 else  # No debug
-MYLDFLAGS := -O3
+MYLDFLAGS := -O2
 ifeq ($(INTEL),1)
 MYFFLAGS := -fimf-domain-exclusion=15
 else ifeq ($(AMD),1)

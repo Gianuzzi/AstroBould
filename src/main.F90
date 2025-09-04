@@ -1,30 +1,21 @@
 program main
     use parameters
     use integrators
+    use celestial, only: get_Period
+    use bodies
     use times
-    ! use forces
-    
+    use derivates
     implicit none
-    ! Parameters
-    type(input_params_st) :: input_params  ! This is the structure with the default -> input parameters
-    type(input_params_st) :: sim  ! This is the structure with the input -> derived parameters
-    ! Map
-    external :: create_map   ! Declare the external function
+    external :: create_map   ! Declare the external function for map
     logical :: only_potential_map = .False.
-    ! Auxiliar
     integer(kind=4) :: aux_int
     character(1) :: aux_character1
     character(20) :: aux_character20
     character(30) :: aux_character30
-    real(kind=8) :: aux_real
-    real(kind=8), dimension(4) :: aux_real4
-    real(kind=8), dimension(:,:), allocatable :: boulders_coords !! mass, radius, theta  | (Nb+1, 4)
+    logical :: aux_logical
     real(kind=8), dimension(:,:), allocatable :: aux_2D  ! To read files
-    ! Loops
-    integer(kind=4) :: i
-
-    call init_default_parameters()  ! Inicializamos parámetros globales básicos
-
+    integer(kind=4) :: i, j, last_active ! Loops
+    
     use_configfile = .True. ! Usar archivo de configuración
     arguments_number = command_argument_count()
     do i = 1, arguments_number
@@ -35,7 +26,7 @@ program main
         end if
     end do
 
-    if (use_configfile) call read_config_file(input_params, "config.ini", configfile_exists) ! Leemos archivo de configuración
+    if (use_configfile) call read_config_file(input, "config.ini", configfile_exists) ! Leemos archivo de configuración
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!! Editar aquí abajo de ser necesario !!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -45,18 +36,18 @@ program main
         
         ! Asteroide central
         !! Primary
-        input_params%mass_primary = 6.3d18 ! Masa del cuerpo 0 [kg] ! -x =>  mAst = x
-        input_params%radius_primary = 129.d0 ! Radio del cuerpo 0 [km]
+        input%mass_primary = 6.3d18 ! Masa del cuerpo 0 [kg] ! -x =>  mAst = x
+        input%radius_primary = 129.d0 ! Radio del cuerpo 0 [km]
 
         !! ROTACIÓN
-        input_params%asteroid_rotational_period = 7.004d0/24.d0  ! Periodo de rotación [day]
+        input%asteroid_rotational_period = 7.004d0/24.d0  ! Periodo de rotación [day]
         !lambda_kep = 0.471d0      ! Cociente omega/wk
 
         !! Boulders        
-        input_params%Nboulders = 1 ! Número de boulders
+        input%Nboulders = 1 ! Número de boulders
 
-        if (input_params%Nboulders > 0) then
-            call allocate_params_asteroid(input_params%Nboulders)!! Alocatamos (No tocar)
+        if (input%Nboulders > 0) then
+            call allocate_params_asteroid(input%Nboulders)!! Alocatamos (No tocar)
 
             boulders_in(1,1) = 1.d-1   ! Cociente de masas entre boulder 1 y primary
             boulders_in(1,2) = cero    ! Ángulo de fase del boulder 1 [deg]
@@ -65,10 +56,10 @@ program main
         end if
 
         !! Moons
-        input_params%Nmoons = 0 ! Número de boulders
+        input%Nmoons = 0 ! Número de boulders
 
-        if (input_params%Nmoons > 0) then
-            call allocate_params_moons(input_params%Nmoons)!! Alocatamos (No tocar)
+        if (input%Nmoons > 0) then
+            call allocate_params_moons(input%Nmoons)!! Alocatamos (No tocar)
 
             moons_in(1,1) = 1.d-6   ! Cociente de masas entre luna 1 y asteroide
             moons_in(1,2) = cero    ! Semieje [km]
@@ -81,10 +72,10 @@ program main
         end if
 
         !! Particles
-        input_params%Nparticles = 0 ! Número de boulders
+        input%Nparticles = 0 ! Número de boulders
 
-        if (input_params%Nparticles > 0) then
-            call allocate_params_particles(input_params%Nparticles)!! Alocatamos (No tocar)
+        if (input%Nparticles > 0) then
+            call allocate_params_particles(input%Nparticles)!! Alocatamos (No tocar)
 
             particles_in(1,1) = cero   ! Semieje [km]
             particles_in(1,2) = cero   ! Eccentricidad
@@ -95,57 +86,57 @@ program main
         end if
 
         !!!! Merges (colliding particles into asteroid)
-        input_params%use_merge = .False. ! Merge particles into asteroid
+        input%use_merge = .False. ! Merge particles into asteroid
         
         !!!! Stokes
-        input_params%use_stokes = .False.
-        input_params%stokes_a_damping_time = infinity                                  ! [day]
-        input_params%stokes_e_damping_time = input_params%stokes_a_damping_time / 1.d2 ! [day]
-        input_params%stokes_charac_time = cero                                         ! [day] Tiempo que actúa stokes
+        input%use_stokes = .False.
+        input%stokes_a_damping_time = infinity                                  ! [day]
+        input%stokes_e_damping_time = input%stokes_a_damping_time / 1.d2 ! [day]
+        input%stokes_charac_time = cero                                         ! [day] Tiempo que actúa stokes
 
         !!!! Naive-Stokes (drag)
-        input_params%use_naive_stokes = .False.
-        input_params%drag_coefficient = cero  ! Eta
-        input_params%drag_charac_time = cero  ! [day] Tiempo que actúa drag
+        input%use_naive_stokes = .False.
+        input%drag_coefficient = cero  ! Eta
+        input%drag_charac_time = cero  ! [day] Tiempo que actúa drag
 
         !!!! Geo-Potential (J2)
-        input_params%J2_coefficient = cero
+        input%J2_coefficient = cero
 
         !!! Parámetros corrida
 
         !!!! Tiempos
-        input_params%initial_time = cero      ! Initial time [day]
-        input_params%final_time = 2.d3        ! Final time [day]
-        input_params%case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
-        input_params%output_number = 10000    ! Number of outputs (if dt_out=0)
-        input_params%output_timestep = cero   ! Output timestep [day] (used if case_output_type != 1)
+        input%initial_time = cero      ! Initial time [day]
+        input%final_time = 2.d3        ! Final time [day]
+        input%case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
+        input%output_number = 10000    ! Number of outputs (if dt_out=0)
+        input%output_timestep = cero   ! Output timestep [day] (used if case_output_type != 1)
 
         !!!! Error
-        input_params%learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
-        input_params%error_digits = 12        ! [For adaptive step integrators] Digits for relative error
+        input%learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
+        input%error_digits = 12        ! [For adaptive step integrators] Digits for relative error
 
         !!!! Colision y escape
-        input_params%min_distance = -1.5d0    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
-        input_params%max_distance = -1.d2     ! Max distance before escape [km] ! -x => R0 * x
+        input%min_distance = -1.5d0    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
+        input%max_distance = -1.d2     ! Max distance before escape [km] ! -x => R0 * x
 
         !!! Output: "" or "no", if not used
-        input_params%datafile = ""
-        input_params%chaosfile = ""
-        input_params%mapfile = ""
-        input_params%multfile = ""
+        input%datafile = ""
+        input%chaosfile = ""
+        input%mapfile = ""
+        input%multfile = ""
 
         !!!!! Screeen
-        input_params%use_screen = .True. ! Print info in screen
-        input_params%use_datascreen = .True. ! Print data in screen
+        input%use_screen = .True. ! Print info in screen
+        input%use_datascreen = .True. ! Print data in screen
 
         !!! Input: "" or "no", if not used
-        input_params%tomfile = ""
-        input_params%moonsfile = ""
-        input_params%particlesfile = ""
+        input%tomfile = ""
+        input%moonsfile = ""
+        input%particlesfile = ""
 
         !!! Parallel
-        input_params%use_parallel = .False.
-        input_params%requested_threads = 1 ! Number of threads to use !! -1 => all available
+        input%use_parallel = .False.
+        input%requested_threads = 1 ! Number of threads to use !! -1 => all available
     end if
 
 
@@ -155,7 +146,7 @@ program main
 
 
     ! Load command line arguments
-    call load_command_line_arguments(input_params, use_configfile)
+    call load_command_line_arguments(input, use_configfile)
     
     ! Message
     if ((arguments_number .le. 1) .and. (use_configfile .and. (.not. configfile_exists))) then  ! Global variable
@@ -169,7 +160,8 @@ program main
     end if
     
     ! Init derived parameters
-    sim = input_params
+    sim%input_params_st = input
+    ! input_params%input_params_st = sim
     call set_derived_parameters(sim) ! Inicializamos parámetros derivados
 
     
@@ -216,8 +208,8 @@ program main
         sim%use_moons = .True.
         aux_int = size(aux_2D, 2)
         if (sim%use_screen) then
-            write (*,f12) "  Read ", sim%Nmoons, " rows."
-            write (*,f12) "  Read ", aux_int, " columns."
+            write (*,s1i1) "  Read ", sim%Nmoons, " rows."
+            write (*,s1i1) "  Read ", aux_int, " columns."
         end if
         call allocate_params_moons(sim%Nmoons)
         ! Fill the arrays
@@ -250,8 +242,8 @@ program main
         sim%use_particles = .True.
         aux_int = size(aux_2D, 2)
         if (sim%use_screen) then
-            write (*,f12) "  Read ", sim%Nparticles, " rows."
-            write (*,f12) "  Read ", aux_int, " columns."
+            write (*,s1i1) "  Read ", sim%Nparticles, " rows."
+            write (*,s1i1) "  Read ", aux_int, " columns."
         end if
         call allocate_params_particles(sim%Nparticles)
         ! Fill the arrays
@@ -292,9 +284,9 @@ program main
         write (*,*) ACHAR(5)
         if (sim%use_parallel) then
             write (*,*) "---------- Parallel integration----------"
-            write (*,f12) "  Available threads:", available_threads
-            write (*,f12) "  Requested threads:", sim%requested_threads
-            write (*,f12) "  Used threads     :", my_threads
+            write (*,s1i1) "  Available threads:", available_threads
+            write (*,s1i1) "  Requested threads:", sim%requested_threads
+            write (*,s1i1) "  Used threads     :", my_threads
         else
             write (*,*) " Serial integration (No parallel)"
         end if
@@ -306,7 +298,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (sim%use_screen) then
-        write (*,f12) "Starting simulation number: ", simulation_number
+        write (*,s1i1) "Starting simulation number: ", simulation_number
         write (*,*) ACHAR(5)
         write (*,*) "---------- Initial parameters ----------"
         write (*,*) ACHAR(5)
@@ -355,7 +347,8 @@ program main
                          & particles_in(i,2), &              ! e
                          & particles_in(i,3) * radian, &     ! M
                          & particles_in(i,4) * radian, &     ! w
-                         & particles_in(i,5))                ! MMR
+                         & particles_in(i,5), &              ! MMR
+                         sim%Nmoons)                         ! ID to star from
     end do
         
     !!!!!!!!!!!!!! SYSTEM !!!!!!!!!!!!!!
@@ -365,19 +358,18 @@ program main
                     & sim%asteroid_rotational_period * unit_time, & ! asteroid period
                     & sim%initial_time * unit_time)
 
-
     !! <> Messages
     
     ! Asteroid
     if (sim%use_screen) then
         write (*,*) "Asteroid Rotation:"
-        write (*,f13) "  a_corot               :", system%asteroid%a_corotation / unit_dist, "[km]"
-        write (*,f13) "  omega                 :", system%asteroid%omega * unit_time, "[rad/day]"
-        write (*,f13) "  omega_kep             :", system%asteroid%omega_kep * unit_time, "[rad/day]"
-        write (*,f13) "  lambda_kep            :", system%asteroid%lambda_kep
-        write (*,f13) "  Period                :", system%asteroid%rotational_period * 24 * unit_time, "[hs]"
-        write (*,f13) "  Inertial momentum     :", system%asteroid%inertia / (unit_mass * unit_dist**2), "[kg km^2]"
-        write (*,f13) "  Angular momentum (rot):", system%asteroid%ang_mom_rot / unit_mass / &
+        write (*,s1r1) "  a_corot               :", system%asteroid%a_corotation / unit_dist, "[km]"
+        write (*,s1r1) "  omega                 :", system%asteroid%omega * unit_time, "[rad/day]"
+        write (*,s1r1) "  omega_kep             :", system%asteroid%omega_kep * unit_time, "[rad/day]"
+        write (*,s1r1) "  lambda_kep            :", system%asteroid%lambda_kep
+        write (*,s1r1) "  Period                :", system%asteroid%rotational_period * 24 * unit_time, "[hs]"
+        write (*,s1r1) "  Inertial momentum     :", system%asteroid%inertia / (unit_mass * unit_dist**2), "[kg km^2]"
+        write (*,s1r1) "  Angular momentum (rot):", system%asteroid%ang_mom_rot / unit_mass / &
                                     & (unit_dist**2) * unit_time, "[kg km^2 / day]"
         write (*,*) ACHAR(5)
         if (.not. sim%use_boulders) then
@@ -392,7 +384,7 @@ program main
         write (*,*) "   Asteroid-centric boulders: [x, y, vx, vy, mass, distance, radius]"
         do i = 0, sim%Nboulders
             call get_boulder_i_coord(system%asteroid, i, boulders_coords(i,:))
-            write (*,f233) i, &
+            write (*,i1r7) i, &
                      & boulders_coords(i,1:2) / unit_dist, &
                      & boulders_coords(i,3:4) / unit_vel, &
                      & system%asteroid%boulders(i)%mass / unit_mass, &
@@ -406,7 +398,7 @@ program main
     if (sim%use_screen .and. sim%use_moons) then
         write (*,*) "   Barycentric moons: [x, y, vx, vy, mass, distance]"
         do i = 1, sim%Nmoons
-            write (*,f233) i, &
+            write (*,i1r7) i, &
                      & system%moons(i)%coordinates(1:2) / unit_dist, &
                      & system%moons(i)%coordinates(3:4) / unit_vel, &
                      & system%moons(i)%mass / unit_mass, &
@@ -419,7 +411,7 @@ program main
     if (sim%use_screen .and. sim%use_particles) then
         write (*,*) "   Barycentric particles: [x, y, vx, vy, distance]"
         do i = 1, sim%Nparticles
-            write (*,f233) i, &
+            write (*,i1r7) i, &
                      & system%particles(i)%coordinates(1:2) / unit_dist, &
                      & system%particles(i)%coordinates(3:4) / unit_vel, &
                      & system%particles(i)%dist_to_cm / unit_dist
@@ -429,19 +421,22 @@ program main
 
     ! Energy and ang_mom
     if (sim%use_screen) then
-        write (*,f13) "   Energy          : ", system%energy
-        write (*,f13) "   Angular Momentum: ", system%ang_mom
+        write (*,s1r1) "   Mass            : ", system%mass / unit_mass
+        write (*,s1r1) "   Energy          : ", system%energy / unit_ener
+        write (*,s1r1) "   Angular Momentum: ", system%ang_mom / unit_angm
         write (*,*) ACHAR(5)
     end if
 
     ! <<<< Save initial data >>>>
     initial_system = system
-    if (sim%use_boulders) then
-        allocate(boulders_theta_ini(0:sim%Nboulders))
-        do i = 0, sim%Nboulders
-            boulders_theta_ini(i) = system%asteroid%boulders(i)%initial_theta
-        end do 
-    end if
+    allocate(boulders_data(0:sim%Nboulders, 4))  ! To use in dydt
+    do i = 0, sim%Nboulders
+        call get_boulder_i_coord(system%asteroid, i, boulders_coords(i,:))
+        boulders_data(i,1) = system%asteroid%boulders(i)%mass
+        boulders_data(i,2) = system%asteroid%boulders(i)%radius
+        boulders_data(i,3) = system%asteroid%boulders(i)%initial_theta
+        boulders_data(i,4) = system%asteroid%boulders(i)%dist_to_asteroid
+    end do
 
 
     ! <> Parallel revisted
@@ -449,20 +444,21 @@ program main
     if ((sim%use_parallel) .and. ((sim%Ntotal - 1) < my_threads)) then
         my_threads = sim%Ntotal - 1
         if (sim%use_screen) then
-            write (*,f12) "WARNING: Threads reduced to ", my_threads
+            write (*,s1i1) "WARNING: Threads reduced to ", my_threads
             write (*,*) ACHAR(5)
         end if
         !$ call omp_set_num_threads(my_threads)
     end if
 
 
-    !Test MERGE
-    ! call calculate_coordinates(system, aux_real, aux_real4)
-    print*, "Merge Ast"
-    call merge_moon_i_into_ast(system, 1)
-    print*, "Merge Moon"
-    call merge_2_moons(system, 1, 2)
-    ! call calculate_coordinates(system, aux_real, aux_real4)
+    !!! Test MERGE
+    ! ! call calculate_coordinates(system, aux_real, aux_real4)
+    ! print*, "Merge Ast"
+    ! call merge_moon_i_into_ast(system, 1)
+    ! print*, "Merge Moon"
+    ! call merge_2_moons(system, 1, 2)
+    ! ! call calculate_coordinates(system, aux_real, aux_real4)
+    ! call resolve_collisions(system, cero)
 
 
 !     !!!!!!!!!!!!!!!!!!!!!!!!!!!! EFECTOS EXTERNOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -658,8 +654,8 @@ program main
     end if
     if (sim%use_screen) then
         write (*,*) "Conditions for escape/collision"
-        write (*,f13) "    rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
-        write (*,f13) "    rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
+        write (*,s1r1) "    rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
+        write (*,s1r1) "    rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
         if (sim%use_merge) then
             write (*,*) "  Collisions will be solved as mergers to the asteroid."
         else
@@ -683,7 +679,7 @@ program main
                       & sim%map_min_y, sim%map_max_y, &
                       & sim%mapfile)
         if (sim%use_screen) then
-            write (*,*) "Maps stored into file: ", trim(sim%mapfile)
+            write (*,*) "Maps saved to file: ", trim(sim%mapfile)
             write (*,*) ACHAR(5)
         end if
     end if
@@ -699,7 +695,7 @@ program main
 
 !     !! Chaos and Outcome
 !     particles_outcome = 0
-!     particles_hexit = 0
+!     hexit_arr = 0
 
 
 
@@ -805,114 +801,70 @@ program main
     if (system%asteroid%rotational_period > tini) then
         adaptive_timestep = system%asteroid%rotational_period * 0.01d0 ! Paso de tiempo adaptativo inicial: 1% del periodo de rotación
     else
-        adaptive_timestep = 1.d0 ! Heuristic
+        adaptive_timestep = infinity
+        do i = 1, system%Nmoons_active
+            adaptive_timestep = min(adaptive_timestep, &
+                                  & get_Period(system%asteroid%mass + system%moons(i)%mass, system%moons(i)%elements(1)))
+        end do
+        do i = 1, system%Nparticles_active
+            adaptive_timestep = min(adaptive_timestep, &
+                                  & get_Period(system%asteroid%mass, system%particles(i)%elements(1)))
+        end do
+        adaptive_timestep = adaptive_timestep * unit_time
     end if
 
     !! Mensaje
     if (sim%use_screen) then
         write (*,*) "Times:"
         if (system%asteroid%rotational_period > tini) then
-            write (*,f13) "    t0    : ", sim%initial_time / system%asteroid%rotational_period, "[Prot] = ", &
+            write (*,s1r1) "    t0    : ", sim%initial_time / system%asteroid%rotational_period, "[Prot] = ", &
             & sim%initial_time / unit_time, "[day]"
-            write (*,f13) "    tf    : ", sim%final_time / system%asteroid%rotational_period, "[Prot] = ", &
+            write (*,s1r1) "    tf    : ", sim%final_time / system%asteroid%rotational_period, "[Prot] = ", &
             & sim%final_time / unit_time, "[day]"
-            write (*,f13) "    dt_out: ", sim%output_timestep / system%asteroid%rotational_period, "[Prot] = ", &
+            write (*,s1r1) "    dt_out: ", sim%output_timestep / system%asteroid%rotational_period, "[Prot] = ", &
             & sim%output_timestep / unit_time, "[day]"
-            write (*,f13) "    dt_min: ", min_timestep / system%asteroid%rotational_period, "[Prot] = ", &
+            write (*,s1r1) "    dt_min: ", min_timestep / system%asteroid%rotational_period, "[Prot] = ", &
             & min_timestep / unit_time, "[day]"
         else 
-            write (*,f13) "    t0    : ", sim%initial_time / unit_time, "[day]"
-            write (*,f13) "    tf    : ", sim%final_time / unit_time, "[day]"
-            write (*,f13) "    dt_out: ", sim%output_timestep / unit_time, "[day]"
-            write (*,f13) "    dt_min: ", min_timestep / unit_time, "[day]"
+            write (*,s1r1) "    t0    : ", sim%initial_time / unit_time, "[day]"
+            write (*,s1r1) "    tf    : ", sim%final_time / unit_time, "[day]"
+            write (*,s1r1) "    dt_out: ", sim%output_timestep / unit_time, "[day]"
+            write (*,s1r1) "    dt_min: ", min_timestep / unit_time, "[day]"
         end if
-        write (*,f12) "    n_out : ", sim%output_number
+        write (*,s1i1) "    n_out : ", sim%output_number
         write (*,*) ACHAR(5)
     end if
 
 
 
-
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!! Integration Arrays !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     ! Allocate
-    allocate(m_arr(sim%Ntotal))
-    allocate(y_arr(2 + sim%Ntotal * 4))
-    allocate(y_arr_new(2 + sim%Ntotal * 4))
-    allocate(y_der(2 + sim%Ntotal * 4))
+    allocate(m_arr(sim%Ntotal))  ! Masses
+    allocate(R_arr(sim%Ntotal))  ! Radii
+    allocate(y_arr(2 + sim%Ntotal * 4))     ! Theta, Omega, Positions
+    allocate(y_arr_new(2 + sim%Ntotal * 4)) ! Theta, Omega, Positions
+    allocate(y_der(2 + sim%Ntotal * 4))     ! derivate(Theta, Omega, Positions)
+    allocate(hexit_arr(0:sim%Ntotal))       ! Hard Exit  ! 0 IS used as Proxy
 
-    ! Get values
-    call generate_mass_and_coordinates_arrays(system, m_arr, y_arr)
+    ! Init to 0
+    m_arr = cero
+    R_arr = cero
+    y_arr = cero
+    y_arr_new = cero
+    y_der = cero
 
-    ! first_particle = 2 + 4 * (system%Nmoons_active) + 1
-    ! last_particle = 2 + 4 * (system%Nmoons_active + system%Nparticles_active) + 1
-
-    
-    
-    ! !!!!!!!! VECTOR A INTEGRAR !!!!!!!
-    ! !!!! Inicializamos vector
-    ! if (use_version_1 .or. (.not. use_boulders)) then
-    !     !!!!! Version 1: [x0, y0, vx0, vy0, x1, y1, vx1, vy1, ...]
-    !     allocate(parameters_arr(4 * Ntotal))
-    !     allocate(parameters_arr_new(4 * Ntotal))
-    !     allocate(parameters_der(4 * Ntotal))
-    !     do i = 0, Nboulders
-    !         parameters_arr(1 + 4 * i) = pos_ast_arr(i,1)
-    !         parameters_arr(2 + 4 * i) = pos_ast_arr(i,2)
-    !         parameters_arr(3 + 4 * i) = vel_ast_arr(i,1)
-    !         parameters_arr(4 + 4 * i) = vel_ast_arr(i,2)
-    !     end do
-    !     !$OMP PARALLEL DEFAULT(SHARED) &
-    !     !$OMP PRIVATE(i)
-    !     !$OMP DO SCHEDULE (STATIC)
-    !     do i = 1, Nparticles
-    !         parameters_arr(1 + 4 * (i + Nboulders)) = particles_coord(i,1) ! xP
-    !         parameters_arr(2 + 4 * (i + Nboulders)) = particles_coord(i,2) ! yP
-    !         parameters_arr(3 + 4 * (i + Nboulders)) = particles_coord(i,3) ! vPx
-    !         parameters_arr(4 + 4 * (i + Nboulders)) = particles_coord(i,4) ! vPy
-    !     end do
-    !     !$OMP END DO
-    !     !$OMP END PARALLEL
-    ! else 
-    !     !!!!! Version 2: [theta, omega, xA, yA, vxA, vyA, Part...]
-    !     allocate(parameters_arr(6 + 4 * Nparticles))
-    !     allocate(parameters_arr_new(6 + 4 * Nparticles))
-    !     parameters_arr(1) = asteroid_theta
-    !     parameters_arr(2) = asteroid_omega
-    !     parameters_arr(3:4) = asteroid_pos
-    !     parameters_arr(5:6) = asteroid_vel
-    !     !$OMP PARALLEL DEFAULT(SHARED) &
-    !     !$OMP PRIVATE(i)
-    !     !$OMP DO SCHEDULE (STATIC)
-    !     do i = 1, Nparticles
-    !         parameters_arr(3 + 4 * i) = particles_coord(i,1) ! xP
-    !         parameters_arr(4 + 4 * i) = particles_coord(i,2) ! yP
-    !         parameters_arr(5 + 4 * i) = particles_coord(i,3) ! vPx
-    !         parameters_arr(6 + 4 * i) = particles_coord(i,4) ! vPy
-    !     end do
-    !     !$OMP END DO
-    !     !$OMP END PARALLEL
-    !     first_particle = 7
-    ! end if
-    ! !! Define last particle ( y -> parameters(:last_particle) )
-
+    ! Get Arrays to integrate
+    call generate_arrays(system, m_arr, R_arr, y_arr)
 
     ! CHECKS
     if (sim%use_screen) then
         write (*,*) ACHAR(5)
-        write (*,*) "---------- CHECKS ----------"
+        write (*,*) "---------- FINAL CHECKS ----------"
         write (*,*) ACHAR(5) 
     end if
-    
-!     !!!! Checkeo rápido
-!     !!!! Check. Do I have to work?
-!     if (all(particles_MMR <= tini)) then
-!         if (use_screen) then
-!             write (*,*) ACHAR(10)
-!             write (*,*) "Initial particles condition a=0. Nothing to do here."
-!             write (*,*) "Saliendo."
-!         end if
-!         stop 1
-!     end if
 
     !!! Check workers
     if (sim%use_parallel) then
@@ -937,9 +889,6 @@ program main
         write (*,*) "Exiting."
         stop 1
     end if
-
-!     !!!! Store initial conditions
-!     call save_initial(particles_initial_conditions, m0_and_boulders_initial_conditions, asteroid_initial_conditions)
 
     !!! Check if not too much multiple files
     if (sim%use_multiple_outputs) then
@@ -972,9 +921,12 @@ program main
             write (*,*) "Data will not be printed on screen."
         end if
         write (*,*) ACHAR(5)
-        write (*,*) "CKECHS OK"
+        write (*,*) "FINAL CKECHS OK"
         write (*,*) ACHAR(5)
     end if
+
+    ! Free initial arrays
+    call free_initial_arays()
 
     !!!! Mensaje de inicio
     if (sim%use_screen) then
@@ -983,513 +935,214 @@ program main
         write (*,*) ACHAR(5) 
     end if
 
+    ! Inicializamos Punteros
+    call define_pointers(sim)
+
     
     ! ABRIMOS ARCHIVOS
     !! Archivo de salida general
-    if (sim%use_datafile) open (unit=20, file=trim(sim%datafile), status='unknown', action='write', access="append")
+    if (sim%use_datafile) open (unit=20, file=trim(sim%datafile), status='replace', action='write', access="append")
     !! Archivos individuales
     if (sim%use_multiple_outputs) then
         do i = 0, sim%Nactive
             write (aux_character20, *) i
             open (unit=200+i, file=trim(sim%multfile) // "_" // trim(adjustl(aux_character20)), &
-                & status='unknown', action='write', access="append")
+                & status='replace', action='write', access="append")
         end do
     end if
-    if (use_update_chaos) open (unit=40, file=trim(sim%chaosfile), status='unknown', action='readwrite', access="append")
+    if (sim%use_chaosfile) open (unit=40, file=trim(sim%chaosfile), status='replace', action='readwrite', access="append")
+    !!!!!! MAIN LOOP INTEGRATION !!!!!!!
+    ! CHECK INITIAL CONDITIONS
+    call resolve_collisions(system, sim%min_distance)
+    call resolve_escapes(system, sim%max_distance)
+    call update_chaos(system, sim%use_baryc_output)
+
+    ! Set last active
+    sim%Nactive = system%Nmoons_active + system%Nparticles_active
+    last_active = get_index(1 + sim%Nactive) + 3  ! +3 bc 4 equs
+
+    ! Update initial y ?    
+    if (sim%Nactive < sim%Nmoons + sim%Nparticles) call generate_arrays(system, m_arr, R_arr, y_arr)
+
+
+    !! Reduce threads if necessary...
+    if (sim%use_parallel) then
+        aux_int = MIN(MAX(sim%Nactive, 3), my_threads)
+        if (aux_int .ne. my_threads) then
+            my_threads = aux_int
+            !$ call OMP_SET_NUM_THREADS(my_threads)
+            if (sim%use_screen) then
+                write (*,s1i1) " WARNING: Paralelism reduced to ", my_threads, " threads for the integration."
+                write (*,*) ACHAR(5)
+            end if
+        end if
+    end if
+
+    ! Output initial conditions
+    call write_a_to_individual(system, 200)
+    !$OMP PARALLEL DEFAULT(SHARED) &
+    !$OMP PRIVATE(i)
+    !$OMP DO
+    do i = 1, system%Nmoons_active
+        call write_m_to_individual(system, i, 200+system%moons(i)%id)
+    end do 
+    !$OMP END DO NOWAIT
+    !$OMP DO
+    do i = 1, system%Nparticles_active
+        call write_p_to_individual(system, i, 200+system%particles(i)%id)
+    end do 
+    !$OMP END DO NOWAIT
+    !$OMP SECTIONS
+    !$OMP SECTION
+    call write_to_screen(system, 6)
+    !$OMP SECTION
+    call write_to_general(system, 20)
+    call flush_output(20)
+    !$OMP SECTION
+    call flush_chaos(40) ! Update chaos
+    !$OMP END SECTIONS
+    !$OMP END PARALLEL
+
+
+    ! >>>>>>>>>>>>>>>>>>----------------- MAIN LOOP  ---------------<<<<<<<<<<<<<<<<<<<<<<<<
+    tom_index_number = 2 !!!! Inicializamos en 2 porque el primer checkpoint es el IC (t0)
+    j = 2! From 2 because 1 is the IC (t0) !! +1 por si hay HardExit en el último
+    main_loop: do while (.True.)
     
+        hexit_arr = 0 ! Resetear HardExit        
+        
+        ! Check if all done
+        !! Time end
+        if (j == checkpoint_number + 1) then
+            if (sim%use_screen) then
+                write (*,*) ACHAR(5) 
+                write (*,s1r1) "Integration finished at time = ", time / unit_time, "[days]"
+            end if
+            exit main_loop
+        end if
 
-!      !!!!!!!!!!!!!!!!!!! Definimos vectores !!!!!!!!!!!!!!!!!!!!!!!!
+        !! Particles/Moons left
+        if (system%Nmoons_active + system%Nparticles_active == 0) then
+            if (sim%use_screen) then
+                write (*,*) ACHAR(5) 
+                write (*,*) " No more active particles/moons left."
+                write (*,*) ACHAR(5) 
+                write (*,s1r1) "Integration finished at time = ", time / unit_time, "[days]"
+            end if
+            exit main_loop
+        end if
 
-!     !! Definimos vector derivada
-!     if (use_explicit_method) then
-!         if (use_version_1) then
-!             dydt => dydt_explicit_v1
-!             check_continue_ptr => check_continue_v1
-!         else
-!             dydt => dydt_explicit_v2
-!             check_continue_ptr => check_continue_v2
-!         end if
-!     else
-!         if (use_torque) then
-!             domegadt => dydt_single_null ! domegadt se calcula en la subrutina misma
-!         else if (omega_exp_damping_time < infinity) then
-!             domegadt => domega_dt_exponential
-!         else if (omega_linear_damping_time < infinity) then
-!             domegadt => domega_dt_linear
-!         else if (abs(omega_exp_poly_A) > tini) then
-!             domegadt => domega_dt_expoly
-!         else 
-!             domegadt => dydt_single_null
-!         end if
-!         if (use_version_1) then
-!             dydt => dydt_implicit_v1
-!             check_continue_ptr => check_continue_v1
-!         else
-!             dydt => dydt_implicit_v2
-!             check_continue_ptr => check_continue_v2
-!         end if
-!     end if
-!     !! Redeinimos vector si hay boulders
-!     if (.not. use_boulders) dydt => dydt_no_boulders
-!     !! Definimos vector merge
-!     if (use_merge) then
-!         resolve_merge => accumulate_mass_and_angmom
-!     else
-!         resolve_merge => do_not_accumulate_mass_and_angmom
-!     end if
-!     !! Definimos vectores de salidas
-!     if (use_datascreen) then
-!         if (use_elements_output) then
-!             write_b_to_screen => do_not_write
-!             write_i_to_screen => write_elements
-!         else
-!             write_b_to_screen => write_coordinates_boulders
-!             write_i_to_screen => write_coordinates_particle
-!         end if
-!     else 
-!         write_b_to_screen => do_not_write
-!         write_i_to_screen => do_not_write
-!     end if
-!     if (use_datafile) then
-!         if (use_elements_output) then
-!             write_b_to_general => do_not_write
-!             write_i_to_general => write_elements
-!         else
-!             write_b_to_general => write_coordinates_boulders
-!             write_i_to_general => write_coordinates_particle
-!         end if
-!     else 
-!         write_b_to_general => do_not_write
-!         write_i_to_general => do_not_write
-!     end if
-!     if (use_multiple_outputs) then
-!         write_b_to_individual => write_coordinates_boulders
-!         if (use_elements_output) then
-!             write_i_to_individual => write_elements
-!         else
-!             write_i_to_individual => write_coordinates_particle
-!         end if
-!     else 
-!         write_b_to_individual => do_not_write
-!         write_i_to_individual => do_not_write
-!     end if
-!     !! Definimos vector para elementos
-!     if (use_elements) then
-!         get_elements_i => calculate_elements_i
-!     else 
-!         get_elements_i => do_nothing_i
-!     end if
-!     !! Definimos vector para chaos
-!     if (use_chaos) then
-!         get_chaos_i => calculate_chaos_i
-!     else 
-!         get_chaos_i => do_nothing_i
-!     end if
-!     !!! Escribir chaos en cada output?
-!     if (use_update_chaos) then
-!         flush_chaos => write_chaos
-!     else
-!         flush_chaos => do_nothing_i
-!     end if
-!     !! Escribir salida en cada output?
-!     if (use_flush_output) then
-!         flush_output => flush_to_file
-!     else
-!         flush_output => do_nothing_i
-!     end if
+        
+        ! Update dt
+        timestep = checkpoint_times(j) - time
 
 
-!     ! Set parameters new to the derivative
-!     parameters_der = dydt(initial_time, parameters_arr)
-!     parameters_arr_new = parameters_der
+        !! Check TOM
+        if (checkpoint_is_tom(j) .and. (tom_index_number <= tom_total_number)) then
+            if (allocated(tom_deltaomega)) call spin_asteroid(system%asteroid, system%asteroid%theta, &
+                                                            & system%asteroid%omega + tom_deltaomega(tom_index_number))
+            if (allocated(tom_deltamass)) call grow_asteroid(system%asteroid, tom_deltamass(tom_index_number))
+            tom_index_number = tom_index_number + 1
+            if (sim%use_screen .and. (allocated(tom_deltaomega) .or. allocated(tom_deltamass))) then
+                write (*,*) ACHAR(5)
+                write (*,s1r1) "Updated asteroid Omega and mass following TOM data, at time = ", time / unit_time, "[days]"
+                write (*,*) ACHAR(5)
+            end if
 
-!     !!! Get particles accelerations (just for the output)
-!     do i = 1, Nparticles
-!         aux_integer = first_particle + 4 * (i - 1)
-!         particles_acc(i,1:2) = parameters_der(aux_integer+2 : aux_integer+3)
-!     end do
+            ! Check for colissions/escapes
+            call resolve_collisions(system, sim%min_distance)
+            call resolve_escapes(system, sim%max_distance)
 
+            ! Check if generate new arrays
+            if ((system%Nmoons_active + system%Nparticles_active) < sim%Nactive) then
+                ! ReSet last active
+                sim%Nactive = system%Nmoons_active + system%Nparticles_active
+                last_active = get_index(1 + sim%Nactive) + 3  ! +3 bc 4 equs
+            end if
 
-!     !! Initial conditions Output
-!     !$OMP PARALLEL DEFAULT(SHARED) &
-!     !$OMP PRIVATE(i)
-!     !$OMP DO
-!     do i = 0, Nboulders
-!         call write_b_to_individual(i, 200+i)
-!     end do 
-!     !$OMP END DO NOWAIT
-!     !$OMP DO
-!     do i = 1, Nparticles
-!         call write_i_to_individual(i, 200+i+Nboulders)
-!     end do 
-!     !$OMP END DO NOWAIT
-!     !$OMP SECTIONS
-!     !$OMP SECTION
-!     do i = 0, Nboulders
-!         call write_b_to_screen(i, 6)
-!     end do
-!     do i = 1, Nparticles
-!         call write_i_to_screen(i, 6)
-!     end do
-!     !$OMP SECTION
-!     do i = 0, Nboulders
-!         call write_b_to_general(i, 20)
-!     end do
-!     do i = 1, Nparticles
-!         call write_i_to_general(i, 20)
-!     end do
-!     !$OMP END SECTIONS
-!     !$OMP END PARALLEL
+            call generate_arrays(system, m_arr, R_arr, y_arr)  ! Mandatory bc of new asteroid
+        end if
+
+        !!! Execute an integration method (uncomment/edit one of these)
+        ! call integ_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, &
+        !     & Ralston4, timestep, y_arr_new(:last_particle), check_continue_ptr)
+        ! call rk_half_step_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, &
+        !     & Runge_Kutta5, 5, sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:last_particle), check_continue_ptr)
+        ! call embedded_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, Dormand_Prince8_7, &
+        !    & sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:last_particle), check_continue_ptr)
+        call BStoer_caller (time, y_arr(:last_active), adaptive_timestep, dydt, &
+            & sim%error_tolerance, timestep, y_arr_new(:last_active))
+        ! call BStoer_caller2 (time, y_arr(:last_particle), adaptive_timestep, dydt, &
+        !     & sim%error_tolerance, timestep, y_arr_new(:last_particle), check_continue_ptr)
+        ! call leapfrog_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, &
+        !     & leapfrof_KDK, sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:last_particle), check_continue_ptr)
     
-!     !!!!!! MAIN LOOP INTEGRATION !!!!!!!
-!     ! MAIN LOOP
-!     tom_index_number = 2 !!!! Inicializamos en 2 porque el primer checkpoint es el IC (t0)
-!     j = 2! From 2 because 1 is the IC (t0) !! +1 por si hay HardExit en el último
-!     main_loop: do while (.True.)
+        ! Check if it might be hard_exit
+        if (hexit_arr(0) .ne. 0) then
+            !! If so, the dt used is in dt_adap
+            if (is_premature_exit) timestep = adaptive_timestep
+            !! Check if premature_exit: If exit at less than 1% of finishing timestep
+            if (timestep > cero) then
+                is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01d0
+            else
+                is_premature_exit = checkpoint_times(j) - time < tini
+            end if
+        end if
 
-!         ! Check for colissions/escapes
-!         staying_particles = 0
-!         discarded_particles = 0
-!         !!! Pre-set merges
-!         use_merge = use_merge .and. any(particles_mass(1:Nactive) > cero)
-!         merged_particles = 0
-!         mass_to_merge = cero
-!         angular_momentum_to_merge = cero
-!         !! Calculate distances to the asteroid
-!         !$OMP PARALLEL DEFAULT(SHARED) &
-!         !$OMP PRIVATE(i)
-!         !$OMP DO REDUCTION(+:mass_to_merge,angular_momentum_to_merge) SCHEDULE (STATIC)
-!         do i = 1, Nactive
-!             if ((particles_dist(i) < min_distance) .or. (particles_hexit(i) .eq. 1)) then
-!                 if (use_screen) then
-!                     write (*,f125131) " Colisión de la partícula ", i, "(", particles_index(i), ") en t = ", &
-!                     & time / unit_time, "[días], y r = ", particles_dist(i) / unit_dist, "[km]"
-!                     write (*,*) ACHAR(5)
-!                 end if
-!                 particles_outcome(i) = 1
-!                 !$OMP CRITICAL (discard)
-!                 discarded_particles = discarded_particles + 1
-!                 ij_to_swap(discarded_particles,1) = i
-!                 !$OMP END CRITICAL (discard)
-!                 call resolve_merge(i, mass_to_merge, angular_momentum_to_merge)
-!             else if ((particles_dist(i) > max_distance) .or. (particles_hexit(i) .eq. 2)) then
-!                 if (use_screen) then
-!                     write (*,f125131) " Escape de la partícula ", i, "(", particles_index(i), ") en t = ", &
-!                     & time / unit_time, "[días], y r = ", particles_dist(i) / unit_dist, "[km]"
-!                     write (*,*) ACHAR(5)
-!                 end if
-!                 particles_outcome(i) = 2
-!                 !$OMP CRITICAL (discard)
-!                 discarded_particles = discarded_particles + 1
-!                 ij_to_swap(discarded_particles,1) = i
-!                 !$OMP END CRITICAL (discard)
-!             end if
-!             if (use_chaos) particles_times(i) = time ! Update particle times
-!         end do
-!         !$OMP END DO
-!         !$OMP END PARALLEL
+        ! Update parameters
+        time = time + timestep
+        y_arr = y_arr_new
 
-!         !! Staying particles
-!         staying_particles = Nactive - discarded_particles
-!         !! Discard particles
-!         if (discarded_particles > 0) then
-!             merged_particles = count(particles_outcome(:Nactive) .eq. 1)
-!             if (use_merge .and. (merged_particles > 0)) then
-!                 call merge_into_asteroid(mass_to_merge, angular_momentum_to_merge) ! Merge particles into asteroid
-!                 if (use_screen) then
-!                     write(*,f12) " Merged", merged_particles, "particles into the asteroid"
-!                     write(*,f13) "  New mass :", asteroid_mass / unit_mass, "[kg]"
-!                     write(*,f13) "  New omega:", asteroid_omega * unit_time, "[rad/día]"
-!                     write(*,*) ACHAR(5)
-!                 end if                
-!             end if
-!             call quicksort_int(ij_to_swap(1:discarded_particles,1), 1, discarded_particles) ! Sort particles to discard
-!             if (staying_particles == 0) then ! All particles are out
-!                 if (use_screen) then
-!                     do i = Nactive, 1, -1
-!                         write (*,f12) "  - Eliminando partícula ", i, "(", particles_index(i), ")"
-!                         write (*,*) ACHAR(5)
-!                     end do
-!                 end if
-!                 Nactive = 0 ! All particles are out
-!             else
-!                 aux_integer = 1
-!                 !$OMP PARALLEL DEFAULT(SHARED) &
-!                 !$OMP PRIVATE(i)
-!                 !$OMP DO SCHEDULE (STATIC)
-!                 do i = 1, discarded_particles
-!                     if (particles_outcome(Nactive + 1 - i) .ne. 0) then
-!                         ij_to_swap(discarded_particles + 1 - i, 2) = Nactive + 1 - i
-!                     else
-!                         !$OMP CRITICAL (swap)
-!                         ij_to_swap(aux_integer, 2) = Nactive + 1 - i
-!                         aux_integer = aux_integer + 1
-!                         !$OMP END CRITICAL (swap)
-!                     end if
-!                 end do
-!                 !$OMP END DO
-!                 !$OMP BARRIER
-!                 !$OMP DO SCHEDULE (STATIC)
-!                 do i = 1, discarded_particles
-!                     if (use_screen) then
-!                         write (*,f12) "  - Eliminando partícula ", ij_to_swap(i,1), "(", particles_index(ij_to_swap(i,1)), ")"
-!                         write (*,*) ACHAR(5)
-!                     end if
-!                     if (ij_to_swap(i,1) .le. (Nactive - discarded_particles)) then
-!                         call swap_particles(ij_to_swap(i,1), ij_to_swap(i,2), use_chaos)
-!                     end if
-!                 end do
-!                 !$OMP END DO
-!                 !$OMP END PARALLEL
-!                 Nactive = Nactive - discarded_particles
-                
-!                 if (use_screen) then
-!                     write (*,f12) " Quedan ", Nactive, " partículas activas."
-!                     write (*,*) ACHAR(5)
-!                 end if
-                
-!                 ! Reset sorted index
-!                 do i = 1, Nactive
-!                     sorted_particles_index(i) = i
-!                 end do
-!                 call quickargsort_int(particles_index(1:Nactive), sorted_particles_index(1:Nactive), 1, Nactive) ! Get the sorted index
-!                 last_particle = first_particle + 4 * Nactive - 1 ! Redefine last_particle
+        ! Update from y_new
+        call update_system_from_array(system, time, y_arr)
 
-!                 if (use_parallel) then
-!                     aux_integer = MIN(MAX(Nactive, 3), my_threads)
-!                     if (aux_integer .ne. my_threads) then
-!                         my_threads = aux_integer
-!                         !$ call OMP_SET_NUM_THREADS(my_threads)
-!                         if (use_screen) then
-!                             write (*,f12) " WARNING: Se reducen a ", my_threads, " hilos para la integración."
-!                             write (*,*) ACHAR(5)
-!                         end if
-!                     end if
-!                 end if
-!             end if
-!         end if
-!         particles_hexit = 0 ! Resetear HardExit
+        ! Check for colissions/escapes
+        call resolve_collisions(system, sim%min_distance)
+        call resolve_escapes(system, sim%max_distance)
+        call update_chaos(system, sim%use_baryc_output)
+
+        ! Check if generate new arrays
+        if ((system%Nmoons_active + system%Nparticles_active) < sim%Nactive) then
+            ! Set last active
+            sim%Nactive = system%Nmoons_active + system%Nparticles_active
+            last_active = get_index(1 + sim%Nactive) + 3  ! +3 bc 4 equs
+            call generate_arrays(system, m_arr, R_arr, y_arr)  ! These arrays go round and round....
+        end if
         
+        ! Output
+        if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) then
+            call write_a_to_individual(system, 200)
+            !$OMP PARALLEL DEFAULT(SHARED) &
+            !$OMP PRIVATE(i)
+            !$OMP DO
+            do i = 1, system%Nmoons_active
+                call write_m_to_individual(system, i, 200+system%moons(i)%id)
+            end do 
+            !$OMP END DO NOWAIT
+            !$OMP DO
+            do i = 1, system%Nparticles_active
+                call write_p_to_individual(system, i, 200+system%particles(i)%id)
+            end do 
+            !$OMP END DO NOWAIT
+            !$OMP SECTIONS
+            !$OMP SECTION
+            call write_to_screen(system, 6)
+            !$OMP SECTION
+            call write_to_general(system, 20)
+            call flush_output(20)
+            !$OMP SECTION
+            call write_to_chaos(system, 40)
+            call flush_chaos(40) ! Update chaos
+            !$OMP END SECTIONS
+            !$OMP END PARALLEL
+        end if
+
+        if (sim%use_percentage) call percentage(time, sim%final_time)
+
+        ! Update j; only if not HardExit
+        if (.not. is_premature_exit) j = j + 1
         
-!         ! Check if all done
-!         !! Time end
-!         if (j == checkpoint_number + 1) then
-!             if (use_screen) then
-!                 write (*,*) ACHAR(5) 
-!                 write (*,f13) "Finalizó la integración en t = ", time / unit_time, "[días]"
-!             end if
-!             exit main_loop
-!         end if
-!         !! Particles left
-!         if (Nactive == 0) then
-!             if (use_screen) then
-!                 write (*,*) ACHAR(5) 
-!                 write (*,*) " No quedan partículas activas."
-!                 write (*,*) ACHAR(5) 
-!                 write (*,f13) "Finalizó la integración en t = ", time / unit_time, "[días]"
-!             end if
-!             exit main_loop
-!         end if
-
-        
-!         ! Update dt
-!         timestep = checkpoint_times(j) - time
-!         !! Check TOM
-!         if (checkpoint_is_tom(j) .and. (tom_index_number <= tom_total_number)) then
-!             if (allocated(tom_deltaomega)) then
-!                 asteroid_omega = asteroid_omega + tom_deltaomega(tom_index_number)
-!                 asteroid_omega2 = asteroid_omega * asteroid_omega
-!                 asteroid_rotational_period = twopi / asteroid_omega
-!                 if (use_explicit_method) asteroid_theta_correction = asteroid_theta - asteroid_omega * (time - initial_time)
-!                 if (use_version_1) then
-!                     do i = 0, Nboulders
-!                         aux_integer = i * equation_size
-!                         parameters_arr(aux_integer+3) = - pos_ast_arr(i,2) * asteroid_omega
-!                         parameters_arr(aux_integer+4) = pos_ast_arr(i,1) * asteroid_omega
-!                     end do
-!                 else
-!                     parameters_arr(2) = asteroid_omega
-!                 end if
-!             end if
-!             if (allocated(tom_deltamass)) then
-!                 tom_mass_growth_param = uno + (tom_deltamass(tom_index_number) / asteroid_mass)
-!                 mass_primary = mass_primary * tom_mass_growth_param
-!                 mass_ast_arr = mass_ast_arr * tom_mass_growth_param
-!                 asteroid_mass = asteroid_mass * tom_mass_growth_param
-!                 asteroid_inertia = asteroid_inertia * tom_mass_growth_param
-!                 Gasteroid_mass = G * asteroid_mass
-!             end if
-!             tom_index_number = tom_index_number + 1
-!             if (use_screen .and. (allocated(tom_deltaomega) .or. allocated(tom_deltamass))) then
-!                 write (*,*) ACHAR(5)
-!                 write (*,f13) "Se actualizó Omega | Masa según archivo TOM, en t = ", time / unit_time, "[días]"
-!                 write (*,*) ACHAR(5)
-!             end if
-!         end if
-
-!         !!! Execute an integration method (uncomment/edit one of these)
-!         ! call integ_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-!         !     & Ralston4, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
-!         ! call rk_half_step_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-!         !     & Runge_Kutta5, 5, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
-!         ! call embedded_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, Dormand_Prince8_7, &
-!         !    & error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
-!         call BStoer_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-!             & error_tolerance, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
-!         ! call BStoer_caller2 (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-!         !     & error_tolerance, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
-!         ! call leapfrog_caller (time, parameters_arr(:last_particle), adaptive_timestep, dydt, &
-!         !     & leapfrof_KDK, error_tolerance, learning_rate, min_timestep, timestep, parameters_arr_new(:last_particle), check_continue_ptr)
-    
-!         ! Check if it might be hard_exit
-!         if (particles_hexit(0) .ne. 0) then
-!             !! If so, the dt used is in dt_adap
-!             if (is_premature_exit) timestep = adaptive_timestep
-!             !! Check if premature_exit: If exit at less than 1% of finishing timestep
-!             if (timestep > cero) then
-!                 is_premature_exit = (checkpoint_times(j) - (time+timestep))/timestep > 0.01d0
-!             else
-!                 is_premature_exit = checkpoint_times(j) - time < tini
-!             end if
-!         end if
-
-!         ! Update parameters
-!         time = time + timestep
-!         parameters_der = dydt(time, parameters_arr_new)
-!         parameters_arr = parameters_arr_new
-
-!         ! Asteroid and boulders
-!         if (use_boulders) then
-!             ! Con boulders
-!             if (use_explicit_method) then
-!                 ! Constantes de Asteroid: pos, vel, omega, inertia, masa
-!                 asteroid_theta = asteroid_omega * (time - initial_time) + asteroid_theta_correction!! No lo cambio ahora porque está en explicit_v2
-!                 do i = 0, Nboulders
-!                     pos_ast_arr(i,1) = cos(asteroid_theta + theta_ast_arr(i)) * dist_ast_arr(i)
-!                     pos_ast_arr(i,2) = sin(asteroid_theta + theta_ast_arr(i)) * dist_ast_arr(i)
-!                 end do
-!                 vel_ast_arr(0:,1) = - asteroid_omega * pos_ast_arr(0:,2)
-!                 vel_ast_arr(0:,2) =   asteroid_omega * pos_ast_arr(0:,1)
-!                 acc_ast_arr = - asteroid_omega2 * pos_ast_arr
-!             else
-!                 if (use_version_1) then
-!                     ! Constantes de Asteroid (hasta ahora): masa
-!                     !! Tendremos que obtener Asteroid (center of mass) properties (pos, vel, omega, ...)
-!                     !!! Implicit V1
-!                     do i = 0, Nboulders
-!                         aux_integer = i * equation_size
-!                         pos_ast_arr(i,:) = parameters_arr(aux_integer+1 : aux_integer+2)
-!                         vel_ast_arr(i,:) = parameters_arr(aux_integer+3 : aux_integer+4)
-!                         acc_ast_arr(i,:) = parameters_der(aux_integer+3 : aux_integer+4)
-!                     end do
-!                     call get_asteroid_from_boulders(mass_ast_arr, pos_ast_arr, vel_ast_arr, &
-!                                                     & asteroid_pos, asteroid_vel, asteroid_omega, asteroid_inertia)
-!                     do i = 0, Nboulders
-!                         dist_ast_arr(i) = sqrt(sum((pos_ast_arr(i,:) - asteroid_pos)**2))
-!                         ! acc_ast_arr(i,:) = - (pos_ast_arr(i,:) - asteroid_pos) * asteroid_omega**2
-!                     end do
-!                     ! Definimos theta como la variación del ángulo de m0 respecto del asteroide, respecto a la condición inicial
-!                     asteroid_theta = mod(atan2(pos_ast_arr(0,2) - asteroid_pos(2), &
-!                                             & pos_ast_arr(0,1) - asteroid_pos(1)) - &
-!                                             & theta_ast_arr(0), twopi)
-!                 else 
-!                     ! Constantes de Asteroid (hasta ahora): masa, inertia
-!                     !! Las Asteroid (center of mass) properties están servidas
-!                     !!! Implicit V2
-!                     parameters_arr(1) = mod(parameters_arr(1), twopi)
-!                     asteroid_theta = parameters_arr(1)
-!                     asteroid_omega = parameters_arr(2)
-!                     asteroid_pos = parameters_arr(3:4)
-!                     asteroid_vel = parameters_arr(5:6)
-!                     pos_ast_arr(0:,1) = cos(asteroid_theta + theta_ast_arr(0:)) * dist_ast_arr(0:)
-!                     pos_ast_arr(0:,2) = sin(asteroid_theta + theta_ast_arr(0:)) * dist_ast_arr(0:)
-!                     vel_ast_arr(0:,1) = - asteroid_omega * pos_ast_arr(0:,2)
-!                     vel_ast_arr(0:,2) =   asteroid_omega * pos_ast_arr(0:,1)
-!                     do i = 0, Nboulders
-!                         pos_ast_arr(i,:) = asteroid_pos + pos_ast_arr(i,:)
-!                         vel_ast_arr(i,:) = asteroid_vel + vel_ast_arr(i,:)
-!                     end do
-!                     acc_ast_arr = - asteroid_omega2 * pos_ast_arr
-!                 end if
-!             end if
-
-!             ! Update asteroid properties
-!             asteroid_omega2 = asteroid_omega * asteroid_omega
-!             asteroid_a_corot = (G * asteroid_mass / asteroid_omega2)**(1/3.)
-!             asteroid_rotational_period = twopi / asteroid_omega
-        
-!         else 
-!             ! Sin boulders, casi todo constante
-!             asteroid_theta = mod(asteroid_omega * (time - initial_time), twopi)
-!             asteroid_pos = parameters_arr(1:2)
-!             asteroid_vel = parameters_arr(3:4)
-!             pos_ast_arr(0,:) = asteroid_pos
-!             vel_ast_arr(0,:) = asteroid_vel
-!         end if
-
-        
-!         !! Particles
-!         !$OMP PARALLEL DEFAULT(SHARED) &
-!         !$OMP PRIVATE(i,aux_integer)
-!         !$OMP DO SCHEDULE (STATIC)
-!         do i = 1, Nactive
-!             aux_integer = first_particle + 4 * (i - 1)
-!             !!! Coordinates
-!             particles_coord(i,1:2) = parameters_arr(aux_integer   : aux_integer+1)
-!             particles_coord(i,3:4) = parameters_arr(aux_integer+2 : aux_integer+3)
-!             particles_acc(i,1:2) = parameters_der(aux_integer+2 : aux_integer+3)
-!             call get_elements_i(i) !!! Elements
-!             call get_chaos_i(i) !!! Chaos
-!             particles_dist(i) = sqrt(sum((particles_coord(i,1:2) - asteroid_pos)**2)) ! sqrt(x^2 + y^2)
-!         end do
-!         !$OMP END DO
-!         !$OMP END PARALLEL
-        
-!         ! Output
-!         if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) then
-!             !$OMP PARALLEL DEFAULT(SHARED) &
-!             !$OMP PRIVATE(i,aux_integer)
-!             !$OMP DO
-!             do i = 0, Nboulders
-!                 call write_b_to_individual(i, 200+i)
-!             end do 
-!             !$OMP END DO NOWAIT
-!             !$OMP DO
-!             do i = 1, Nactive
-!                 call write_i_to_individual(i, 200+i+Nboulders)
-!             end do 
-!             !$OMP END DO NOWAIT
-!             !$OMP SECTIONS
-!             !$OMP SECTION
-!             do i = 0, Nboulders
-!                 call write_b_to_screen(i, 6)
-!             end do
-!             do i = 1, Nactive
-!                 call write_i_to_screen(i, 6)
-!             end do
-!             !$OMP SECTION
-!             do i = 0, Nboulders
-!                 call write_b_to_general(i, 20)
-!             end do
-!             do i = 1, Nactive
-!                 call write_i_to_general(i, 20)
-!             end do
-!             call flush_output(20)
-!             !$OMP SECTION
-!             call flush_chaos(40) ! Update chaos
-!             !$OMP END SECTIONS
-!             !$OMP END PARALLEL
-!         end if
-
-!         if (use_percentage) call percentage(time, final_time)
-
-!         ! Update j; only if not HardExit
-!         if (.not. is_premature_exit) j = j + 1
-        
-!     end do main_loop
-    
-!     !! Update surviving particles times
-!     if (use_chaos) particles_times(1:Nactive) = final_time ! Update particle times
+    end do main_loop
 
     !! Porcentaje final
     if (sim%use_percentage) call percentage(sim%final_time + uno, sim%final_time)
@@ -1499,7 +1152,7 @@ program main
         close (2)
         if (sim%use_screen) then
             write (*,*) ACHAR(10)
-            write (*,*) "Se guardó la salida en el archivo: ", trim(sim%datafile)
+            write (*,*) "Output data saved to file: ", trim(sim%datafile)
         end if
     end if
 
@@ -1510,83 +1163,34 @@ program main
         end do
         if (sim%use_screen) then
             write (*,*) ACHAR(10)
-            write (*,*) "Se guardaron las salidas individuales en: ", trim(sim%multfile) // "_*"
+            write (*,*) "Individual output data saved to files: ", trim(sim%multfile) // "_*"
         end if
     end if
 
-!     !! Caos
-!     if (use_chaos) then
-!         if (use_chaosfile) then
-!             !! Guardar archivo de caos
-!             do i = 1, Nactive
-!                 sorted_particles_index(i) = i
-!             end do
-!             call quickargsort_int(particles_index, sorted_particles_index, 1, Nparticles)
-!             inquire (unit=40, opened=aux_logical)
-!             if (.not. aux_logical) then
-!                 open (unit=40, file=trim(chaosfile), status='unknown', action='write')
-!             else
-!                 call fseek(40, 0, 0)       ! move to beginning
-!             end if
-!             do i = 1, Nparticles
-!                 aux_integer = sorted_particles_index(i)
-!                 write (40,f2233) particles_index(aux_integer), & ! i
-!                 & particles_outcome(aux_integer), & ! bad
-!                 & final_time / unit_time, & ! total time to integrate
-!                 & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum
-!                 & particles_initial_conditions(i,1) / unit_mass, & ! initial: mass
-!                 & particles_initial_conditions(i,2) / unit_dist, & ! initial: a
-!                 & particles_initial_conditions(i,3), & ! initial: e
-!                 & particles_initial_conditions(i,4) / radian, & ! initial: M
-!                 & particles_initial_conditions(i,5) / radian, & ! initial: omega
-!                 & particles_initial_conditions(i,6), & ! initial: MMR
-!                 & sqrt(particles_initial_conditions(i,2) * &
-!                   & (uno - particles_initial_conditions(i,3)**2) * &
-!                   & G * (particles_initial_conditions(i,1) + asteroid_initial_conditions(1))) / &
-!                   & (unit_dist * unit_vel), & ! initial: angular momentum per unit mass
-!                 & particles_times(aux_integer) / unit_time, & ! surviving time
-!                 & particles_elem(aux_integer,1) / unit_dist, particles_elem(aux_integer,2), & ! final: a, e
-!                 & particles_elem(aux_integer,3) / radian, particles_elem(aux_integer,4) / radian, & ! final: M, omega
-!                 & particles_MMR(aux_integer), & ! final: MMR
-!                 & sqrt(particles_elem(aux_integer,1) * &
-!                   & (uno - particles_elem(aux_integer,2)**2) * &
-!                   & G * (particles_mass(aux_integer) + asteroid_mass)) / &
-!                   & (unit_dist * unit_vel), & ! final: angular momentum per unit mass
-!                 & particles_min_a(aux_integer) / unit_dist, particles_max_a(aux_integer) / unit_dist, & ! a_min, a_max
-!                 & particles_min_e(aux_integer), particles_max_e(aux_integer), & ! e_min, e_max
-!                 & (particles_max_a(aux_integer) - particles_min_a(aux_integer)) / unit_dist, & ! Delta a
-!                 & (particles_max_e(aux_integer) - particles_min_e(aux_integer)) ! Delta e
-!             end do
-!             close (40)
-!             !! Mensaje
-!             if (use_screen) then 
-!                 write (*,*) ACHAR(10)
-!                 write (*,*) "Se guardó el archivo de caos en: ", trim(chaosfile)
-!             end if
-!         end if
-!         if (use_datascreen) then
-!             write (*,*) ACHAR(10)
-!             if (use_single_particle) then            
-!                 write (*,*) "Caos de la partícula simple [i, bad, tmax, MMR_ini, MMR_fin, a_min, a_max, Delta a, &
-!                 & e_min, e_max, Delta_e]:"
-!             else 
-!                 write (*,*) "Caos de las partículas [i, bad, tmax, MMR_ini, MMR_fin, a_min, a_max, Delta a, &
-!                 & e_min, e_max, Delta_e]:"
-!             end if
-!             do i = 1, Nparticles
-!                 aux_integer = sorted_particles_index(i)
-!                 write (*,f2233) particles_index(aux_integer), & ! i
-!                 & particles_outcome(aux_integer), & ! bad
-!                 & particles_times(aux_integer), & ! surviving time
-!                 & particles_initial_conditions(aux_integer,6), & ! initial: MMR
-!                 & particles_MMR(aux_integer), & ! final: MMR
-!                 & particles_min_a(aux_integer) / unit_dist, particles_max_a(aux_integer) / unit_dist, & ! a_min, a_max
-!                 & particles_min_e(aux_integer), particles_max_e(aux_integer), & ! e_min, e_max
-!                 & (particles_max_a(aux_integer) - particles_min_a(aux_integer)) / unit_dist, & ! Delta a
-!                 & (particles_max_e(aux_integer) - particles_min_e(aux_integer)) ! Delta e
-!             end do
-!         end if
-!     end if
+    !! Final chaos
+    if (sim%use_chaos) then
+        if (sim%use_chaosfile) then
+            !! Chaosfile
+            inquire (unit=40, opened=aux_logical)
+            if (.not. aux_logical) then
+                open (unit=40, file=trim(sim%chaosfile), status='unknown', action='write')
+            else
+                rewind(40)
+            end if
+            call write_chaos(system, 40)
+            close (40)
+            !! Mensaje
+            if (sim%use_screen) then 
+                write (*,*) ACHAR(10)
+                write (*,*) "Chaos data saved into: ", trim(sim%chaosfile)
+            end if
+        end if
+        if (sim%use_datascreen) then
+            write (*,*) ACHAR(10)        
+            write (*,*) "Chaos [i, bad, tmax, MMR_ini, MMR_fin, a_min, a_max, Delta a, e_min, e_max, Delta_e]:"
+            call write_chaos(system, 6)
+        end if
+    end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!! LIBERACION MEMORIA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1594,48 +1198,35 @@ program main
 
     if (sim%use_screen) then
         write (*,*) ACHAR(10)
-        write (*,*) "Liberando memoria"
+        write (*,*) "Freeing memory..."
         write (*,*) ACHAR(5)
     end if
+
     !!!!!!!!! TIMES !!!!!!!!
     call free_times_arrays()
 
     !!!!!!!!! PARAMS !!!!!!!!
     call free_parameters_arays()
+    
+    !!!!!!!!! POINTERS !!!!!!!!
+    call nullify_pointers()    
 
     !!!!!!!!! BODIES !!!!!!!!
     call free_asteroid(asteroid)
     call free_system(system)
     call free_system(initial_system)
 
-!     !!!!!!!! Asteroide  !!!!!!!
-!     call free_asteroid_arrays()
-!     !!!!!!!! PARTICULAS !!!!!!!
-!     call free_particles()
-!     !!!!!!!! PARAMETROS !!!!!!!
-!     deallocate(parameters_arr)
-!     deallocate(parameters_arr_new)
-!     deallocate(parameters_der)
-!     !!!!!!!!! INITIALS !!!!!!!!
-!     call free_initial_conditions()
-!     !!!!!!!!! POINTERS !!!!!!!!
-!     call nullify_pointers()
-!     nullify(dydt)
-!     nullify(domegadt)
-!     nullify(dmassdt)
-    
-
     if (sim%use_screen) then 
         write (*,*) ACHAR(5)
-        write (*,*) "Fin del programa"
+        write (*,*) "End of program"
         write (*,*) ACHAR(5)
     end if
     
 end program main
 
 subroutine create_map(system,ngx,ngy,xmin,xmax,ymin,ymax,map_file)
-    use constants, only: G, cero
-    use bodies, only: system_st, get_acc_and_pot_xy
+    use constants, only: cero
+    use bodies, only: system_st, get_acc_and_pot_xy, get_boulder_i_coord
     implicit none
     type(system_st), intent(in) :: system
     integer(kind=4), intent(in) :: ngx, ngy
@@ -1643,7 +1234,6 @@ subroutine create_map(system,ngx,ngy,xmin,xmax,ymin,ymax,map_file)
     character(len=*), intent(in) :: map_file
     real(kind=8) :: pot(ngx,ngy), acc(ngx,ngy,2)
     real(kind=8) :: rb(2)
-    real(kind=8) :: pot_at_R
     integer(kind=4) :: i, j
 
     !!! Check
@@ -1658,8 +1248,6 @@ subroutine create_map(system,ngx,ngy,xmin,xmax,ymin,ymax,map_file)
     pot = cero
     acc = cero
 
-    pot_at_R = - system%asteroid%boulders(0)%mass / system%asteroid%boulders(0)%radius  ! G at bottom
-
     !$OMP PARALLEL DEFAULT(SHARED) &
     !$OMP PRIVATE(i,j,k,rb,dist,dummy,dummy2,dumint,cero2)
     !$OMP DO SCHEDULE (STATIC)
@@ -1667,14 +1255,11 @@ subroutine create_map(system,ngx,ngy,xmin,xmax,ymin,ymax,map_file)
         do j = 1, ngy
             rb(1) = xmin + i * (xmax - xmin) / ngx
             rb(2) = ymin + j * (ymax - ymin) / ngy
-            call get_acc_and_pot_xy(system, rb, acc(i,j,:), pot(i,j), pot_at_R)
+            call get_acc_and_pot_xy(system, rb, acc(i,j,:), pot(i,j))
         end do
     end do
     !$OMP END DO
     !$OMP END PARALLEL
-
-    pot = pot * G  ! Convertimos a unidades correctas
-    acc = acc * G  ! Convertimos a unidades correctas
     
     write (*,*) "   Potential calculated. Writing file..."
     open (unit=50, file=trim(map_file), status='replace', action='write')

@@ -1,5 +1,5 @@
 !> Module with array, string, ordering, ... routines
-module auxiliar
+module auxiliary
     implicit none
     
     contains
@@ -237,7 +237,7 @@ module auxiliar
             allocate (c0(size(a)+size(b)))
             allocate (ina0(size(c0)))
             allocate (inb0(size(c0)))
-            c0 = 0.
+            c0 = 0.d0
             ina0 = .False.
             inb0 = .False.
             i = 1
@@ -311,7 +311,8 @@ module auxiliar
             integer(kind=4), optional :: method
             integer(kind=4), parameter :: MAX_COLS = 8, MAX_ROWS = 10000
             real(kind=8), dimension(:,:), allocatable :: aux_real_arr
-            integer(kind=4) :: ncols, nrows, i, j, io, my_method
+            integer(kind=4) :: ncols = 0, nrows = 0
+             integer(kind=4) :: i, j, io, my_method
             real(kind=8) :: aux_real
             character(260) :: auxstr
             logical :: existe
@@ -331,7 +332,6 @@ module auxiliar
             open (unit=20, file=trim(file_name), status="old", action="read")
 
             !! Count number of columns
-            ncols = 0
             read (20, '(A)') auxstr
             do i = 1,MAX_COLS
                 io = 0
@@ -349,7 +349,6 @@ module auxiliar
             if (my_method .eq. 0) then
 
                 !! Count number of rows
-                nrows = 0
                 do ! Count number of (valid) lines 
                     read (20, *, iostat=io) aux_real
                     if (is_iostat_end(io)) exit
@@ -366,7 +365,6 @@ module auxiliar
             else
                 ! Allocate auxiliar array
                 allocate (aux_real_arr(MAX_ROWS, ncols))
-                nrows = 0
                 do i = 1, MAX_ROWS
                     read (20, *, iostat=io) (aux_real_arr(i,j), j=1,ncols)
                     if (is_iostat_end(io)) exit
@@ -392,7 +390,7 @@ module auxiliar
 
             if (present(file_unit)) funit = file_unit
         
-            iper = int(100.0 * tout / tstop)
+            iper = int(100.0d0 * tout / tstop)
             guiones = repeat('.', iper)
         
             if (iper < 100) then
@@ -404,4 +402,4 @@ module auxiliar
             end if
         end subroutine percentage
 
-end module auxiliar
+end module auxiliary

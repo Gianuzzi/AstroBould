@@ -1,5 +1,5 @@
 module bins
-    use constants, only: pi, tini, uno2, G, cero
+    use constants, only: cero, uno2, G, pi, tini
     implicit none
     type :: my_bins
         real(kind=8), allocatable :: edges(:)   ! Bin edges

@@ -1,12 +1,12 @@
 module parameters
     use constants
-    use auxiliar
-    use bodies
+    use auxiliary
+    use bodies, only: system_st, asteroid_st, moon_st, particle_st
     use omp_lib
 
     implicit none
 
-    ! --------------------------- GLOBAL CONFIGURATION ---------------------------
+    !! ----  <<<<<    GLOBAL     >>>>>   -----
     integer(kind=4) :: simulation_number = 1
     !! I/O
     integer(kind=4) :: arguments_number = 0  ! Amount of argument in command line
@@ -19,15 +19,18 @@ module parameters
     integer(kind=4) :: my_threads = 1  ! Amount of threads actually used
     logical :: compiled_with_openmp = .False.  ! Flag of compile with OpenMP
 
-    ! Bodies (from bodies)
+
+    !! ----  <<<<<    BODIES (bodies)     >>>>>   -----
     type(particle_st), allocatable :: particles_arr(:)
     type(moon_st), allocatable :: moons_arr(:)
     type(asteroid_st) :: asteroid
     type(system_st) :: initial_system
     type(system_st) :: system
+    type(system_st) :: system_new
     
-    ! This contains only the input parameters
-    type :: input_params_st
+    
+    !! ----  <<<<<    GENERAL PARAMETERS     >>>>>   -----
+    type :: input_params_st  !!! This contains only the input parameters
         ! Times for the integration - 
         real(kind=8) :: initial_time = cero
         real(kind=8) :: final_time = cero
@@ -90,9 +93,11 @@ module parameters
         character(30) :: multfile = ""
         logical :: use_chaosfile = .False.
         character(30) :: chaosfile = ""
-        logical :: use_datascreen = .True.
+        logical :: use_datascreen = .False.
+        logical :: use_diagnostics = .True.
         logical :: use_percentage = .False.
         logical :: use_elements_output = .True.
+        logical :: use_baryc_output = .True.
         logical :: use_potential_map = .False.
         character(30) :: mapfile = ""
         integer(kind=4) :: map_grid_size_x = 500
@@ -105,8 +110,9 @@ module parameters
         integer(kind=4) :: Nboulders = 0
         integer(kind=4) :: Nmoons = 0
         integer(kind=4) :: Nparticles = 0
+    end type input_params_st
 
-        !!!!! Extra DERIVED parameters
+    type, extends(input_params_st) :: sim_params_st  !! Extra DERIVED parameters
         ! Bodies
         integer(kind=4) :: Ntotal = 0  ! Amount of all bodies (asteroid is just 1)
         integer(kind=4) :: Nactive = 0 ! Active bodies
@@ -135,34 +141,38 @@ module parameters
         logical :: update_bins = .False.
         ! Chaos
         logical :: use_chaos = .False.  ! Need to output chaos values
-        ! logical :: use_update_chaos = .True.  ! GLOBAL
-        ! logical :: use_flush_output = .True.  ! GLOBAL
+        logical :: use_flush_chaos = .False.  ! Flush at every checkpoint
+        logical :: use_flush_output = .False.  ! Flush at every checkpoint
         ! Error
         real(kind=8) :: error_tolerance = cero
         ! I/O
         logical :: use_elements = .True.
-    end type input_params_st
+    end type sim_params_st
+    
+    type(input_params_st) :: input  ! This is the structure with the default -> input parameters
+    type(sim_params_st) :: sim  ! This is the structure with the input -> derived parameters
 
-    !! < Arrays with input data from bodies >
-    real(kind=8), dimension(:,:), allocatable :: boulders_in !! mass, radius, theta  | (Nb, 3)
+
+    ! ----  <<<<<    INITIAL BODIES     >>>>>   -----
+    real(kind=8), dimension(:,:), allocatable :: boulders_in !! mu, radius, theta  | (Nb, 3)
     real(kind=8), dimension(:,:), allocatable :: moons_in !! mass, a, e, M, w, MMR, radius  | (Nm, 7)
     real(kind=8), dimension(:,:), allocatable :: particles_in !! a, e, M, w, MMR  | (Np, 5)
 
-    !!! < Initial boulders angles array > (THis will serve to calculate their positions)
-    real(kind=8), dimension(:), allocatable :: boulders_theta_ini !! (Nb)
 
-    ! Time Integration dynamical variables
+    ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
+    real(kind=8), dimension(:,:), allocatable :: boulders_coords !! (Nb, 4) |x,y,vx,vy|
+    real(kind=8), dimension(:,:), allocatable :: boulders_data !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
+
+
+    ! ----  <<<<<    TIME     >>>>>   -----
     real(kind=8) :: time  ! Actual time of the integration
     real(kind=8) :: timestep  ! This timestep 
     real(kind=8) :: adaptive_timestep  ! This adaptive timestep
     integer(kind=4) :: checkpoint_number  ! Number of actual timestep
     real(kind=8) :: min_timestep = cero  ! Minimum timestep
-
-    ! I/O
-    logical :: use_flush_output  ! Flush output at every checkpoint
-    logical :: use_update_chaos  ! Update values (flush) at every checkpoint
     
-    ! TOM
+
+    ! ----  <<<<<    TOM     >>>>>   -----
     integer(kind=4) :: tom_index_number  ! Index to count which TOM row is active
     integer(kind=4) :: tom_total_number  ! Total amount of lines in TOM
     real(kind=8), dimension(:), allocatable :: tom_times  ! Times in TOM
@@ -172,67 +182,44 @@ module parameters
     logical, dimension(:), allocatable :: checkpoint_is_tom  ! Array with whether each checkpoint is TOM
     logical, dimension(:), allocatable :: checkpoint_is_output ! Array with whether each checkpoint is output
         
-    
-    ! !! Auxiliar
-    ! logical :: aux_logical
-    ! real(kind=8) :: aux_real
-    ! real(kind=8) :: dummy_real
-    ! real(kind=8) :: dummy_real2
-    ! integer(kind=4) :: aux_integer
-    ! character(1) :: aux_character1
-    ! character(2) :: aux_character2
-    ! character(20) :: aux_character20
-    ! character(30) :: aux_character30
-    ! real(kind=8), dimension(2) :: aux_real_arr2
-    ! real(kind=8), dimension(6) :: aux_real_arr6
-    ! logical :: hard_center
-    ! logical :: use_elements
-
 
     ! ----  <<<<<    PARAMETERS ARRAYS     >>>>>   -----
     integer, parameter :: equation_size = 4
-    real(kind=8), dimension(:), allocatable :: m_arr
-    real(kind=8), dimension(:), allocatable :: y_arr
-    real(kind=8), dimension(:), allocatable :: y_arr_new
-    real(kind=8), dimension(:), allocatable :: y_der
-    
-    !!! Hard Exit
-    logical :: is_premature_exit
-    integer(kind=4), dimension(:), allocatable, target :: particles_hexit !  Hard Exit integer
-    integer(kind=4), pointer :: particles_hexitptr ! pointer to Hard Exit
-    procedure (check_continue_template), pointer :: check_continue_ptr => null ()
+    real(kind=8), dimension(:), allocatable :: m_arr       ! Mass array
+    real(kind=8), dimension(:), allocatable :: R_arr       ! Radius array
+    real(kind=8), dimension(:), allocatable :: y_arr       ! Coordinates array
+    real(kind=8), dimension(:), allocatable :: y_arr_new   ! Coordinates array (2.0)
+    real(kind=8), dimension(:), allocatable :: y_der       ! Derivate of coordinates array
     
 
-    !!! GENERAL element PTRs
-    procedure (int_i_template), pointer :: get_elements_i => null ()
-    procedure (int_i_template), pointer :: get_chaos_i => null ()
+    ! ----  <<<<<    HARD EXIT     >>>>>   -----
+    logical :: is_premature_exit = .False.
+    integer(kind=4), dimension(:), allocatable, target :: hexit_arr !  Hard Exit integer
+    integer(kind=4), pointer :: hexitptr ! pointer to Hard Exit
+    ! procedure (check_continue_template), pointer :: check_continue_ptr => null ()
+    
 
-    !!! MERGE
-    procedure (do_merge_template), pointer :: resolve_merge => null ()
 
-    !!! WRITE
-    procedure (write_i_to_unit_template), pointer :: write_i_to_general => null ()
-    procedure (write_i_to_unit_template), pointer :: write_i_to_screen => null ()
-    procedure (write_i_to_unit_template), pointer :: write_i_to_individual => null ()
-    procedure (write_i_to_unit_template), pointer :: write_b_to_general => null ()
-    procedure (write_i_to_unit_template), pointer :: write_b_to_screen => null ()
-    procedure (write_i_to_unit_template), pointer :: write_b_to_individual => null ()
-    procedure (int_i_template), pointer :: flush_chaos => null ()
+    ! ----  <<<<<    I/O     >>>>>   -----
+    character(18), parameter :: s1i1 = "(3(A, 1X, I7, 1X))"
+    character(24), parameter :: s1r1 = "(3(A, 1X, 1PE22.15, 1X))"
+    character(21), parameter :: i1r5 = "(I7, 5(1X, 1PE22.15))"
+    character(21), parameter :: i1r7 = "(I7, 7(1X, 1PE22.15))"
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    POINTERS     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    procedure (write_to_unit_template), pointer :: write_to_general => null ()
+    procedure (write_to_unit_template), pointer :: write_to_screen => null ()
+    procedure (write_to_unit_template), pointer :: write_to_chaos => null ()
+    procedure (write_to_unit_template), pointer :: write_a_to_individual => null ()
+    procedure (write_i_to_unit_template), pointer :: write_m_to_individual => null ()
+    procedure (write_i_to_unit_template), pointer :: write_p_to_individual => null ()
     procedure (int_i_template), pointer :: flush_output => null ()
+    procedure (int_i_template), pointer :: flush_chaos => null ()
 
-    !!!!!!!!    FORMATS    !!!!!
-    character(19), parameter :: f12    = "(22(A, 1X, I7, 1X))"
-    character(45), parameter :: f125131 = "(2(A, 1X, I7, 1X), 2(A, 1X, 1PE22.15, 1X), A)"
-    character(29), parameter :: f1233  = "(A, 1X, I7, 22(1X, 1PE22.15))"
-    character(25), parameter :: f13    = "(22(A, 1X, 1PE22.15, 1X))"
-    character(21), parameter :: f133   = "(A, 22(1X, 1PE22.15))"
-    character(27), parameter :: f1331  = "(A, 2(1X, 1PE22.15), 1X, A)"
-    character(26), parameter :: f2233  = "(I7, I7, 22(1X, 1PE22.15))"
-    character(26), parameter :: f23    = "(22(I7, 1X, 1PE22.15, 1X))"
-    character(22), parameter :: f233   = "(I7, 22(1X, 1PE22.15))"
 
 
     abstract interface
+    
         subroutine simple_ptr_template ()
             implicit none
         end subroutine simple_ptr_template
@@ -241,53 +228,25 @@ module parameters
             implicit none
             integer(kind=4), intent(in) :: i
         end subroutine int_i_template
-
-        subroutine do_merge_template (i, mass, angmom)
+        subroutine write_i_to_unit_template (self, i, unit)
+            import :: system_st     ! bring type into scope
             implicit none
-            integer(kind=4), intent(in) :: i
-            real(kind=8), intent(inout) :: mass, angmom
-        end subroutine do_merge_template
-
-        subroutine write_i_to_unit_template (i, unit)
-            implicit none
-            integer(kind=4), intent(in) :: i
-            integer(kind=4), intent(in) :: unit
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(in) :: i, unit
         end subroutine write_i_to_unit_template
-        
-        function check_continue_template (y) result(keep_going)
+
+        subroutine write_to_unit_template (self, unit)
+            import :: system_st     ! bring type into scope
             implicit none
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8) :: r0b(2)
-            real(kind=8) :: rb(2), dist_to_m0, r_from_m0(2)
-            integer(kind=4) :: i, particle_i
-            logical :: keep_going
-        end function
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(in) :: unit
+        end subroutine write_to_unit_template
 
     end interface
 
     contains
-
-        ! 0. Init GLOBAL hidden (and command line) default parameters
-        subroutine init_default_parameters()
-            implicit none
-
-            ! Simulation
-            simulation_number = 1
-
-            ! Times
-            min_timestep = cero
-            
-            ! OmenMP
-            !$ compiled_with_openmp = .True. !! Parece comentado, pero es asi
-
-            ! Extras, fuera de Config.ini. Se editan solo acá
-            !! Update chaos at every output timestep, instead of waiting to the end of the run
-            use_update_chaos = .True.
-            !! Flush output at every output timestep (even though the buffer is not full) 
-            use_flush_output = .True.
-        end subroutine init_default_parameters
     
-        ! Allocate params arrays
+        ! Allocate asteroid params arrays
         subroutine allocate_params_asteroid(Nboulders)
             implicit none
             integer(kind=4), intent(in) :: Nboulders
@@ -297,9 +256,11 @@ module parameters
                 STOP 1
             end if
 
-            allocate(boulders_in(Nboulders,3))  ! FROM 1 to Nboulders
+            allocate(boulders_in(Nboulders,3))
+            !! Allocate params arrays
         end subroutine allocate_params_asteroid
 
+        ! Allocate moons params arrays
         subroutine allocate_params_moons(Nmoons)
             implicit none
             integer(kind=4), intent(in) :: Nmoons
@@ -312,6 +273,7 @@ module parameters
             allocate(moons_in(Nmoons,7))  ! FROM 1 to Nmoons
         end subroutine allocate_params_moons
 
+        ! Allocate particles params arrays
         subroutine allocate_params_particles(Nparticles)
             implicit none
             integer(kind=4), intent(in) :: Nparticles
@@ -324,7 +286,7 @@ module parameters
             allocate(particles_in(Nparticles,5))  ! FROM 1 to Nparticles
         end subroutine allocate_params_particles
         
-        ! 1. Leer entradas por linea de comandos
+        ! 1. Read command line input
         subroutine load_command_line_arguments(params, use_config)
             implicit none
             type(input_params_st), intent(inout) :: params
@@ -380,6 +342,10 @@ module parameters
                         params%use_datascreen = .True.
                     case ( "--nodatascr")
                         params%use_datascreen = .False.
+                    case ("--diagnostic")
+                        params%use_diagnostics = .True.
+                    case ( "--nodiagnostic")
+                        params%use_diagnostics = .False.
                     case ("-multifile")
                         params%use_multiple_outputs = .True.
                         call get_command_argument(i+1, params%multfile)
@@ -750,18 +716,31 @@ module parameters
                             if ((auxch1 == "y") .or. (auxch1 == "s")) then
                                 params%use_datascreen = .True.
                                 params%use_percentage = .False.
+                                params%use_diagnostics = .False.
                             else if (auxch1 == "%") then
                                 params%use_datascreen = .False.
                                 params%use_percentage = .True.
-                            else
+                                params%use_diagnostics = .False.
+                            else if (auxch1 == "d") then
+                                params%use_diagnostics = .True.
                                 params%use_datascreen = .False.
                                 params%use_percentage = .False.
+                            else
+                                params%use_diagnostics = .False.
+                                params%use_percentage = .False.
+                                params%use_datascreen = .False.
                             end if
                         case("output variable")
                             if (auxch1 == "c") then
                                 params%use_elements_output = .False.
                             else
                                 params%use_elements_output = .True.
+                            end if
+                        case("output elements")
+                            if (auxch1 == "b") then
+                                params%use_baryc_output = .True.
+                            else
+                                params%use_baryc_output = .False.
                             end if
                         case("create map file")
                             if ((to_lower(trim(value_str)) == "n") .or. &
@@ -785,7 +764,7 @@ module parameters
                         case("upper y bound (")
                             read (value_str, *) params%map_max_y
                         case default
-                            write (*,*) "WARNING: Parámetro no reconocido: ", trim(param_str)
+                            write (*,*) "WARNING: Parameter not recongnized: ", trim(param_str)
                     end select
                 else  ! Read boulders, moons or particles
                     param_str = trim(adjustl(line)) 
@@ -916,10 +895,10 @@ module parameters
             98 close (10)
         end subroutine read_config_file
 
-        ! 3. Setear los parámetros derivados
+        ! 3. Set derived parameters
         subroutine set_derived_parameters(derived)
             implicit none
-            type(input_params_st), intent(inout) :: derived
+            type(sim_params_st), intent(inout) :: derived
 
             !! Times
             if ((derived%case_output_type < 0) .or. (derived%case_output_type > 2)) then
@@ -1056,12 +1035,20 @@ module parameters
                 write (*,*) "ERROR: Can not print both percentage and data on screen."
                 stop 1
             end if
+            if (derived%use_datascreen .and. derived%use_diagnostics) then
+                write (*,*) "ERROR: Can not print both data and diagnostics data."
+                stop 1
+            end if
+            if (derived%use_percentage .and. derived%use_diagnostics) then
+                write (*,*) "ERROR: Can not print both percentage and diagnostics data."
+                stop 1
+            end if
             
             derived%use_chaos = derived%use_chaosfile .or. derived%use_chaos
             derived%use_elements = derived%use_elements_output .or. derived%use_chaos
 
-            if (.not. derived%use_chaosfile) use_update_chaos = .False.
-            if (.not. derived%use_datafile) use_flush_output = .False.
+            if (.not. derived%use_chaosfile) derived%use_flush_chaos = .False.
+            if (.not. derived%use_datafile) derived%use_flush_output = .False.
 
             if ((trim(derived%datafile) /= "") .and. (trim(derived%datafile) /= "no")) then
                 derived%use_datafile = .True.
@@ -1101,7 +1088,7 @@ module parameters
             end if
         end subroutine set_derived_parameters
         
-        ! 4. Leer el archivo tomfile
+        ! Read TOMfile
         subroutine read_tomfile(t0, tf, t_TOM, domega_TOM, dmass_TOM, file_tout)
             implicit none
             real(kind=8), intent(in) :: t0, tf
@@ -1192,17 +1179,24 @@ module parameters
             close (30)
         end subroutine read_tomfile
 
-
-        ! Deallocate
-        subroutine free_parameters_arays()
+        ! Deallocate initial arrays
+        subroutine free_initial_arays()
             implicit none
             if (allocated(moons_arr)) deallocate(moons_arr)
             if (allocated(particles_arr)) deallocate(particles_arr)
             if (allocated(boulders_in)) deallocate(boulders_in)
             if (allocated(moons_in)) deallocate(moons_in)
             if (allocated(particles_in)) deallocate(particles_in)
-            if (allocated(boulders_theta_ini)) deallocate(boulders_theta_ini)
+        end subroutine free_initial_arays
+
+        ! Deallocate all params arrays
+        subroutine free_parameters_arays()
+            implicit none
+            call free_initial_arays() !! Just in case...
+            if (allocated(boulders_coords)) deallocate(boulders_coords)
+            if (allocated(boulders_data)) deallocate(boulders_data)
             if (allocated(m_arr)) deallocate(m_arr)
+            if (allocated(R_arr)) deallocate(R_arr)
             if (allocated(y_arr)) deallocate(y_arr)
             if (allocated(y_arr_new)) deallocate(y_arr_new)
             if (allocated(y_der)) deallocate(y_der)
@@ -1213,148 +1207,93 @@ module parameters
             if (allocated(checkpoint_is_output)) deallocate(checkpoint_is_output)
         end subroutine free_parameters_arays
 
-        ! 21.x Subroutines to write to a file (or screen)
+        ! Define IO pointers
+        subroutine define_pointers(simu)
+            use bodies, only: write_chaos, write_diagnostics, write_elem, write_coor, &
+                            & write_ast_elem, write_moon_i_elem, write_particle_i_elem, &
+                            & write_ast_coor, write_moon_i_coor, write_particle_i_coor
+            implicit none
+            type (sim_params_st), intent(in) :: simu
 
-        ! ! 21.1 Write elements to unit_file
-        ! subroutine write_elements(i, unit_file)
-        !     implicit none
-        !     integer(kind=4), intent(in) :: i, unit_file
-            
-        !     aux_integer = sorted_particles_index(i)
-        !     write (unit_file,f233) &
-        !         & particles_index(aux_integer), &
-        !         & time / unit_time, &
-        !         & particles_elem(aux_integer,1) / unit_dist, &
-        !         & particles_elem(aux_integer,2), &
-        !         & particles_elem(aux_integer,3) / radian, &
-        !         & particles_elem(aux_integer,4) / radian, &
-        !         & particles_MMR(aux_integer), &
-        !         & particles_mass(aux_integer) / unit_mass, &
-        !         & particles_dist(aux_integer) / unit_dist, &
-        !         & asteroid_omega * unit_time, &
-        !         & asteroid_mass / unit_mass
-        ! end subroutine write_elements
+            ! Screen
+            if (simu%use_datascreen) then
+                if (simu%use_elements_output) then
+                    write_to_screen => write_elem
+                else
+                    write_to_screen => write_coor
+                end if
+            else if (simu%use_diagnostics) then
+                write_to_screen => write_diagnostics
+            else
+                write_to_screen => do_not_write
+            end if
 
-        ! ! 21.2 Write coordinates to unit_file (particles)
-        ! subroutine write_coordinates_particle(i, unit_file)
-        !     implicit none
-        !     integer(kind=4), intent(in) :: i, unit_file
+            ! Datafile
+            if (simu%use_datafile) then
+                if (simu%use_elements_output) then
+                    write_to_general => write_elem
+                else
+                    write_to_general => write_coor
+                end if
+            else 
+                write_to_general => do_not_write
+            end if
 
-        !     aux_integer = sorted_particles_index(i)
-        !     write (unit_file,f233) &
-        !         & particles_index(aux_integer) + Nboulders, &
-        !         & time / unit_time, &
-        !         & particles_coord(aux_integer,1:2) / unit_dist, &
-        !         & particles_coord(aux_integer,3:4) / unit_vel, &
-        !         & particles_acc(aux_integer,1:2) / unit_acc, &
-        !         & particles_mass(aux_integer) / unit_mass, &
-        !         & particles_dist(aux_integer) / unit_dist
-        ! end subroutine write_coordinates_particle
+            ! Multiple Files
+            if (simu%use_multiple_outputs) then
+                if (simu%use_elements_output) then
+                    write_a_to_individual => write_ast_elem
+                    write_m_to_individual => write_moon_i_elem
+                    write_p_to_individual => write_particle_i_elem
+                else
+                    write_a_to_individual => write_ast_coor
+                    write_m_to_individual => write_moon_i_coor
+                    write_p_to_individual => write_particle_i_coor
+                end if
+            else 
+                write_a_to_individual => do_not_write
+                write_m_to_individual => do_not_write_i
+                write_p_to_individual => do_not_write_i
+            end if
 
-        ! ! 21.3 Write coordinates to unit_file (boulders)
-        ! subroutine write_coordinates_boulders(i, unit_file)
-        !     implicit none
-        !     integer(kind=4), intent(in) :: i, unit_file
-            
-        !     write (unit_file,f233) &
-        !         & i, &
-        !         & time / unit_time, &
-        !         & pos_ast_arr(i,:) / unit_dist, &
-        !         & vel_ast_arr(i,:) / unit_vel, &
-        !         & acc_ast_arr(i,:) / unit_acc, &
-        !         & mass_ast_arr(i) / unit_mass, &
-        !         & radius_ast_arr(i) / unit_dist
-        ! end subroutine write_coordinates_boulders
+            ! Chaos file
+            if (simu%use_chaosfile) then
+                write_to_chaos => write_chaos
+                ! Flush chaos
+                if (simu%use_flush_chaos) then
+                    flush_chaos => flush_and_rewind
+                else 
+                    flush_chaos => rewind_a_file
+                end if
+            else 
+                write_to_chaos => do_not_write
+                flush_chaos => do_nothing_i
+            end if
 
-        ! ! 21.4 DO NOT Write
-        ! subroutine do_not_write(i, unit_file)
-        !     implicit none
-        !     integer(kind=4), intent(in) :: i, unit_file
-            
-        ! end subroutine do_not_write
+            ! Flush ouput
+            if (simu%use_flush_output) then
+                flush_output => flush_to_file
+            else 
+                flush_output => do_nothing_i
+            end if
 
-        ! ! 21.5 Write chaos file
-        ! subroutine write_chaos(unit_file)
-        !     implicit none
-        !     integer(kind=4), intent(in) :: unit_file
-        !     integer(kind=4) :: i, aux_integer
-        !     integer(kind=4), dimension(:), allocatable :: my_sorted_particles_index
+        end subroutine define_pointers
 
-        !     ! Sort particles by index
-        !     allocate (my_sorted_particles_index(Nparticles))
-        !     do i = 1, Nparticles
-        !         my_sorted_particles_index = i
-        !     end do
-        !     call quickargsort_int(particles_index, my_sorted_particles_index, 1, Nparticles)
-        !     call fseek(unit_file, 0, 0)       ! move to beginning
-        !     ! Remember that Initial conditions were not swapped
-        !     do i = 1, Nparticles
-        !         aux_integer = my_sorted_particles_index(i)
-        !         write (unit_file,f2233) &
-        !         & particles_index(aux_integer), & ! i
-        !         & particles_outcome(aux_integer), & ! bad
-        !         & final_time / unit_time, & ! total time to integrate
-        !         & asteroid_initial_conditions(10) / (unit_mass * unit_dist * unit_vel), & ! initial (Asteroid): angular momentum
-        !         & particles_initial_conditions(i,1) / unit_mass, & ! initial: mass
-        !         & particles_initial_conditions(i,2) / unit_dist, & ! initial: a
-        !         & particles_initial_conditions(i,3), & ! initial: e
-        !         & particles_initial_conditions(i,4) / radian, & ! initial: M
-        !         & particles_initial_conditions(i,5) / radian, & ! initial: omega
-        !         & particles_initial_conditions(i,6), & ! initial: MMR
-        !         & sqrt(particles_initial_conditions(i,2) * &
-        !           & (uno - particles_initial_conditions(i,3)**2) * &
-        !           & G * (particles_initial_conditions(i,1) + asteroid_initial_conditions(1))) / &
-        !           & (unit_dist * unit_vel), & ! initial: angular momentum per unit mass
-        !         & particles_times(aux_integer) / unit_time, & ! surviving time
-        !         & particles_elem(aux_integer,1) / unit_dist, particles_elem(aux_integer,2), & ! final: a, e
-        !         & particles_elem(aux_integer,3) / radian, particles_elem(aux_integer,4) / radian, & ! final: M, omega
-        !         & particles_MMR(aux_integer), & ! final: MMR
-        !         & sqrt(particles_elem(aux_integer,1) * &
-        !           & (uno - particles_elem(aux_integer,2)**2) * &
-        !           & G * (particles_mass(aux_integer) + asteroid_mass)) / &
-        !           & (unit_dist * unit_vel), & ! final: angular momentum per unit mass
-        !         & particles_min_a(aux_integer) / unit_dist, & ! a_min 
-        !         & particles_max_a(aux_integer) / unit_dist, & ! a_max
-        !         & particles_min_e(aux_integer), & ! e_min 
-        !         & particles_max_e(aux_integer), & ! e_max
-        !         & (particles_max_a(aux_integer) - particles_min_a(aux_integer)) / unit_dist, & ! Delta a
-        !         & (particles_max_e(aux_integer) - particles_min_e(aux_integer)) ! Delta e
-        !     end do
-        !     deallocate (my_sorted_particles_index)
-        !     flush(unit_file)
-        ! end subroutine write_chaos
+        ! Nullify pointers
+        subroutine nullify_pointers()
+            implicit none
 
-        ! ! 22.x Subroutines to get coordinates and elements from a body
-
+            nullify(hexitptr)
+            nullify(write_to_general)
+            nullify(write_to_screen)
+            nullify(write_a_to_individual)
+            nullify(write_m_to_individual)
+            nullify(write_p_to_individual)
+            nullify(flush_output)
+            nullify(flush_chaos)
+        end subroutine nullify_pointers
         
-        ! ! 25. Nullify pointers
-        ! subroutine nullify_pointers()
-        !     implicit none
-
-        !     nullify(particles_hexitptr)
-        !     nullify(get_elements_i)
-        !     nullify(get_chaos_i)
-        !     nullify(resolve_merge)
-        !     nullify(write_i_to_general)
-        !     nullify(write_i_to_screen)
-        !     nullify(write_i_to_individual)
-        !     nullify(write_b_to_general)
-        !     nullify(write_b_to_screen)
-        !     nullify(write_b_to_individual)
-        !     nullify(flush_chaos)
-        ! end subroutine nullify_pointers
         
-        ! ! 26.x Subroutines to switch between lower and upper case
-
-        ! ! 27. Flush to a file
-        ! subroutine flush_to_file(unit_file)
-        !     implicit none
-        !     integer(kind=4), intent(in) :: unit_file
-
-        !     flush(unit_file)
-        ! end subroutine flush_to_file
-        
-        ! ! 28.x Functions to check collision/escape
         
         ! ! 28.1 Check distances (Version 1)
         ! function check_continue_v1 (y) result(keep_going)
@@ -1367,8 +1306,8 @@ module parameters
         !     integer(kind=4), parameter :: neqs = 4
         !     logical :: keep_going
 
-        !     ! Re-set particles_hexit
-        !     particles_hexit = 0  ! 0 is the default or non-action value
+        !     ! Re-set hexit_arr
+        !     hexit_arr = 0  ! 0 is the default or non-action value
             
         !     ! Calculate the center of mass of the asteroid and boulders
         !     rcm = cero
@@ -1387,24 +1326,24 @@ module parameters
         !         r_from_cm = rb - rcm
         !         dist_to_cm = sqrt(r_from_cm(1)*r_from_cm(1) + r_from_cm(2)*r_from_cm(2))
         !         if (dist_to_cm > max_distance) then
-        !             particles_hexit(j) = 2
+        !             hexit_arr(j) = 2
         !         else if (dist_to_cm < min_distance) then
-        !             particles_hexit(j) = 1
+        !             hexit_arr(j) = 1
         !         else
         !             ! Calculate vector and distance to boulders
         !             boulders_loop: do i = 0, Nboulders
         !                 r_from_i = rb - rib(i,:)
         !                 dist_to_i = sqrt(r_from_i(1)*r_from_i(1) + r_from_i(2)*r_from_i(2))
         !                 if (dist_to_i < radius_ast_arr(i)) then
-        !                     particles_hexit(j) = 1
+        !                     hexit_arr(j) = 1
         !                     exit boulders_loop
         !                 end if
         !             end do boulders_loop
         !         end if
         !     end do
             
-        !     keep_going = all(particles_hexit(1:Nactive) .eq. 0)
-        !     if (.not. keep_going) particles_hexit(0) = 1
+        !     keep_going = all(hexit_arr(1:Nactive) .eq. 0)
+        !     if (.not. keep_going) hexit_arr(0) = 1
             
         ! end function check_continue_v1
         
@@ -1419,8 +1358,8 @@ module parameters
         !     integer(kind=4), parameter :: neqs = 4
         !     logical :: keep_going
 
-        !     ! Re-set particles_hexit
-        !     particles_hexit = 0  ! 0 is the default or non-action value
+        !     ! Re-set hexit_arr
+        !     hexit_arr = 0  ! 0 is the default or non-action value
             
         !     ! Calculate the center of mass of the asteroid and boulders
         !     rcm(1) = y(3)
@@ -1438,34 +1377,66 @@ module parameters
         !         r_from_cm = rb - rcm
         !         dist_to_cm = sqrt(r_from_cm(1)*r_from_cm(1) + r_from_cm(2)*r_from_cm(2))
         !         if (dist_to_cm > max_distance) then
-        !             particles_hexit(j) = 2
+        !             hexit_arr(j) = 2
         !         else if (dist_to_cm < min_distance) then
-        !             particles_hexit(j) = 1
+        !             hexit_arr(j) = 1
         !         else 
         !             ! Calculate vector and distance to boulders
         !             boulders_loop: do i = 0, Nboulders
         !                 r_from_i = rb - rib(i,:)
         !                 dist_to_i = sqrt(r_from_i(1)*r_from_i(1) + r_from_i(2)*r_from_i(2))
         !                 if (dist_to_i < radius_ast_arr(i)) then
-        !                     particles_hexit(j) = 1
+        !                     hexit_arr(j) = 1
         !                     exit boulders_loop
         !                 end if
         !             end do boulders_loop
         !         end if
         !     end do
             
-        !     keep_going = all(particles_hexit(1:Nactive) .eq. 0)
-        !     if (.not. keep_going) particles_hexit(0) = 1
+        !     keep_going = all(hexit_arr(1:Nactive) .eq. 0)
+        !     if (.not. keep_going) hexit_arr(0) = 1
             
         ! end function check_continue_v2
         
-        ! 99 Subrutina para pointer vacío (no hace nada) con input i
+        ! Dummy but useful subroutines
+
+        subroutine flush_to_file(unit_file)
+            implicit none
+            integer(kind=4), intent(in) :: unit_file
+
+            flush(unit_file)
+        end subroutine flush_to_file
+
+        subroutine flush_and_rewind(unit_file)
+            implicit none
+            integer(kind=4), intent(in) :: unit_file
+
+            flush(unit_file)
+            rewind(unit_file)
+        end subroutine flush_and_rewind
+
+        subroutine rewind_a_file(unit_file)
+            implicit none
+            integer(kind=4), intent(in) :: unit_file
+
+            rewind(unit_file)
+        end subroutine rewind_a_file
+
         subroutine do_nothing_i(i)
             implicit none
             integer(kind=4), intent(in) :: i
         end subroutine do_nothing_i
 
+        subroutine do_not_write_i(self, i, unit_file)
+            implicit none
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(in) :: i, unit_file
+        end subroutine do_not_write_i
 
-        
+        subroutine do_not_write(self, unit_file)
+            implicit none
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(in) :: unit_file
+        end subroutine do_not_write
 
 end module parameters

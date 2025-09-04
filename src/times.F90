@@ -1,7 +1,7 @@
 !> Module with time and checkpoint calculation routines
 module times
     use constants, only: uno, uno2, tini
-    use auxiliar, only: quicksort
+    use auxiliary, only: quicksort
     implicit none
     real(kind=8), dimension(:), allocatable :: output_times  ! Vector con tiempos de salida
     real(kind=8), dimension(:), allocatable :: checkpoint_times  ! Vector con checkpoints
