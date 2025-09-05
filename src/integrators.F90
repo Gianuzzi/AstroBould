@@ -1330,7 +1330,7 @@ module integrators
             x = xnew
             hdid = h
             first = .False.
-            wrkmin = 1.e35
+            wrkmin = 1.d35
             do kk = 1, km
                 fact = max (err(kk), scalmx)
                 work = fact * arr(kk + 1)

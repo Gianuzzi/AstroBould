@@ -84,7 +84,7 @@ module bodies
    
     !!!!!!!!!!!   Used I/O formats     !!!!!!!!!
     character(26), parameter :: i2r15 = "(I7, I7, 15(1X, 1PE22.15))"  ! 2 int y 14 real
-    character(25), parameter :: i2r7 = "(I7, I7, 7(1X, 1PE22.15))"  ! 2 int y 7 real
+    character(25), parameter :: i2r9 = "(I7, I7, 9(1X, 1PE22.15))"  ! 2 int y 7 real
     character(18), parameter :: s1i1x5 = "(5(A, 1X, I1, 1X))"
     
     contains
@@ -993,7 +993,7 @@ module bodies
             self%moons(i)%tmax = self%time
 
             ! If it is the last active, do not swap
-            if (.not. (i .eq. self%Nmoons_active)) then
+            if (i < self%Nmoons_active) then
                 ! Switch deactivated moon with last active
                 do j = self%Nmoons_active, 1, -1
                     if (i .eq. j) cycle
@@ -1020,20 +1020,22 @@ module bodies
                 if(present(error)) error = error + 1
             end if
 
-            ! Deactivate moon
+            ! Deactivate particle
             self%particles(i)%active = .False.
 
             ! Set tmax
             self%particles(i)%tmax = self%time
 
-            ! Switch deactivated moon with last active
-            do j = self%Nparticles_active, 1, -1
-                if (i .eq. j) cycle
-                if (self%particles(j)%active) then
-                    call swap_particles(self%particles, i, j)
-                    exit
-                end if
-            end do
+            ! Switch deactivated particle with last active
+            if (i < self%Nparticles_active) then
+                do j = self%Nparticles_active, 1, -1
+                    if (i .eq. j) cycle
+                    if (self%particles(j)%active) then
+                        call swap_particles(self%particles, i, j)
+                        exit
+                    end if
+                end do
+            end if
             self%Nparticles_active = self%Nparticles_active - 1  ! Update NPARTICLES_ACTIVE
         end subroutine deactivate_particle_i
 
@@ -1427,11 +1429,12 @@ module bodies
         end subroutine resolve_escapes
             
         ! Resolve collisions
-        subroutine resolve_collisions(self, r_min)
+        subroutine resolve_collisions(self, r_min, merge_type)
             implicit none
             type(system_st), intent(inout) :: self
             real(kind=8), intent(in) :: r_min
-            integer(kind=4) :: i, j
+            integer(kind=4), intent(in), optional :: merge_type
+            integer(kind=4) :: i, j, merge = -1
             integer(kind=4) :: m_act0
             integer(kind=4) :: m_act, p_act
             integer(kind=4) :: moon_id
@@ -1442,6 +1445,9 @@ module bodies
 
             ! Init
             again = .True.
+
+            ! Kind of merge to apply
+            if (present(merge_type)) merge = merge_type
 
             do while (again)
 
@@ -1551,19 +1557,19 @@ module bodies
             write (unit_file,i2r15) &
                 & 0, &  ! ID
                 & -1, &  ! merged to
-                & self%time / unit_time, &
-                & self%asteroid%omega * unit_time, &
-                & self%asteroid%theta * radian, &
-                & self%asteroid%elements(1) / unit_dist, &
-                & self%asteroid%elements(2), &
-                & self%asteroid%elements(3) / radian, &
-                & self%asteroid%elements(4) / radian, &
-                & cero, &  ! MMR
-                & self%asteroid%chaos_a / unit_dist,&
-                & self%asteroid%chaos_e,&
-                & self%asteroid%mass / unit_mass, &
-                & self%asteroid%radius / unit_dist, &
-                & self%asteroid%dist_to_cm / unit_dist
+                & self%time / unit_time, &  ! time
+                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%omega * unit_time, &  ! omega
+                & self%asteroid%elements(1) / unit_dist, &  ! x
+                & self%asteroid%elements(2), &  ! vx
+                & self%asteroid%elements(3) / radian, &  ! y
+                & self%asteroid%elements(4) / radian, &  ! vy
+                & cero, &   ! MMR
+                & self%asteroid%chaos_a / unit_dist, &  ! amax, amin
+                & self%asteroid%chaos_e, &  ! emax, emin
+                & self%asteroid%mass / unit_mass, &  ! mass
+                & self%asteroid%radius / unit_dist, &  ! radius
+                & self%asteroid%dist_to_cm / unit_dist  ! distance
         end subroutine write_ast_elem
 
         ! Write elements moon i
@@ -1572,21 +1578,21 @@ module bodies
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
             write (unit_file,i2r15) &
-                & self%moons(i)%id, & 
-                & self%moons(i)%merged_to, &
-                & self%time / unit_time, &
-                & self%moons(i)%ang_mom_rot / self%moons(i)%inertia, &
-                & cero, &
-                & self%moons(i)%elements(1) / unit_dist, &
-                & self%moons(i)%elements(2), &
-                & self%moons(i)%elements(3) / radian, &
-                & self%moons(i)%elements(4) / radian, &
-                & self%moons(i)%mmr, &
-                & self%moons(i)%chaos_a / unit_dist, &
-                & self%moons(i)%chaos_e,&
-                & self%moons(i)%mass / unit_mass, &
-                & self%moons(i)%radius / unit_dist, &
-                & self%moons(i)%dist_to_cm / unit_dist
+                & self%moons(i)%id, &  ! ID
+                & self%moons(i)%merged_to, &  ! merged to
+                & self%time / unit_time, &  ! time
+                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%omega * unit_time, &  ! omega
+                & self%moons(i)%elements(1) / unit_dist, &  ! x
+                & self%moons(i)%elements(2), &  ! vx
+                & self%moons(i)%elements(3) / radian, &  ! y
+                & self%moons(i)%elements(4) / radian, &  ! vy
+                & self%moons(i)%mmr, &  ! MMR
+                & self%moons(i)%chaos_a / unit_dist, &  ! amax, amin
+                & self%moons(i)%chaos_e, &  ! emax, emin
+                & self%moons(i)%mass / unit_mass, &  ! mass
+                & self%moons(i)%radius / unit_dist, &  ! radius
+                & self%moons(i)%dist_to_cm / unit_dist  ! distance
         end subroutine write_moon_i_elem
 
         ! Write elements particle i
@@ -1595,21 +1601,21 @@ module bodies
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
             write (unit_file,i2r15) &
-                & self%particles(i)%id, & 
-                & self%particles(i)%merged_to, &
-                & self%time / unit_time, &
-                & cero, &
-                & cero, &
-                & self%particles(i)%elements(1) / unit_dist, &
-                & self%particles(i)%elements(2), &
-                & self%particles(i)%elements(3) / radian, &
-                & self%particles(i)%elements(4) / radian, &
-                & self%particles(i)%mmr, &
-                & self%particles(i)%chaos_a / unit_dist, &
-                & self%particles(i)%chaos_e,&
-                & cero, &
-                & cero, &
-                & self%particles(i)%dist_to_cm / unit_dist
+                & self%particles(i)%id, &   ! ID
+                & self%particles(i)%merged_to, &  ! merged to
+                & self%time / unit_time, &  ! time
+                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%omega * unit_time, &  ! omega
+                & self%particles(i)%elements(1) / unit_dist, &  ! x
+                & self%particles(i)%elements(2), &  ! vx
+                & self%particles(i)%elements(3) / radian, &  ! y
+                & self%particles(i)%elements(4) / radian, &  ! vy
+                & self%particles(i)%mmr, &  ! MMR
+                & self%particles(i)%chaos_a / unit_dist, &  ! amax, amin
+                & self%particles(i)%chaos_e,&  ! emax, emin
+                & cero, &  ! mass
+                & cero, &  ! radius
+                & self%particles(i)%dist_to_cm / unit_dist  ! distance
         end subroutine write_particle_i_elem
 
         ! Write elements ALL
@@ -1658,29 +1664,29 @@ module bodies
             integer(kind=4) :: i
             real(kind=8) :: coords(4)
              ! Asteroid
-            write (unit_file,i2r7) &
-                    & -1, & 
-                    & -1, &
-                    & self%time / unit_time, &
-                    & self%asteroid%coordinates(1) / unit_dist, &
-                    & self%asteroid%coordinates(2) / unit_dist, &
-                    & self%asteroid%coordinates(3) / unit_vel, &
-                    & self%asteroid%coordinates(4) / unit_vel, &
-                    & self%asteroid%mass / unit_mass, &
-                    & self%asteroid%radius / unit_dist
+            write (unit_file,i2r9) &
+                    & -1, &  ! ID
+                    & -1, &  ! merged to
+                    & self%time / unit_time, &  !time
+                    & self%asteroid%theta * radian, &  ! theta
+                    & self%asteroid%omega * unit_time, &  ! omega
+                    & self%asteroid%coordinates(1:2) / unit_dist, &  ! x y
+                    & self%asteroid%coordinates(3:4) / unit_vel, &  ! vx vy
+                    & self%asteroid%mass / unit_mass, &  ! mass
+                    & self%asteroid%radius / unit_dist  ! dist
             ! Boulders
             do i = 0, self%asteroid%Nboulders
                 call get_boulder_i_coord(self%asteroid, i, coords)
-                write (unit_file,i2r7) &
+                write (unit_file,i2r9) &
                     & i, &  ! ID
-                    & -1, &  ! Merged to
-                    & self%time / unit_time, &
-                    & coords(1) / unit_dist, &
-                    & coords(2) / unit_dist, &
-                    & coords(3) / unit_vel, &
-                    & coords(4) / unit_vel, &
-                    & self%asteroid%boulders(i)%mass / unit_mass, &
-                    & self%asteroid%boulders(i)%radius / unit_dist
+                    & -1, &  ! merged to
+                    & self%time / unit_time, &  !time
+                    & (self%asteroid%theta + self%asteroid%boulders(i)%initial_theta) * radian, &  ! theta
+                    & self%asteroid%omega * unit_time, &  ! omega
+                    & coords(1:2) / unit_dist, &  ! x y
+                    & coords(3:4) / unit_vel, &  ! vx vy
+                    & self%asteroid%boulders(i)%mass / unit_mass, &  ! mass
+                    & self%asteroid%boulders(i)%radius / unit_dist  ! dist
             end do
         end subroutine write_ast_coor
 
@@ -1689,16 +1695,16 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
-            write (unit_file,i2r7) &
-                & self%moons(i)%id + self%asteroid%Nboulders, &  ! Add NBoulders to avoid duplicates 
-                & self%moons(i)%merged_to, &
-                & self%time / unit_time, &
-                & self%moons(i)%coordinates(1) / unit_dist, &
-                & self%moons(i)%coordinates(2) / unit_dist, &
-                & self%moons(i)%coordinates(3) / unit_vel, &
-                & self%moons(i)%coordinates(4) / unit_vel, &
-                & self%moons(i)%mass / unit_mass, &
-                & self%moons(i)%radius / unit_dist
+            write (unit_file,i2r9) &
+                & self%moons(i)%id + self%asteroid%Nboulders, &  ! ID + Nbould to avoid duplicates
+                & self%moons(i)%merged_to, &  ! merged to
+                & self%time / unit_time, &  !time
+                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%omega * unit_time, &  ! omega
+                & self%moons(i)%coordinates(1:2) / unit_dist, &  ! x y
+                & self%moons(i)%coordinates(3:4) / unit_vel, &  ! vx vy
+                & self%moons(i)%mass / unit_mass, &  ! mass
+                & self%moons(i)%radius / unit_dist  ! dist
         end subroutine write_moon_i_coor
 
         ! Write coordinates particle i
@@ -1706,16 +1712,16 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
-            write (unit_file,i2r7) &
-                & self%particles(i)%id + self%asteroid%Nboulders, &  ! Add NBoulders and moons to avoid duplicates
-                & self%particles(i)%merged_to, &
-                & self%time / unit_time, &
-                & self%particles(i)%coordinates(1) / unit_dist, &
-                & self%particles(i)%coordinates(2) / unit_dist, &
-                & self%particles(i)%coordinates(3) / unit_vel, &
-                & self%particles(i)%coordinates(4) / unit_vel, &
-                & cero, &
-                & cero
+            write (unit_file,i2r9) &
+                & self%particles(i)%id + self%asteroid%Nboulders, &  ! ID + Nbould to avoid duplicates
+                & self%particles(i)%merged_to, &  ! merged to
+                & self%time / unit_time, &  !time
+                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%omega * unit_time, &  ! omega
+                & self%particles(i)%coordinates(1:2) / unit_dist, &  ! x y
+                & self%particles(i)%coordinates(3:4) / unit_vel, &  ! vx vy
+                & cero, &  ! mass
+                & cero  ! dist
         end subroutine write_particle_i_coor
 
         ! Write coordinates ALL
@@ -1796,24 +1802,29 @@ module bodies
         end subroutine write_chaos
 
         ! Write diagnostic information ALL
-        subroutine write_diagnostics(self, unit_file)
-            implicit none
-            type(system_st), intent(in) :: self
-            integer(kind=4), intent(in) :: unit_file
+        subroutine write_diagnotics(initial, actual, unit_file)
+            type(system_st), intent(in) :: initial
+            type(system_st), intent(in) :: actual
+            integer(kind=4), intent(in), optional :: unit_file
+            integer(kind=4) :: my_file = 6  ! StdOut
             real(kind=8) :: mass, COM(4), energy, ang_mom
 
-            call get_cm(self, mass, COM)
-            call calculate_energy_and_ang_mom(self, energy, ang_mom)
+            call get_cm(actual, mass, COM)
+            call calculate_energy_and_ang_mom(actual, energy, ang_mom)
+            if (present(unit_file)) my_file = unit_file
             
-            write(unit_file,*) self%time / unit_time, &
-                             & mass / unit_mass, &
-                             & COM(1:2) / unit_dist, &
-                             & COM(3:4) / unit_vel, &
-                             & energy / unit_ener, & 
-                             & ang_mom / unit_angm, &
-                             & self%asteroid%omega * unit_time
-
-        end subroutine write_diagnostics
+            write(my_file,*) actual%time / unit_time, &  ! time
+                             & mass / unit_mass, &  ! mass
+                             & mass / initial%mass, &  ! mass / mass0
+                             & COM(1:2) / unit_dist, &  ! x y
+                             & COM(3:4) / unit_vel, &  ! vx vy
+                             & actual%asteroid%omega * unit_time, &  ! omega
+                             & actual%asteroid%omega / initial%asteroid%omega, &  ! omega / omega0
+                             & energy / unit_ener, &  ! energy
+                             & energy / initial%energy, &  ! energy / energy0
+                             & ang_mom / unit_angm, &  ! ang_mom
+                             & ang_mom / initial%ang_mom  ! ang_mom / ang_mom0
+        end subroutine write_diagnotics
 
         !  -----------------------------   MEMORY    -------------------------------------
         

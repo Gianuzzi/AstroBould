@@ -59,13 +59,13 @@ module accelerations
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         !!! Init Parameters
-        subroutine init_stokes(tau_a, tau_e, charac_timescale)
+        subroutine init_stokes(tau_a, tau_e, active_timescale)
             implicit none
-            real(kind=8), intent(in) :: tau_a, tau_e, charac_timescale
+            real(kind=8), intent(in) :: tau_a, tau_e, active_timescale
 
             if (stokes_time > cero .and. abs(tau_a) > cero .and. abs(tau_e) > cero) then
                 use_stokes = .True.
-                stokes_time = charac_timescale
+                stokes_time = active_timescale
                 stokes_C = uno / (dos * tau_a) + uno / tau_e
                 stokes_alpha = (dos * tau_a) / ((dos * tau_a) + tau_e)
             else 
@@ -91,14 +91,14 @@ module accelerations
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         !!! Init Parameters
-        subroutine init_drag(drag_coefficient, characteristic_timescale)
+        subroutine init_drag(drag_coefficient, active_timescale)
             implicit none
-            real(kind=8), intent(in) :: drag_coefficient, characteristic_timescale
+            real(kind=8), intent(in) :: drag_coefficient, active_timescale
             
-            if (characteristic_timescale > cero .and. abs(drag_coef) > cero ) then
+            if (active_timescale > cero .and. abs(drag_coef) > cero) then
                 use_drag = .True.
                 drag_coef = drag_coefficient
-                drag_time = characteristic_timescale
+                drag_time = active_timescale
             else 
                 use_drag = .False.
             end if
@@ -159,16 +159,16 @@ module accelerations
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         !!! Init Parameters
-        subroutine init_damping(coefficient_1, coefficient_2, characteristic_timescale, model)
+        subroutine init_damping(coefficient_1, coefficient_2, active_timescale, model)
             implicit none
-            real(kind=8), intent(in) :: coefficient_1, coefficient_2, characteristic_timescale
+            real(kind=8), intent(in) :: coefficient_1, coefficient_2, active_timescale
             integer(kind=4), intent(in) :: model
             
-            if (characteristic_timescale > cero .and. abs(coefficient_1) > cero) then
+            if (active_timescale > cero .and. abs(coefficient_1) > cero) then
                 use_damp = .True.
                 damp_coef_1 = coefficient_1
                 damp_coef_2 = coefficient_2
-                damp_time = characteristic_timescale
+                damp_time = active_timescale
                 damp_model = model
             else 
                 use_damp = .False.
@@ -273,7 +273,7 @@ module accelerations
             !! Damping
             factor = uno2 * (uno + tanh(1.d1 * (uno - time / damp_time)))
             select case (damp_model)
-                case (1) ! domega/dt = tau
+                case (1) ! domega/dt = slope
                     acc_omega = acc_omega + damp_coef_1 * factor 
                 case (2) ! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau     
                     acc_omega = acc_omega - omega / damp_coef_1 * factor

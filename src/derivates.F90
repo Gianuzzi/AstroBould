@@ -1,10 +1,15 @@
 module derivates
-    use constants, only: G
+    use constants, only: G, cero, uno, uno2, dos, tini
     use auxiliary, only: cross2D_z
     use parameters, only: sim, system, &
                           & boulders_coords, boulders_data, & !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
                           & m_arr, R_arr, hexit_arr
-    use accelerations
+    use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
+                            & use_drag, drag_coef, drag_time, &
+                            & use_stokes, stokes_C, stokes_alpha, stokes_time, &
+                            & use_J2, J2_coef
+
+
     implicit none
 
     abstract interface
@@ -85,12 +90,12 @@ module derivates
             do i = 0, system%asteroid%Nboulders
 
                 !! Get boulder coords
-                boulders_coords(i,1) = boulders_data(i,4) * cos(theta + boulders_data(i,3))
-                boulders_coords(i,2) = boulders_data(i,4) * sin(theta + boulders_data(i,3))
+                boulders_coords(i,1) = boulders_data(i,4) * cos(theta + boulders_data(i,3))  ! y
+                boulders_coords(i,2) = boulders_data(i,4) * sin(theta + boulders_data(i,3))  ! x
                 boulders_coords(i,3) = -omega * boulders_coords(i,2)  ! vx
                 boulders_coords(i,4) = omega * boulders_coords(i,1)  ! vy
 
-                boulders_coords(i,:) = boulders_coords(i,:) + coords_A
+                boulders_coords(i,:) = boulders_coords(i,:) + coords_A  ! Move to Asteroid
 
                 !! Particles (massless)
                 do j = last_moon + 1, N_total
@@ -115,7 +120,6 @@ module derivates
                 do j = 2, last_moon ! +1 porque j=1 es asteroid
                     jdx = get_index(j)
                     coords_M = y(jdx:jdx+3)  ! Moon
-
 
                     !!! Fisrt, just CHECK if Collision / Escape to ASTEROID
                     dr_vec = coords_A(1:2) - coords_M(1:2)  ! From Moon to Asteroid:
@@ -142,7 +146,8 @@ module derivates
 
                     !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
                     ! Asteroid acceleration
-                    der(5:6) = der(5:6) - acc_grav_m * m_arr(j)  ! Force moved to Asteroid CM
+                    ! der(5:6) = der(5:6) - acc_grav_m * m_arr(j)  ! Force moved to Asteroid CM  ! PREVIOUS
+                    der(5:6) = der(5:6) - acc_grav_m * boulders_data(i,1) * m_arr(j) / m_arr(1)  ! Force moved to Asteroid CM  ! CHATGPT
 
                     ! Torque to Asteroid
                     torque = torque - cross2D_z(boulders_coords(i,1:2) - coords_A(1:2), acc_grav_m * m_arr(j) * boulders_data(i,1))  !! r x F
@@ -212,7 +217,7 @@ module derivates
                 damp_f = uno2 * (uno + tanh(1.d1 * (uno - t / damp_time)))
                 select case (damp_model)
                     case (1) ! domega/dt = tau
-                        der(2) = der(2) + damp_coef_1 * damp_f 
+                        der(2) = der(2) + damp_coef_1 * damp_f
                     case (2) ! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau     
                         der(2) = der(2) - omega / damp_coef_1 * damp_f
                     case (3) ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega

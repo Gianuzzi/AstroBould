@@ -86,19 +86,21 @@ program main
             
         end if
 
-        !!!! Merges (colliding particles into asteroid)
-        input%use_merge = .False. ! Merge particles into asteroid
+        !!!! Merges
+        input%use_merge_part_ast = .False. ! Merge particles into asteroid
+        input%use_merge_part_moon = .False. ! Merge particles into moons
+        input%use_merge_massive = .False. ! Merge massive bodies
         
         !!!! Stokes
         input%use_stokes = .False.
         input%stokes_a_damping_time = infinity                                  ! [day]
         input%stokes_e_damping_time = input%stokes_a_damping_time / 1.d2 ! [day]
-        input%stokes_charac_time = cero                                         ! [day] Tiempo que actúa stokes
+        input%stokes_active_time = cero                                         ! [day] Tiempo que actúa stokes
 
         !!!! Naive-Stokes (drag)
-        input%use_naive_stokes = .False.
+        input%use_drag = .False.
         input%drag_coefficient = cero  ! Eta
-        input%drag_charac_time = cero  ! [day] Tiempo que actúa drag
+        input%drag_active_time = cero  ! [day] Tiempo que actúa drag
 
         !!!! Geo-Potential (J2)
         input%J2_coefficient = cero
@@ -365,13 +367,13 @@ program main
     if (sim%use_screen) then
         write (*,*) "Asteroid Rotation:"
         write (*,s1r1) "  a_corot               :", system%asteroid%a_corotation / unit_dist, "[km]"
-        write (*,s1r1) "  omega                 :", system%asteroid%omega * unit_time, "[rad/day]"
-        write (*,s1r1) "  omega_kep             :", system%asteroid%omega_kep * unit_time, "[rad/day]"
+        write (*,s1r1) "  omega                 :", system%asteroid%omega * unit_time, "[rad day⁻¹]"
+        write (*,s1r1) "  omega_kep             :", system%asteroid%omega_kep * unit_time, "[rad day⁻¹]"
         write (*,s1r1) "  lambda_kep            :", system%asteroid%lambda_kep
         write (*,s1r1) "  Period                :", system%asteroid%rotational_period * 24 * unit_time, "[hs]"
-        write (*,s1r1) "  Inertial momentum     :", system%asteroid%inertia / (unit_mass * unit_dist**2), "[kg km^2]"
+        write (*,s1r1) "  Inertial momentum     :", system%asteroid%inertia / (unit_mass * unit_dist**2), "[kg km²]"
         write (*,s1r1) "  Angular momentum (rot):", system%asteroid%ang_mom_rot / unit_mass / &
-                                    & (unit_dist**2) * unit_time, "[kg km^2 / day]"
+                                    & (unit_dist**2) * unit_time, "[kg km² day⁻¹]"
         write (*,*) ACHAR(5)
         if (.not. sim%use_boulders) then
             write(*,*) "Rotation is considered just to define initial parameters."
@@ -422,9 +424,9 @@ program main
 
     ! Energy and ang_mom
     if (sim%use_screen) then
-        write (*,s1r1) "   Mass            : ", system%mass / unit_mass
-        write (*,s1r1) "   Energy          : ", system%energy / unit_ener
-        write (*,s1r1) "   Angular Momentum: ", system%ang_mom / unit_angm
+        write (*,s1r1) "   Mass            : ", system%mass / unit_mass, "[kg]"
+        write (*,s1r1) "   Energy          : ", system%energy / unit_ener * (1d6 / segundo), "[J]"
+        write (*,s1r1) "   Angular Momentum: ", system%ang_mom / unit_angm * (1d6 / segundo**2), "[J s⁻¹]"
         write (*,*) ACHAR(5)
     end if
 
@@ -452,17 +454,7 @@ program main
     end if
 
 
-    !!! Test MERGE
-    ! ! call calculate_coordinates(system, aux_real, aux_real4)
-    ! print*, "Merge Ast"
-    ! call merge_moon_i_into_ast(system, 1)
-    ! print*, "Merge Moon"
-    ! call merge_2_moons(system, 1, 2)
-    ! ! call calculate_coordinates(system, aux_real, aux_real4)
-    ! call resolve_collisions(system, cero)
-
-
-!     !!!!!!!!!!!!!!!!!!!!!!!!!!!! EFECTOS EXTERNOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!! EXTERNA EFFECTS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (sim%use_screen) then
         write (*,*) ACHAR(5)
@@ -470,168 +462,75 @@ program main
         write (*,*) ACHAR(5)
     end if
 
-!     !! Variación en omega (funciones del tiempo)
-!     if (use_omega_damping) then
-!         ! Linear omega damping
-!         if ((abs(omega_linear_damping_time) > tini) .and. (omega_linear_damping_time < infinity)) then
-!             if (use_explicit_method) then
-!                 write (*,*) ACHAR(10)
-!                 write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
-!                 write (*,f13) "tau_o [Prot]:", omega_linear_damping_time * unit_time / asteroid_rotational_period
-!                 stop 1
-!             end if
-!             if (.not. use_boulders) then
-!                 write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
-!                 omega_linear_damping_time = infinity
-!                 omega_linear_damping_slope = cero
-!             else
-!                 omega_linear_damping_time = omega_linear_damping_time * unit_time
-!                 omega_linear_damping_slope = - asteroid_omega / (omega_linear_damping_time - initial_time)
-!                 if (use_screen) then
-!                     write (*,*) "Explicit omega linear damping"
-!                     write (*,f13)  "    tau_o :", omega_linear_damping_time / asteroid_rotational_period, "[Prot]"
-!                 end if
-!             end if
-!         else
-!             omega_linear_damping_time = infinity
-!             omega_linear_damping_slope = cero
-!         end if
-!         ! Exponential omega damping
-!         if ((abs(omega_exp_damping_time) > tini) .and. (omega_exp_damping_time < infinity)) then
-!             if (use_explicit_method) then
-!                 write (*,*) ACHAR(10)
-!                 write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
-!                 write (*,f13) "tau_o [Prot]:", omega_exp_damping_time * unit_time / asteroid_rotational_period
-!                 stop 1
-!             end if
-!             if (.not. use_boulders) then
-!                 write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
-!                 omega_exp_damping_time = infinity
-!             else
-!                 omega_exp_damping_time = omega_exp_damping_time * unit_time
-!                 if (use_screen) then
-!                     write (*,*) "Explicit omega exponential damping"
-!                     write (*,f13)  "    tau_o :", omega_exp_damping_time / asteroid_rotational_period, "[Prot]"
-!                 end if
-!             end if
-!         else
-!             omega_exp_damping_time = infinity
-!         end if
-!         ! Poly_exponential omega damping
-!         if ((abs(omega_exp_poly_A) > tini) .and. (abs(omega_exp_poly_B) > tini)) then
-!             if (use_explicit_method) then
-!                 write (*,*) ACHAR(10)
-!                 write (*,*) "ERROR: No se puede usar el método explícito con tau_o finito."
-!                 write (*,f13) "poly exp coeff A:", omega_exp_poly_A
-!                 write (*,f13) "poly exp coeff B:", omega_exp_poly_B
-!                 stop 1
-!             end if
-!             if (.not. use_boulders) then
-!                 write (*,*) "WARNING: Omega damping has no effect without boulders. It won't be used"
-!                 omega_exp_poly_A = cero
-!                 omega_exp_poly_B = cero
-!             else
-!                 if (use_screen) then
-!                     write (*,*) "Explicit omega poly-exponential damping"
-!                     write (*,f13)  "    A :", omega_exp_poly_A
-!                     write (*,f13)  "    B :", omega_exp_poly_B
-!                 end if
-!             end if
-!             omega_exp_poly_AB = omega_exp_poly_A * omega_exp_poly_B ! Define AB
-!         else
-!             omega_exp_poly_A = cero
-!             omega_exp_poly_B = cero
-!         end if
-!     else
-!         omega_linear_damping_time = infinity
-!         omega_linear_damping_slope = cero
-!         omega_exp_damping_time = infinity
-!         omega_exp_poly_A = cero
-!         omega_exp_poly_B = cero
-!     end if
+    !! Omega Damping
+    if (sim%use_omega_damping .and. (.not. sim%use_boulders)) then
+        if (sim%use_screen) write (*,*) "WARNING: Skipping omega damping without boulders."
+        sim%use_omega_damping = .False.
+    else if (sim%use_omega_damping) then
+        if (sim%use_lin_omega_damp) then
+            aux_real = - system%asteroid%omega / (sim%omega_lin_damping_time * unit_time - sim%initial_time)
+            call init_damping(aux_real, &
+                            & cero, &
+                            & sim%omega_damp_active_time * unit_time, &
+                            & 1)
 
-!     !! Mass exponential damping
-!     mass_exp_damping_time = cero !!! Deprecado
-!     if ((abs(mass_exp_damping_time) > tini) .and. (mass_exp_damping_time < infinity)) then
-!         if (use_explicit_method) then
-!             write (*,*) ACHAR(10)
-!             write (*,*) "ERROR: No se puede usar el método explícito con tau_m finito."
-!             write (*,f13) "tau_m [Prot]:", mass_exp_damping_time * unit_time / asteroid_rotational_period
-!             stop 1
-!         end if
-!         mass_exp_damping_time = mass_exp_damping_time * unit_time
-!         if (use_screen) then
-!             write (*,*) "Explicit mass exponential damping"
-!             write (*,f13)  "    tau_m :", mass_exp_damping_time / asteroid_rotational_period, "[Prot]"
-!         end if
-!     else
-!         mass_exp_damping_time = infinity
-!     end if
+            if (sim%use_screen) then
+                write (*,*) "Omega Damping: linear"
+                write (*,s1r1) " tau_o :", sim%omega_lin_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"
+            end if
+        else if (sim%use_exp_omega_damp) then
+            call init_damping(sim%omega_exp_damping_time * unit_time, &
+                            & cero, &
+                            & sim%omega_damp_active_time * unit_time, &
+                            & 2)
+            if (sim%use_screen) then
+                write (*,*) "Omega Damping: exponential"
+                write (*,s1r1) " tau_o :", sim%omega_exp_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"
+            end if
+        else if (sim%use_poly_omega_damp) then
+            call init_damping(sim%omega_exp_damp_poly_A, &
+                            & sim%omega_exp_damp_poly_A, &
+                            & sim%omega_damp_active_time * unit_time, &
+                            & 3)
+            
+            if (sim%use_screen) then
+                write (*,*) "Omega Damping: poly-exponential"
+                write (*,s1r1) "  A :", sim%omega_exp_damp_poly_A
+                write (*,s1r1) "  B :", sim%omega_exp_damp_poly_B
+            end if
+        end if
+    end if
 
-!     !!! Check not both omega dampings
-!     if ((omega_exp_damping_time < infinity .and. omega_linear_damping_time < infinity) .or. &
-!       & (omega_exp_damping_time < infinity .and. abs(omega_exp_poly_A) > tini) .or. &
-!       & (omega_linear_damping_time < infinity .and. abs(omega_exp_poly_A) > tini)) then
-!         write (*,*) ACHAR(10)
-!         write (*,*) "ERROR: No se puede usar ambos decaimientos de omega (linear and exp) finitos."
-!         stop 1
-!     end if
+    !! Stokes
+    if (sim%use_stokes) then
+        call init_stokes(sim%stokes_a_damping_time * unit_time, &
+                       & sim%stokes_e_damping_time * unit_time, &
+                       & sim%stokes_active_time * unit_time)
+        if (sim%use_screen) then
+            write (*,*) "Stokes"
+            write (*,s1r1) " tau_a   : ", sim%stokes_a_damping_time, "[days]"
+            write (*,s1r1) " tau_e   : ", sim%stokes_e_damping_time, "[days]"
+            write (*,s1r1) " t_stokes: ", sim%stokes_active_time, "[days]"
+        end if
+    end if
 
-!     !!! Check que no esté torque también
-!     if (use_torque .and. use_omega_damping) then
-!         write (*,*) ACHAR(10)
-!         write (*,*) "ERROR: No se puede usar torque y tau_o finito."
-!         stop 1
-!     end if
-!     !!!
+    !! Naive-Stokes (Drag)
+    if (sim%use_drag) then
+        call init_drag(sim%drag_coefficient, sim%drag_active_time * unit_time)
+        if (sim%use_screen) then
+            write (*,*) "Drag"
+            write (*,s1r1) " eta   : ", sim%drag_coefficient
+            write (*,s1r1) " t_drag: ", sim%drag_active_time, "[days]"
+        end if
+    end if
 
-!     !! Stokes
-!     if (use_stokes) then
-!         call set_stokes_C_and_alpha(stokes_a_damping_time, stokes_e_damping_time, stokes_C, stokes_alpha)
-!         stokes_a_damping_time = stokes_a_damping_time * unit_time
-!         stokes_e_damping_time = stokes_e_damping_time * unit_time
-!         stokes_charac_time = stokes_charac_time * unit_time
-!         !!! Mensaje
-!         if (use_screen) then
-!             write (*,*) "Stokes"
-!             write (*,f13)  "    t_stokes: ", stokes_charac_time / unit_time, "[days]"
-!             write (*,f13)  "    C       : ", stokes_C
-!             write (*,f13)  "    alpha   : ", stokes_alpha
-!         end if
-!     else ! Just to be sure
-!         stokes_a_damping_time = infinity
-!         stokes_e_damping_time = infinity
-!         stokes_charac_time = cero
-!     end if
-
-!     !! J2
-!     J2_effective = 1.5d0 * J2_coefficient ! Define effective J2
-
-!     !! Torque
-!     if ((.not. use_boulders) .and. use_torque) then
-!         if (use_screen) write (*,*) "WARNING: Torque has no effect without boulders. It won't be used"
-!         use_torque = .False.
-!     end if
-
-!     !! Mensaje !
-!     if (use_screen) then
-!         if (use_naive_stokes) then !!!! Naive-Stokes
-!             write (*,*) "Naive-Stokes (drag radial)"
-!             write (*,f13) "    Eta :", drag_coefficient
-!             write (*,f13) " t_naive:", stokes_charac_time / unit_time, "[days]"
-!         end if
-!         if (use_J2) then
-!             write (*,*) "Geo-Potential (J2)"
-!             write (*,f13) "    J2 :", J2_coefficient !!!! Geo-Potential (J2)
-!         end if
-!         if (use_torque) write (*,*) "Torque from particles to asteroid ACTIVATED"
-
-!         if (.not. any((/use_stokes, use_naive_stokes, use_J2, use_torque, &
-!             & use_omega_damping, &
-!             & mass_exp_damping_time < infinity/))) then
-!             write (*,*) "No se aplicarán efectos ex/internos."
-!         end if
-!     end if
+    !! J2
+    if (sim%use_J2) then
+        call init_J2(sim%J2_coefficient)
+        if (sim%use_screen) then
+            write (*,s1r1) "J2:", sim%J2_coefficient, "[km⁵ day⁻²]"
+        end if
+    end if
 
 !     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -655,12 +554,14 @@ program main
     end if
     if (sim%use_screen) then
         write (*,*) "Conditions for escape/collision"
-        write (*,s1r1) "    rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
-        write (*,s1r1) "    rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
-        if (sim%use_merge) then
-            write (*,*) "  Collisions will be solved as mergers to the asteroid."
+        write (*,s1r1) "  rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
+        write (*,s1r1) "  rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
+        if (sim%use_any_merge) then
+            if (sim%use_merge_part_ast) write (*,*) " Colliding particles into the asteroid will be removed."
+            if (sim%use_merge_part_moon) write (*,*) " Colliding particles into moons will be removed."
+            if (sim%use_merge_massive) write (*,*) " Colliding massive bodies will be merged."
         else
-            write (*,*) "  Collisions will not be sovled."
+            write (*,*) " Collisions will not be solved."
         end if
         write (*,*) ACHAR(5)
     end if
@@ -998,7 +899,7 @@ program main
     !$OMP END SECTIONS
     !$OMP END PARALLEL
 
-    
+
     ! >>>>>>>>>>>>>>>>>>----------------- MAIN LOOP  ---------------<<<<<<<<<<<<<<<<<<<<<<<<
     tom_index_number = 2 !!!! Inicializamos en 2 porque el primer checkpoint es el IC (t0)
     j = 2! From 2 because 1 is the IC (t0) !! +1 por si hay HardExit en el último
@@ -1089,7 +990,7 @@ program main
         time = time + timestep
         y_arr = y_arr_new
 
-        y_arr(1) = mod(y_arr(1), pi)  ! Modulate theta
+        y_arr(1) = mod(y_arr(1), twopi)  ! Modulate theta
 
 
         ! Update from y_new
@@ -1126,6 +1027,7 @@ program main
             !$OMP SECTIONS
             !$OMP SECTION
             call write_to_screen(system, 6)
+            if (sim%use_diagnostics) call write_diagnotics(initial_system, system, 6)
             !$OMP SECTION
             call write_to_general(system, 20)
             call flush_output(20)

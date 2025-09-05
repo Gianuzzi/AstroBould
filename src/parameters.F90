@@ -2,6 +2,7 @@ module parameters
     use constants
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
+    use accelerations, only: init_damping, init_drag, init_J2, init_stokes
     use omp_lib
 
     implicit none
@@ -59,16 +60,16 @@ module parameters
         logical :: use_stokes = .False.
         real(kind=8) :: stokes_a_damping_time = infinity
         real(kind=8) :: stokes_e_damping_time = infinity
-        real(kind=8) :: stokes_charac_time = cero
-        logical :: use_naive_stokes = .False.
+        real(kind=8) :: stokes_active_time = cero
+        logical :: use_drag = .False.
         real(kind=8) :: drag_coefficient = cero
-        real(kind=8) :: drag_charac_time = cero
+        real(kind=8) :: drag_active_time = cero
         logical :: use_omega_damping = .False.
-        real(kind=8) :: omega_linear_damping_time = infinity
+        real(kind=8) :: omega_lin_damping_time = infinity
         real(kind=8) :: omega_exp_damping_time = infinity
-        real(kind=8) :: omega_exp_poly_A = cero
-        real(kind=8) :: omega_exp_poly_B = cero
-        real(kind=8) :: omega_charac_time = cero
+        real(kind=8) :: omega_exp_damp_poly_A = cero
+        real(kind=8) :: omega_exp_damp_poly_B = cero
+        real(kind=8) :: omega_damp_active_time = cero
         real(kind=8) :: mass_exp_damping_time = infinity
         real(kind=8) :: J2_coefficient = cero
         ! [BINS] forces/effects - [NOT AVAILABLE YET. STILL UNDER DEVELOPMENT]
@@ -81,7 +82,9 @@ module parameters
         ! Conditions for Collision/Escape - 
         real(kind=8) :: min_distance = cero
         real(kind=8) :: max_distance = infinity
-        logical :: use_merge = .False.
+        logical :: use_merge_part_ast = .True.
+        logical :: use_merge_part_moon = .True.
+        logical :: use_merge_massive = .True.
         ! Manual |(t)imes omega(t) mass_add(t)| file -
         logical :: use_tomfile = .False.
         character(30) :: tomfile = ""
@@ -122,14 +125,17 @@ module parameters
         ! Forces
         logical :: use_torque = .False.  ! May disapear...
         !! Stokes
-        real(kind=8) :: stokes_C = cero  ! Parameter C in Stokes
-        real(kind=8) :: stokes_alpha = uno  ! Parameter alpha in Stokes
+        ! real(kind=8) :: stokes_C = cero  ! Parameter C in Stokes
+        ! real(kind=8) :: stokes_alpha = uno  ! Parameter alpha in Stokes
         !! Mass and omega damping
-        real(kind=8) :: omega_exp_poly_AB = cero
-        real(kind=8) :: omega_linear_damping_slope = cero
+        logical :: use_lin_omega_damp = .False.
+        logical :: use_exp_omega_damp = .False.
+        logical :: use_poly_omega_damp = .False.
+        ! real(kind=8) :: omega_exp_damp_poly_AB = cero
+        ! real(kind=8) :: omega_linear_damping_slope = cero
         !! Geo-potential
         logical :: use_J2 = .False.
-        real(kind=8) :: J2_effective = cero
+        ! real(kind=8) :: J2_effective = cero
         !! [BINS] ( Not available yet )
         logical :: use_bins = .False.
         !!! Viscosity [Not available yet]
@@ -139,6 +145,8 @@ module parameters
         logical :: update_rmin_bins = .False.
         logical :: update_rmax_bins = .False.
         logical :: update_bins = .False.
+        ! Merges
+        logical :: use_any_merge = .False.
         ! Chaos
         logical :: use_chaos = .False.  ! Need to output chaos values
         logical :: use_flush_chaos = .False.  ! Flush at every checkpoint
@@ -387,9 +395,9 @@ module parameters
                     case ("--noconfig")
                         use_config = .False.  ! Inout variable
                     case ("--merge")
-                        params%use_merge = .True.
+                        params%use_merge_massive = .True.
                     case ("--nomerge")
-                        params%use_merge = .False.
+                        params%use_merge_massive = .False.
                     case ("-parallel")
                         params%use_parallel = .True.
                         call get_command_argument(i+1, aux_character20)
@@ -436,8 +444,8 @@ module parameters
                         write (*,*) "    -partfile    : Utilizar archivo de partículas que sigue"
                         write (*,*) "    --nopartfile : No utilizar archivo de partículas"
                         write (*,*) "    --noconfig   : No leer archivo de configuración"
-                        write (*,*) "    --merge      : Incluir asociar colisiones de lunas/partículas a asteroide"
-                        write (*,*) "    --nomerge    : No asociar colisiones de lunas/partículas"
+                        write (*,*) "    --merge      : Combinar objetos masivos que colisionen"
+                        write (*,*) "    --nomerge    : No Combinar objetos masivos que colisionen"
                         write (*,*) "    -parallel    : Paralelizar usando la cantida de thread que sique"                        
                         write (*,*) "    --parallel   : Paralelizar usando todos los threads disponibles"
                         write (*,*) "    --noparallel : No usar paralelización para lunas/partículas"
@@ -613,18 +621,18 @@ module parameters
                             read (value_str, *) params%stokes_a_damping_time
                         case("e damping chara")
                             read (value_str, *) params%stokes_e_damping_time
-                        case("F damping chara")
-                            read (value_str, *) params%stokes_charac_time
+                        case("stokes force da")
+                            read (value_str, *) params%stokes_active_time
                         case("include naive-s")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                                params%use_naive_stokes = .True.
+                                params%use_drag = .True.
                             else
-                                params%use_naive_stokes = .False.
+                                params%use_drag = .False.
                             end if
                         case("drag force coef")
                             read (value_str, *) params%drag_coefficient
-                        case("drag force char")
-                            read (value_str, *) params%drag_charac_time
+                        case("drag force acti")
+                            read (value_str, *) params%drag_active_time
                         case("include asteroi")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 params%use_omega_damping = .True.
@@ -632,15 +640,15 @@ module parameters
                                 params%use_omega_damping = .False.
                             end if
                         case("rotation linear")
-                            read (value_str, *) params%omega_linear_damping_time
+                            read (value_str, *) params%omega_lin_damping_time
                         case("rotation expone")
                             read (value_str, *) params%omega_exp_damping_time
                         case("rotation A poly")
-                            read (value_str, *) params%omega_exp_poly_A
+                            read (value_str, *) params%omega_exp_damp_poly_A
                         case("rotation B poly")
-                            read (value_str, *) params%omega_exp_poly_B
-                        case("omega damping c")
-                            read (value_str, *) params%omega_charac_time
+                            read (value_str, *) params%omega_exp_damp_poly_B
+                        case("omega damping a")
+                            read (value_str, *) params%omega_damp_active_time
                         case("mass exponentia")
                             read (value_str, *) params%mass_exp_damping_time
                         case("geo-potential J")
@@ -665,11 +673,23 @@ module parameters
                             read (value_str, *) params%min_distance
                         case("max distance fr")
                             read (value_str, *) params%max_distance
-                        case("merge collision")
+                        case("particle-astero")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                                params%use_merge = .True.
+                                params%use_merge_part_ast = .True.
                             else
-                                params%use_merge = .False.
+                                params%use_merge_part_ast = .False.
+                            end if
+                        case("particle-moon m")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%use_merge_part_moon = .True.
+                            else
+                                params%use_merge_part_moon = .False.
+                            end if
+                        case("massive merges ")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%use_merge_massive = .True.
+                            else
+                                params%use_merge_massive = .False.
                             end if
                         case("input time-omeg")
                             if ((to_lower(trim(value_str)) == "n") .or. &
@@ -939,47 +959,56 @@ module parameters
             
             !! Forces
             !!! stokes_a_damping_time y stokes_e_damping_time
-            if ((abs(derived%stokes_a_damping_time) < tini) .or. &
-              & .not. derived%use_stokes) derived%stokes_a_damping_time = cero
-            if ((abs(derived%stokes_e_damping_time) < tini) .or. &
-              & .not. derived%use_stokes) derived%stokes_e_damping_time = cero
-            if ((abs(derived%stokes_charac_time) < tini) .or. &
-              & .not. derived%use_stokes) derived%stokes_charac_time = cero
-            if (derived%stokes_charac_time .le. cero) derived%stokes_charac_time = infinity
+            if (abs(derived%stokes_a_damping_time) < tini) derived%stokes_a_damping_time = cero
+            if (abs(derived%stokes_e_damping_time) < tini) derived%stokes_e_damping_time = cero
+            if (derived%stokes_active_time .le. cero) derived%stokes_active_time = infinity
             if ((abs(derived%stokes_a_damping_time) < tini) .and. &
               & (abs(derived%stokes_e_damping_time) < tini)) derived%use_stokes = .False.
+            if (.not. derived%use_stokes) then
+                derived%stokes_a_damping_time = cero
+                derived%stokes_e_damping_time = cero
+                derived%stokes_active_time = cero
+            end if
+            
 
             !!! Naive-stokes
-            if ((abs(derived%drag_coefficient) < tini) .or. &
-              & .not. derived%use_naive_stokes) derived%drag_coefficient = cero
-            if ((abs(derived%drag_charac_time) < tini) .or. &
-              & .not. derived%use_naive_stokes) derived%drag_charac_time = cero
-            if (derived%drag_charac_time .le. cero) derived%drag_charac_time = infinity
-            if (abs(derived%drag_coefficient) < tini) derived%use_naive_stokes = .False.
-
+            if (abs(derived%drag_coefficient) < tini) then
+                derived%use_drag = .False.
+                derived%drag_coefficient = cero
+            end if
+            if (derived%drag_active_time .le. cero) derived%drag_active_time = infinity
+            if (.not. derived%use_drag) then
+                derived%drag_coefficient = cero
+                derived%drag_active_time = cero
+            end if
+            
             !!! tau_m y tau_o
-            if ((abs(derived%omega_charac_time) < tini) .or. &
-              & .not. derived%use_omega_damping) derived%omega_charac_time = cero
-            if (derived%omega_charac_time .le. cero) derived%omega_charac_time = infinity
-            if ((abs(derived%omega_linear_damping_time) < tini) .or. &
-              & .not. derived%use_omega_damping) derived%omega_linear_damping_time = infinity
-            if ((abs(derived%omega_exp_damping_time) < tini) .or. &
-              & .not. derived%use_omega_damping) derived%omega_exp_damping_time = infinity
-            if ((abs(derived%omega_exp_poly_A) < tini) .or. &
-              & .not. derived%use_omega_damping) derived%omega_exp_poly_A = cero
-            if ((abs(derived%omega_exp_poly_B) < tini) .or. &
-              & .not. derived%use_omega_damping) derived%omega_exp_poly_B = cero
-            if (.not. ((abs(derived%omega_linear_damping_time) > tini) .and. &
-              & (derived%omega_linear_damping_time < infinity)) .and. &
-              & .not. ((abs(derived%omega_exp_damping_time) > tini) .and. &
-              & (derived%omega_exp_damping_time < infinity)) .and. &
-              & .not. ((abs(derived%omega_exp_poly_A) > tini) .and. &
-              & (abs(derived%omega_exp_poly_B) > tini))) &
-              & derived%use_omega_damping = .False.
+            if (derived%omega_damp_active_time .le. cero) derived%omega_damp_active_time = infinity
+            derived%use_lin_omega_damp = abs(derived%omega_lin_damping_time) > tini
+            derived%use_exp_omega_damp = abs(derived%omega_exp_damping_time) > tini
+            derived%use_poly_omega_damp = (abs(derived%omega_exp_damp_poly_A) > tini .or. &
+                                           abs(derived%omega_exp_damp_poly_B) > tini)
+            if ((.not. derived%use_lin_omega_damp) .and. &
+              & (.not. derived%use_exp_omega_damp) .and. &
+              & (.not. derived%use_poly_omega_damp)) then
+                derived%use_omega_damping = .False.
+            end if
+            if (.not. derived%use_omega_damping) then
+                derived%omega_lin_damping_time = cero
+                derived%omega_exp_damping_time = cero
+                derived%omega_exp_damp_poly_A = cero
+                derived%omega_exp_damp_poly_B = cero
+                derived%omega_damp_active_time = cero
+            else if ((derived%use_lin_omega_damp .and. (derived%use_exp_omega_damp .or. derived%use_poly_omega_damp)) .or. &
+                     (derived%use_exp_omega_damp .and. derived%use_poly_omega_damp)) then
+                write (*,*) "ERROR: Can not use multiple omega dampings."
+                stop 1
+            end if
+              
             if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinity
 
             !!! Geo-Potential
-            if (abs(derived%J2_coefficient) > tini) derived%use_J2 = .True.
+            derived%use_J2 = abs(derived%J2_coefficient) > tini
             
             ! ! [BINS]
             ! !! Self-Gravity or Viscosity
@@ -1000,7 +1029,10 @@ module parameters
             !     derived%update_bins = derived%update_rmin_bins .or. derived%update_rmax_bins .or. derived%binning_method == 3
             ! end if         
 
-            !! Error
+            ! Merges
+            derived%use_any_merge = derived%use_merge_part_ast .or. derived%use_merge_part_moon .or. derived%use_merge_massive
+
+            ! Error
             if (derived%error_digits < 1) then
                 write (*,*) "ERROR: Number of presition digist must be greater than 0."
                 stop 1
@@ -1183,38 +1215,9 @@ module parameters
             close (30)
         end subroutine read_tomfile
 
-        ! Deallocate initial arrays
-        subroutine free_initial_arays()
-            implicit none
-            if (allocated(moons_arr)) deallocate(moons_arr)
-            if (allocated(particles_arr)) deallocate(particles_arr)
-            if (allocated(boulders_in)) deallocate(boulders_in)
-            if (allocated(moons_in)) deallocate(moons_in)
-            if (allocated(particles_in)) deallocate(particles_in)
-        end subroutine free_initial_arays
-
-        ! Deallocate all params arrays
-        subroutine free_parameters_arays()
-            implicit none
-            call free_initial_arays() !! Just in case...
-            if (allocated(boulders_coords)) deallocate(boulders_coords)
-            if (allocated(boulders_data)) deallocate(boulders_data)
-            if (allocated(m_arr)) deallocate(m_arr)
-            if (allocated(R_arr)) deallocate(R_arr)
-            if (allocated(y_arr)) deallocate(y_arr)
-            if (allocated(y_arr_new)) deallocate(y_arr_new)
-            if (allocated(y_der)) deallocate(y_der)
-            if (allocated(tom_times)) deallocate(tom_times)
-            if (allocated(tom_deltaomega)) deallocate(tom_deltaomega)
-            if (allocated(tom_deltamass)) deallocate(tom_deltamass)
-            if (allocated(checkpoint_is_tom)) deallocate(checkpoint_is_tom)
-            if (allocated(checkpoint_is_output)) deallocate(checkpoint_is_output)
-            if (allocated(hexit_arr)) deallocate(hexit_arr)
-        end subroutine free_parameters_arays
-
         ! Define IO pointers
         subroutine define_pointers(simu)
-            use bodies, only: write_chaos, write_diagnostics, write_elem, write_coor, &
+            use bodies, only: write_chaos, write_elem, write_coor, &
                             & write_ast_elem, write_moon_i_elem, write_particle_i_elem, &
                             & write_ast_coor, write_moon_i_coor, write_particle_i_coor
             implicit none
@@ -1228,7 +1231,7 @@ module parameters
                     write_to_screen => write_coor
                 end if
             else if (simu%use_diagnostics) then
-                write_to_screen => write_diagnostics
+                write_to_screen => do_not_write
             else
                 write_to_screen => do_not_write
             end if
@@ -1283,6 +1286,45 @@ module parameters
             end if
 
         end subroutine define_pointers
+            
+        ! Check if continue function. This will be passed to the integ caller    
+        function check_func (y) result(keep_going)
+            implicit none
+            real(kind=8), dimension(:), intent(in) :: y
+            logical :: keep_going
+            ! Here, we use the global hexit_arr
+            keep_going = all(hexit_arr .eq. 0)
+            if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
+        end function check_func
+
+        ! Deallocate initial arrays
+        subroutine free_initial_arays()
+            implicit none
+            if (allocated(moons_arr)) deallocate(moons_arr)
+            if (allocated(particles_arr)) deallocate(particles_arr)
+            if (allocated(boulders_in)) deallocate(boulders_in)
+            if (allocated(moons_in)) deallocate(moons_in)
+            if (allocated(particles_in)) deallocate(particles_in)
+        end subroutine free_initial_arays
+
+        ! Deallocate all params arrays
+        subroutine free_parameters_arays()
+            implicit none
+            call free_initial_arays() !! Just in case...
+            if (allocated(boulders_coords)) deallocate(boulders_coords)
+            if (allocated(boulders_data)) deallocate(boulders_data)
+            if (allocated(m_arr)) deallocate(m_arr)
+            if (allocated(R_arr)) deallocate(R_arr)
+            if (allocated(y_arr)) deallocate(y_arr)
+            if (allocated(y_arr_new)) deallocate(y_arr_new)
+            if (allocated(y_der)) deallocate(y_der)
+            if (allocated(tom_times)) deallocate(tom_times)
+            if (allocated(tom_deltaomega)) deallocate(tom_deltaomega)
+            if (allocated(tom_deltamass)) deallocate(tom_deltamass)
+            if (allocated(checkpoint_is_tom)) deallocate(checkpoint_is_tom)
+            if (allocated(checkpoint_is_output)) deallocate(checkpoint_is_output)
+            if (allocated(hexit_arr)) deallocate(hexit_arr)
+        end subroutine free_parameters_arays
 
         ! Nullify pointers
         subroutine nullify_pointers()
@@ -1297,17 +1339,6 @@ module parameters
             nullify(flush_output)
             nullify(flush_chaos)
         end subroutine nullify_pointers
-        
-        
-        ! Check if continue function. This will be passed to the integ caller    
-        function check_func (y) result(keep_going)
-            implicit none
-            real(kind=8), dimension(:), intent(in) :: y
-            logical :: keep_going
-            ! Here, we use the global hexit_arr
-            keep_going = all(hexit_arr .eq. 0)
-            if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
-        end function check_func
 
         subroutine flush_to_file(unit_file)
             implicit none
