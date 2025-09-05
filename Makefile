@@ -23,15 +23,17 @@ ifdef GCC
 	AMD = 0
 endif
 
+
 # Compilator
+# Default to GNU Fortran Compiler
+FC = gfortran
+
 ifeq ($(INTEL),1)
 # Use Intel Fortran Compiler if setvars is completed
 FC = ifx
 else ifeq ($(AMD),1)
 # Use Amd Fortran Compiler if setvars is completed
 FC = flang
-# Default to GNU Fortran Compiler
-FC = gfortran
 endif
 
 
@@ -43,7 +45,7 @@ MYFFLAGS := -traceback -fpe0 -fp-model=source -check all
 else ifeq ($(AMD),1)
 MYFFLAGS := -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow -fpmodel=source -fcheck=bounds -fcheck=array-temps -fcheck=pointer
 else
-MYFFLAGS := -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow
+MYFFLAGS := -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow 
 endif
 else  # No debug
 MYLDFLAGS := -O2
@@ -63,11 +65,11 @@ endif
 
 # Compiler flags
 ifeq ($(INTEL),1)
-FFLAGS := -warn -march=x86-64-v3 -nogen-interfaces $(MYFFLAGS)
+FFLAGS := -warn -march=x86-64-v3 -nogen-interfaces -Wshadow -std=f2008 $(MYFFLAGS)
 else ifeq ($(AMD),1)
-FFLAGS := -Wall -Wextra -march=x86-64-v3 $(MYFFLAGS)
+FFLAGS := -Wall -Wextra -march=x86-64-v3 -Wshadow -std=f2008 $(MYFFLAGS)
 else
-FFLAGS := -Wall -Wextra -march=native $(MYFFLAGS)
+FFLAGS := -Wall -Wextra -march=native -Wshadow -std=f2008 $(MYFFLAGS)
 endif
 LDFLAGS = $(MYLDFLAGS)
 

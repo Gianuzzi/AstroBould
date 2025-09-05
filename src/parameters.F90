@@ -199,7 +199,6 @@ module parameters
     ! procedure (check_continue_template), pointer :: check_continue_ptr => null ()
     
 
-
     ! ----  <<<<<    I/O     >>>>>   -----
     character(18), parameter :: s1i1 = "(3(A, 1X, I7, 1X))"
     character(24), parameter :: s1r1 = "(3(A, 1X, 1PE22.15, 1X))"
@@ -294,7 +293,7 @@ module parameters
             logical :: is_number
             integer(kind=4) :: i, j
             logical :: aux_logical = .False.
-            integer(kind=4) :: aux_integer = 0
+            integer(kind=4) :: aux_integer
             character(20) :: aux_character20
             character(30) :: aux_character30
 
@@ -511,7 +510,12 @@ module parameters
             integer(kind=4) :: len_val
             integer(kind=4) :: j
             integer(kind=4) :: aux_integer
-            integer(kind=4) :: Nboulders = 0, Nmoons = 0, Nparticles = 0
+            integer(kind=4) :: Nboulders, Nmoons, Nparticles
+
+            ! Init
+            Nboulders = 0
+            Nmoons = 0
+            Nparticles = 0
 
             inquire(file=trim(file_name), exist=existe)
             if (.not. existe) then
@@ -1205,6 +1209,7 @@ module parameters
             if (allocated(tom_deltamass)) deallocate(tom_deltamass)
             if (allocated(checkpoint_is_tom)) deallocate(checkpoint_is_tom)
             if (allocated(checkpoint_is_output)) deallocate(checkpoint_is_output)
+            if (allocated(hexit_arr)) deallocate(hexit_arr)
         end subroutine free_parameters_arays
 
         ! Define IO pointers
@@ -1294,111 +1299,15 @@ module parameters
         end subroutine nullify_pointers
         
         
-        
-        ! ! 28.1 Check distances (Version 1)
-        ! function check_continue_v1 (y) result(keep_going)
-        !     implicit none
-        !     real(kind=8), dimension(:), intent(in) :: y
-        !     real(kind=8) :: rb(2)
-        !     real(kind=8) :: rcm(2), dist_to_cm, r_from_cm(2)
-        !     real(kind=8) :: rib(0:Nboulders,2), dist_to_i, r_from_i(2)
-        !     integer(kind=4) :: j, particle_j, i
-        !     integer(kind=4), parameter :: neqs = 4
-        !     logical :: keep_going
-
-        !     ! Re-set hexit_arr
-        !     hexit_arr = 0  ! 0 is the default or non-action value
-            
-        !     ! Calculate the center of mass of the asteroid and boulders
-        !     rcm = cero
-        !     do i = 0, Nboulders 
-        !         rib(i,1) = y((i * neqs) + 1)
-        !         rib(i,2) = y((i * neqs) + 2)
-        !         rcm = rcm + mass_ast_arr(i) * rib(i,:)
-        !     end do
-        !     rcm = rcm / asteroid_mass ! rcm = sum_i m_i * r_i / M
-
-        !     ! Calculate vector and distance to CM
-        !     do j = 1, Nactive
-        !         particle_j = (j + Nboulders) * neqs
-        !         rb(1) = y(particle_j+1)
-        !         rb(2) = y(particle_j+2)
-        !         r_from_cm = rb - rcm
-        !         dist_to_cm = sqrt(r_from_cm(1)*r_from_cm(1) + r_from_cm(2)*r_from_cm(2))
-        !         if (dist_to_cm > max_distance) then
-        !             hexit_arr(j) = 2
-        !         else if (dist_to_cm < min_distance) then
-        !             hexit_arr(j) = 1
-        !         else
-        !             ! Calculate vector and distance to boulders
-        !             boulders_loop: do i = 0, Nboulders
-        !                 r_from_i = rb - rib(i,:)
-        !                 dist_to_i = sqrt(r_from_i(1)*r_from_i(1) + r_from_i(2)*r_from_i(2))
-        !                 if (dist_to_i < radius_ast_arr(i)) then
-        !                     hexit_arr(j) = 1
-        !                     exit boulders_loop
-        !                 end if
-        !             end do boulders_loop
-        !         end if
-        !     end do
-            
-        !     keep_going = all(hexit_arr(1:Nactive) .eq. 0)
-        !     if (.not. keep_going) hexit_arr(0) = 1
-            
-        ! end function check_continue_v1
-        
-        ! ! 28.2 Check distances (Version 2) [from cm]
-        ! function check_continue_v2 (y) result(keep_going)
-        !     implicit none
-        !     real(kind=8), dimension(:), intent(in) :: y
-        !     real(kind=8) :: rb(2)
-        !     real(kind=8) :: rcm(2), dist_to_cm, r_from_cm(2)
-        !     real(kind=8) :: rib(0:Nboulders,2), dist_to_i, r_from_i(2)
-        !     integer(kind=4) :: j, particle_j, i
-        !     integer(kind=4), parameter :: neqs = 4
-        !     logical :: keep_going
-
-        !     ! Re-set hexit_arr
-        !     hexit_arr = 0  ! 0 is the default or non-action value
-            
-        !     ! Calculate the center of mass of the asteroid and boulders
-        !     rcm(1) = y(3)
-        !     rcm(2) = y(4)
-        !     do i = 0, Nboulders
-        !         rib(i,1) = cos(y(1) + theta_ast_arr(i)) * dist_ast_arr(i)
-        !         rib(i,2) = sin(y(1) + theta_ast_arr(i)) * dist_ast_arr(i)
-        !     end do
-
-        !     ! Calculate distance and vector to boulders
-        !     do j = 1, Nactive
-        !         particle_j = j * neqs + 2
-        !         rb(1) = y(particle_j+1)
-        !         rb(2) = y(particle_j+2)
-        !         r_from_cm = rb - rcm
-        !         dist_to_cm = sqrt(r_from_cm(1)*r_from_cm(1) + r_from_cm(2)*r_from_cm(2))
-        !         if (dist_to_cm > max_distance) then
-        !             hexit_arr(j) = 2
-        !         else if (dist_to_cm < min_distance) then
-        !             hexit_arr(j) = 1
-        !         else 
-        !             ! Calculate vector and distance to boulders
-        !             boulders_loop: do i = 0, Nboulders
-        !                 r_from_i = rb - rib(i,:)
-        !                 dist_to_i = sqrt(r_from_i(1)*r_from_i(1) + r_from_i(2)*r_from_i(2))
-        !                 if (dist_to_i < radius_ast_arr(i)) then
-        !                     hexit_arr(j) = 1
-        !                     exit boulders_loop
-        !                 end if
-        !             end do boulders_loop
-        !         end if
-        !     end do
-            
-        !     keep_going = all(hexit_arr(1:Nactive) .eq. 0)
-        !     if (.not. keep_going) hexit_arr(0) = 1
-            
-        ! end function check_continue_v2
-        
-        ! Dummy but useful subroutines
+        ! Check if continue function. This will be passed to the integ caller    
+        function check_func (y) result(keep_going)
+            implicit none
+            real(kind=8), dimension(:), intent(in) :: y
+            logical :: keep_going
+            ! Here, we use the global hexit_arr
+            keep_going = all(hexit_arr .eq. 0)
+            if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
+        end function check_func
 
         subroutine flush_to_file(unit_file)
             implicit none

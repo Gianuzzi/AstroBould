@@ -148,7 +148,7 @@ module celestial
             real(kind=8) :: hx, hy, hz, h2, h, fac, u
             real(kind=8) :: r, v, v2, vdotr, energy
             real(kind=8) :: cape, cw, sw, w, face, capf, tmpf
-            integer(kind=4) :: ialpha = 0
+            integer(kind=4) :: ialpha = 0 ! Just initialization
                 
             gmsum = G * msum
             x = xc(1)

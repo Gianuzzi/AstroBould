@@ -2,9 +2,13 @@ module accelerations
     use auxiliary, only: cross2D_z
     use constants, only: cero, uno, uno2, dos, G, tini
     implicit none
+    logical :: use_stokes = .False.
     real(kind=8) :: stokes_time = cero, stokes_C = cero, stokes_alpha = cero  ! Stokes
+    logical :: use_drag = .False.
     real(kind=8) :: drag_coef = cero, drag_time = cero  ! Drag
+    logical :: use_J2 = .False.
     real(kind=8) :: J2_coef = cero ! J2
+    logical :: use_damp = .False.
     real(kind=8) :: damp_coef_1 = cero, damp_coef_2 = cero, damp_time = cero ! Omega Damping
     integer(kind=8) :: damp_model = -1 ! Omega Damping
 
@@ -41,8 +45,9 @@ module accelerations
             implicit none
             real(kind=8), intent(in) :: mass, xy_vec(2), dr_vec(2), dr
             real(kind=8), intent(inout) :: torque_m, acc(2)
-            real(kind=8) :: acc_grav(2) = cero
+            real(kind=8) :: acc_grav(2)
             
+            acc_grav = cero  ! Init
             call gravity(mass, dr_vec, dr, acc_grav)
             call torque_grav_Z(xy_vec, acc_grav, torque_m)
 
@@ -57,10 +62,15 @@ module accelerations
         subroutine init_stokes(tau_a, tau_e, charac_timescale)
             implicit none
             real(kind=8), intent(in) :: tau_a, tau_e, charac_timescale
-            
-            stokes_time = charac_timescale
-            stokes_C = uno / (dos * tau_a) + uno / tau_e
-            stokes_alpha = (dos * tau_a) / ((dos * tau_a) + tau_e)
+
+            if (stokes_time > cero .and. abs(tau_a) > cero .and. abs(tau_e) > cero) then
+                use_stokes = .True.
+                stokes_time = charac_timescale
+                stokes_C = uno / (dos * tau_a) + uno / tau_e
+                stokes_alpha = (dos * tau_a) / ((dos * tau_a) + tau_e)
+            else 
+                use_stokes = .False.
+            end if
         end subroutine init_stokes
 
         !!! Acceleration
@@ -85,8 +95,13 @@ module accelerations
             implicit none
             real(kind=8), intent(in) :: drag_coefficient, characteristic_timescale
             
-            drag_coef = drag_coefficient
-            drag_time = characteristic_timescale
+            if (characteristic_timescale > cero .and. abs(drag_coef) > cero ) then
+                use_drag = .True.
+                drag_coef = drag_coefficient
+                drag_time = characteristic_timescale
+            else 
+                use_drag = .False.
+            end if
         end subroutine init_drag
 
 
@@ -122,7 +137,12 @@ module accelerations
             implicit none
             real(kind=8), intent(in) :: J2_coefficient
             
-            J2_coef = J2_coefficient * 1.5d0
+            if (abs(J2_coef) > cero ) then
+                use_J2 = .True.
+                J2_coef = J2_coefficient * 1.5d0
+            else 
+                use_J2 = .False.
+            end if
         end subroutine init_J2
 
         !!! Acceleration
@@ -144,10 +164,15 @@ module accelerations
             real(kind=8), intent(in) :: coefficient_1, coefficient_2, characteristic_timescale
             integer(kind=4), intent(in) :: model
             
-            damp_coef_1 = coefficient_1
-            damp_coef_2 = coefficient_2
-            damp_time = characteristic_timescale
-            damp_model = model
+            if (characteristic_timescale > cero .and. abs(coefficient_1) > cero) then
+                use_damp = .True.
+                damp_coef_1 = coefficient_1
+                damp_coef_2 = coefficient_2
+                damp_time = characteristic_timescale
+                damp_model = model
+            else 
+                use_damp = .False.
+            end if
         end subroutine init_damping
 
         !!! Acceleration  (These are like the torque, but not mass needed)

@@ -13,6 +13,7 @@ program main
     character(20) :: aux_character20
     character(30) :: aux_character30
     logical :: aux_logical
+    real(kind=8) :: aux_real, aux_real2(2)
     real(kind=8), dimension(:,:), allocatable :: aux_2D  ! To read files
     integer(kind=4) :: i, j, last_active ! Loops
     
@@ -693,11 +694,6 @@ program main
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-!     !! Chaos and Outcome
-!     particles_outcome = 0
-!     hexit_arr = 0
-
-
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!! FIN DE CÁLCULOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -847,7 +843,7 @@ program main
     allocate(y_arr(2 + sim%Ntotal * 4))     ! Theta, Omega, Positions
     allocate(y_arr_new(2 + sim%Ntotal * 4)) ! Theta, Omega, Positions
     allocate(y_der(2 + sim%Ntotal * 4))     ! derivate(Theta, Omega, Positions)
-    allocate(hexit_arr(0:sim%Ntotal))       ! Hard Exit  ! 0 IS used as Proxy
+    allocate(hexit_arr(sim%Ntotal))       ! Hard Exit  ! Index 1 (Asteroid) is used as PROXY
 
     ! Init to 0
     m_arr = cero
@@ -941,16 +937,16 @@ program main
     
     ! ABRIMOS ARCHIVOS
     !! Archivo de salida general
-    if (sim%use_datafile) open (unit=20, file=trim(sim%datafile), status='replace', action='write', access="append")
+    if (sim%use_datafile) open (unit=20, file=trim(sim%datafile), status='replace', action='write', position="append")
     !! Archivos individuales
     if (sim%use_multiple_outputs) then
         do i = 0, sim%Nactive
             write (aux_character20, *) i
             open (unit=200+i, file=trim(sim%multfile) // "_" // trim(adjustl(aux_character20)), &
-                & status='replace', action='write', access="append")
+                & status='replace', action='write', position="append")
         end do
     end if
-    if (sim%use_chaosfile) open (unit=40, file=trim(sim%chaosfile), status='replace', action='readwrite', access="append")
+    if (sim%use_chaosfile) open (unit=40, file=trim(sim%chaosfile), status='replace', action='readwrite', position="append")
     !!!!!! MAIN LOOP INTEGRATION !!!!!!!
     ! CHECK INITIAL CONDITIONS
     call resolve_collisions(system, sim%min_distance)
@@ -963,7 +959,6 @@ program main
 
     ! Update initial y ?    
     if (sim%Nactive < sim%Nmoons + sim%Nparticles) call generate_arrays(system, m_arr, R_arr, y_arr)
-
 
     !! Reduce threads if necessary...
     if (sim%use_parallel) then
@@ -1003,7 +998,7 @@ program main
     !$OMP END SECTIONS
     !$OMP END PARALLEL
 
-
+    
     ! >>>>>>>>>>>>>>>>>>----------------- MAIN LOOP  ---------------<<<<<<<<<<<<<<<<<<<<<<<<
     tom_index_number = 2 !!!! Inicializamos en 2 porque el primer checkpoint es el IC (t0)
     j = 2! From 2 because 1 is the IC (t0) !! +1 por si hay HardExit en el último
@@ -1071,16 +1066,17 @@ program main
         ! call embedded_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, Dormand_Prince8_7, &
         !    & sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:last_particle), check_continue_ptr)
         call BStoer_caller (time, y_arr(:last_active), adaptive_timestep, dydt, &
-            & sim%error_tolerance, timestep, y_arr_new(:last_active))
+            & sim%error_tolerance, timestep, y_arr_new(:last_active), check_func)
         ! call BStoer_caller2 (time, y_arr(:last_particle), adaptive_timestep, dydt, &
         !     & sim%error_tolerance, timestep, y_arr_new(:last_particle), check_continue_ptr)
         ! call leapfrog_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, &
         !     & leapfrof_KDK, sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:last_particle), check_continue_ptr)
     
         ! Check if it might be hard_exit
-        if (hexit_arr(0) .ne. 0) then
+        if (hexit_arr(1) .ne. 0) then
             !! If so, the dt used is in dt_adap
             if (is_premature_exit) timestep = adaptive_timestep
+
             !! Check if premature_exit: If exit at less than 1% of finishing timestep
             if (timestep > cero) then
                 is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01d0
@@ -1092,6 +1088,9 @@ program main
         ! Update parameters
         time = time + timestep
         y_arr = y_arr_new
+
+        y_arr(1) = mod(y_arr(1), pi)  ! Modulate theta
+
 
         ! Update from y_new
         call update_system_from_array(system, time, y_arr)
@@ -1145,7 +1144,7 @@ program main
     end do main_loop
 
     !! Porcentaje final
-    if (sim%use_percentage) call percentage(sim%final_time + uno, sim%final_time)
+    if (sim%use_percentage .and. time .ne. sim%final_time) call percentage(sim%final_time + uno, sim%final_time)
 
     !! Cerrar archivo de salida
     if (sim%use_datafile) then

@@ -311,11 +311,15 @@ module auxiliary
             integer(kind=4), optional :: method
             integer(kind=4), parameter :: MAX_COLS = 8, MAX_ROWS = 10000
             real(kind=8), dimension(:,:), allocatable :: aux_real_arr
-            integer(kind=4) :: ncols = 0, nrows = 0
-             integer(kind=4) :: i, j, io, my_method
+            integer(kind=4) :: ncols, nrows
+            integer(kind=4) :: i, j, io, my_method
             real(kind=8) :: aux_real
             character(260) :: auxstr
             logical :: existe
+
+            ! Init
+            ncols = 0
+            nrows = 0
            
             if (present(method)) then
                 my_method = method

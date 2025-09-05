@@ -85,6 +85,7 @@ module bodies
     !!!!!!!!!!!   Used I/O formats     !!!!!!!!!
     character(26), parameter :: i2r15 = "(I7, I7, 15(1X, 1PE22.15))"  ! 2 int y 14 real
     character(25), parameter :: i2r7 = "(I7, I7, 7(1X, 1PE22.15))"  ! 2 int y 7 real
+    character(18), parameter :: s1i1x5 = "(5(A, 1X, I1, 1X))"
     
     contains
 
@@ -164,7 +165,9 @@ module bodies
             type(asteroid_st), intent(inout) :: self
             real(kind=8), intent(in) :: mu_to_primary, radius, theta_from_primary
             integer(kind=4) :: i
-            logical :: slot_found = .False.
+            logical :: slot_found
+
+            slot_found = .False. ! Default
 
             ! Ensure not anti-radius
             if (radius < cero) then
@@ -197,7 +200,9 @@ module bodies
             integer(kind=4), intent(in), optional :: id_start
             integer(kind=4) :: i
             integer(kind=4) :: id0 = 0  ! Where to start using IDs from
-            logical :: slot_found = .False.
+            logical :: slot_found
+            
+            slot_found = .False. ! Default
 
             ! Ensure not massless
             if (mu_to_asteroid < epsilon) then
@@ -244,7 +249,9 @@ module bodies
             integer(kind=4), intent(in), optional :: id_start
             integer(kind=4) :: i
             integer(kind=4) :: id0 = 0  ! Where to start using IDs from
-            logical :: slot_found = .False.
+            logical :: slot_found
+            
+            slot_found = .False. ! Default
             
             ! Set starting ID
             if (present(id_start)) id0 = id_start
@@ -332,26 +339,26 @@ module bodies
                 coords_from_primary(i,3) = -self%omega * coords_from_primary(i,2)  ! vx
                 coords_from_primary(i,4) = self%omega * coords_from_primary(i,1)  ! vy
             end do
-            !! Get coords of CM from priamry
+            !! Get coords of CM from primary
             coords_cm_from_primary(1) = dot_product(coords_from_primary(:,1), self%boulders(1:)%mu_to_asteroid)
             coords_cm_from_primary(2) = dot_product(coords_from_primary(:,2), self%boulders(1:)%mu_to_asteroid)
             coords_cm_from_primary(3) = dot_product(coords_from_primary(:,3), self%boulders(1:)%mu_to_asteroid)
             coords_cm_from_primary(4) = dot_product(coords_from_primary(:,4), self%boulders(1:)%mu_to_asteroid)
-            if (coords_cm_from_primary(1) < epsilon) coords_cm_from_primary(1) = cero  ! Little correction
-            if (coords_cm_from_primary(2) < epsilon) coords_cm_from_primary(2) = cero  ! Little correction
-            if (coords_cm_from_primary(3) < epsilon) coords_cm_from_primary(3) = cero  ! Little correction
-            if (coords_cm_from_primary(4) < epsilon) coords_cm_from_primary(4) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(1)) < epsilon) coords_cm_from_primary(1) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(2)) < epsilon) coords_cm_from_primary(2) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(3)) < epsilon) coords_cm_from_primary(3) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(4)) < epsilon) coords_cm_from_primary(4) = cero  ! Little correction
 
-            !! Set angles and distances
+            !! Set Distances and Angles
             !!! Body 0
-            if (self%Nboulders > 0) then
+            self%boulders(0)%coordinates_CM = - coords_cm_from_primary
+            self%boulders(0)%dist_to_asteroid = sqrt(coords_cm_from_primary(1) * coords_cm_from_primary(1) + &
+                                                   & coords_cm_from_primary(2) * coords_cm_from_primary(2))
+            if ((self%Nboulders > 0) .and. (self%boulders(0)%dist_to_asteroid > tini)) then
                 self%boulders(0)%initial_theta = mod(atan2(coords_cm_from_primary(2), coords_cm_from_primary(1)) + pi, twopi)
             else 
                 self%boulders(0)%initial_theta = cero
             end if
-            self%boulders(0)%coordinates_CM = - coords_cm_from_primary
-            self%boulders(0)%dist_to_asteroid = sqrt(coords_cm_from_primary(1) * coords_cm_from_primary(1) + &
-                                                   & coords_cm_from_primary(2) * coords_cm_from_primary(2))
             !!! Boulders
             do i = 1, self%Nboulders
                 aux_real4 = coords_from_primary(i,:) - coords_cm_from_primary
@@ -359,6 +366,9 @@ module bodies
                 self%boulders(i)%initial_theta = atan2(aux_real4(2), aux_real4(1))
                 self%boulders(i)%dist_to_asteroid = sqrt(aux_real4(1) * aux_real4(1) + aux_real4(2) * aux_real4(2))
             end do
+
+            ! Set Coordinates
+            self%coordinates = cero  ! We begin at the origin
 
             ! Set Radius
             self%radius = cero
@@ -658,7 +668,7 @@ module bodies
             
             if (barycentric) then 
 
-                if (self%asteroid%dist_to_cm > epsilon) then
+                if ((self%asteroid%dist_to_cm > epsilon) .and.  (self%Nmoons_active > 0)) then
                     call elem(self%mass, (/self%asteroid%coordinates(1:2), cero, self%asteroid%coordinates(3:4), cero/), &
                             & a, e, i, M, w, O)
                     self%asteroid%elements = (/a, e, M, w/)
@@ -741,7 +751,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             real(kind=8), intent(out) :: energy, ang_mom
-            real(kind=8) :: e_pot = cero
+            real(kind=8) :: e_pot
             integer(kind=4) :: i, j
             real(kind=8) :: dr(2), dist
 
@@ -752,6 +762,7 @@ module bodies
             energy = self%asteroid%e_kin + self%asteroid%e_rot ! e_pot below
 
             !! e_pot
+            e_pot = cero
             !! Asteroid (with moons)
             do i = 1, self%Nmoons_active
                 dr = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)
@@ -872,7 +883,19 @@ module bodies
                 end do
             end do
 
+            ! Right now, all coordinates are AsteroidCentric
             call recalculate_all(self)
+
+            ! Now, they are barycentric
+            !! Sanity check for low values in case of no moons
+            if ((self%Nmoons .eq. 0) .and. self%asteroid%dist_to_cm > cero) then
+                ! Manual shift
+                self%asteroid%coordinates = cero
+                self%asteroid%dist_to_cm = cero
+                self%asteroid%ang_mom_orb = cero
+                self%asteroid%e_kin = cero
+            end if
+
         end subroutine init_system
 
         ! Swap between two moons, using the positional index
@@ -1044,7 +1067,7 @@ module bodies
             call grow_asteroid(asteroid, moon%mass)
 
             ! Update ROTATION  (Remember the moon can have ang_mom)
-            l_rot = l_rot + moon%ang_mom_rot
+            l_rot = l_rot + moon%ang_mom_rot + asteroid%ang_mom_rot
             call spin_asteroid(asteroid, asteroid%theta, l_rot / asteroid%inertia)
 
             ! Update COORDINATES and derivates
@@ -1076,7 +1099,7 @@ module bodies
             call calculate_energy_and_ang_mom(self, aux_real, ang_mom)
             aux_real = max(epsilon, abs(ang_mom))
             if (abs(ang_mom - self%ang_mom)/aux_real > epsilon) then
-                write(*,*) "ERROR: Total angular momentum differs from previously calculated."
+                write(*,*) "WARNING: Total angular momentum relative error:", abs(ang_mom - self%ang_mom)/aux_real
                 if(present(error)) error = error + 1
                 return
             end if
@@ -1280,16 +1303,16 @@ module bodies
             ! Set Moons values
             idx = 7  ! First 4 were the asteroid
             do i = 1, self%Nmoons_active
-                mass_arr(i+1) = self%moons(i)%mass
-                radius_arr(i+1) = self%moons(i)%radius
+                mass_arr(i +1 ) = self%moons(i)%mass
+                radius_arr(i + 1) = self%moons(i)%radius
                 array(idx:idx+3) = self%moons(i)%coordinates
                 idx = idx + 4
             end do
 
             ! Set particles values
             do i = 1, self%Nparticles_active
-                mass_arr(self%Nmoons_active + i) = cero  ! Needed ?
-                radius_arr(self%Nmoons_active + i) = cero  ! Needed ?
+                mass_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
+                radius_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
                 array(idx:idx+3) = self%particles(i)%coordinates
                 idx = idx + 4
             end do
@@ -1304,7 +1327,11 @@ module bodies
             logical, intent(inout), optional :: inside
             real(kind=8) :: aux_real4(4)
             integer(kind=4) :: i
-            logical :: has_inside, is_inside = .False.
+            logical :: has_inside, is_inside
+
+            ! Init
+            has_inside = .False.
+            is_inside = .False.
             acc = cero
             pot = cero
 
@@ -1367,19 +1394,21 @@ module bodies
             real(kind=8), intent(in) :: r_max
             integer(kind=4) :: i
             integer(kind=4) :: m_act0
-            logical :: again = .True.
+            logical :: again
+
+            ! Init
+            again = .True.
 
             if (r_max .le. cero) return  ! Nothing to do
 
             do while (again)
-
                 m_act0 = self%Nmoons_active
             
                 ! Moons
                 do i = m_act0, 1, -1  ! Backwards loop
                     if (self%moons(i)%dist_to_cm > r_max) then
+                        write(*,s1i1x5) "Moon", i, "(", self%moons(i)%id, ") escaped."
                         call eject_moon_i(self, i)
-                        print*, "Moon", i, "escaped."
                     end if
                 end do
 
@@ -1387,8 +1416,8 @@ module bodies
                 do i = self%Nparticles_active, 1, -1  ! Backwards loop
                     if (self%particles(i)%dist_to_cm > r_max) then
                         self%particles(i)%merged_to = -2  ! Escape
+                        write(*,s1i1x5) "Particle", i, "(", self%particles(i)%id, ") escaped."
                         call deactivate_particle_i(self, i)
-                        print*, "Moon", i, "escaped."
                     end if
                 end do
                 again = (self%Nmoons_active .ge. 1) .and. (m_act0 > self%Nmoons_active)
@@ -1409,7 +1438,10 @@ module bodies
             real(kind=8) :: boul_pos(2), moon_pos(2)
             real(kind=8) :: boul_rad, moon_rad
             real(kind=8) :: dr_vec(2), dr
-            logical :: again = .True.
+            logical :: again
+
+            ! Init
+            again = .True.
 
             do while (again)
 
@@ -1423,8 +1455,9 @@ module bodies
                         dr_vec = self%moons(i)%coordinates(1:2) - moon_pos  ! Relative pos
                         dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                         if (dr .le. (moon_rad + self%moons(i)%radius)) then
+                            write(*,s1i1x5) "Merged moon ", j, "(", self%moons(j)%id, ") into moon ", &
+                                            & i, "(", self%moons(i)%id, ")."
                             call merge_2_moons(self, i, j)
-                            print*, "Merged moon", j, "into moon", i
                             exit inner_loop
                         end if
                     end do inner_loop
@@ -1439,9 +1472,9 @@ module bodies
                         do i = m_act, 1, -1  ! Backwards loop
                             dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
                             dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
-                            if (dr .le. boul_rad) then
+                            if (dr .le. boul_rad + self%moons(i)%radius) then
+                                write(*,s1i1x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                                 call merge_moon_i_into_ast(self, i)
-                                print*, "Merged moon", i, "into asteroid."
                             end if
                         end do
                     end do
@@ -1449,9 +1482,9 @@ module bodies
                     do i = m_act, 1, -1  ! Backwards loop
                         dr_vec = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                         dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
-                        if (dr .le. r_min) then
+                        if (dr .le. r_min + self%moons(i)%radius) then
+                            write(*,s1i1x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
-                            print*, "Merged moon", i, "into asteroid."
                         end if
                     end do
                 end if
@@ -1471,7 +1504,8 @@ module bodies
                     dr_vec = self%particles(i)%coordinates(1:2) - moon_pos  ! Relative pos
                     dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                     if (dr .le. moon_rad) then
-                        print*, "Merged particle", i, "into moon", j
+                        write(*,s1i1x5) "Merged particle ", i, "(", self%particles(i)%id, ") into moon ", &
+                                        & j, "(", self%moons(j)%id, ")."
                         self%particles(i)%merged_to = moon_id  ! Set where merged to
                         call deactivate_particle_i(self, i)  ! Deactivate
                     end if
@@ -1488,7 +1522,7 @@ module bodies
                         dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
                         dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                         if (dr .le. boul_rad) then
-                            print*, "Merged particle", i, "into asteroid."
+                            write(*,s1i1x5) "Merged particle ", i, "(", self%particles(i)%id, ") into asteroid."
                             self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
                             call deactivate_particle_i(self, i)  ! Deactivate
                         end if
@@ -1499,7 +1533,7 @@ module bodies
                     dr_vec = self%particles(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                     dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                     if (dr .le. r_min) then
-                        print*, "Merged particle", i, "into asteroid."
+                        write(*,s1i1x5) "Merged particle ", i, "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
                         call deactivate_particle_i(self, i)  ! Deactivate
                     end if
@@ -1696,7 +1730,6 @@ module bodies
             call write_ast_coor(self, unit_file)
 
             if (self%Nmoons_active > 1) then
-                print*, "aca1"
                 do i = 1, self%Nmoons_active
                     ids(i) = i
                 end do
