@@ -511,10 +511,10 @@ module parameters
                             end if
                         end do
                         if (.not. is_number) then ! No es un número
-                            write (*, '(A, I0, A, A)') "ERROR: No se reconoce el argumento ", i, ": ", trim(aux_character30)
+                            write (*, '(A, I0, A, A)') "ERROR: Argument not recognized ", i, ": ", trim(aux_character30)
                             call get_command_argument(0, aux_character30)
-                            write (*,*) "Para ayuda, ejecute: ", trim(aux_character30), " --help"
-                            write (*,*) "Saliendo."
+                            write (*,*) "   For more help run: ", trim(aux_character30), " --help"
+                            write (*,*) "Exiting."
                             stop 1
                         end if
                         if (.not. aux_logical)  then ! No leí los parámetros aún
@@ -526,7 +526,10 @@ module parameters
                             else ! Leo los argumentos numéricos. Considero que es 1 sola partícula
                                 ! Para generar prioridad, reallocatamos de ser necesario
                                 use_command_particle = .True.  ! GLOBAL parameter
-                                if (allocated(particles_in)) deallocate(particles_in)
+                                if (allocated(particles_in)) then
+                                    write(*,*) "WARNING: Reallocating and replacing read particles with command line input."
+                                    deallocate(particles_in)
+                                end if
                                 call allocate_params_particles(1)
                                 params%Nparticles = 1
                                 ! Read
