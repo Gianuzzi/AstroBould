@@ -83,7 +83,7 @@ module bodies
 
    
     !!!!!!!!!!!   Used I/O formats     !!!!!!!!!
-    character(30), parameter :: i3r21 = "(I7, I7, I7, 21(1X, 1PE22.15))"  ! 3 int y 21 real
+    character(30), parameter :: i3r23 = "(I7, I7, I7, 23(1X, 1PE22.15))"  ! 3 int y 21 real
     character(26), parameter :: i2r11 = "(I7, I7, 11(1X, 1PE22.15))"  ! 2 int y 11 real
     character(25), parameter :: i2r9 = "(I7, I7, 9(1X, 1PE22.15))"  ! 3 int y 9 real
     character(18), parameter :: s1i1x5 = "(5(A, 1X, I1, 1X))"
@@ -1813,7 +1813,7 @@ module bodies
             type(system_st), intent(in) :: initial
             type(system_st), intent(in) :: actual
             integer(kind=4), intent(in) :: unit_file
-            write (unit_file,i3r21) &
+            write (unit_file,i3r23) &
                 & 0, &  ! ID
                 & -1, &  ! type
                 & -1, &  ! merged_to
@@ -1855,7 +1855,7 @@ module bodies
                 write(*,*) "ERROR: Moon not found in initial system:", actual%moons(i)%id
                 stop 2
             end if
-            write (unit_file,i3r21) &
+            write (unit_file,i3r23) &
                 & actual%moons(i)%id, &  ! ID
                 & 1, &  ! type
                 & actual%moons(i)%merged_to, &  ! merged_to
@@ -1897,7 +1897,7 @@ module bodies
                 write(*,*) "ERROR: Particle not found in initial system:", actual%particles(i)%id
                 stop 2
             end if
-            write (unit_file,i3r21) &
+            write (unit_file,i3r23) &
                 & actual%particles(i)%id, &  ! ID
                 & 2, &  ! type
                 & actual%particles(i)%merged_to, &  ! merged_to

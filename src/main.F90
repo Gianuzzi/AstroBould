@@ -35,7 +35,7 @@ program main
     !!!!!!!!!!!!!!!!!! Editar aquí abajo de ser necesario !!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    if (.not. use_configfile) then ! Usaremos parámetros por defecto y 
+    if (.not. use_configfile) then ! Usaremos parámetros por defecto
         
         ! Asteroide central
         !! Primary
@@ -116,8 +116,8 @@ program main
         input%initial_time = cero      ! Initial time [day]
         input%final_time = 2.d3        ! Final time [day]
         input%case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
-        input%output_number = 10000    ! Number of outputs (if dt_out=0)
         input%output_timestep = cero   ! Output timestep [day] (used if case_output_type != 1)
+        input%output_number = 10000    ! Number of outputs (if output_timestep = 0)
 
         !!!! Error
         input%learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
@@ -127,10 +127,19 @@ program main
         input%min_distance = -1.5d0    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
         input%max_distance = -1.d2     ! Max distance before escape [km] ! -x => R0 * x
 
+        !!! Map
+        input%use_potential_map = .False.
+        input%mapfile = ""
+        input%map_grid_size_x = 500
+        input%map_grid_size_y = 500
+        input%map_min_x = -500.d0
+        input%map_max_x = 500.d0
+        input%map_min_y = -500.d0
+        input%map_max_y = 500.d0
+
         !!! Output: "" or "no", if not used
         input%datafile = ""
         input%chaosfile = ""
-        input%mapfile = ""
         input%multfile = ""
 
         !!!!! Screeen
@@ -145,6 +154,7 @@ program main
         !!! Parallel
         input%use_parallel = .False.
         input%requested_threads = 1 ! Number of threads to use !! -1 => all available
+
     end if
 
 
@@ -198,7 +208,21 @@ program main
     !! Read Moons or Particles if needed
 
     !!! Moons
-    if (sim%use_moonsfile) then
+    if (sim%use_command_body .and. sim%cl_body_is_moon) then
+        if (allocated(moons_in)) then  ! Deallocate if necessary
+            if (sim%use_screen) then
+                write (*,*) ACHAR(10)
+                write (*,*) "WARNING: Command line moon used. Ignoring moons in config file."
+            end if
+            deallocate(moons_in)
+        else if (sim%use_moonsfile .and. sim%use_screen) then
+            write (*,*) ACHAR(10)
+            write (*,*) "WARNING: Command line moon used. Ignoring moons file: ", trim(sim%moonsfile)
+        end if
+        call allocate_params_moons(1)
+        ! Fill the array
+        moons_in(1,:) = cl_body_in
+    else if (sim%use_moonsfile) then
         if (sim%Nmoons > 0) then
             write (*,*) ACHAR(10)
             write (*,*) "ERROR: Can not read moons from moons file and config file."
@@ -229,9 +253,20 @@ program main
     end if
 
     !!! Particles
-    if (sim%use_particlesfile .and. use_command_particle) then
-        write (*,*) ACHAR(10)
-        write (*,*) "WARNING: Command line particle used. Ignoring particles file: ", trim(sim%particlesfile)
+    if (sim%use_command_body .and. (.not. sim%cl_body_is_moon)) then
+        if (allocated(particles_in)) then  ! Deallocate if necessary
+            if (sim%use_screen) then
+                write (*,*) ACHAR(10)
+                write (*,*) "WARNING: Command line particle used. Ignoring particles in config file."
+            end if
+            deallocate(particles_in)
+        else if (sim%use_particlesfile .and. sim%use_screen) then
+            write (*,*) ACHAR(10)
+            write (*,*) "WARNING: Command line moparticleon used. Ignoring particles file: ", trim(sim%particlesfile)
+        end if
+        call allocate_params_particles(1)
+        ! Fill the array
+        particles_in(1,:) = cl_body_in(2:6)
     else if (sim%use_particlesfile) then
         if (sim%Nparticles > 0) then
             write (*,*) ACHAR(10)
@@ -585,11 +620,7 @@ program main
             write (*,*) ACHAR(5)
             write (*,*) "Creating maps..."
         end if
-        call create_map(system, &
-                      & sim%map_grid_size_x, sim%map_grid_size_y, &
-                      & sim%map_min_x, sim%map_max_x, &
-                      & sim%map_min_y, sim%map_max_y, &
-                      & sim%mapfile)
+        call create_map(sim, system)
         if (sim%use_screen) then
             write (*,*) "Maps saved to file: ", trim(sim%mapfile)
             write (*,*) ACHAR(5)
@@ -1156,52 +1187,62 @@ program main
     
 end program main
 
-subroutine create_map(system,ngx,ngy,xmin,xmax,ymin,ymax,map_file)
+subroutine create_map(sim, system)
     use constants, only: cero
-    use bodies, only: system_st, get_acc_and_pot_xy, get_boulder_i_coord
+    use bodies, only: system_st, get_acc_and_pot_xy
+    use parameters, only: sim_params_st
     implicit none
+    type(sim_params_st), intent(in) :: sim
     type(system_st), intent(in) :: system
-    integer(kind=4), intent(in) :: ngx, ngy
-    real(kind=8), intent(in)    :: xmin, xmax, ymin, ymax
-    character(len=*), intent(in) :: map_file
-    real(kind=8) :: pot(ngx,ngy), acc(ngx,ngy,2)
-    real(kind=8) :: rb(2)
+    real(kind=8), dimension(:,:), allocatable :: pot
+    real(kind=8), dimension(:,:,:), allocatable :: acc
+    real(kind=8) :: dx_nx, dy_ny, rb(2)
     integer(kind=4) :: i, j
 
     !!! Check
-    if ((ngx < 2) .or. (ngy < 2)) then
+    if ((sim%map_grid_size_x < 2) .or. (sim%map_grid_size_y < 2)) then
         write (*,*) "ERROR: Check that (ngx > 2) and (ngy > 2)"
         stop 1
     end if
-    if ((xmin >= xmax) .or. (ymin >= ymax)) then
+    if ((sim%map_min_x >= sim%map_max_x) .or. (sim%map_min_y >= sim%map_max_y)) then
         write (*,*) "ERROR: Check that (xmin < xmax) and (ymin < ymax)"
         stop 1
     end if
+
+    ! Allocate
+    allocate(pot(sim%map_grid_size_x, sim%map_grid_size_y))
+    allocate(acc(sim%map_grid_size_x, sim%map_grid_size_y, 2))
+    
     pot = cero
     acc = cero
+    dx_nx = (sim%map_max_x - sim%map_min_x) / sim%map_grid_size_x
+    dy_ny = (sim%map_max_y - sim%map_min_y) / sim%map_grid_size_y
 
     !$OMP PARALLEL DEFAULT(SHARED) &
-    !$OMP PRIVATE(i,j,k,rb,dist,dummy,dummy2,dumint,cero2)
+    !$OMP PRIVATE(i,j,rb)
     !$OMP DO SCHEDULE (STATIC)
-    do i = 1, ngx
-        do j = 1, ngy
-            rb(1) = xmin + i * (xmax - xmin) / ngx
-            rb(2) = ymin + j * (ymax - ymin) / ngy
+    do i = 1, sim%map_grid_size_x
+        do j = 1, sim%map_grid_size_y
+            rb(1) = sim%map_min_x + i * dx_nx
+            rb(2) = sim%map_min_y + j * dy_ny
             call get_acc_and_pot_xy(system, rb, acc(i,j,:), pot(i,j))
         end do
     end do
     !$OMP END DO
     !$OMP END PARALLEL
     
-    write (*,*) "   Potential calculated. Writing file..."
-    open (unit=50, file=trim(map_file), status='replace', action='write')
-    do i = 1, ngx
-        do j = 1, ngy
-            write (50,*) xmin + i * (xmax - xmin) / ngx, ymin + j * (ymax - ymin) / ngy, &
-            pot(i,j), acc(i,j,:)
+    if (sim%use_screen) write (*,*) "Potential calculated. Writing file..."
+    open (unit=50, file=trim(sim%mapfile), status='replace', action='write')
+    do i = 1, sim%map_grid_size_x
+        do j = 1, sim%map_grid_size_y
+            write (50,*) sim%map_min_x + i * dx_nx, sim%map_min_y + j * dy_ny, pot(i,j), acc(i,j,:)
         end do
     end do
     close (50)
+
+    ! Deallocate
+    deallocate(pot)
+    deallocate(acc)
 end subroutine create_map
 
 ! ! module iso_fortran_env

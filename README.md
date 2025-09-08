@@ -4,7 +4,7 @@
 
 The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
 
-If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [24 and 134](./src/main.F90#L24-L134).
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [39 and 157](./src/main.F90#L39-L157).
 
 ---
 
@@ -20,10 +20,17 @@ make
 
 > ⚠️ **Note**: Remember to run `make clean` followed by `make` every time you modify any `.F90` source file.
 
-Default copilator is GNU (_gfortran_). If available, the compilation could be made using the IntelFortranCompiler (_ifx_), by running
+Default copilator is GNU (_gfortran_). If available, the compilation could be made using the IntelFortranCompiler (_ifx_) or AMDFortranCompiler (_flang_), by running
 
 ```bash
 make IFORT=1
+```
+
+or
+
+
+```bash
+make AMD=1
 ```
 
 ## 🏃🏼 Running
@@ -50,47 +57,48 @@ For basic help in Spanish just run:
 ``` console
 $ ./ASTROBOULD --help
 
- Uso: ./ASTROBOULD <ea> <ee> <eM> <ew> <eR> [args]
-     ea  : Elemento a de la partícula (km)
-     ee  : Elemento e de la partícula
-     eM  : Elemento M de la partícula (deg)
-     ew  : Elemento w de la partícula (deg)
-     eR  : Elemento R de la partícula [Optional]
-     -mpart       : Masa de la partícula individual
-     -nsim        : Asignar como número de simulación al 'int' que sigue
-     -datafile    : Guardar datos en el archivo que sigue
-     --nodataf    : No guardar datos
-     -chaosfile   : Guardar caos en el archivo que sigue
-     --nochaosf   : No guardar caos
-     --screen     : Imprimir información en pantalla
-     --noscreen   : No imprimir en pantalla
-     --perc       : Imprimir porcentaje de integración
-     --noperc     : No imprimir porcentaje de integración
-     --datascr    : Imprimir datos en pantalla
-     --nodatascr  : No imprimir datos en pantalla
-     -multifile   : Guardar datos en archivos individuales
-     --nomultif   : No guardar datos en archivos individuales
-     -mapfile     : Guardar mapas de potencial en el archivo que sigue
-     --nomapf     : No guardar mapas de potencial
-     --implicit   : Usar método implícito (integra) [default]
-     --explicit   : Usar método explícito (cos, sen)
-     --elem       : Imprimir elementos orbitales (solo partículas) [default]
-     --noelem     : Imprimir coordenadas baricéntricas
-     -tomfile     : Utilizar archivo de (t)iempos|omega|masa que sigue
-     --notomfile  : No utilizar archivo de (t)iempos|omega|masa
-     -partfile    : Utilizar archivo de partículas que sigue
-     --nopartfile : No utilizar archivo de partículas
-     --noconfig   : No leer archivo de configuración
-     --version1   : Usar versión 1: y=(B0, B1, ..., P0, ...)
-     --version2   : Usar versión 2: y=(θ, ω, P0, ...) [default]
-     --merge      : Incluir asociar colisiones de partículas a asteroide
-     --nomerge    : No asociar colisiones de partículas
-     --torque     : Incluir torque de partículas hacia el asteroide
-     --notorque   : No incluir torque de partículas hacia el asteroide
-     -parallel    : Paralelizar usando la cantida de thread que sique
-     --parallel   : Paralelizar usando todos los threads disponibles
-     --noparallel : No usar paralelización para partículas
-     --help       : Mostrar esta ayuda
+ Uso: .\ASTROBOULD <ea> <ee> <eM> <ew> <eR> [args]"
+    ea  : Elemento a de la partícula/luna (km)
+    ee  : Elemento e de la partícula/luna
+    eM  : Elemento M de la partícula/luna (deg)
+    ew  : Elemento w de la partícula/luna (deg)
+    eR  : Elemento R de la partícula/luna [Optional]
+    -mumoon       : Cociente de masa entre la luna individual y el asteroide
+    -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0
+    -nsim         : Número de simulación [int]
+    -datafile     : Nombre de archivo de salida de datos
+    --nodataf     : No guardar datos de salida
+    -chaosfile    : Nombre de archivo de caos
+    --nochaosf    : No guardar caos
+    --screen      : Imprimir información en pantalla
+    --noscreen    : No imprimir en pantalla
+    --perc        : Imprimir porcentaje de integración
+    --noperc      : No imprimir porcentaje de integración
+    --datascr     : Imprimir datos de salida en pantalla
+    --nodatascr   : No imprimir datos de salida en pantalla
+    --diagnostic  : Imprimir datos de diagnostico en pantalla
+    --nodiagnostic: No imprimir datos de diagnostico en pantalla
+    -multifile    : Nombre base de archivo de salida de datos individuales
+    --nomultif    : No guardar datos en archivos individuales
+    -mapfile      : Nombre de archivo de mapa
+    --nomapf      : No guardar mapa de potencial
+    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]
+    --noelem      : Imprimir coordenadas baricéntricas
+    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar
+    --notomfile   : No utilizar archivo de (t)iempos|omega|masa
+    -moonfile     : Nombre de archivo de lunas a utilizar
+    --nomoonfile  : No utilizar archivo de lunas
+    -partfile     : Nombre de archivo de partículas a utilizar
+    --nopartfile  : No utilizar archivo de partículas
+    --noconfig    : No leer archivo de configuración
+    -merge        : Tipo de colisiones (merges) permitidas [int]: 
+                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos
+    -stopif       : Detener la integración si no quedan más objetos del tipo [int]:
+                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos
+    -parallel     : Cantida de thread a utilizar en paralelo [int]
+    --parallel    : Paralelizar usando todos los threads disponibles
+    --noparallel  : No usar paralelización para lunas/partículas
+    --help        : Mostrar esta ayuda
 
 ``` 
 
@@ -108,11 +116,11 @@ There are two modes for parallel execution:
 
 ⌨️ **Particles Input File**
 
-Both modes require the existence of a particles file (e.g. _particles.in_) containing all particles (initial conditions) to be integrated. You can generate this file using [make_particles.py](./tools/make_particles.py). Configuration is found between lines [87 and 93](./tools/make_particles.py#L87#L93).
+Both modes require the existence of a particles/moons file (e.g. _particles.in_) containing all bodies (initial conditions) to be integrated in parallel. You can generate this file using [make_particles.py](./tools/make_particles.py). Configuration is found between lines [87 and 94](./tools/make_particles.py#L87#L94).
 
 ### 1. **Dependent Mode**
 
-- A single integration is performed, including the asteroid and many particles simultaneously.
+- A single integration is performed, including the asteroid and many particles/moons simultaneously.
 - Tasks related to each particle (e.g., force calculations, orbital elements, etc.) are parallelized internally.
 - Requires OpenMP support. Compile using:
 ```console
@@ -122,30 +130,33 @@ To run:
 ```console
 $ ./ASTROBOULD [args] -parallel <number_of_cpus> -partfile <particles_file>
 ```
-or edit [config.ini](./config.ini) and set "use parallel threads" to the desired value (see line [17](./config.ini#L17)), and "particles input file" to the particles file name (see line [58](./config.ini#L58)). Then simply run
+or edit [config.ini](./config.ini) and set "use parallel threads" to the desired value (see line [15](./config.ini#L15)), and "particles input file" to the particles file name (see line [57](./config.ini#L57)). Then simply run
 ```console
 $ ./ASTROBOULD [args]
 ```
 
 ### 2. **Independent Mode (default)**
 
-- Multiple independent integrations are performed, one particle per run.
+- Multiple independent integrations are performed, one particle/moon per run.
 - Each integration is executed in parallel (e.g., across multiple CPU cores).
 - Does not require _-fopenmp_.
 
-The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [60 to 95](./launcher.py#L60#L95). More information (in spannish) is available at the top of the file(see lines [3 to 48](./launcher.py#L3#L48)).
+The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [60 to 94](./launcher.py#L60#L94). More information (in spannish) is available at the top of the file(see lines [3 to 48](./launcher.py#L3#L48)).
 
 To run:
 ```console
 $ python launcher.py
 ```
 💡 Make sure to run inside a Python virtual environment. 🐍
-> ⚠️ Make sure that ```all_in_one = False``` in [launcher.py](./launcher.py#L92) for this mode.
-
 
 
 # Author
-Emmanuel Gianuzzi
+Emmanuel Gianuzzi [egianuzzi@unc.edu.ar](egianuzzi@unc.edu.ar) ([IATE-OAC-CONICET][], [FaMAF-UNC][])
+
+
+  [IATE-OAC-CONICET]: http://iate.oac.uncor.edu/
+  [OAC-CONICET]: https://oac.unc.edu.ar/
+  [FaMAF-UNC]: https://www.famaf.unc.edu.ar/
 
 # Notes
 This code is **under development**.

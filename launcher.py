@@ -9,9 +9,9 @@
 
 # El archivo de partículas a introducir debe tener formato:
 # mass a e M w
-# Pero también se puede introducir una última columna con el valor de R,
+# Pero también se puede introducir una columna con el valor de MMR,
 # el cual reemplaza a a: [a = R**(2/3.) * a_corot]. Entonces quedaría:
-# mass a e M w R
+# mass a e M w MMR (Radius)
 
 # IMPORTANTE : Todos los archivos deben estar en la misma carpeta
 
@@ -21,19 +21,18 @@
 # Este código crea un archivo de caos (chaos[id].out) por cada partícula.
 # Luego los concatena en un solo archivo <final_chaos>,
 # con el siguiente formato:
-# 0    ! Numero de partícula / simulación
-# 1    ! bad? (0: no, 1: collision, 2: ejection)
-# 2    ! total time to integrate
-# 3    ! initial (Asteroid): angular momentum
-# 4-9  ! initial: mass, a, e, M, omega, MMR
-# 10   ! initial: angular momentum per unit mass
-# 11   ! surviving time
-# 12-16! final: a, e, M, omega, MMR
-# 17   ! final: angular momentum per unit mass
-# 18-19! a_min, a_max
-# 20-21! e_min, e_max
-# 22   ! Delta a
-# 23   ! Delta e
+# 0    ! Simulation number
+# 1    ! Body ID
+# 2    ! Body type (0: Asteroid, 1: Moon, 2, Particle)
+# 3    ! result (-2: ejection,
+#                -1: Finished integration, 
+#                 0: collision with asteroid, 
+#               > 0: collision with moon)
+# 4    ! total time integrated
+# 5-13 ! initial body: theta, omega, a, e, M, w, MMR, mass, radius
+# 14-22! final body: theta, omega, a, e, M, w, MMR, mass, radius
+# 23-25! a_min, a_max
+# 26-27! e_min, e_max
 
 # Excepto <final_chaos>, el resto de los archivos estarán en carpetas creadas
 # con nombre 'dpi[pid]' asociado al ID del procesador que ejecutó el sistema.
@@ -64,17 +63,19 @@ from concurrent.futures import ProcessPoolExecutor
 program = "ASTROBOULD"  # Nombre del ejecutable
 
 # Configuración de integración #
-workers = 6  # Número de procesadores a usar (workers)
-explicit = False  # Método: True (cos, sin), False (integra boulders y m0)
-version1 = False  # Versión del código (1 o 2)
+workers = 1  # Número de procesadores a usar (workers)
 
-# Torque and merge #
-torque = False  # Si se quiere usar torque
-merge = False  # Si se quiere usar merge
+# Merge kind
+## 0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos
+merge = 0  # Tipo de merge
+
+# Stop if no more
+## 0: No detener, 1: Luna, 2: Partícula, 3: Ambos
+stopif = 0  # Tipo de stop if
 
 # Input # ("" o False si no se usa)
 config = "config.ini"  # Archivo de configuración
-partfile = "particles.in"  # Archivo de partículas
+bodiesfile = "moons.in"  # Archivo de partículas o lunas
 tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 # Output # ("" o False si no se usa)
@@ -87,9 +88,6 @@ screen_info = True  # Información en pantalla?
 screen_data = False  # Datos en pantalla?  "%" para porcentaje
 # Elements #
 elements = True  # Si se quiere devolver elementos orbitales (en datafile)
-
-# If all particles must be run in same integration (requires parallel)
-all_in_one = False
 
 # Chunk size for cat
 chunk_size = 500  # Chunk size for file concatenation
@@ -122,7 +120,7 @@ if isinstance(final_chaos, bool) and final_chaos:
 # Archivos
 ocini = os.path.join(cwd, config)  # Archivo de configuración
 oprogr = os.path.join(cwd, program)  # Ejecutable
-oparticles = os.path.join(cwd, partfile)  # Archivo de partículas
+oparticles = os.path.join(cwd, bodiesfile)  # Archivo de partículas / lunas
 otom = os.path.join(
     cwd, tomfile
 )  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
@@ -172,32 +170,6 @@ if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
         final_chaos = unique_file
 
 # Checks #
-# Si hay torque, entonces explicit debe ser false
-if torque and explicit:
-    print("WARNING: Torque is active. Explicit mode will be deactivated.")
-    explicit = False
-    yes_no = input("Do you want to continue? [y/[n]]: ")
-    if yes_no.lower() not in ["y", "yes", "s", "si"]:
-        print("Saliendo.")
-        sys.exit()
-# Si all_in_one, entonces debería haber torque
-if all_in_one and (not torque):
-    print(
-        "WARNING: All particles will be integrated together, "
-        + " but without torque."
-    )
-    yes_no = input("Do you want to continue? [y/[n]]: ")
-    if yes_no.lower() not in ["y", "yes", "s", "si"]:
-        print("Saliendo.")
-        sys.exit()
-# Si hay torque, debería haber all_in_one
-if torque and (not all_in_one):
-    print("WARNING: All particles will be integrated independently,")
-    print(" but each of them will induce torque to its asteroid.")
-    yes_no = input("Do you want to continue? [y/[n]]: ")
-    if yes_no.lower() not in ["y", "yes", "s", "si"]:
-        print("Saliendo.")
-        sys.exit()
 # Si no hay datafile ni final_chaos, entonces no hay nada que hacer
 if (not datafile) and (not final_chaos):
     print(
@@ -207,22 +179,22 @@ if (not datafile) and (not final_chaos):
     sys.exit()
 
 # Leemos input
-# Partículas
+# Bodies
 with open(oparticles, "r") as f:
     lines = f.readlines()
 # Arreglamos por si hay "e" en vez de "d"
 for i in range(len(lines)):
     lines[i] = lines[i].replace("e", "d")
 
-# Obtener el número de líneas del archivo de partículas
+# Obtener el número de líneas del archivo de bodies
 ntot = len(lines)
 nsys = ntot
 if nsys == 0:
-    print(f"No hay partículas para integrar en el archivo '{partfile}'.")
+    print(f"No hay bodies para integrar en el archivo '{bodiesfile}'.")
     print("Saliendo.")
     sys.exit()
 else:
-    print(f"Cantidad total de partículas: {nsys}")
+    print(f"Cantidad total de bodies: {nsys}")
 
 # Ver si hay que hacer todo, o ya hay alguna realizadas
 new_simulation = True
@@ -258,30 +230,29 @@ def make_done(wrk_dir, pref="dpy"):
 # Prefijo
 pref = "tomd" if tomfile else "dpy"
 
-if not all_in_one:
-    # Obtener los sistemas realizados
-    if os.path.isdir(wrk_dir):
-        print(
-            "Checkeando integraciones ya completadas"
-            + " dentro de %s..."
-            % (
-                os.path.basename(wrk_dir)
-                if cwd != wrk_dir
-                else "este directorio"
-            )
+# Obtener los sistemas realizados
+if os.path.isdir(wrk_dir):
+    print(
+        "Checkeando integraciones ya completadas"
+        + " dentro de %s..."
+        % (
+            os.path.basename(wrk_dir)
+            if cwd != wrk_dir
+            else "este directorio"
         )
+    )
 
-        done = make_done(wrk_dir, pref)
-        missing_lines = [x for x in range(1, nsys + 1) if x not in done]
-        print(f"   Cantidad de sistemas ya integrados: {len(done)}")
-        nsys = len(missing_lines)
-        print(f"   Cantidad de sistemas a integrar: {nsys}")
-        new_simulation = False
+    done = make_done(wrk_dir, pref)
+    missing_lines = [x for x in range(1, nsys + 1) if x not in done]
+    print(f"   Cantidad de sistemas ya integrados: {len(done)}")
+    nsys = len(missing_lines)
+    print(f"   Cantidad de sistemas a integrar: {nsys}")
+    new_simulation = False
 
 
 # Hay que hacer?
 if len(missing_lines) == 0:
-    print("Ya se han integrado todas las partículas.")
+    print("Ya se han integrado todos los bodies.")
 else:
     # Obtener el número de workers
     workers = min(
@@ -290,26 +261,11 @@ else:
     print(f"Workers: {workers}")
 
 # Argumentos. Estos son:
-args = " --nomapf"
-if all_in_one:
-    args += " --screen" if screen_info else " --noscreen"
-    if screen_data == "%":
-        args += " --perc --nodatascr"
-    else:
-        args += " --datascr" if screen_data else " --nodatascr"
-        args += " --noperc"
-    args += f" -partfile {partfile}"
-    args += f" -datafile {datafile}.out" if datafile else " --nodataf"
-    args += f" -parallel {workers}"
-    args += f" -chaosfile {final_chaos}.out" if final_chaos else " --nochaosf"
-else:
-    args += " --noscreen --nodatascr --noperc --noparallel --nopartfile"
-args += " --explicit" if explicit else " --implicit"
+args = "--nomapf"
+args += " --noscreen --nodatascr --noperc --noparallel --nopartfile"
 args += f" -tomfile {tomfile}" if tomfile else " --notomfile"
 args += " --elem" if elements else " --noelem"
-args += " --version1" if version1 else " --version2"
-args += " --torque" if torque else " --notorque"
-args += " --merge" if merge else " --nomerge"
+args += f" -merge {merge}"
 
 
 # Función general
@@ -334,7 +290,7 @@ def integrate_n(i):
 
     this_chaosfile = f"chaos{i}{suffix}"  # Without extension
 
-    this_args = f" -nsim {i}"
+    this_args = f"-nsim {i}"
 
     this_args += "%s" % (
         " --nochaosf"
@@ -353,8 +309,10 @@ def integrate_n(i):
         lines[i - 1]
     ).split()  # -1 porque la lista arranca de 0 y los sistemas de 1
 
-    if len(data) == 6:  # The mass in present in the first column
-        this_args += f" -mpart {data.pop(0)}"  # Update my_line
+    if len(data) >= 6:  # The mass in present in the first column
+        this_args += f" -mumoon {data.pop(0)}"  # Update my_line
+        if len(data) == 6:  # The radius would be the last column
+            this_args += f" -rmoon {data.pop(-1)}"  # Update my_line
 
     # Define my_line with the orbital parameters in data
     my_line = " ".join(data)
@@ -413,21 +371,14 @@ def integrate_n(i):
 
 # Crear archivo chaos
 def make_chaos(final_chaos, suffix=""):
-    # Ruta a la carpeta raíz que contiene las subcarpetas con los archivos
     root_dir = wrk_dir
-
-    # Lista para almacenar los nombres de los archivos
     file_list = []
 
     # Recorre todas las subcarpetas en la carpeta raíz
     for subdir in os.listdir(root_dir):
-        # Verifica si el nombre de la subcarpeta comienza con 'pref'
         if subdir.startswith(pref):
             subdir_path = os.path.join(root_dir, subdir)
-            # Recorre todos los archivos en la subcarpeta
             for filename in os.listdir(subdir_path):
-                # Verifica si el nombre del archivo comienza con
-                # "chaos" y termina con ".out"
                 if (
                     filename.startswith("chaos")
                     and filename.endswith(".out")
@@ -437,7 +388,7 @@ def make_chaos(final_chaos, suffix=""):
                     filepath = os.path.join(subdir_path, filename)
                     file_list.append(filepath)
 
-    # Ordena los nombres de los archivos por el valor de i en "chaos%d%s.out"
+    # Ordena los nombres de los archivos
     if suffix == "":
         file_list = sorted(
             file_list, key=lambda x: int(x.split("chaos")[1].split(".out")[0])
@@ -449,42 +400,52 @@ def make_chaos(final_chaos, suffix=""):
                 x.split("chaos")[1].split(".out")[0].split(suffix)[0]
             ),
         )
+    
+    # Check
+    if not file_list:
+        print("No files found to concatenate.")
+        return
 
-    # Concatena los archivos
+    # Construye el nombre del archivo final
     outs = final_chaos.split(".")
     outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
     outs.insert(-1, ".out")
     final_chaos = "".join(outs)
-    # Process in chunks
-    num_chunks = len(file_list) // chunk_size + (
-        len(file_list) % chunk_size > 0
-    )
-    try:
-        with open(os.path.join(wrk_dir, final_chaos), "wb") as outfile:
-            for i in range(num_chunks):
-                this_chunk = file_list[i * chunk_size : (i + 1) * chunk_size]
-                print(
-                    f"Processing chunk {i+1}/{num_chunks} "
-                    + f"with {len(this_chunk)} files..."
-                )
+    final_path = os.path.join(wrk_dir, final_chaos)
 
-                # Run `cat` on the current chunk (passing list directly)
-                p = subprocess.run(
-                    ["cat"] + this_chunk,
+    try:
+        num_chunks = len(file_list) // chunk_size + 1
+        # AWK program (portable): on first line of each file FNR==1 -> set f=start ; increment start
+        # then print file-index f, tab, and the original line.
+        awk_prog = 'FNR==1{f=start; start++} {print f "%7d %s\n", f, $0}'
+        for chunk_idx in range(num_chunks):
+            chunk_files = file_list[chunk_idx * chunk_size : (chunk_idx + 1) * chunk_size]
+            start_for_chunk = chunk_idx * chunk_size + 1  # 1-based index for first file in this chunk
+            mode = "wb" if chunk_idx == 0 else "ab"  # write first chunk, append others
+
+            cmd = ["awk", "-v", f"start={start_for_chunk}", awk_prog] + chunk_files
+
+            with open(final_path, mode) as outfile:
+                subprocess.run(
+                    cmd,
                     stdout=outfile,
                     cwd=wrk_dir,
                     check=True,
                 )
-                p.check_returncode()
+
+        # success
+        print(f"Created '{final_chaos}' with awk (indexed).")
+
     except (subprocess.CalledProcessError, OSError) as e:
-        print(f"Could not create '{final_chaos}' with cat.")
+        print(f"Could not create '{final_chaos}' with awk.")
         print(f" Error: {e}")
         print(" Trying with pure python...")
-        with open(os.path.join(wrk_dir, final_chaos), "w") as f_out:
-            for file in file_list:
+        with open(final_path, "w") as f_out:
+            for idx, file in enumerate(file_list, start=1):
                 with open(file, "r") as f_in:
                     for line in f_in:
-                        f_out.write("{}".format(line))
+                        f_out.write(f"{idx:7d} {line}")
+
 
 
 # Crear archivo salida final
@@ -614,7 +575,7 @@ if __name__ == "__main__":
                 subprocess.run(["cp", ocini, ncini], check=True)
             ocini = ncini
         # Partículas
-        nparticles = os.path.join(wrk_dir, partfile)
+        nparticles = os.path.join(wrk_dir, bodiesfile)
         # Chequeamos si existe el archivo de partículas
         if os.path.isfile(nparticles):
             print(
@@ -635,47 +596,30 @@ if __name__ == "__main__":
             ntom = os.path.join(wrk_dir, tomfile)
             subprocess.run(["cp", otom, ntom], check=True)
             otom = ntom
-    if not all_in_one:
-        if len(missing_lines) > 0:
-            with ProcessPoolExecutor(max_workers=workers) as executor:
-                results = executor.map(integrate_n, missing_lines)
-            # Check if all results are True
-            if not all(results):
-                print("Some systems failed to integrate.")
-                print("Will not create chaos or data files.")
-                sys.exit(1)
-            # Check if all systems were integrated, using the done.txt files
-            done = make_done(wrk_dir, pref)
-            if len(done) != ntot:
-                print(
-                    "WARNING: Not all systems were integrated. "
-                    + "Will not create chaos or data files."
-                )
-                sys.exit(1)
-        # Creamos el archivo de salida
-        if datafile:
-            print("")
-            print(f"Creando archivo de salida '{datafile}.out'")
-            if os.path.isfile(os.path.join(wrk_dir, f"{datafile}.out")):
-                print(
-                    "WARNING: Se ha reemplazando archivo "
-                    + f"{datafile}.out ya existente."
-                )
-            make_sal(datafile, suffix)
-        # Creamos el archivo de caos
-        if final_chaos:
-            print("")
-            print(f"Creando archivo de caos '{final_chaos}.out'")
-            if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
-                print(
-                    "WARNING: Se ha reemplazando archivo "
-                    + f"{final_chaos}.out ya existente."
-                )
-            make_chaos(final_chaos, suffix)
-    else:
-        print("Running all systems in one process.")
-        print(f"./{program} {args}")
-        subprocess.run(
-            [f"./{program} {args}"], cwd=wrk_dir, check=True, shell=True
-        )
+    if len(missing_lines) > 0:
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            results = executor.map(integrate_n, missing_lines)
+        # Check if all results are True
+        if not all(results):
+            print("Some systems failed to integrate.")
+            print("Will not create chaos or data files.")
+            sys.exit(1)
+        # Check if all systems were integrated, using the done.txt files
+        done = make_done(wrk_dir, pref)
+        if len(done) != ntot:
+            print(
+                "WARNING: Not all systems were integrated. "
+                + "Will not create chaos or data files."
+            )
+            sys.exit(1)
+    # Creamos el archivo de caos
+    if final_chaos:
+        print("")
+        print(f"Creando archivo de caos '{final_chaos}.out'")
+        if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
+            print(
+                "WARNING: Se ha reemplazando archivo "
+                + f"{final_chaos}.out ya existente."
+            )
+        make_chaos(final_chaos, suffix)
     print("LISTO!")

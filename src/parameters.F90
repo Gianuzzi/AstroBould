@@ -14,8 +14,6 @@ module parameters
     integer(kind=4) :: arguments_number = 0  ! Amount of argument in command line
     logical :: configfile_exists = .False.  ! Wether if config file exists
     logical :: use_configfile = .True.  ! Wether to use config file (if exists)
-    !!! Command line particle
-    logical :: use_command_particle = .False.  ! Wether a particle was given through command line
     !! Parallel
     integer(kind=4) :: available_threads = 1  ! Available threads to use
     integer(kind=4) :: my_threads = 1  ! Amount of threads actually used
@@ -115,6 +113,8 @@ module parameters
         integer(kind=4) :: Nboulders = 0
         integer(kind=4) :: Nmoons = 0
         integer(kind=4) :: Nparticles = 0
+        !!! Command line body
+        logical :: use_command_body = .False.  ! Wether a body was given through command line
     end type input_params_st
 
     type, extends(input_params_st) :: sim_params_st  !! Extra DERIVED parameters
@@ -159,6 +159,8 @@ module parameters
         real(kind=8) :: error_tolerance = cero
         ! I/O
         logical :: use_elements = .True.
+        !!! Command line body
+        logical :: cl_body_is_moon = .False. ! Wether a moon was given through command line
     end type sim_params_st
     
     type(input_params_st) :: input  ! This is the structure with the default -> input parameters
@@ -169,6 +171,7 @@ module parameters
     real(kind=8), dimension(:,:), allocatable :: boulders_in !! mu, radius, theta  | (Nb, 3)
     real(kind=8), dimension(:,:), allocatable :: moons_in !! mass, a, e, M, w, MMR, radius  | (Nm, 7)
     real(kind=8), dimension(:,:), allocatable :: particles_in !! a, e, M, w, MMR  | (Np, 5)
+    real(kind=8) :: cl_body_in(7) = cero!! mass, a, e, M, w, MMR, radius  | (7)
 
 
     ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
@@ -336,6 +339,14 @@ module parameters
                         call get_command_argument(i+1, aux_character20)
                         read (aux_character20,*) simulation_number  ! Global variable
                         aux_integer = 1
+                    case ("-mumoon")
+                        call get_command_argument(i+1, aux_character20)
+                        read (aux_character20,*) cl_body_in(1)  ! Global variable
+                        aux_integer = 1
+                    case ("-rmoon")
+                        call get_command_argument(i+1, aux_character20)
+                        read (aux_character20,*) cl_body_in(7)  ! Global variable
+                        aux_integer = 1
                     case ("-datafile")
                         params%use_datafile = .True.
                         call get_command_argument(i+1, params%datafile)
@@ -426,6 +437,7 @@ module parameters
                             write (*,*) "ERROR: Merge type not recognized: ", merge_type
                             stop 1
                         end if
+                        aux_integer = 1
                     case ("-stopif")
                         call get_command_argument(i+1, aux_character20)
                         read (aux_character20,*) stop_type
@@ -460,46 +472,47 @@ module parameters
                     case ("--help")
                         call get_command_argument(0, aux_character30)
                         write (*,*) "Uso: " // trim(aux_character30) // " <ea> <ee> <eM> <ew> <eR> [args]"
-                        write (*,*) "    ea  : Elemento a de la partícula (km)"
-                        write (*,*) "    ee  : Elemento e de la partícula"
-                        write (*,*) "    eM  : Elemento M de la partícula (deg)"
-                        write (*,*) "    ew  : Elemento w de la partícula (deg)"
-                        write (*,*) "    eR  : Elemento R de la partícula [Optional]"
-                        write (*,*) "    -mpart       : Masa de la partícula individual"
-                        write (*,*) "    -nsim        : Asignar como número de simulación al 'int' que sigue"
-                        write (*,*) "    -datafile    : Guardar datos en el archivo que sigue"
-                        write (*,*) "    --nodataf    : No guardar datos"
-                        write (*,*) "    -chaosfile   : Guardar caos en el archivo que sigue"
-                        write (*,*) "    --nochaosf   : No guardar caos"
-                        write (*,*) "    --screen     : Imprimir información en pantalla"
-                        write (*,*) "    --noscreen   : No imprimir en pantalla"
-                        write (*,*) "    --perc       : Imprimir porcentaje de integración"
-                        write (*,*) "    --noperc     : No imprimir porcentaje de integración"
-                        write (*,*) "    --datascr    : Imprimir datos en pantalla"
-                        write (*,*) "    --nodatascr  : No imprimir datos en pantalla"
-                        write (*,*) "    -multifile   : Guardar datos en archivos individuales"
-                        write (*,*) "    --nomultif   : No guardar datos en archivos individuales"
-                        write (*,*) "    -mapfile     : Guardar mapas de potencial en el archivo que sigue"
-                        write (*,*) "    --nomapf     : No guardar mapas de potencial"
-                        write (*,*) "    --implicit   : Usar método implícito (integra) [default]"
-                        write (*,*) "    --explicit   : Usar método explícito (cos, sen)"
-                        write (*,*) "    --elem       : Imprimir elementos orbitales (lunas/partículas) [default]"
-                        write (*,*) "    --noelem     : Imprimir coordenadas baricéntricas"
-                        write (*,*) "    -tomfile     : Utilizar archivo de (t)iempos|omega|masa que sigue"
-                        write (*,*) "    --notomfile  : No utilizar archivo de (t)iempos|omega|masa"
-                        write (*,*) "    -moonfile    : Utilizar archivo de lunas que sigue"
-                        write (*,*) "    --nomoonfile : No utilizar archivo de lunas"
-                        write (*,*) "    -partfile    : Utilizar archivo de partículas que sigue"
-                        write (*,*) "    --nopartfile : No utilizar archivo de partículas"
-                        write (*,*) "    --noconfig   : No leer archivo de configuración"
-                        write (*,*) "    -merge       : Combinar objetos que colisiones de tipo que sigue: "
+                        write (*,*) "    ea  : Elemento a de la partícula/luna (km)"
+                        write (*,*) "    ee  : Elemento e de la partícula/luna"
+                        write (*,*) "    eM  : Elemento M de la partícula/luna (deg)"
+                        write (*,*) "    ew  : Elemento w de la partícula/luna (deg)"
+                        write (*,*) "    eR  : Elemento R de la partícula/luna [Optional]"
+                        write (*,*) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
+                        write (*,*) "    -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0"
+                        write (*,*) "    -nsim         : Número de simulación [int]"
+                        write (*,*) "    -datafile     : Nombre de archivo de salida de datos"
+                        write (*,*) "    --nodataf     : No guardar datos de salida"
+                        write (*,*) "    -chaosfile    : Nombre de archivo de caos"
+                        write (*,*) "    --nochaosf    : No guardar caos"
+                        write (*,*) "    --screen      : Imprimir información en pantalla"
+                        write (*,*) "    --noscreen    : No imprimir en pantalla"
+                        write (*,*) "    --perc        : Imprimir porcentaje de integración"
+                        write (*,*) "    --noperc      : No imprimir porcentaje de integración"
+                        write (*,*) "    --datascr     : Imprimir datos de salida en pantalla"
+                        write (*,*) "    --nodatascr   : No imprimir datos de salida en pantalla"
+                        write (*,*) "    --diagnostic  : Imprimir datos de diagnostico en pantalla"
+                        write (*,*) "    --nodiagnostic: No imprimir datos de diagnostico en pantalla"
+                        write (*,*) "    -multifile    : Nombre base de archivo de salida de datos individuales"
+                        write (*,*) "    --nomultif    : No guardar datos en archivos individuales"
+                        write (*,*) "    -mapfile      : Nombre de archivo de mapa"
+                        write (*,*) "    --nomapf      : No guardar mapa de potencial"
+                        write (*,*) "    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]"
+                        write (*,*) "    --noelem      : Imprimir coordenadas baricéntricas"
+                        write (*,*) "    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
+                        write (*,*) "    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
+                        write (*,*) "    -moonfile     : Nombre de archivo de lunas a utilizar"
+                        write (*,*) "    --nomoonfile  : No utilizar archivo de lunas"
+                        write (*,*) "    -partfile     : Nombre de archivo de partículas a utilizar"
+                        write (*,*) "    --nopartfile  : No utilizar archivo de partículas"
+                        write (*,*) "    --noconfig    : No leer archivo de configuración"
+                        write (*,*) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
                         write (*,*) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos"
-                        write (*,*) "    -stopif      : Detener la integración si no quedan más objetos del tipo que sigue:"
+                        write (*,*) "    -stopif       : Detener la integración si no quedan más objetos del tipo [int]:"
                         write (*,*) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
-                        write (*,*) "    -parallel    : Paralelizar usando la cantida de thread que sique"                        
-                        write (*,*) "    --parallel   : Paralelizar usando todos los threads disponibles"
-                        write (*,*) "    --noparallel : No usar paralelización para lunas/partículas"
-                        write (*,*) "    --help       : Mostrar esta ayuda"
+                        write (*,*) "    -parallel     : Cantida de thread a utilizar en paralelo [int]"
+                        write (*,*) "    --parallel    : Paralelizar usando todos los threads disponibles"
+                        write (*,*) "    --noparallel  : No usar paralelización para lunas/partículas"
+                        write (*,*) "    --help        : Mostrar esta ayuda"
                         stop 0
                     case default  ! Si no es un argumento reconocido...
                         is_number = .False.
@@ -525,30 +538,23 @@ module parameters
                                 stop 1
                             else ! Leo los argumentos numéricos. Considero que es 1 sola partícula
                                 ! Para generar prioridad, reallocatamos de ser necesario
-                                use_command_particle = .True.  ! GLOBAL parameter
-                                if (allocated(particles_in)) then
-                                    write(*,*) "WARNING: Reallocating and replacing read particles with command line input."
-                                    deallocate(particles_in)
-                                end if
-                                call allocate_params_particles(1)
-                                params%Nparticles = 1
+                                params%use_command_body = .True.  ! Switch
                                 ! Read
                                 call get_command_argument(i, aux_character20)
-                                read (aux_character20,*) particles_in(1,1)
+                                read (aux_character20,*) cl_body_in(2)
                                 call get_command_argument(i+1, aux_character20)
-                                read (aux_character20,*) particles_in(1,2)
+                                read (aux_character20,*) cl_body_in(3)
                                 call get_command_argument(i+2, aux_character20)
-                                read (aux_character20,*) particles_in(1,3)
+                                read (aux_character20,*) cl_body_in(4)
                                 call get_command_argument(i+3, aux_character20)
-                                read (aux_character20,*) particles_in(1,4)
+                                read (aux_character20,*) cl_body_in(5)
                                 aux_integer = 3
                                 aux_logical = .True.
-                                particles_in(1,5) = cero
-                                
+                                cl_body_in(6) = cero
                             end if
                         else ! Ya leí los numéricos. Falta leer eR
                             call get_command_argument(i, aux_character20)
-                            read (aux_character20,*) particles_in(1,5)
+                            read (aux_character20,*) cl_body_in(6)
                         end if
                     end select
                 end do
@@ -983,12 +989,22 @@ module parameters
             implicit none
             type(sim_params_st), intent(inout) :: derived
 
+            ! ----------------------- GLOBALS ---------------------------------
+            if (derived%use_command_body) then
+                if (abs(cl_body_in(1)) > cero)  then  ! Check the mass
+                    derived%cl_body_is_moon = .True.
+                    derived%Nmoons = 1
+                else 
+                    derived%cl_body_is_moon = .False.
+                    derived%Nparticles = 1
+                end if
+            end if
+
             !! Times
             if ((derived%case_output_type < 0) .or. (derived%case_output_type > 2)) then
                 write (*,*) "ERROR: Checkpoint times distribution method not recognized:", derived%case_output_type
                 stop 1
             end if
-
 
             !! Boulders
             if (derived%Nboulders < 0) then
@@ -997,18 +1013,14 @@ module parameters
             end if
             derived%use_boulders = (derived%Nboulders > 0)
 
-            ! -----------------------------------------------------------------
-            ! Acá hay que configurar moons y particles en caso de moons sin masa
-            ! -----------------------------------------------------------------
-
-            !! Moons
+            !! NMoons
             if (derived%Nmoons < 0) then
                 write (*,*) "ERROR: Nmoons can not be negative 0"
                 stop 1
             end if
             derived%use_moons = (derived%Nmoons > 0)
 
-            !! Moons
+            !! NParticles
             if (derived%Nparticles < 0) then
                 write (*,*) "ERROR: Nparticles can not be negative 0"
                 stop 1
@@ -1029,7 +1041,6 @@ module parameters
                 derived%stokes_active_time = cero
             end if
             
-
             !!! Naive-stokes
             if (abs(derived%drag_coefficient) < tini) then
                 derived%use_drag = .False.
@@ -1063,8 +1074,9 @@ module parameters
                 write (*,*) "ERROR: Can not use multiple omega dampings."
                 stop 1
             end if
-              
-            if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinity
+            
+            ! ! Mass Damping [UNAVAILABLE YET]
+            ! if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinity
 
             !!! Geo-Potential
             derived%use_J2 = abs(derived%J2_coefficient) > tini
