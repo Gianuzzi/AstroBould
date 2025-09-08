@@ -9,6 +9,7 @@ module parameters
 
     !! ----  <<<<<    GLOBAL     >>>>>   -----
     integer(kind=4) :: simulation_number = 1
+    logical :: keep_integrating = .False.
     !! I/O
     integer(kind=4) :: arguments_number = 0  ! Amount of argument in command line
     logical :: configfile_exists = .False.  ! Wether if config file exists
@@ -81,10 +82,11 @@ module parameters
         real(kind=8) :: rmax_bins = - uno ! -1 means last particle (initial)
         ! Conditions for Collision/Escape - 
         real(kind=8) :: min_distance = cero
-        real(kind=8) :: max_distance = infinity
-        logical :: use_merge_part_ast = .True.
-        logical :: use_merge_part_moon = .True.
+        real(kind=8) :: max_distance = cero  ! Means no check
+        logical :: use_merge_part_mass = .True.
         logical :: use_merge_massive = .True.
+        logical :: use_stop_no_part_left = .True.
+        logical :: use_stop_no_moon_left = .True.
         ! Manual |(t)imes omega(t) mass_add(t)| file -
         logical :: use_tomfile = .False.
         character(30) :: tomfile = ""
@@ -147,6 +149,8 @@ module parameters
         logical :: update_bins = .False.
         ! Merges
         logical :: use_any_merge = .False.
+        ! Stops
+        logical :: use_any_stop = .False.
         ! Chaos
         logical :: use_chaos = .False.  ! Need to output chaos values
         logical :: use_flush_chaos = .False.  ! Flush at every checkpoint
@@ -216,7 +220,7 @@ module parameters
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    POINTERS     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     procedure (write_to_unit_template), pointer :: write_to_general => null ()
     procedure (write_to_unit_template), pointer :: write_to_screen => null ()
-    procedure (write_to_unit_template), pointer :: write_to_chaos => null ()
+    procedure (write_ch_to_unit_template), pointer :: write_to_chaos => null ()
     procedure (write_to_unit_template), pointer :: write_a_to_individual => null ()
     procedure (write_i_to_unit_template), pointer :: write_m_to_individual => null ()
     procedure (write_i_to_unit_template), pointer :: write_p_to_individual => null ()
@@ -248,6 +252,14 @@ module parameters
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: unit
         end subroutine write_to_unit_template
+
+        subroutine write_ch_to_unit_template (self, other, unit)
+            import :: system_st     ! bring type into scope
+            implicit none
+            type(system_st), intent(in) :: self
+            type(system_st), intent(in) :: other
+            integer(kind=4), intent(in) :: unit
+        end subroutine write_ch_to_unit_template
 
     end interface
 
@@ -302,6 +314,7 @@ module parameters
             integer(kind=4) :: i, j
             logical :: aux_logical = .False.
             integer(kind=4) :: aux_integer
+            integer(kind=4) :: merge_type = 0, stop_type = 0
             character(20) :: aux_character20
             character(30) :: aux_character30
 
@@ -394,10 +407,45 @@ module parameters
                         params%particlesfile = ""
                     case ("--noconfig")
                         use_config = .False.  ! Inout variable
-                    case ("--merge")
-                        params%use_merge_massive = .True.
-                    case ("--nomerge")
-                        params%use_merge_massive = .False.
+                    case ("-merge")
+                        call get_command_argument(i+1, aux_character20)
+                        read (aux_character20,*) merge_type
+                        if (merge_type .eq. 0) then ! No merge
+                            params%use_merge_part_mass = .False.
+                            params%use_merge_massive = .False.
+                        else if (merge_type .eq. 1) then ! Only particle-massive
+                            params%use_merge_part_mass = .True.
+                            params%use_merge_massive = .False.
+                        else if (merge_type .eq. 2) then ! Only massive-massive
+                            params%use_merge_part_mass = .False.
+                            params%use_merge_massive = .True.
+                        else if (merge_type .eq. 3) then ! All merges
+                            params%use_merge_part_mass = .True.
+                            params%use_merge_massive = .True.
+                        else
+                            write (*,*) "ERROR: Merge type not recognized: ", merge_type
+                            stop 1
+                        end if
+                    case ("-stopif")
+                        call get_command_argument(i+1, aux_character20)
+                        read (aux_character20,*) stop_type
+                        if (stop_type .eq. 0) then ! No stop
+                            params%use_stop_no_moon_left = .False.
+                            params%use_stop_no_part_left = .False.
+                        else if (stop_type .eq. 1) then ! Only if no more moons
+                            params%use_stop_no_moon_left = .True.
+                            params%use_stop_no_part_left = .False.
+                        else if (stop_type .eq. 2) then ! Only if no more particles
+                            params%use_stop_no_moon_left = .False.
+                            params%use_stop_no_part_left = .True.
+                        else if (stop_type .eq. 3) then ! Stop if any deactivation
+                            params%use_stop_no_moon_left = .True.
+                            params%use_stop_no_part_left = .True.
+                        else
+                            write (*,*) "ERROR: Stop criteria not recognized: ", stop_type
+                            stop 1
+                        end if
+                    aux_integer = 1
                     case ("-parallel")
                         params%use_parallel = .True.
                         call get_command_argument(i+1, aux_character20)
@@ -444,8 +492,10 @@ module parameters
                         write (*,*) "    -partfile    : Utilizar archivo de partículas que sigue"
                         write (*,*) "    --nopartfile : No utilizar archivo de partículas"
                         write (*,*) "    --noconfig   : No leer archivo de configuración"
-                        write (*,*) "    --merge      : Combinar objetos masivos que colisionen"
-                        write (*,*) "    --nomerge    : No Combinar objetos masivos que colisionen"
+                        write (*,*) "    -merge       : Combinar objetos que colisiones de tipo que sigue: "
+                        write (*,*) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos"
+                        write (*,*) "    -stopif      : Detener la integración si no quedan más objetos del tipo que sigue:"
+                        write (*,*) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
                         write (*,*) "    -parallel    : Paralelizar usando la cantida de thread que sique"                        
                         write (*,*) "    --parallel   : Paralelizar usando todos los threads disponibles"
                         write (*,*) "    --noparallel : No usar paralelización para lunas/partículas"
@@ -673,23 +723,29 @@ module parameters
                             read (value_str, *) params%min_distance
                         case("max distance fr")
                             read (value_str, *) params%max_distance
-                        case("particle-astero")
+                        case("particle-massiv")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                                params%use_merge_part_ast = .True.
+                                params%use_merge_part_mass = .True.
                             else
-                                params%use_merge_part_ast = .False.
-                            end if
-                        case("particle-moon m")
-                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                                params%use_merge_part_moon = .True.
-                            else
-                                params%use_merge_part_moon = .False.
+                                params%use_merge_part_mass = .False.
                             end if
                         case("massive merges ")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 params%use_merge_massive = .True.
                             else
                                 params%use_merge_massive = .False.
+                            end if
+                        case("stop if no part")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%use_stop_no_part_left = .True.
+                            else
+                                params%use_stop_no_part_left = .False.
+                            end if
+                        case("stop if no moon")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%use_stop_no_moon_left = .True.
+                            else
+                                params%use_stop_no_moon_left = .False.
                             end if
                         case("input time-omeg")
                             if ((to_lower(trim(value_str)) == "n") .or. &
@@ -1030,7 +1086,14 @@ module parameters
             ! end if         
 
             ! Merges
-            derived%use_any_merge = derived%use_merge_part_ast .or. derived%use_merge_part_moon .or. derived%use_merge_massive
+            if (derived%Nparticles .eq. 0) derived%use_merge_part_mass = .False.  ! Deactivate it
+            if (derived%Nmoons .eq. 0) derived%use_merge_massive = .False.  ! Deactivate it
+            derived%use_any_merge = derived%use_merge_part_mass .or. derived%use_merge_massive
+
+            ! Stops
+            if (derived%Nparticles .eq. 0) derived%use_stop_no_part_left = .False.  ! Deactivate it
+            if (derived%Nmoons .eq. 0) derived%use_stop_no_moon_left = .False.  ! Deactivate it
+            derived%use_any_stop = derived%use_stop_no_part_left .or. derived%use_stop_no_moon_left
 
             ! Error
             if (derived%error_digits < 1) then
@@ -1274,7 +1337,7 @@ module parameters
                     flush_chaos => rewind_a_file
                 end if
             else 
-                write_to_chaos => do_not_write
+                write_to_chaos => do_not_write_ch
                 flush_chaos => do_nothing_i
             end if
 
@@ -1340,6 +1403,52 @@ module parameters
             nullify(flush_chaos)
         end subroutine nullify_pointers
 
+        ! Check if keep integrating after collisions
+        subroutine check_after_col(sistema, simu, keep)
+            type(system_st), intent(in) :: sistema
+            type(sim_params_st), intent(in) :: simu
+            logical, intent(inout) :: keep
+
+            if ((.not. simu%use_merge_part_mass) .and. sistema%Nparticles_active < sistema%Nparticles) then
+                if (sim%use_screen) then
+                    write (*,*) ACHAR(10)
+                    write (*,*) "A particle-massive merge body occured."
+                end if
+                keep = .False.
+            end if
+            if ((.not. simu%use_merge_massive) .and. sistema%Nmoons_active < sistema%Nmoons) then
+                if (simu%use_screen) then
+                    write (*,*) ACHAR(10)
+                    write (*,*) "A massive-massive merge body occured."
+                end if
+                keep = .False.
+            end if
+        end subroutine check_after_col
+
+        ! Check if keep integrating after escapes (and collisions)
+        subroutine check_after_esc(sistema, simu, keep)
+            type(system_st), intent(in) :: sistema
+            type(sim_params_st), intent(in) :: simu
+            logical, intent(inout) :: keep
+            
+            if (simu%use_stop_no_part_left .and. sistema%Nparticles_active .eq. 0 .and. system%Nparticles > 0) then
+                if (simu%use_screen) then
+                    write (*,*) ACHAR(10)
+                    write (*,*) "No more particles left."
+                end if
+                keep = .False.
+            end if
+            if (sim%use_stop_no_moon_left .and. system%Nmoons_active .eq. 0 .and. system%Nmoons > 0) then
+                if (simu%use_screen) then
+                    write (*,*) ACHAR(10)
+                    write (*,*) "No more moons left."
+                end if
+                keep = .False.
+            end if
+        end subroutine check_after_esc
+
+        ! IO subroutines (and dummies)
+
         subroutine flush_to_file(unit_file)
             implicit none
             integer(kind=4), intent(in) :: unit_file
@@ -1378,5 +1487,12 @@ module parameters
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: unit_file
         end subroutine do_not_write
+
+        subroutine do_not_write_ch(self, other, unit_file)
+            implicit none
+            type(system_st), intent(in) :: self
+            type(system_st), intent(in) :: other
+            integer(kind=4), intent(in) :: unit_file
+        end subroutine do_not_write_ch
 
 end module parameters

@@ -1284,10 +1284,10 @@ module integrators
                 do k = 1, kmax ! Evaluate the sequence of modiﬁed midpoint integrations.
                     xnew = x + h
                     if (abs(xnew - x) < SAFE_LOW) then !E_TOL?
-                        print*, "Step size underflow in bstep", abs(xnew - x), x
-                        ! exit main_loop ! Luckily, hexitptr will handle it
+                        print*, "Step size underflow in bstep at ", x
+                        exit main_loop ! Luckily, hexitptr will handle it
                         ! stop 2
-                        return
+                        ! return
                     end if
                     call mmid (ysav, der, sizey, x, h, nseq(k), yseq, dydt)
                     yscal = abs (y) + abs (h * der) + SAFE_LOW

@@ -13,9 +13,11 @@ program main
     character(20) :: aux_character20
     character(30) :: aux_character30
     logical :: aux_logical
-    real(kind=8) :: aux_real, aux_real2(2)
+    real(kind=8) :: aux_real
     real(kind=8), dimension(:,:), allocatable :: aux_2D  ! To read files
-    integer(kind=4) :: i, j, last_active ! Loops
+    integer(kind=4) :: i, j  ! Loops
+    integer(kind=4) :: new_Nactive = 0,  y_nvalues = 0
+    integer(kind=4) :: unit_file = -1  ! Where to write escapes/collisions
     
     use_configfile = .True. ! Usar archivo de configuración
     arguments_number = command_argument_count()
@@ -87,15 +89,18 @@ program main
         end if
 
         !!!! Merges
-        input%use_merge_part_ast = .False. ! Merge particles into asteroid
-        input%use_merge_part_moon = .False. ! Merge particles into moons
-        input%use_merge_massive = .False. ! Merge massive bodies
+        input%use_merge_part_mass = .True. ! Merge particles into asteroid
+        input%use_merge_massive = .True. ! Merge massive bodies
+
+        !!!! Stops
+        input%use_stop_no_moon_left = .True. ! Stop if no more moons left
+        input%use_stop_no_part_left = .True. ! Stop if no more particles left
         
         !!!! Stokes
         input%use_stokes = .False.
-        input%stokes_a_damping_time = infinity                                  ! [day]
+        input%stokes_a_damping_time = infinity                           ! [day]
         input%stokes_e_damping_time = input%stokes_a_damping_time / 1.d2 ! [day]
-        input%stokes_active_time = cero                                         ! [day] Tiempo que actúa stokes
+        input%stokes_active_time = cero                                  ! [day] Tiempo que actúa stokes
 
         !!!! Naive-Stokes (drag)
         input%use_drag = .False.
@@ -163,9 +168,9 @@ program main
     end if
     
     ! Init derived parameters
-    sim%input_params_st = input
-    ! input_params%input_params_st = sim
+    sim%input_params_st = input ! Create sim with input parameters
     call set_derived_parameters(sim) ! Inicializamos parámetros derivados
+    if (sim%use_screen) unit_file = 6  ! Unit_file to std out ( for collisions and escapes )
 
     
     ! <> Check Output
@@ -557,11 +562,16 @@ program main
         write (*,s1r1) "  rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
         write (*,s1r1) "  rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
         if (sim%use_any_merge) then
-            if (sim%use_merge_part_ast) write (*,*) " Colliding particles into the asteroid will be removed."
-            if (sim%use_merge_part_moon) write (*,*) " Colliding particles into moons will be removed."
+            if (sim%use_merge_part_mass) write (*,*) " Colliding particles into massive bodies will be removed."
             if (sim%use_merge_massive) write (*,*) " Colliding massive bodies will be merged."
         else
             write (*,*) " Collisions will not be solved."
+        end if
+        if (sim%use_any_stop) then
+            if (sim%use_stop_no_part_left) write (*,*) " Simulation will stop if no more particles are left."
+            if (sim%use_stop_no_moon_left) write (*,*) " Simulation will stop if no more moons are left."
+        else
+            write (*,*) " Simulation will stop if no more particles and moons are left."
         end if
         write (*,*) ACHAR(5)
     end if
@@ -753,6 +763,9 @@ program main
     y_arr_new = cero
     y_der = cero
 
+    ! get amount of values of Y to yse
+    y_nvalues = get_index(sim%Nactive) + 3  ! Update nvalues to use in y
+
     ! Get Arrays to integrate
     call generate_arrays(system, m_arr, R_arr, y_arr)
 
@@ -765,7 +778,7 @@ program main
 
     !!! Check workers
     if (sim%use_parallel) then
-        aux_int = MIN(MAX(sim%Nactive, 3), my_threads)
+        aux_int = MIN(MAX(sim%Ntotal, 3), my_threads)
         if (aux_int .ne. my_threads) then
             my_threads = aux_int
             !$ call OMP_SET_NUM_THREADS(my_threads)
@@ -789,7 +802,7 @@ program main
 
     !!! Check if not too much multiple files
     if (sim%use_multiple_outputs) then
-        if (sim%Nactive > 1000) then
+        if (sim%Ntotal > 1000) then
             write (*,*) ACHAR(5)
             write (*,*) "WARNING: More than 1000 output files will be created."
             write (*,*) "         This could generate an issue."
@@ -841,25 +854,35 @@ program main
     if (sim%use_datafile) open (unit=20, file=trim(sim%datafile), status='replace', action='write', position="append")
     !! Archivos individuales
     if (sim%use_multiple_outputs) then
-        do i = 0, sim%Nactive
+        do i = 0, sim%Ntotal  ! 0 is the asteroid
             write (aux_character20, *) i
             open (unit=200+i, file=trim(sim%multfile) // "_" // trim(adjustl(aux_character20)), &
                 & status='replace', action='write', position="append")
         end do
     end if
+    !! Chaos File
     if (sim%use_chaosfile) open (unit=40, file=trim(sim%chaosfile), status='replace', action='readwrite', position="append")
+
     !!!!!! MAIN LOOP INTEGRATION !!!!!!!
+    keep_integrating = .True.  ! Init flag
+
     ! CHECK INITIAL CONDITIONS
-    call resolve_collisions(system, sim%min_distance)
-    call resolve_escapes(system, sim%max_distance)
+    ! Apply colissions/escapes and checks
+    call resolve_collisions(system, sim%min_distance, unit_file)
+    call check_after_col(system, sim, keep_integrating)
+    call resolve_escapes(system, sim%max_distance, unit_file)
+    call check_after_esc(system, sim, keep_integrating)
+
+    ! Update Nactive and y_arr if necessary
+    call get_Nactive(system, new_Nactive)
+    if (new_Nactive < sim%Nactive) then
+        sim%Nactive = new_Nactive  ! Update Nactive
+        y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+        call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
+    end if
+    
+    ! Update Chaos
     call update_chaos(system, sim%use_baryc_output)
-
-    ! Set last active
-    sim%Nactive = system%Nmoons_active + system%Nparticles_active
-    last_active = get_index(1 + sim%Nactive) + 3  ! +3 bc 4 equs
-
-    ! Update initial y ?    
-    if (sim%Nactive < sim%Nmoons + sim%Nparticles) call generate_arrays(system, m_arr, R_arr, y_arr)
 
     !! Reduce threads if necessary...
     if (sim%use_parallel) then
@@ -909,19 +932,20 @@ program main
         
         ! Check if all done
         !! Time end
-        if (j == checkpoint_number + 1) then
-            if (sim%use_screen) then
-                write (*,*) ACHAR(5) 
-                write (*,s1r1) "Integration finished at time = ", time / unit_time, "[days]"
-            end if
-            exit main_loop
-        end if
+        if (j == checkpoint_number + 1) keep_integrating = .False.
 
-        !! Particles/Moons left
-        if (system%Nmoons_active + system%Nparticles_active == 0) then
+        !! Check if Particles/Moons left
+        if (sim%Nactive == 0 .and. keep_integrating) then
             if (sim%use_screen) then
                 write (*,*) ACHAR(5) 
                 write (*,*) " No more active particles/moons left."
+            end if
+            keep_integrating = .False.
+        end if
+
+        ! Keep going?
+        if (.not. keep_integrating) then
+            if (sim%use_screen) then
                 write (*,*) ACHAR(5) 
                 write (*,s1r1) "Integration finished at time = ", time / unit_time, "[days]"
             end if
@@ -945,33 +969,35 @@ program main
                 write (*,*) ACHAR(5)
             end if
 
-            ! Check for colissions/escapes
-            call resolve_collisions(system, sim%min_distance)
-            call resolve_escapes(system, sim%max_distance)
+            ! Apply colissions/escapes and checks
+            call resolve_collisions(system, sim%min_distance, unit_file)
+            call check_after_col(system, sim, keep_integrating)
+            call resolve_escapes(system, sim%max_distance, unit_file)
+            call check_after_esc(system, sim, keep_integrating)
 
-            ! Check if generate new arrays
-            if ((system%Nmoons_active + system%Nparticles_active) < sim%Nactive) then
-                ! ReSet last active
-                sim%Nactive = system%Nmoons_active + system%Nparticles_active
-                last_active = get_index(1 + sim%Nactive) + 3  ! +3 bc 4 equs
+            ! Update Nactive and y_arr if necessary
+            call get_Nactive(system, new_Nactive)
+            if (new_Nactive < sim%Nactive) then
+                sim%Nactive = new_Nactive  ! Update Nactive
+                y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
             end if
 
             call generate_arrays(system, m_arr, R_arr, y_arr)  ! Mandatory bc of new asteroid
         end if
 
         !!! Execute an integration method (uncomment/edit one of these)
-        ! call integ_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, &
-        !     & Ralston4, timestep, y_arr_new(:last_particle), check_continue_ptr)
-        ! call rk_half_step_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, &
-        !     & Runge_Kutta5, 5, sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:last_particle), check_continue_ptr)
-        ! call embedded_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, Dormand_Prince8_7, &
-        !    & sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:last_particle), check_continue_ptr)
-        call BStoer_caller (time, y_arr(:last_active), adaptive_timestep, dydt, &
-            & sim%error_tolerance, timestep, y_arr_new(:last_active), check_func)
-        ! call BStoer_caller2 (time, y_arr(:last_particle), adaptive_timestep, dydt, &
-        !     & sim%error_tolerance, timestep, y_arr_new(:last_particle), check_continue_ptr)
-        ! call leapfrog_caller (time, y_arr(:last_particle), adaptive_timestep, dydt, &
-        !     & leapfrof_KDK, sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:last_particle), check_continue_ptr)
+        ! call integ_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
+        !     & Ralston4, timestep, y_arr_new(:y_nvalues), check_func)
+        ! call rk_half_step_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
+        !     & Runge_Kutta5, 5, sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:y_nvalues), check_func)
+        ! call embedded_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, Dormand_Prince8_7, &
+        !    & sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:y_nvalues), check_func)
+        call BStoer_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
+            & sim%error_tolerance, timestep, y_arr_new(:y_nvalues), check_func)
+        ! call BStoer_caller2 (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
+        !     & sim%error_tolerance, timestep, y_arr_new(:y_nvalues), check_func)
+        ! call leapfrog_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
+        !     & leapfrof_KDK, sim%error_tolerance, y_nvalues, min_timestep, timestep, y_arr_new(:y_nvalues), check_func)
     
         ! Check if it might be hard_exit
         if (hexit_arr(1) .ne. 0) then
@@ -992,22 +1018,27 @@ program main
 
         y_arr(1) = mod(y_arr(1), twopi)  ! Modulate theta
 
-
         ! Update from y_new
         call update_system_from_array(system, time, y_arr)
 
-        ! Check for colissions/escapes
-        call resolve_collisions(system, sim%min_distance)
-        call resolve_escapes(system, sim%max_distance)
-        call update_chaos(system, sim%use_baryc_output)
+        ! Apply colissions and check
+        call resolve_collisions(system, sim%min_distance, unit_file)
+        call check_after_col(system, sim, keep_integrating)
 
-        ! Check if generate new arrays
-        if ((system%Nmoons_active + system%Nparticles_active) < sim%Nactive) then
-            ! Set last active
-            sim%Nactive = system%Nmoons_active + system%Nparticles_active
-            last_active = get_index(1 + sim%Nactive) + 3  ! +3 bc 4 equs
-            call generate_arrays(system, m_arr, R_arr, y_arr)  ! These arrays go round and round....
+        ! Apply escapes and check
+        call resolve_escapes(system, sim%max_distance, unit_file)
+        call check_after_esc(system, sim, keep_integrating)
+
+        ! Update Nactive and y_arr if necessary
+        call get_Nactive(system, new_Nactive)
+        if (new_Nactive < sim%Nactive) then
+            sim%Nactive = new_Nactive  ! Update Nactive
+            y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+            call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
         end if
+        
+        ! Update Chaos
+        call update_chaos(system, sim%use_baryc_output)
         
         ! Output
         if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) then
@@ -1032,7 +1063,7 @@ program main
             call write_to_general(system, 20)
             call flush_output(20)
             !$OMP SECTION
-            call write_to_chaos(system, 40)
+            call write_to_chaos(system, initial_system, 40)
             call flush_chaos(40) ! Update chaos
             !$OMP END SECTIONS
             !$OMP END PARALLEL
@@ -1078,7 +1109,7 @@ program main
             else
                 rewind(40)
             end if
-            call write_chaos(system, 40)
+            call write_chaos(initial_system, system, 40)
             close (40)
             !! Mensaje
             if (sim%use_screen) then 
@@ -1088,8 +1119,8 @@ program main
         end if
         if (sim%use_datascreen) then
             write (*,*) ACHAR(10)        
-            write (*,*) "Chaos [i, bad, tmax, MMR_ini, MMR_fin, a_min, a_max, Delta a, e_min, e_max, Delta_e]:"
-            call write_chaos(system, 6)
+            write (*,*) "Chaos:"
+            call write_chaos(initial_system, system, 6)
         end if
     end if
 

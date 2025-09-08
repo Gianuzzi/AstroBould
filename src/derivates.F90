@@ -108,8 +108,8 @@ module derivates
                     dr = sqrt(dr2)
 
                     ! Check if collision
-                    if (dr < boulders_data(i,2)) hexit_arr(j) = 1
-                    if (hexit_arr(j) > 0) cycle  ! Collision !!
+                    if (dr < boulders_data(i,2)) hexit_arr(j) = 1  ! 1 means collision with asteroid / boulders
+                    ! if (hexit_arr(j) > 0) cycle  ! Collision !!
 
                     ! Particle acceleration
                     der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - G * boulders_data(i,1) * dr_vec / (dr2 * dr)  ! G mBoul (x, y) / r³
@@ -126,10 +126,10 @@ module derivates
                     dr2 = dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2)
                     dr = sqrt(dr2)
                     ! Check if collision or escape
-                    if (dr < R_arr(1) + R_arr(j)) hexit_arr(j) = 1
-                    if (dr < sim%min_distance) hexit_arr(j) = 1
-                    if (dr > sim%max_distance) hexit_arr(j) = 2
-                    if (hexit_arr(j) > 0) cycle  ! Collision or Escape !!
+                    if (dr < R_arr(1) + R_arr(j)) hexit_arr(j) = 1  ! 1 means collision with asteroid / boulders
+                    if (dr < sim%min_distance) hexit_arr(j) = 1  ! 1 means collision with asteroid / boulders
+                    if (dr > sim%max_distance .and. sim%max_distance > cero) hexit_arr(j) = 3  ! 3 means escape
+                    ! if (hexit_arr(j) > 0) cycle  ! Collision or Escape !!
 
                     !! BOULDER AND MOON
                     dr_vec = coords_M(1:2) - boulders_coords(i,1:2)  ! From Boulder to Moon
@@ -137,8 +137,8 @@ module derivates
                     dr = sqrt(dr2)
 
                     ! Check if collision
-                    if (dr < boulders_data(i,2) + R_arr(j)) hexit_arr(j) = 1
-                    if (hexit_arr(j) > 0) cycle  ! Collision !!
+                    if (dr < boulders_data(i,2) + R_arr(j)) hexit_arr(j) = 1  ! 1 means collision with asteroid / boulders
+                    ! if (hexit_arr(j) > 0) cycle  ! Collision !!
 
                     ! Moon acceleration per unit mass (WITHOUT MASSES)
                     acc_grav_m = - G * dr_vec / (dr2 * dr)  !! G (x, y) / r³
@@ -169,14 +169,14 @@ module derivates
                     jdx = get_index(j)
                     coords_P = y(jdx:jdx+3)  ! Particle
 
-                    !! BOULDER AND PARTICLE
+                    !! MOON AND PARTICLE
                     dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon 1 (M) to Particle
                     dr2 = dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2)
                     dr = sqrt(dr2)
 
                     ! Check if collision
-                    if (dr < R_arr(i)) hexit_arr(j) = 1
-                    if (hexit_arr(j) > 0) cycle  ! Collision !!
+                    if (dr < R_arr(i)) hexit_arr(j) = 2  ! 2 means collision with moon
+                    ! if (hexit_arr(j) > 0) cycle  ! Collision !!
 
                     ! Particle acceleration
                     der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - G * m_arr(i) * dr_vec / (dr2 * dr)  ! G mMoon (x, y) / r³
@@ -196,8 +196,8 @@ module derivates
                     dr = sqrt(dr2)
 
                     ! Check if collision
-                    if (dr < R_arr(i) + R_arr(j)) hexit_arr(j) = 1
-                    if (hexit_arr(j) > 0) cycle  ! Collision !!
+                    if (dr < R_arr(i) + R_arr(j)) hexit_arr(j) = 2  ! 2 means collision with moon
+                    ! if (hexit_arr(j) > 0) cycle  ! Collision !!
 
                     ! Moons acceleration per unit mass
                     acc_grav_m = G * dr_vec / (dr2 * dr)  !! G (x, y) / r³
@@ -248,8 +248,8 @@ module derivates
 
                 ! Check if collision or Escape
                 if (dr < sim%min_distance) hexit_arr(j) = 1
-                if (dr > sim%max_distance) hexit_arr(j) = 2
-                if (hexit_arr(j) > 0) cycle  ! Collision or Escape !!
+                if (dr > sim%max_distance .and. sim%max_distance > cero) hexit_arr(j) = 2
+                ! if (hexit_arr(j) > 0) cycle  ! Collision or Escape !!
 
                 ! Check if more needed
                 if (use_extra) then
