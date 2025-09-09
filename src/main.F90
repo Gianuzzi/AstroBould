@@ -465,8 +465,8 @@ program main
     ! Energy and ang_mom
     if (sim%use_screen) then
         write (*,s1r1) "   Mass            : ", system%mass / unit_mass, "[kg]"
-        write (*,s1r1) "   Energy          : ", system%energy / unit_ener * (1d6 / segundo), "[J]"
-        write (*,s1r1) "   Angular Momentum: ", system%ang_mom / unit_angm * (1d6 / segundo**2), "[J s⁻¹]"
+        write (*,s1r1) "   Energy          : ", system%energy / unit_ener * (metro**2 / segundo), "[J]"
+        write (*,s1r1) "   Angular Momentum: ", system%ang_mom / unit_angm * (metro**2 / segundo**2), "[J s⁻¹]"
         write (*,*) ACHAR(5)
     end if
 
