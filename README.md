@@ -23,7 +23,7 @@ make
 Default copilator is GNU (_gfortran_). If available, the compilation could be made using the IntelFortranCompiler (_ifx_) or AMDFortranCompiler (_flang_), by running
 
 ```bash
-make IFORT=1
+make INTEL=1
 ```
 
 or

@@ -404,6 +404,7 @@ module auxiliary
                 write(funit, '(a)', advance='no') char(13) // trim(guiones) // '. FIN'
                 write(funit, *)
             end if
+            flush(funit)
         end subroutine percentage
 
 end module auxiliary

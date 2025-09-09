@@ -95,7 +95,7 @@ module accelerations
             implicit none
             real(kind=8), intent(in) :: drag_coefficient, active_timescale
             
-            if (active_timescale > cero .and. abs(drag_coef) > cero) then
+            if (active_timescale > cero .and. abs(drag_coefficient) > cero) then
                 use_drag = .True.
                 drag_coef = drag_coefficient
                 drag_time = active_timescale
@@ -137,7 +137,7 @@ module accelerations
             implicit none
             real(kind=8), intent(in) :: J2_coefficient
             
-            if (abs(J2_coef) > cero ) then
+            if (abs(J2_coef) > cero) then
                 use_J2 = .True.
                 J2_coef = J2_coefficient * 1.5d0
             else 

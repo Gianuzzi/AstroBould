@@ -517,6 +517,7 @@ program main
             if (sim%use_screen) then
                 write (*,*) "Omega Damping: linear"
                 write (*,s1r1) " tau_o :", sim%omega_lin_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"
+                write (*,*) ACHAR(5)
             end if
         else if (sim%use_exp_omega_damp) then
             call init_damping(sim%omega_exp_damping_time * unit_time, &
@@ -526,6 +527,7 @@ program main
             if (sim%use_screen) then
                 write (*,*) "Omega Damping: exponential"
                 write (*,s1r1) " tau_o :", sim%omega_exp_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"
+                write (*,*) ACHAR(5)
             end if
         else if (sim%use_poly_omega_damp) then
             call init_damping(sim%omega_exp_damp_poly_A, &
@@ -537,6 +539,7 @@ program main
                 write (*,*) "Omega Damping: poly-exponential"
                 write (*,s1r1) "  A :", sim%omega_exp_damp_poly_A
                 write (*,s1r1) "  B :", sim%omega_exp_damp_poly_B
+                write (*,*) ACHAR(5)
             end if
         end if
     end if
@@ -551,6 +554,7 @@ program main
             write (*,s1r1) " tau_a   : ", sim%stokes_a_damping_time, "[days]"
             write (*,s1r1) " tau_e   : ", sim%stokes_e_damping_time, "[days]"
             write (*,s1r1) " t_stokes: ", sim%stokes_active_time, "[days]"
+            write (*,*) ACHAR(5)
         end if
     end if
 
@@ -561,6 +565,7 @@ program main
             write (*,*) "Drag"
             write (*,s1r1) " eta   : ", sim%drag_coefficient
             write (*,s1r1) " t_drag: ", sim%drag_active_time, "[days]"
+            write (*,*) ACHAR(5)
         end if
     end if
 
@@ -569,6 +574,7 @@ program main
         call init_J2(sim%J2_coefficient)
         if (sim%use_screen) then
             write (*,s1r1) "J2:", sim%J2_coefficient, "[km⁵ day⁻²]"
+            write (*,*) ACHAR(5)
         end if
     end if
 
@@ -1032,6 +1038,7 @@ program main
     
         ! Check if it might be hard_exit
         if (hexit_arr(1) .ne. 0) then
+            print*, hexit_arr
             !! If so, the dt used is in dt_adap
             if (is_premature_exit) timestep = adaptive_timestep
 

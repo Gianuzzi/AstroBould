@@ -50,7 +50,7 @@ endif
 else  # No debug
 MYLDFLAGS := -O2
 ifeq ($(INTEL),1)
-MYFFLAGS := -fimf-domain-exclusion=15
+MYFFLAGS := -fimf-domain-exclusion=15 -funsafe-math-optimizations -funroll-loops -finit-real=zero
 else ifeq ($(AMD),1)
 MYFFLAGS := -flang-experimental-exec -fapprox-func -fno-honor-infinities -fno-honor-nans
 else
