@@ -120,6 +120,8 @@ module parameters
     type, extends(input_params_st) :: sim_params_st  !! Extra DERIVED parameters
         ! Bodies
         integer(kind=4) :: Ntotal = 0  ! Amount of all bodies (asteroid is just 1)
+        integer(kind=4) :: Npart_active = 0 ! Active particles
+        integer(kind=4) :: Nmoon_active = 0 ! Active moons
         integer(kind=4) :: Nactive = 0 ! Active bodies
         logical :: use_boulders = .False.
         logical :: use_particles = .False.
@@ -1407,7 +1409,6 @@ module parameters
         ! Nullify pointers
         subroutine nullify_pointers()
             implicit none
-
             nullify(hexitptr)
             nullify(write_to_general)
             nullify(write_to_screen)
@@ -1418,20 +1419,31 @@ module parameters
             nullify(flush_chaos)
         end subroutine nullify_pointers
 
+        ! Update sim Nactive values
+        subroutine update_sim_Nactive(simu, Npart_active, Nmoon_active)
+            implicit none
+            type(sim_params_st), intent(inout) :: simu
+            integer(kind=4), intent(in) :: Npart_active, Nmoon_active
+            simu%Npart_active = Npart_active  ! Update Npart_active
+            simu%Nmoon_active = Npart_active  ! Update Nmoon_active
+            simu%Nactive = Npart_active + Npart_active ! Update Nactive
+        end subroutine update_sim_Nactive
+
         ! Check if keep integrating after collisions
         subroutine check_after_col(sistema, simu, keep)
+            implicit none
             type(system_st), intent(in) :: sistema
             type(sim_params_st), intent(in) :: simu
             logical, intent(inout) :: keep
 
-            if ((.not. simu%use_merge_part_mass) .and. sistema%Nparticles_active < sistema%Nparticles) then
-                if (sim%use_screen) then
+            if ((.not. simu%use_merge_part_mass) .and. sistema%Nparticles_active < sistema%Nparticles_active) then
+                if (simu%use_screen) then
                     write (*,*) ACHAR(10)
                     write (*,*) "A particle-massive merge body occured."
                 end if
                 keep = .False.
             end if
-            if ((.not. simu%use_merge_massive) .and. sistema%Nmoons_active < sistema%Nmoons) then
+            if ((.not. simu%use_merge_massive) .and. sistema%Nmoons_active < sistema%Nmoons_active) then
                 if (simu%use_screen) then
                     write (*,*) ACHAR(10)
                     write (*,*) "A massive-massive merge body occured."
@@ -1442,18 +1454,19 @@ module parameters
 
         ! Check if keep integrating after escapes (and collisions)
         subroutine check_after_esc(sistema, simu, keep)
+            implicit none
             type(system_st), intent(in) :: sistema
             type(sim_params_st), intent(in) :: simu
             logical, intent(inout) :: keep
             
-            if (simu%use_stop_no_part_left .and. sistema%Nparticles_active .eq. 0 .and. system%Nparticles > 0) then
+            if (simu%use_stop_no_part_left .and. sistema%Nparticles_active .eq. 0 .and. simu%Nparticles > 0) then
                 if (simu%use_screen) then
                     write (*,*) ACHAR(10)
                     write (*,*) "No more particles left."
                 end if
                 keep = .False.
             end if
-            if (sim%use_stop_no_moon_left .and. system%Nmoons_active .eq. 0 .and. system%Nmoons > 0) then
+            if (simu%use_stop_no_moon_left .and. sistema%Nmoons_active .eq. 0 .and. simu%Nmoons > 0) then
                 if (simu%use_screen) then
                     write (*,*) ACHAR(10)
                     write (*,*) "No more moons left."

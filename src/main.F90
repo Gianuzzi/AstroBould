@@ -301,7 +301,7 @@ program main
     ! <> Set and check numbers
     !! Set
     sim%Ntotal = 1 + sim%Nmoons + sim%Nparticles
-    sim%Nactive = sim%Ntotal
+    call update_sim_Nactive(sim, sim%Nparticles, sim%Nmoons)
 
     !! Check
     if (sim%Ntotal - 1 == 0) then ! No Hay partículas para integrar?
@@ -913,7 +913,7 @@ program main
     ! Update Nactive and y_arr if necessary
     call get_Nactive(system, new_Nactive)
     if (new_Nactive < sim%Nactive) then
-        sim%Nactive = new_Nactive  ! Update Nactive
+        call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
         y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
         call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
     end if
@@ -1015,7 +1015,7 @@ program main
             ! Update Nactive and y_arr if necessary
             call get_Nactive(system, new_Nactive)
             if (new_Nactive < sim%Nactive) then
-                sim%Nactive = new_Nactive  ! Update Nactive
+                call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
                 y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
             end if
 
@@ -1038,7 +1038,6 @@ program main
     
         ! Check if it might be hard_exit
         if (hexit_arr(1) .ne. 0) then
-            print*, hexit_arr
             !! If so, the dt used is in dt_adap
             if (is_premature_exit) timestep = adaptive_timestep
 
@@ -1070,7 +1069,7 @@ program main
         ! Update Nactive and y_arr if necessary
         call get_Nactive(system, new_Nactive)
         if (new_Nactive < sim%Nactive) then
-            sim%Nactive = new_Nactive  ! Update Nactive
+            call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
             y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
             call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
         end if

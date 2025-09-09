@@ -79,7 +79,7 @@ type_gen = type(rndm())
 # -----------------
 # INPUT
 # -----------------
-use_mu_and_radius = True
+use_mu_and_radius = False
 
 # UNIDADES
 unit_angle = deg
@@ -90,14 +90,14 @@ data_in = {}
 order = ["mu_to_disk", "a", "e", "M", "w", "mmr", "radius"]
 # PARÁMETROS A VARIAR
 data_in["mu_to_disk"] = [rndm(0.0, 1.0)]  # mass particle / mass disk
-data_in["a"] = [0.0]  # [km]
+data_in["a"] = [n_steps(2.5, 5, 6) * 115]  # [km]
 data_in["e"] = [0.0]  # Podría ser: rayleigh_dist(0, 0.1, 1)
 data_in["M"] = [rndm(0.0, 360.0)]  # [unit_angle]
 data_in["w"] = [rndm(0.0, 360.0)]  # [unit_angle]
-data_in["mmr"] = [n_steps(1.4, 4, 5)]
+data_in["mmr"] = [0.0]
 data_in["radius"] = [0.0]  # [km]
 
-# Disk mass ratio to asteroid mass. 
+# Disk mass ratio to asteroid mass.
 disk_to_ast_mass_ratio = 0.1
 
 # Nota:
@@ -175,17 +175,16 @@ def check(data_in: dict):
 def make_ic(data_in: dict):
     """Expand input dict into combinations array."""
     check(data_in)  # Assuming this validates data_in
-    
+
     # Get first element for each name (in correct order)
     first_values = {
         name: data_in[name][0] for name in order if name in data_in
-        }
+    }
 
     # Base combinations
     base = [list(combo.values()) for combo in product_dict(**first_values)]
 
     return np.asarray(base).reshape(-1, len(order))
-
 
 
 def check_continue(outfile: str):
@@ -227,9 +226,11 @@ def shuffle_matrix(matrix: np.ndarray):
 if __name__ == "__main__":
     # Remove mass if not needed
     if not use_mu_and_radius:
-        if "mu_to_disk" in order: order.remove("mu_to_disk")
-        if "radius" in order: order.remove("radius")
-    
+        if "mu_to_disk" in order:
+            order.remove("mu_to_disk")
+        if "radius" in order:
+            order.remove("radius")
+
     # Use only keys in "order"
     sub_data_in = {key: data_in[key] for key in order if key in data_in}
 
@@ -251,11 +252,10 @@ if __name__ == "__main__":
     if shuffle:
         data_out = shuffle_matrix(data_out)
 
-    # Pasamos de kg a mass ratio si es necesario    
+    # Pasamos de kg a mass ratio si es necesario
     if use_mu_and_radius and (disk_to_ast_mass_ratio > 0):
         mass_idx = order.index("mu_to_disk")
         data_out[:, mass_idx] = data_out[:, mass_idx] * disk_to_ast_mass_ratio
-            
 
     # Guardamos
     if not check_continue(filename):

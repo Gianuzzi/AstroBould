@@ -67,7 +67,7 @@ workers = 1  # Número de procesadores a usar (workers)
 
 # Merge kind
 ## 0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos
-merge = 0  # Tipo de merge
+merge = 3  # Tipo de merge
 
 # Stop if no more
 ## 0: No detener, 1: Luna, 2: Partícula, 3: Ambos
@@ -75,12 +75,12 @@ stopif = 0  # Tipo de stop if
 
 # Input # ("" o False si no se usa)
 config = "config.ini"  # Archivo de configuración
-bodiesfile = "moons.in"  # Archivo de partículas o lunas
+bodiesfile = "particles.in"  # Archivo de partículas o lunas
 tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 # Output # ("" o False si no se usa)
 new_dir = True  # Directorio donde volcar las salidas.
-datafile = "salida"  # Nombre del archivo de salida de datos (sin extensión)
+datafile = "salida"  # Nombre del archivo de salidas de datos (sin extensión)
 final_chaos = "chaos"  # Final Chaos Output file name (sin extensión)
 suffix = ""  # Suffix for the output files
 # Screen #  (both require all_in_one=True)
@@ -413,7 +413,7 @@ def make_chaos(final_chaos, suffix=""):
         num_chunks = len(file_list) // chunk_size + 1
         # AWK program (portable): on first line of each file FNR==1 -> set f=start ; increment start
         # then print file-index f, tab, and the original line.
-        awk_prog = 'FNR==1{f=start; start++} {print f "%7d %s\n", f, $0}'
+        awk_prog = r'FNR==1{f=start; start++} {printf("%7d %s\n", f, $0)}'
         for chunk_idx in range(num_chunks):
             chunk_files = file_list[
                 chunk_idx * chunk_size : (chunk_idx + 1) * chunk_size
@@ -452,82 +452,6 @@ def make_chaos(final_chaos, suffix=""):
                 with open(file, "r") as f_in:
                     for line in f_in:
                         f_out.write(f"{idx:7d} {line}")
-
-
-# Crear archivo salida final
-def make_sal(salida, suffix=""):
-    # Ruta a la carpeta raíz que contiene las subcarpetas con los archivos
-    root_dir = wrk_dir
-
-    # Lista para almacenar los nombres de los archivos
-    file_list = []
-
-    # Recorre todas las subcarpetas en la carpeta raíz
-    for subdir in os.listdir(root_dir):
-        # Verifica si el nombre de la subcarpeta comienza con 'pref'
-        if subdir.startswith(pref):
-            subdir_path = os.path.join(root_dir, subdir)
-            # Recorre todos los archivos en la subcarpeta
-            for filename in os.listdir(subdir_path):
-                # Verifica si el nombre del archivo comienza con
-                # <salida> y termina con ".out"
-                if (
-                    filename.startswith("salida")
-                    and filename.endswith(".out")
-                    and "_undone" not in filename
-                    and (suffix in filename)
-                ):
-                    filepath = os.path.join(subdir_path, filename)
-                    file_list.append(filepath)
-
-    # Ordena los nombres de los archivos por el valor de i en "<salida>.out"
-    if suffix == "":
-        file_list = sorted(
-            file_list, key=lambda x: int(x.split("salida")[1].split(".out")[0])
-        )
-    else:
-        file_list = sorted(
-            file_list,
-            key=lambda x: int(
-                x.split("salida")[1].split(".out")[0].split(suffix)[0]
-            ),
-        )
-
-    # Concatena los archivos
-    outs = salida.split(".")
-    outs.insert(-1, suffix) if len(outs) > 1 else outs.insert(1, suffix)
-    outs.insert(-1, ".out")
-    salida = "".join(outs)
-    # Process in chunks
-    num_chunks = len(file_list) // chunk_size + (
-        len(file_list) % chunk_size > 0
-    )
-    try:
-        with open(os.path.join(wrk_dir, salida), "wb") as outfile:
-            for i in range(num_chunks):
-                this_chunk = file_list[i * chunk_size : (i + 1) * chunk_size]
-                print(
-                    f"Processing chunk {i+1}/{num_chunks} "
-                    + f"with {len(this_chunk)} files..."
-                )
-
-                # Run `cat` on the current chunk (passing list directly)
-                p = subprocess.run(
-                    ["cat"] + this_chunk,
-                    stdout=outfile,
-                    cwd=wrk_dir,
-                    check=True,
-                )
-                p.check_returncode()
-    except (subprocess.CalledProcessError, OSError) as e:
-        print(f"Could not create '{salida}' with cat.")
-        print(f" Error: {e}")
-        print(" Trying with pure python...")
-        with open(os.path.join(wrk_dir, salida), "w") as f_out:
-            for file in file_list:
-                with open(file, "r") as f_in:
-                    for line in f_in:
-                        f_out.write("{}".format(line))
 
 
 # Definir nombre único para wrk_dir
