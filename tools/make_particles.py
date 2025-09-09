@@ -12,6 +12,9 @@ deg = 1.0
 
 # Semilla para el generador de números aleatorios
 rng = np.random.default_rng(seed=42)
+
+
+# ---------------------------------------------------------------------
 # ---------------------------------------------------------------------
 
 
@@ -76,25 +79,29 @@ type_gen = type(rndm())
 # -----------------
 # INPUT
 # -----------------
-use_mass = True
+use_mu_and_radius = True
 
 # UNIDADES
 unit_angle = deg
 
 # Data
 data_in = {}
-names = ["mass", "a", "e", "M", "w", "radius"]
-# PARÁMETROS A VARIAR (Unidades según código original)
-data_in["mass"] = [rndm(0.0, 1.0)]
-data_in["a"] = [0.0]
+# Nombres ordenados de las columnas posibles
+order = ["mu_to_disk", "a", "e", "M", "w", "mmr", "radius"]
+# PARÁMETROS A VARIAR
+data_in["mu_to_disk"] = [rndm(0.0, 1.0)]  # mass particle / mass disk
+data_in["a"] = [0.0]  # [km]
 data_in["e"] = [0.0]  # Podría ser: rayleigh_dist(0, 0.1, 1)
-data_in["M"] = [rndm(0.0, 360.0)]
-data_in["w"] = [rndm(0.0, 360.0)]
+data_in["M"] = [rndm(0.0, 360.0)]  # [unit_angle]
+data_in["w"] = [rndm(0.0, 360.0)]  # [unit_angle]
 data_in["mmr"] = [n_steps(1.4, 4, 5)]
-data_in["radius"] = [0.0]
+data_in["radius"] = [0.0]  # [km]
 
-# Disk mass (in kg)
-disk_mass = 6.3e15
+# Disk mass ratio to asteroid mass. 
+disk_to_ast_mass_ratio = 0.1
+
+# Nota:
+#     'mu_to_disk' es solo para input; el output será 'mu_to_asteroid'
 
 # -----------------
 # OUTPUT
@@ -138,13 +145,13 @@ def deg2rad(x):
 
 
 def product_dict(**kwargs):
-    keys = kwargs.keys()
-    for key in keys:
-        val = kwargs[key]
-        if not isinstance(val, (list, set, dict, np.ndarray)):
-            kwargs[key] = [val]
-    vals = kwargs.values()
-    for instance in itertools.product(*vals):
+    """Cartesian product of keyword arguments, yielding dicts."""
+    normalized = {
+        k: v if isinstance(v, (list, set, dict, np.ndarray)) else [v]
+        for k, v in kwargs.items()
+    }
+    keys, values = zip(*normalized.items())
+    for instance in itertools.product(*values):
         yield dict(zip(keys, instance))
 
 
@@ -156,29 +163,32 @@ def evaluate_generator(generator):
     return float(generator)
 
 
-def check(data_in):
-    for d in data_in.values():
-        assert len(d) == 1
-        for i, val in enumerate(d):
-            if hasattr(val, "__len__"):
-                assert len(val) > 0
+def check(data_in: dict):
+    """Validate input dict values."""
+    for values in data_in.values():
+        assert len(values) == 1, "Each entry must contain exactly one element"
+        val = values[0]
+        if hasattr(val, "__len__"):
+            assert len(val) > 0, "Inner value cannot be empty"
 
 
-def make_ic(data_in):
-    check(data_in)
-    data_aux = {}
-    data_full = {}
-    data_aux[0] = [d[0] for d in data_in.values()]
-    spl = str(0)
-    data_full[spl] = list(
-        product_dict(**{names[i]: data_aux[0][i] for i in range(len(names))})
-    )
-    data_full[spl] = [list(d.values()) for d in data_full[spl]]
-    arr = [list(d.values()) for d in product_dict(**data_full)]
-    return np.asarray(arr).reshape(-1, len(names))
+def make_ic(data_in: dict):
+    """Expand input dict into combinations array."""
+    check(data_in)  # Assuming this validates data_in
+    
+    # Get first element for each name (in correct order)
+    first_values = {
+        name: data_in[name][0] for name in order if name in data_in
+        }
+
+    # Base combinations
+    base = [list(combo.values()) for combo in product_dict(**first_values)]
+
+    return np.asarray(base).reshape(-1, len(order))
 
 
-def check_continue(outfile):
+
+def check_continue(outfile: str):
     if os.path.isfile(outfile):
         print(f"WARNING: File {outfile} already exist.")
         q = input("Do yo want to overwrite it? [y/[n]]: ")
@@ -192,13 +202,13 @@ def check_continue(outfile):
                 raise Exception("Wrong input.")
         if q.lower() in ["y", "yes", "s", "si"]:
             os.remove(outfile)
-            return True
-        print("File is not overwritten.")
-        return False
+        else:
+            print("File is not overwritten.")
+            return False
     return True
 
 
-def shuffle_matrix(matrix):
+def shuffle_matrix(matrix: np.ndarray):
     num_rows, num_cols = matrix.shape
     grouped_matrix = matrix.reshape(-1, 1, num_cols)  # group the rows together
     np.random.shuffle(grouped_matrix)  # shuffle the rows within each group
@@ -215,14 +225,24 @@ def shuffle_matrix(matrix):
 # MAIN PROGRAM
 
 if __name__ == "__main__":
+    # Remove mass if not needed
+    if not use_mu_and_radius:
+        if "mu_to_disk" in order: order.remove("mu_to_disk")
+        if "radius" in order: order.remove("radius")
+    
+    # Use only keys in "order"
+    sub_data_in = {key: data_in[key] for key in order if key in data_in}
+
     # Generamos las condiciones
-    data_out = make_ic(data_in)
+    data_out = make_ic(sub_data_in)
 
     # Iterar sobre el arreglo y evaluar los generadores
     data_out = evaluate_generator(data_out)
 
     # Ponemos unidades
-    data_out[:, [2, 3]] /= unit_angle
+    target = ["inc", "M", "w", "O"]
+    angles_indices = [idx for idx, elem in enumerate(order) if elem == target]
+    data_out[:, angles_indices] /= unit_angle
 
     # Dropeamos si es necesario
     data_out = drop(data_out)
@@ -231,13 +251,11 @@ if __name__ == "__main__":
     if shuffle:
         data_out = shuffle_matrix(data_out)
 
-    # Remove mass if not needed
-    if not use_mass:
-        data_out = data_out[:, 1:]
-    elif disk_mass > 0:
-        temp = np.sum(data_out[:, 0])
-        if temp > 0:
-            data_out[:, 0] = disk_mass * data_out[:, 0] / temp
+    # Pasamos de kg a mass ratio si es necesario    
+    if use_mu_and_radius and (disk_to_ast_mass_ratio > 0):
+        mass_idx = order.index("mu_to_disk")
+        data_out[:, mass_idx] = data_out[:, mass_idx] * disk_to_ast_mass_ratio
+            
 
     # Guardamos
     if not check_continue(filename):
@@ -246,4 +264,5 @@ if __name__ == "__main__":
             filename = filename + f"_{i}"
             i = i + 1
     np.savetxt(filename, data_out, fmt=fmt, delimiter=" ")
+
     print(f"File {filename} created.")
