@@ -137,7 +137,6 @@ def deg2rad(x):
     return np.mod(x * rad, 2 * pi)
 
 
-
 def product_dict(**kwargs):
     keys = kwargs.keys()
     for key in keys:

@@ -25,8 +25,8 @@
 # 1    ! Body ID
 # 2    ! Body type (0: Asteroid, 1: Moon, 2, Particle)
 # 3    ! result (-2: ejection,
-#                -1: Finished integration, 
-#                 0: collision with asteroid, 
+#                -1: Finished integration,
+#                 0: collision with asteroid,
 #               > 0: collision with moon)
 # 4    ! total time integrated
 # 5-13 ! initial body: theta, omega, a, e, M, w, MMR, mass, radius
@@ -235,11 +235,7 @@ if os.path.isdir(wrk_dir):
     print(
         "Checkeando integraciones ya completadas"
         + " dentro de %s..."
-        % (
-            os.path.basename(wrk_dir)
-            if cwd != wrk_dir
-            else "este directorio"
-        )
+        % (os.path.basename(wrk_dir) if cwd != wrk_dir else "este directorio")
     )
 
     done = make_done(wrk_dir, pref)
@@ -400,7 +396,7 @@ def make_chaos(final_chaos, suffix=""):
                 x.split("chaos")[1].split(".out")[0].split(suffix)[0]
             ),
         )
-    
+
     # Check
     if not file_list:
         print("No files found to concatenate.")
@@ -419,11 +415,22 @@ def make_chaos(final_chaos, suffix=""):
         # then print file-index f, tab, and the original line.
         awk_prog = 'FNR==1{f=start; start++} {print f "%7d %s\n", f, $0}'
         for chunk_idx in range(num_chunks):
-            chunk_files = file_list[chunk_idx * chunk_size : (chunk_idx + 1) * chunk_size]
-            start_for_chunk = chunk_idx * chunk_size + 1  # 1-based index for first file in this chunk
-            mode = "wb" if chunk_idx == 0 else "ab"  # write first chunk, append others
+            chunk_files = file_list[
+                chunk_idx * chunk_size : (chunk_idx + 1) * chunk_size
+            ]
+            start_for_chunk = (
+                chunk_idx * chunk_size + 1
+            )  # 1-based index for first file in this chunk
+            mode = (
+                "wb" if chunk_idx == 0 else "ab"
+            )  # write first chunk, append others
 
-            cmd = ["awk", "-v", f"start={start_for_chunk}", awk_prog] + chunk_files
+            cmd = [
+                "awk",
+                "-v",
+                f"start={start_for_chunk}",
+                awk_prog,
+            ] + chunk_files
 
             with open(final_path, mode) as outfile:
                 subprocess.run(
@@ -445,7 +452,6 @@ def make_chaos(final_chaos, suffix=""):
                 with open(file, "r") as f_in:
                     for line in f_in:
                         f_out.write(f"{idx:7d} {line}")
-
 
 
 # Crear archivo salida final
