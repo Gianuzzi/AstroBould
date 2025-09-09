@@ -10,46 +10,51 @@ EXE_FILE = ASTROBOULD # Name of the executable
 #--------------------------------------------------------------------------
 #--------------------------------------------------------------------------
 
-# Compilator configuration
-ifndef IFORT
-	IFORT = 0  # Default
+# Compilator configuration (Default)
+ifndef INTEL
+	INTEL = 0  
 endif
-
-## Check if environment variable SETVARS_COMPLETED
-#ifeq ($(SETVARS_COMPLETED), 1)
-#	IFORT = 1
-#endif
-
+ifndef AMD
+	AMD = 0
+endif
 # Check if GCC variable defined
 ifdef GCC
-	IFORT = 0
+	INTEL = 0
+	AMD = 0
 endif
 
+
 # Compilator
-ifeq ($(IFORT),1)
-# Use Intel Fortran Compiler if setvars is completed
-FC = ifx
-else
 # Default to GNU Fortran Compiler
 FC = gfortran
+
+ifeq ($(INTEL),1)
+# Use Intel Fortran Compiler if setvars is completed
+FC = ifx
+else ifeq ($(AMD),1)
+# Use Amd Fortran Compiler if setvars is completed
+FC = flang
 endif
 
 
 # Debug
 ifdef DEBUG
 MYLDFLAGS := -O0 -g
-ifeq ($(IFORT),1)
+ifeq ($(INTEL),1)
 MYFFLAGS := -traceback -fpe0 -fp-model=source -check all
+else ifeq ($(AMD),1)
+MYFFLAGS := -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow -fpmodel=source -fcheck=bounds -fcheck=array-temps -fcheck=pointer
 else
-MYFFLAGS := -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow
+MYFFLAGS := -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow 
 endif
 else  # No debug
-ifeq ($(IFORT),1)
+MYLDFLAGS := -O2
+ifeq ($(INTEL),1)
 MYFFLAGS := -fimf-domain-exclusion=15
-MYLDFLAGS := -O3
+else ifeq ($(AMD),1)
+MYFFLAGS := -flang-experimental-exec -fapprox-func -fno-honor-infinities -fno-honor-nans
 else
 MYFFLAGS := -ffinite-math-only -funsafe-math-optimizations -funroll-loops -finit-real=zero
-MYLDFLAGS := -O3
 endif
 endif
 
@@ -59,10 +64,12 @@ MYFFLAGS += -fopenmp
 endif
 
 # Compiler flags
-ifeq ($(IFORT),1)
-FFLAGS := -warn -march=x86-64-v3 -nogen-interfaces $(MYFFLAGS)
+ifeq ($(INTEL),1)
+FFLAGS := -warn -march=x86-64-v3 -nogen-interfaces -Wshadow -std=f2008 $(MYFFLAGS)
+else ifeq ($(AMD),1)
+FFLAGS := -Wall -Wextra -march=x86-64-v3 -Wshadow -std=f2008 $(MYFFLAGS)
 else
-FFLAGS := -Wall -Wextra -march=native $(MYFFLAGS)
+FFLAGS := -Wall -Wextra -march=native -Wshadow -std=f2008 $(MYFFLAGS)
 endif
 LDFLAGS = $(MYLDFLAGS)
 
@@ -115,8 +122,10 @@ $(OBJECTS): | $(OBJ_DIR)
 $(OBJ_DIR): 
 	@mkdir -p $(OBJ_DIR)
 	@{ \
-	if [ $(IFORT) -eq 1 ]; then \
+	if [ $(INTEL) -eq 1 ]; then \
 		echo "Compiling using: Intel Fortran Compiler"; \
+	elif [ $(AMD) -eq 1 ]; then \
+		echo "Compiling using: AMD Fortran Compiler"; \
 	else \
 		echo "Compiling using: GNU Fortran Compiler"; \
 	fi;\

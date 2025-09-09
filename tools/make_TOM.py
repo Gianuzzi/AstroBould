@@ -168,7 +168,7 @@ if __name__ == "__main__":
 
     # Get inferred parameters
     # Mass
-    mcm = m0 * (1 + sum(mu_b))
+    mcm = m0 * (1 + np.sum(mu_b))
     md = mu_d * mcm
     # Spin
     Omega_k = np.sqrt(G * mcm / R0**3)

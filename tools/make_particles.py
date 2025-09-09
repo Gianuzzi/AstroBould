@@ -83,14 +83,15 @@ unit_angle = deg
 
 # Data
 data_in = {}
-names = ["mass", "a", "e", "M", "w", "R"]
-# PARÁMETROS A VARIAR (Poner unidades de ser necesario)
+names = ["mass", "a", "e", "M", "w", "radius"]
+# PARÁMETROS A VARIAR (Unidades según código original)
 data_in["mass"] = [rndm(0.0, 1.0)]
 data_in["a"] = [0.0]
 data_in["e"] = [0.0]  # Podría ser: rayleigh_dist(0, 0.1, 1)
 data_in["M"] = [rndm(0.0, 360.0)]
 data_in["w"] = [rndm(0.0, 360.0)]
-data_in["R"] = [n_steps(1.4, 4, 5)]
+data_in["mmr"] = [n_steps(1.4, 4, 5)]
+data_in["radius"] = [0.0]
 
 # Disk mass (in kg)
 disk_mass = 6.3e15

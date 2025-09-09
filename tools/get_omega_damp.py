@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # factor = Omega_end / Omega0
 
 # Set real parameters
-P_real = 7.004 / 24.  # [days]
+P_real = 7.004 / 24.0  # [days]
 Omega_real = 2 * np.pi / P_real  # [Rad/day]
 
 # Set actual parameters
@@ -40,7 +40,7 @@ if as_example:
 else:
 
     # Set my parameters
-    Omega0 = Omega_actual+0.25  # [Rad/day]
+    Omega0 = Omega_actual + 0.25  # [Rad/day]
     Omega_end = Omega_actual  # [Rad/day]
     factor = 0.9  # Omega_end = Omega0 * factor
 
@@ -129,14 +129,15 @@ ax.axhline(
     Omega_end,
     color="k",
     ls="--",
-    label=f"Final: {Omega_end:.2f} rad/day " + f"({2*np.pi/Omega_end:.5f} days)",
+    label=f"Final: {Omega_end:.2f} rad/day "
+    + f"({2*np.pi/Omega_end:.5f} days)",
 )
 
 # Annotate t_intersect
 ax.annotate(
     f"t_intersect = {t_intersect:.4e} days",
-    xy=(t_intersect/365.25, Omega_actual),
-    xytext=(t_intersect/365.25*0.7, Omega_actual + 0.03),
+    xy=(t_intersect / 365.25, Omega_actual),
+    xytext=(t_intersect / 365.25 * 0.7, Omega_actual + 0.03),
     arrowprops=dict(arrowstyle="->"),
     fontsize=10,
 )

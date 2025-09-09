@@ -1,3 +1,4 @@
+!> Module with different kind of integrators
 module integrators
     implicit none
     !! Changes WILL be made, following:
@@ -264,7 +265,7 @@ module integrators
                     iter = 0
                 else
                     dt_adap = dt_adap * min (beta * ratio**(ONE / oaux), MAX_DT_FAC)
-                    if ((isnan (dt_adap)) .or. (dt_adap < dt_min) .or. (iter .eq. MAX_N_ITER)) then
+                    if ((dt_adap .ne. dt_adap) .or. (dt_adap < dt_min) .or. (iter .eq. MAX_N_ITER)) then
                         dt_adap = dt_min
                         dt_used = dt_min
                         call integ (t, y, der, dt_adap, dydt, osol, oaux, yaux, ynew)
@@ -320,7 +321,7 @@ module integrators
                     iter = 0
                 else
                     dt_adap = dt_adap * min (beta * ratio**(ONE / ordr), MAX_DT_FAC)
-                    if ((isnan (dt_adap)) .or. (dt_adap .le. dt_min) .or. (iter .eq. MAX_N_ITER)) then
+                    if ((dt_adap .ne. dt_adap) .or. (dt_adap .le. dt_min) .or. (iter .eq. MAX_N_ITER)) then
                         dt_used = dt_min
                         dt_adap = dt_min
                         call integ (t, y, der, dt_adap, dydt, ynew)
@@ -371,7 +372,7 @@ module integrators
                     iter = 0
                 else
                     dt_adap = dt_adap * min (beta * ratio**C1_2, MAX_DT_FAC)
-                    if ((isnan (dt_adap)) .or. (dt_adap .le. dt_min) .or. (iter .eq. MAX_N_ITER)) then
+                    if ((dt_adap .ne. dt_adap) .or. (dt_adap .le. dt_min) .or. (iter .eq. MAX_N_ITER)) then
                         dt_used = dt_min
                         dt_adap = dt_min
                         call leapfrog (t, y, der, dt_adap, dydt, ynew)
@@ -690,23 +691,23 @@ module integrators
             ynew = y + dt * (der * 0.17476028d0 - k2 * 0.55148066d0 + k3 * 1.20553560d0 + k4 * 0.17118478d0)
         end subroutine Ralston4
 
-        subroutine Lobatto4 (t, y, der, dt, dydt, ynew) ! Implicit
-            implicit none
-            real(kind=8), intent(in)                       :: t, dt
-            real(kind=8), dimension(:), intent(in)         :: y
-            real(kind=8), dimension(size (y)), intent(in)  :: der
-            procedure(dydt_tem)                            :: dydt
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8), dimension(size (y))              :: kaux, k2, k3
-            real(kind=8), parameter                        :: aux = C1_4
+        ! subroutine Lobatto4 (t, y, der, dt, dydt, ynew) ! Implicit
+        !     implicit none
+        !     real(kind=8), intent(in)                       :: t, dt
+        !     real(kind=8), dimension(:), intent(in)         :: y
+        !     real(kind=8), dimension(size (y)), intent(in)  :: der
+        !     procedure(dydt_tem)                            :: dydt
+        !     real(kind=8), dimension(size (y)), intent(out) :: ynew
+        !     real(kind=8), dimension(size (y))              :: kaux, k2, k3
+        !     real(kind=8), parameter                        :: aux = C1_4
 
-            ! k1   = dydt (t, y)
-            kaux = der * C1_4
-            call solve_1k_implicit (t + dt * C1_2, y, dt, dydt, kaux, aux, k2)
-            k3 = dydt (t + dt, y + dt * k2)
+        !     ! k1   = dydt (t, y)
+        !     kaux = der * C1_4
+        !     call solve_1k_implicit (t + dt * C1_2, y, dt, dydt, kaux, aux, k2)
+        !     k3 = dydt (t + dt, y + dt * k2)
 
-            ynew = y + dt * (der + k2 * FOUR + k3) * C1_6
-        end subroutine Lobatto4
+        !     ynew = y + dt * (der + k2 * FOUR + k3) * C1_6
+        ! end subroutine Lobatto4
 
         subroutine Runge_Kutta4 (t, y, der, dt, dydt, ynew)
             implicit none
@@ -815,7 +816,7 @@ module integrators
             ynew = y + dt * ((rk(:,1) + rk(:,3)) * FIVE + rk(:,2) * 8.d0) * C1_18
 
             contains
-                subroutine FunK_GL6 (t, y, dt, dydt, kin, kout)  !!! Funk for Gauss_Legendre5
+                subroutine FunK_GL6 (t, y, dt, dydt, kin, kout)  !!! Funk for Gauss_Legendre6
                     implicit none
                     real(kind=8), intent(in)                                          :: t, dt
                     procedure(dydt_tem)                                               :: dydt
@@ -838,47 +839,46 @@ module integrators
                 end subroutine FunK_GL6
         end subroutine Gauss_Legendre6 
 
-        ! subroutine Runge_Kutta6 (t, y, der, dt, dydt, ynew)
-        !     implicit none
-        !     real(kind=8), intent(in)                       :: t, dt
-        !     real(kind=8), dimension(:), intent(in)         :: y
-        !     real(kind=8), dimension(size (y)), intent(in)  :: der
-        !     procedure(dydt_tem)                            :: dydt
-        !     real(kind=8), dimension(size (y)), intent(out) :: ynew
-        !     real(kind=8), dimension(size (y))              :: k2, k3, k4, k5, k6, k7
-              
-        !     ! k1 = dydt (t,             y)
-        !     k2 = dydt (t + dt * C1_3, y + dt * der * C1_3)
-        !     k3 = dydt (t + dt * C2_3, y + dt * k2 * C2_3)
-        !     k4 = dydt (t + dt * C1_3, y + dt * (der + k2 * FOUR - k3) * C1_12)
-        !     k5 = dydt (t + dt * C5_6, y + dt * (der * 25.d0 - k2 * 1.1d2 + k3 * 35.d0 + k4 * 9.d1) * C1_48)
-        !     k6 = dydt (t + dt * C1_6, y + dt * (der * THREE + k4 * 1.d1 + k5 * TWO) * 5.d-2 + (-k2 * 11.d0 - k3 * THREE)/24.d0)
-        !     k7 = dydt (t + dt,        y + dt * (- der * 30.75d0 + k2 * 495.d0 + k3 * 53.75d0 - k4 * 5.9d2 + k5 * 3.2d1 + &
-        !     & k6 * 4.d2)/195.d0)
-        
-        !     ynew = y + dt * ((der + k7) * 13.d0/2.d2 + (k3 + k4) * 11.d0/4.d1 + (k5 + k6) * FOUR/25.d0)
-        ! end subroutine Runge_Kutta6
+        subroutine Runge_Kutta6 (t, y, der, dt, dydt, ynew)
+            implicit none
+            real(kind=8), intent(in)                       :: t, dt
+            real(kind=8), dimension(:), intent(in)         :: y
+            real(kind=8), dimension(size (y)), intent(in)  :: der
+            procedure(dydt_tem)                            :: dydt
+            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(kind=8), dimension(size (y))              :: k2, k3, k4, k5, k6, k7
 
-        ! subroutine Abbas6 (t, y, der, dt, dydt, ynew)
-        !     implicit none
-        !     real(kind=8), intent(in)                       :: t, dt
-        !     real(kind=8), dimension(:), intent(in)         :: y
-        !     real(kind=8), dimension(size (y)), intent(in)  :: der
-        !     procedure(dydt_tem)                            :: dydt
-        !     real(kind=8), dimension(size (y)), intent(out) :: ynew
-        !     real(kind=8), dimension(size (y))              :: k2, k3, k4, k5, k6, k7
+            ! k1 = dydt(t, y)
+            k2 = dydt(t + dt * C1_3, y + dt * C1_3 * der)
+            k3 = dydt(t + dt * C1_3, y + dt * C1_3 * k2)
+            k4 = dydt(t + dt * C1_2, y + dt * C1_2 * k3)
+            k5 = dydt(t + dt * C2_3, y + dt * C2_3 * k4)
+            k6 = dydt(t + dt, y + dt * k5)
+            k7 = dydt(t + dt, y + dt * k6)
+
+            ynew = y + dt * (C1_12 * der + C1_3 * k4 + C1_3 * k5 + C1_12 * k7)
+        end subroutine Runge_Kutta6
+
+        subroutine Abbas6 (t, y, der, dt, dydt, ynew)
+            implicit none
+            real(kind=8), intent(in)                       :: t, dt
+            real(kind=8), dimension(:), intent(in)         :: y
+            real(kind=8), dimension(size (y)), intent(in)  :: der
+            procedure(dydt_tem)                            :: dydt
+            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(kind=8), dimension(size (y))              :: k2, k3, k4, k5, k6, k7
               
-        !     ! k1 = dydt (t,             y)
-        !     k2 = dydt (t + dt * C1_3, y + dt * der * C1_3)
-        !     k3 = dydt (t + dt * C2_3, y + dt * k2 * C2_3)
-        !     k4 = dydt (t + dt * C1_3, y + dt * (der + k2 * FOUR - k3) * C1_12)
-        !     k5 = dydt (t + dt * C5_6, y + dt * (der * 25.d0 - k2 * 1.1d2 + k3 * 35.d0 + k4 * 90.d0)/48.d0)
-        !     k6 = dydt (t + dt * C1_6, y + dt * (der * 0.15d0 - k2 * 0.55d0 - k3 * C1_8 + k4 * C1_2 + k5 * 0.1d0))
-        !     k7 = dydt (t + dt,        y + dt * (- der * 195.75d0 + k2 * 495.d0 + k3 * 53.75d0 - k4 * 590.d0 + k5 * 32.d0 + &
-        !     & k6 * 4.d2)/195.d0)
+            ! k1 = dydt (t,             y)
+            k2 = dydt (t + dt * C1_3, y + dt * der * C1_3)
+            k3 = dydt (t + dt * C2_3, y + dt * k2 * C2_3)
+            k4 = dydt (t + dt * C1_3, y + dt * (der + k2 * FOUR - k3) * C1_12)
+            k5 = dydt (t + dt * C5_6, y + dt * (der * 25.d0 - k2 * 1.1d2 + k3 * 35.d0 + k4 * 90.d0)/48.d0)
+            k6 = dydt (t + dt * C1_6, y + dt * (der * 0.15d0 - k2 * 0.55d0 - k3 * C1_8 + k4 * C1_2 + k5 * 0.1d0))
+            k7 = dydt (t + dt,        y + dt * (- der * 195.75d0 + k2 * 495.d0 + k3 * 53.75d0 - k4 * 590.d0 + k5 * 32.d0 + &
+            & k6 * 4.d2)/195.d0)
         
-        !     ynew = y + dt * ((der + k7) * 13.d0 + (k3 + k4) * 55.d0 + (k5 + k6) * 32.d0) * 5.d-3
-        ! end subroutine Abbas6
+            ynew = y + dt * ((der + k7) * 13.d0 + (k3 + k4) * 55.d0 + (k5 + k6) * 32.d0) * 5.d-3
+        end subroutine Abbas6
 
         !!
 
@@ -1284,10 +1284,10 @@ module integrators
                 do k = 1, kmax ! Evaluate the sequence of modiﬁed midpoint integrations.
                     xnew = x + h
                     if (abs(xnew - x) < SAFE_LOW) then !E_TOL?
-                        print*, "Step size underflow in bstep", abs(xnew - x)
+                        print*, "Step size underflow in bstep at ", x
                         exit main_loop ! Luckily, hexitptr will handle it
-                        stop 2
-                        return
+                        ! stop 2
+                        ! return
                     end if
                     call mmid (ysav, der, sizey, x, h, nseq(k), yseq, dydt)
                     yscal = abs (y) + abs (h * der) + SAFE_LOW
@@ -1330,7 +1330,7 @@ module integrators
             x = xnew
             hdid = h
             first = .False.
-            wrkmin = 1.e35
+            wrkmin = 1.d35
             do kk = 1, km
                 fact = max (err(kk), scalmx)
                 work = fact * arr(kk + 1)
@@ -1352,12 +1352,12 @@ module integrators
 
         subroutine mmid (y, dydx, sizey, xs, htot, nstep, yout, dydt)
             integer(kind=4), intent(in) :: sizey, nstep
-            procedure(dydt_tem)         :: dydt
-            real(kind=8), intent(in)    :: xs, htot
-            real(kind=8), dimension(sizey)              :: ym, yn
-            real(kind=8), dimension(sizey), intent(in)  :: y, dydx
+            procedure(dydt_tem) :: dydt
+            real(kind=8), intent(in) :: xs, htot
+            real(kind=8), dimension(sizey) :: ym, yn
+            real(kind=8), dimension(sizey), intent(in) :: y, dydx
             real(kind=8), dimension(sizey), intent(out) :: yout
-            real(kind=8)    :: x, h, h2, swap
+            real(kind=8) :: x, h, h2, swap
             integer(kind=4) :: i, n 
 
             h  = htot / (nstep * ONE) ! Stepsize this trip.
@@ -1422,13 +1422,13 @@ module integrators
 
         subroutine Bulirsch_Stoer2 (t, y, dt_adap, dydt, e_tol, dt_used, ynew)
             implicit none
-            real(kind=8), intent(in)                       :: t, e_tol
-            real(kind=8), intent(inout)                    :: dt_adap, dt_used
-            real(kind=8), dimension(:), intent(in)         :: y
-            procedure(dydt_tem)                            :: dydt
+            real(kind=8), intent(in) :: t, e_tol
+            real(kind=8), intent(inout) :: dt_adap, dt_used
+            real(kind=8), dimension(:), intent(in) :: y
+            procedure(dydt_tem) :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8)                                   :: time, dtry
-            integer(kind=4), save                          :: sizex
+            real(kind=8) :: time, dtry
+            integer(kind=4), save :: sizex
             
             sizex = int(size(y) / 4, 4)
             time  = t
@@ -1440,11 +1440,11 @@ module integrators
 
         subroutine bstep2 (y, dydt, sizex, t, htry, eps, hdid, hnext)
             implicit none
-            procedure(dydt_tem)   :: dydt
+            procedure(dydt_tem) :: dydt
             integer(kind=4), intent(in) :: sizex
-            real(kind=8), intent(in)    :: htry, t, eps
+            real(kind=8), intent(in) :: htry, t, eps
             real(kind=8), intent(inout) :: y(:)
-            real(kind=8), intent(out)   :: hdid, hnext
+            real(kind=8), intent(out) :: hdid, hnext
             real(kind=8), parameter :: SHRINK = 0.55d0
             real(kind=8), parameter :: GROW   = 1.3d0
             real(kind=8) :: der(sizex*4), dt, tt
@@ -1571,12 +1571,12 @@ module integrators
             contains
                 function get_a (t, dydt, x, v) result(a)
                     implicit none
-                    real(kind=8), intent(in)                     :: t
-                    procedure(dydt_tem)                          :: dydt
+                    real(kind=8), intent(in) :: t
+                    procedure(dydt_tem) :: dydt
                     real(kind=8), dimension(2,sizex), intent(in) :: x, v
-                    real(kind=8), dimension(2,sizex)             :: a
+                    real(kind=8), dimension(2,sizex) :: a
                     real(kind=8), dimension(sizex*4) :: y, der
-                    integer(kind=4)                  :: i
+                    integer(kind=4) :: i
                     do i = 1, sizex
                         y(4*i - 3) = x(1,i)
                         y(4*i - 2) = x(2,i)
@@ -1597,12 +1597,12 @@ module integrators
 
         !!! Leap Frog (KDK)
 
-        subroutine leapfrof_KDK (t, y, der, dt, dydt, ynew)
+        subroutine leapfrog_KDK (t, y, der, dt, dydt, ynew)
             implicit none
-            real(kind=8), intent(in)                       :: t, dt
-            real(kind=8), dimension(:), intent(in)         :: y
-            real(kind=8), dimension(size (y)), intent(in)  :: der
-            procedure(dydt_tem)                            :: dydt
+            real(kind=8), intent(in) :: t, dt
+            real(kind=8), dimension(:), intent(in) :: y
+            real(kind=8), dimension(size (y)), intent(in) :: der
+            procedure(dydt_tem) :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(2,size (y)) :: x0, v0, x1, v1, v05, a0
             integer(kind=4) :: i, sizey
@@ -1656,16 +1656,16 @@ module integrators
                         a(2,i) = der(4*i)
                     end do
                 end function get_a
-        end subroutine leapfrof_KDK
+        end subroutine leapfrog_KDK
 
         !!! Leap Frog (DKD)
 
-        subroutine leapfrof_DKD (t, y, der, dt, dydt, ynew)
+        subroutine leapfrog_DKD (t, y, der, dt, dydt, ynew)
             implicit none
-            real(kind=8), intent(in)                       :: t, dt
-            real(kind=8), dimension(:), intent(in)         :: y
-            real(kind=8), dimension(size (y)), intent(in)  :: der
-            procedure(dydt_tem)                            :: dydt
+            real(kind=8), intent(in) :: t, dt
+            real(kind=8), dimension(:), intent(in) :: y
+            real(kind=8), dimension(size (y)), intent(in) :: der
+            procedure(dydt_tem) :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             real(kind=8), dimension(2,size (y)) :: x0, v0, x1, v1, x05
             integer(kind=4) :: i, sizey
@@ -1699,13 +1699,13 @@ module integrators
             contains
                 function get_a (t, dydt, x, v, sizey) result(a)
                     implicit none
-                    real(kind=8), intent(in)                     :: t
-                    procedure(dydt_tem)                          :: dydt
-                    integer(kind=4), intent(in)                  :: sizey
+                    real(kind=8), intent(in) :: t
+                    procedure(dydt_tem) :: dydt
+                    integer(kind=4), intent(in) :: sizey
                     real(kind=8), dimension(2,sizey), intent(in) :: x, v
-                    real(kind=8), dimension(2,sizey)             :: a
+                    real(kind=8), dimension(2,sizey) :: a
                     real(kind=8), dimension(sizey*4) :: y, der
-                    integer(kind=4)                  :: i
+                    integer(kind=4) :: i
                     do i = 1, sizey
                         y(4*i - 3) = x(1,i)
                         y(4*i - 2) = x(2,i)
@@ -1718,7 +1718,7 @@ module integrators
                         a(2,i) = der(4*i)
                     end do
                 end function get_a
-        end subroutine leapfrof_DKD
+        end subroutine leapfrog_DKD
 
         !---------------------------------------------------------------------------------------------
         ! CALLERS:
@@ -1730,15 +1730,15 @@ module integrators
 
         subroutine integ_caller (t, y, dt_min, dydt, integ, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in)                       :: t, dt, dt_min
-            real(kind=8), dimension(:), intent(in)         :: y
-            procedure(function_check_keep_tem), optional   :: check_fun
-            procedure(dydt_tem)                            :: dydt
-            procedure(integ_tem)                           :: integ
+            real(kind=8), intent(in) :: t, dt, dt_min
+            real(kind=8), dimension(:), intent(in) :: y
+            procedure(function_check_keep_tem), optional :: check_fun
+            procedure(dydt_tem) :: dydt
+            procedure(integ_tem) :: integ
             real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8), dimension(size (y))              :: yaux, der
-            real(kind=8)                                   :: time, t_end, dt_used
-            logical                                        :: keep = .True.
+            real(kind=8), dimension(size (y)) :: yaux, der
+            real(kind=8) :: time, t_end, dt_used
+            logical :: keep = .True.
 
             ynew    = y
             time    = t
@@ -1762,16 +1762,16 @@ module integrators
         
         subroutine embedded_caller (t, y, dt_adap, dydt, integ, e_tol, beta, dt_min, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in)                       :: t, e_tol, beta, dt_min, dt
-            real(kind=8), dimension(:), intent(in)         :: y
-            procedure(function_check_keep_tem), optional   :: check_fun
-            real(kind=8), intent(inout)                    :: dt_adap
-            procedure(dydt_tem)                            :: dydt
-            procedure(embedded_tem)                        :: integ
+            real(kind=8), intent(in) :: t, e_tol, beta, dt_min, dt
+            real(kind=8), dimension(:), intent(in) :: y
+            procedure(function_check_keep_tem), optional :: check_fun
+            real(kind=8), intent(inout) :: dt_adap
+            procedure(dydt_tem) :: dydt
+            procedure(embedded_tem) :: integ
             real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8), dimension(size (y))              :: yaux, der
-            real(kind=8)                                   :: time, t_end, dtmin, dtused
-            logical                                        :: keep = .True.
+            real(kind=8), dimension(size (y)) :: yaux, der
+            real(kind=8) :: time, t_end, dtmin, dtused
+            logical :: keep = .True.
 
             ynew  = y
             time  = t
@@ -1799,17 +1799,17 @@ module integrators
 
         subroutine solve_rk_half_step_caller (t, y, dt_adap, dydt, integ, p, e_tol, beta, dt_min, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in)                       :: t, e_tol, beta, dt, dt_min
-            real(kind=8), dimension(:), intent(in)         :: y
-            procedure(function_check_keep_tem), optional   :: check_fun
-            real(kind=8), intent(inout)                    :: dt_adap
-            procedure(dydt_tem)                            :: dydt
-            procedure(integ_tem)                           :: integ
-            integer(kind=4), intent(in)                    :: p
+            real(kind=8), intent(in) :: t, e_tol, beta, dt, dt_min
+            real(kind=8), dimension(:), intent(in) :: y
+            procedure(function_check_keep_tem), optional :: check_fun
+            real(kind=8), intent(inout) :: dt_adap
+            procedure(dydt_tem) :: dydt
+            procedure(integ_tem) :: integ
+            integer(kind=4), intent(in) :: p
             real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8), dimension(size (y))              :: yaux, der
-            real(kind=8)                                   :: time, t_end, dtmin, dtused
-            logical                                        :: keep = .True.
+            real(kind=8), dimension(size (y)) :: yaux, der
+            real(kind=8) :: time, t_end, dtmin, dtused
+            logical :: keep = .True.
 
             ynew  = y
             time  = t
@@ -1837,15 +1837,15 @@ module integrators
         
         subroutine BStoer_caller (t, y, dt_adap, dydt, e_tol, dt, ynew, check_fun) !, dt_min
             implicit none
-            real(kind=8), intent(in)                       :: t, e_tol, dt!, dt_min
-            real(kind=8), dimension(:), intent(in)         :: y
-            procedure(function_check_keep_tem), optional   :: check_fun
-            real(kind=8), intent(inout)                    :: dt_adap
-            procedure(dydt_tem)                            :: dydt
+            real(kind=8), intent(in) :: t, e_tol, dt!, dt_min
+            real(kind=8), dimension(:), intent(in) :: y
+            procedure(function_check_keep_tem), optional :: check_fun
+            real(kind=8), intent(inout) :: dt_adap
+            procedure(dydt_tem) :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8), dimension(size (y))              :: yaux
-            real(kind=8)                                   :: time, t_end, dtused! , dtmin
-            logical                                        :: keep = .True.
+            real(kind=8), dimension(size (y)) :: yaux
+            real(kind=8) :: time, t_end, dtused! , dtmin
+            logical :: keep = .True.
 
             ynew  = y
             time  = t
@@ -1871,15 +1871,15 @@ module integrators
 
         subroutine BStoer_caller2 (t, y, dt_adap, dydt, e_tol, dt, ynew, check_fun) !,dt_min
             implicit none
-            real(kind=8), intent(in)                       :: t, e_tol, dt!, dt_min
-            real(kind=8), dimension(:), intent(in)         :: y
-            procedure(function_check_keep_tem), optional   :: check_fun
-            real(kind=8), intent(inout)                    :: dt_adap
-            procedure(dydt_tem)                            :: dydt
+            real(kind=8), intent(in) :: t, e_tol, dt!, dt_min
+            real(kind=8), dimension(:), intent(in) :: y
+            procedure(function_check_keep_tem), optional :: check_fun
+            real(kind=8), intent(inout) :: dt_adap
+            procedure(dydt_tem) :: dydt
             real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8), dimension(size (y))              :: yaux
-            real(kind=8)                                   :: time, t_end, dtused!, dtmin
-            logical                                        :: keep = .True.
+            real(kind=8), dimension(size (y)) :: yaux
+            real(kind=8) :: time, t_end, dtused!, dtmin
+            logical :: keep = .True.
 
             ynew  = y
             time  = t
@@ -1907,16 +1907,16 @@ module integrators
 
         subroutine leapfrog_caller (t, y, dt_adap, dydt, leapfrog, e_tol, beta, dt_min, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in)                       :: t, e_tol, beta, dt, dt_min
-            real(kind=8), dimension(:), intent(in)         :: y
-            procedure(function_check_keep_tem), optional   :: check_fun
-            real(kind=8), intent(inout)                    :: dt_adap
-            procedure(dydt_tem)                            :: dydt
-            procedure(leapfrog_tem)                        :: leapfrog
+            real(kind=8), intent(in) :: t, e_tol, beta, dt, dt_min
+            real(kind=8), dimension(:), intent(in) :: y
+            procedure(function_check_keep_tem), optional :: check_fun
+            real(kind=8), intent(inout) :: dt_adap
+            procedure(dydt_tem) :: dydt
+            procedure(leapfrog_tem) :: leapfrog
             real(kind=8), dimension(size (y)), intent(out) :: ynew
-            real(kind=8), dimension(size (y))              :: yaux, der
-            real(kind=8)                                   :: time, t_end, dtmin, dtused
-            logical                                        :: keep = .True.
+            real(kind=8), dimension(size (y)) :: yaux, der
+            real(kind=8) :: time, t_end, dtmin, dtused
+            logical :: keep = .True.
 
             ynew  = y
             time  = t
