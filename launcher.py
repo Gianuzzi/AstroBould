@@ -251,10 +251,11 @@ if len(missing_lines) == 0:
     print("Ya se han integrado todos los bodies.")
 else:
     # Obtener el número de workers
-    workers = min(
-        max(1, min(int(workers), len(os.sched_getaffinity(0)))), nsys
-    )
-    print(f"Workers: {workers}")
+    max_workers = len(os.sched_getaffinity(0))
+    if workers == -1:
+        workers = max_workers
+    workers = min(max(1, min(int(workers), max_workers)), nsys)
+
 
 # Argumentos. Estos son:
 args = "--nomapf"
