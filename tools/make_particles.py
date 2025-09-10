@@ -79,7 +79,7 @@ type_gen = type(rndm())
 # -----------------
 # INPUT
 # -----------------
-use_mu_and_radius = False
+use_mu_and_radius = False  # True if a moon is expected
 
 # UNIDADES
 unit_angle = deg
@@ -89,16 +89,16 @@ data_in = {}
 # Nombres ordenados de las columnas posibles
 order = ["mu_to_disk", "a", "e", "M", "w", "mmr", "radius"]
 # PARÁMETROS A VARIAR
-data_in["mu_to_disk"] = [rndm(0.0, 1.0)]  # mass particle / mass disk
-data_in["a"] = [n_steps(2.5, 5, 6) * 115]  # [km]
-data_in["e"] = [0.0]  # Podría ser: rayleigh_dist(0, 0.1, 1)
+## Only Moon parameters
+disk_to_ast_mass_ratio = 0.1  # Unused if use_mu_and_radius is False.
+data_in["mu_to_disk"] = [rndm(0.0, 1.0)]  # mass moon / mass disk (total moons)
+data_in["radius"] = [0.0]  # [km]
+## Particle parameters
+data_in["a"] = [0.0]  # [km]
+data_in["e"] = [n_steps(0.0, 0.2, 20)]  # Podría ser: rayleigh_dist(0, 0.1, 1)
 data_in["M"] = [rndm(0.0, 360.0)]  # [unit_angle]
 data_in["w"] = [rndm(0.0, 360.0)]  # [unit_angle]
-data_in["mmr"] = [0.0]
-data_in["radius"] = [0.0]  # [km]
-
-# Disk mass ratio to asteroid mass.
-disk_to_ast_mass_ratio = 0.1
+data_in["mmr"] = [n_steps(1.45, 4.6, 50)]
 
 # Nota:
 #     'mu_to_disk' es solo para input; el output será 'mu_to_asteroid'

@@ -210,7 +210,6 @@ module derivates
 
             end do
 
-
             ! Omega Damping
             if (use_damp) then
                 !! Damping
@@ -226,8 +225,7 @@ module derivates
                 end select
             end if
 
-
-            !! Forces acting from COM of asteroid
+            ! Forces acting from COM of asteroid
             if (use_J2 .or. use_drag .or. use_stokes) then
                 stokes_f = uno2 * (uno + tanh(1.d1 * (uno - t / stokes_time)))
                 drag_f = uno2 * (uno + tanh(1.d1 * (uno - t / drag_time)))
@@ -236,6 +234,26 @@ module derivates
             else 
                 use_extra = .False.
             end if
+            !! Moons (massive)
+            do j = 2, last_moon
+                jdx = get_index(j)
+                coords_P = y(jdx:jdx+3)  ! Moon
+
+                !! ASTEROID AND PARTICLE
+                dr_vec = coords_P(1:2) - coords_A(1:2)  ! From Asteroid to Moon
+                dr2 = dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2)
+                dr = sqrt(dr2)
+
+                ! Check if collision or Escape
+                if (dr < sim%min_distance) hexit_arr(j) = 1
+                if (dr > sim%max_distance .and. sim%max_distance > cero) hexit_arr(j) = 2
+                ! if (hexit_arr(j) > 0) cycle  ! Collision or Escape !!
+
+                ! Only J2 here
+                if (use_J2) der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - Gmass * J2_coef * dr_vec / (dr * dr * dr * dr * dr)  ! Gmass is ok?
+
+            end do
+
             !! Particles (massless)
             do j = last_moon + 1, N_total
                 jdx = get_index(j)
@@ -279,7 +297,6 @@ module derivates
                     vel_circ  = sqrt(Gmass / dr3) * (/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
                     der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - stokes_C * (dv_vec - stokes_alpha * vel_circ) * stokes_f ! = -C * (v - alpha * vc) * factor
                 end if
-
 
             end do
 

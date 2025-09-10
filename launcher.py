@@ -8,10 +8,10 @@
 # y luego concatena los archivos de caos en un solo archivo.
 
 # El archivo de partículas a introducir debe tener formato:
-# mass a e M w
+# a e M w
 # Pero también se puede introducir una columna con el valor de MMR,
-# el cual reemplaza a a: [a = R**(2/3.) * a_corot]. Entonces quedaría:
-# mass a e M w MMR (Radius)
+# el cual reemplaza a 'a': [a = MMR**(2/3.) * a_corot]. Entonces quedaría:
+# (mass) a e M w MMR (radius)  # Masa y Radio agregados si es una luna
 
 # IMPORTANTE : Todos los archivos deben estar en la misma carpeta
 
@@ -29,8 +29,8 @@
 #                 0: collision with asteroid,
 #               > 0: collision with moon)
 # 4    ! total time integrated
-# 5-13 ! initial body: theta, omega, a, e, M, w, MMR, mass, radius
-# 14-22! final body: theta, omega, a, e, M, w, MMR, mass, radius
+# 5-13 ! initial body: theta (ast), omega (ast), a, e, M, w, MMR, mass, radius
+# 14-22! final body: theta (ast), omega (ast), a, e, M, w, MMR, mass, radius
 # 23-25! a_min, a_max
 # 26-27! e_min, e_max
 
@@ -63,7 +63,7 @@ from concurrent.futures import ProcessPoolExecutor
 program = "ASTROBOULD"  # Nombre del ejecutable
 
 # Configuración de integración #
-workers = 1  # Número de procesadores a usar (workers)
+workers = 1  # Número de procesadores a usar (workers). -1 para usar todos.
 
 # Merge kind
 ## 0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos
@@ -83,9 +83,8 @@ new_dir = True  # Directorio donde volcar las salidas.
 datafile = "salida"  # Nombre del archivo de salidas de datos (sin extensión)
 final_chaos = "chaos"  # Final Chaos Output file name (sin extensión)
 suffix = ""  # Suffix for the output files
-# Screen #  (both require all_in_one=True)
+# Screen #
 screen_info = True  # Información en pantalla?
-screen_data = False  # Datos en pantalla?  "%" para porcentaje
 # Elements #
 elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 
@@ -411,7 +410,7 @@ def make_chaos(final_chaos, suffix=""):
     final_path = os.path.join(wrk_dir, final_chaos)
 
     try:
-        num_chunks = len(file_list) // chunk_size + 1
+        num_chunks = (len(file_list) + 1) // chunk_size
         # AWK program (portable): on first line of each file FNR==1 -> set f=start ; increment start
         # then print file-index f, tab, and the original line.
         awk_prog = r'FNR==1{f=start; start++} {printf("%7d %s\n", f, $0)}'
