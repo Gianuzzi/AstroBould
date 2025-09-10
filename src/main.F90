@@ -262,7 +262,7 @@ program main
             deallocate(particles_in)
         else if (sim%use_particlesfile .and. sim%use_screen) then
             write (*,*) ACHAR(10)
-            write (*,*) "WARNING: Command line moparticleon used. Ignoring particles file: ", trim(sim%particlesfile)
+            write (*,*) "WARNING: Command line particle used. Ignoring particles file: ", trim(sim%particlesfile)
         end if
         call allocate_params_particles(1)
         ! Fill the array

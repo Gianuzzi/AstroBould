@@ -49,15 +49,15 @@ ifdef DEBUG
     MYFFLAGS = -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow -fsanitize=address,undefined
   endif
 else
-# Release build: O2 + safe extras
-  MYCFLAGS = -O2
+# Release build: O3 + safe extras
+  MYCFLAGS = -O3
   ifeq ($(INTEL),1)
-    MYFFLAGS = -O2 -funsafe-math-optimizations -funroll-loops \
+    MYFFLAGS = -funsafe-math-optimizations -funroll-loops \
                -xHost -qopt-report -fimf-domain-exclusion=15
   else ifeq ($(AMD),1)
-    MYFFLAGS = -O2 -ffast-math -funroll-loops -fvectorize
+    MYFFLAGS = -ffast-math -funroll-loops -fvectorize
   else
-    MYFFLAGS = -O2 -ffinite-math-only -funsafe-math-optimizations \
+    MYFFLAGS = -ffinite-math-only -funsafe-math-optimizations \
                -funroll-loops -ftree-vectorize -finit-real=zero
   endif
 endif
