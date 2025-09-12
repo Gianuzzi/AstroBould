@@ -14,6 +14,7 @@ EXE_FILE  = ASTROBOULD
 FC       = gfortran
 INTEL    ?= 0
 AMD      ?= 0
+OPT      ?= 2   # default optimization level if not specified
 
 # Intel compiler
 ifeq ($(INTEL),1)
@@ -49,8 +50,8 @@ ifdef DEBUG
     MYFFLAGS = -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow -fsanitize=address,undefined
   endif
 else
-# Release build: O3 + safe extras
-  MYCFLAGS = -O3
+  # Release build
+  MYCFLAGS = -O$(OPT)
   ifeq ($(INTEL),1)
     MYFFLAGS = -funsafe-math-optimizations -funroll-loops \
                -xHost -qopt-report -fimf-domain-exclusion=15
@@ -71,14 +72,14 @@ endif
 #--------------------------------------------------------------------------
 # Final flags per compiler
 ifeq ($(INTEL),1)
-  FFLAGS  = $(WARN_INTEL) $(STD) $(ARCH) $(MYFFLAGS)
+  FFLAGS  = $(WARN_INTEL) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
 else ifeq ($(AMD),1)
-  FFLAGS  = $(WARN_AMD) $(STD) $(ARCH) $(MYFFLAGS)
+  FFLAGS  = $(WARN_AMD) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
 else
-  FFLAGS  = $(WARN_GCC) $(STD) $(ARCH) $(MYFFLAGS)
+  FFLAGS  = $(WARN_GCC) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
 endif
 
-LDFLAGS = $(MYCFLAGS)
+LDFLAGS = $(MYCFLAGS) $(MYFFLAGS)
 
 #--------------------------------------------------------------------------
 # Sources, objects, modules
@@ -106,6 +107,12 @@ parallel:
 
 debug_parallel:
 	$(MAKE) DEBUG=1 PARALLEL=1
+
+intel:
+	$(MAKE) INTEL=1
+
+amd:
+	$(MAKE) AMD=1
 
 $(OBJ_DIR):
 	@mkdir -p $@
