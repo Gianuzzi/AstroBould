@@ -47,7 +47,7 @@ Here:
 - `<e>`   = eccentricity
 - `<M>`   = mean anomaly
 - `<w>`   = argument of periapsis
-- `<mmr>` = initial inverse spin-orbit ratio ($$n_\text{part} / \Omega_\text{ast} $$) (optional)
+- `<mmr>` = initial spin-orbit ratio ($$\Omega_\text{ast}  / n_\text{part}$$) (optional)
 
 > If `<mmr>` is provided, it overrides the value of `<a>`.
 
