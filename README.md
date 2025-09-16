@@ -23,14 +23,14 @@ make
 Default copilator is GNU (_gfortran_). If available, the compilation could be made using the IntelFortranCompiler (_ifx_) or AMDFortranCompiler (_flang_), by running
 
 ```bash
-make INTEL=1
+make intel
 ```
 
 or
 
 
 ```bash
-make AMD=1
+make amd
 ```
 
 ## 🏃🏼 Running
@@ -47,7 +47,7 @@ Here:
 - `<e>`   = eccentricity
 - `<M>`   = mean anomaly
 - `<w>`   = argument of periapsis
-- `<mmr>` = initial spin-orbit ratio \($ n_\text{part} / \Omega_\text{ast} $\) (optional)
+- `<mmr>` = initial inverse spin-orbit ratio ($$n_\text{part} / \Omega_\text{ast} $$) (optional)
 
 > If `<mmr>` is provided, it overrides the value of `<a>`.
 
