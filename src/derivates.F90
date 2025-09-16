@@ -227,9 +227,9 @@ module derivates
 
             ! Forces acting from COM of asteroid
             if (use_J2 .or. use_drag .or. use_stokes) then
-                stokes_f = uno2 * (uno + tanh(1.d1 * (uno - t / stokes_time)))
-                drag_f = uno2 * (uno + tanh(1.d1 * (uno - t / drag_time)))
                 Gmass = G * m_arr(1)
+                if (use_stokes) stokes_f = uno2 * (uno + tanh(1.d1 * (uno - t / stokes_time)))
+                if (use_drag) drag_f = uno2 * (uno + tanh(1.d1 * (uno - t / drag_time)))
                 use_extra = .True.
             else 
                 use_extra = .False.
