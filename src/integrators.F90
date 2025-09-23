@@ -1285,7 +1285,7 @@ module integrators
                     xnew = x + h
                     if (abs(xnew - x) < SAFE_LOW) then !E_TOL?
                         print*, "Step size underflow in bstep at ", x
-                        exit main_loop ! Luckily, hexitptr will handle it
+                        exit main_loop ! Luckily, hard_exit will handle it
                         ! stop 2
                         ! return
                     end if

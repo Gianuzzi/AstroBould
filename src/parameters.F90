@@ -56,6 +56,7 @@ module parameters
         logical :: use_particlesfile = .False.
         character(30) :: particlesfile = ""
         ! Extra forces/effects - 
+        logical :: use_moon_gravity = .True.
         logical :: use_stokes = .False.
         real(kind=8) :: stokes_a_damping_time = infinity
         real(kind=8) :: stokes_e_damping_time = infinity
@@ -122,7 +123,7 @@ module parameters
         integer(kind=4) :: Ntotal = 0  ! Amount of all bodies (asteroid is just 1)
         integer(kind=4) :: Npart_active = 0 ! Active particles
         integer(kind=4) :: Nmoon_active = 0 ! Active moons
-        integer(kind=4) :: Nactive = 0 ! Active bodies
+        integer(kind=4) :: Nactive = 0 ! Active bodies (including asteroid)
         logical :: use_boulders = .False.
         logical :: use_particles = .False.
         logical :: use_moons = .False.
@@ -211,8 +212,7 @@ module parameters
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
     logical :: is_premature_exit = .False.
-    integer(kind=4), dimension(:), allocatable, target :: hexit_arr !  Hard Exit integer
-    integer(kind=4), pointer :: hexitptr ! pointer to Hard Exit
+    logical :: hard_exit = .False. !  Hard Exit logical
     ! procedure (check_continue_template), pointer :: check_continue_ptr => null ()
     
 
@@ -672,6 +672,12 @@ module parameters
                                 params%use_particlesfile = .False.
                                 params%particlesfile = ""
                             end if
+                        case("deactivate grav")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%use_moon_gravity = .False.
+                            else
+                                params%use_moon_gravity = .True.
+                            end if
                         case("include stokes-")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 params%use_stokes = .True.
@@ -1100,7 +1106,10 @@ module parameters
             !     derived%update_rmin_bins = derived%rmin_bins < - tini
             !     derived%update_rmax_bins = derived%rmax_bins < - tini
             !     derived%update_bins = derived%update_rmin_bins .or. derived%update_rmax_bins .or. derived%binning_method == 3
-            ! end if         
+            ! end if
+            
+            ! Moons gravity
+            if (derived%Nmoons .eq. 0) derived%use_moon_gravity = .False.  ! Deactivate it
 
             ! Merges
             if (derived%Nparticles .eq. 0) derived%use_merge_part_mass = .False.  ! Deactivate it
@@ -1372,9 +1381,10 @@ module parameters
             implicit none
             real(kind=8), dimension(:), intent(in) :: y
             logical :: keep_going
-            ! Here, we use the global hexit_arr
-            keep_going = all(hexit_arr .eq. 0)
-            if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
+            ! ! Here, we use the global hexit_arr  (Old Code)
+            ! keep_going = all(hexit_arr .eq. 0)
+            ! if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
+            keep_going = .not. hard_exit
         end function check_func
 
         ! Deallocate initial arrays
@@ -1403,13 +1413,11 @@ module parameters
             if (allocated(tom_deltamass)) deallocate(tom_deltamass)
             if (allocated(checkpoint_is_tom)) deallocate(checkpoint_is_tom)
             if (allocated(checkpoint_is_output)) deallocate(checkpoint_is_output)
-            if (allocated(hexit_arr)) deallocate(hexit_arr)
         end subroutine free_parameters_arays
 
         ! Nullify pointers
         subroutine nullify_pointers()
             implicit none
-            nullify(hexitptr)
             nullify(write_to_general)
             nullify(write_to_screen)
             nullify(write_a_to_individual)
@@ -1425,8 +1433,8 @@ module parameters
             type(sim_params_st), intent(inout) :: simu
             integer(kind=4), intent(in) :: Npart_active, Nmoon_active
             simu%Npart_active = Npart_active  ! Update Npart_active
-            simu%Nmoon_active = Npart_active  ! Update Nmoon_active
-            simu%Nactive = Npart_active + Npart_active ! Update Nactive
+            simu%Nmoon_active = Nmoon_active  ! Update Nmoon_active
+            simu%Nactive = 1 + Npart_active + Nmoon_active ! Update Nactive, including asteroid
         end subroutine update_sim_Nactive
 
         ! Check if keep integrating after collisions

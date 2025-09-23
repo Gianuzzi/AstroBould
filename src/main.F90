@@ -502,6 +502,12 @@ program main
         write (*,*) ACHAR(5)
     end if
 
+    !! Moons gravity
+    if (sim%use_moon_gravity .and. sim%use_screen) then
+        write (*,*) "Gravity between moons DEACTIVATED."
+        write (*,*) ACHAR(5)
+    end if
+
     !! Omega Damping
     if (sim%use_omega_damping .and. (.not. sim%use_boulders)) then
         if (sim%use_screen) write (*,*) "WARNING: Skipping omega damping without boulders."
@@ -791,7 +797,6 @@ program main
     allocate(y_arr(2 + sim%Ntotal * 4))     ! Theta, Omega, Positions
     allocate(y_arr_new(2 + sim%Ntotal * 4)) ! Theta, Omega, Positions
     allocate(y_der(2 + sim%Ntotal * 4))     ! derivate(Theta, Omega, Positions)
-    allocate(hexit_arr(sim%Ntotal))       ! Hard Exit  ! Index 1 (Asteroid) is used as PROXY
 
     ! Init to 0
     m_arr = cero
@@ -800,7 +805,7 @@ program main
     y_arr_new = cero
     y_der = cero
 
-    ! get amount of values of Y to yse
+    ! get amount of values of Y to use
     y_nvalues = get_index(sim%Nactive) + 3  ! Update nvalues to use in y
 
     ! Get Arrays to integrate
@@ -959,20 +964,20 @@ program main
     !$OMP END SECTIONS
     !$OMP END PARALLEL
 
-
     ! >>>>>>>>>>>>>>>>>>----------------- MAIN LOOP  ---------------<<<<<<<<<<<<<<<<<<<<<<<<
     tom_index_number = 2 !!!! Inicializamos en 2 porque el primer checkpoint es el IC (t0)
     j = 2! From 2 because 1 is the IC (t0) !! +1 por si hay HardExit en el último
     main_loop: do while (.True.)
     
-        hexit_arr = 0 ! Resetear HardExit        
+        hard_exit = .False. ! Resetear HardExit 
+        is_premature_exit = .False. ! Resetear premature
         
         ! Check if all done
         !! Time end
         if (j == checkpoint_number + 1) keep_integrating = .False.
 
         !! Check if Particles/Moons left
-        if (sim%Nactive == 0 .and. keep_integrating) then
+        if (sim%Nactive == 1 .and. keep_integrating) then
             if (sim%use_screen) then
                 write (*,*) ACHAR(5) 
                 write (*,*) " No more active particles/moons left."
@@ -1037,9 +1042,9 @@ program main
         !     & leapfrof_KDK, sim%error_tolerance, y_nvalues, min_timestep, timestep, y_arr_new(:y_nvalues), check_func)
     
         ! Check if it might be hard_exit
-        if (hexit_arr(1) .ne. 0) then
+        if (hard_exit) then
             !! If so, the dt used is in dt_adap
-            if (is_premature_exit) timestep = adaptive_timestep
+            timestep = adaptive_timestep
 
             !! Check if premature_exit: If exit at less than 1% of finishing timestep
             if (timestep > cero) then
@@ -1127,7 +1132,7 @@ program main
 
     !! Cerrar archivos individuales
     if (sim%use_multiple_outputs) then
-        do i = 0, sim%Nactive
+        do i = 0, sim%Ntotal
             close (200+i)
         end do
         if (sim%use_screen) then
