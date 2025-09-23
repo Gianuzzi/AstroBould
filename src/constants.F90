@@ -1,3 +1,4 @@
+!> Module with constant values
 module constants
     implicit none
     !!! Constantes.
