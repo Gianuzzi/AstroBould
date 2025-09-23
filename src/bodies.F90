@@ -86,7 +86,7 @@ module bodies
     character(30), parameter :: i3r23 = "(I7, I7, I7, 23(1X, 1PE22.15))"  ! 3 int y 21 real
     character(26), parameter :: i2r11 = "(I7, I7, 11(1X, 1PE22.15))"  ! 2 int y 11 real
     character(25), parameter :: i2r9 = "(I7, I7, 9(1X, 1PE22.15))"  ! 3 int y 9 real
-    character(18), parameter :: s1i1x5 = "(5(A, 1X, I1, 1X))"
+    character(18), parameter :: s1i5x5 = "(5(A, 1X, I5, 1X))"
     
     contains
         !  -----------------------------   MEMORY    -------------------------------------
@@ -219,7 +219,7 @@ module bodies
             real(kind=8), intent(in) :: mu_to_asteroid, ele_a, ele_e, ele_M, ele_w, mmr, radius
             integer(kind=4), intent(in), optional :: id_start
             integer(kind=4) :: i
-            integer(kind=4) :: id0 = 0  ! Where to start using IDs from
+            integer(kind=4) :: id0 = 0  ! Where to start using IDs from (first is 1)
             logical :: slot_found
             
             slot_found = .False. ! Default
@@ -268,7 +268,7 @@ module bodies
             real(kind=8), intent(in) :: ele_a, ele_e, ele_M, ele_w, mmr
             integer(kind=4), intent(in), optional :: id_start
             integer(kind=4) :: i
-            integer(kind=4) :: id0 = 0  ! Where to start using IDs from
+            integer(kind=4) :: id0 = 0  ! Where to start using IDs from (first is 1)
             logical :: slot_found
             
             slot_found = .False. ! Default
@@ -753,7 +753,7 @@ module bodies
 
         subroutine get_Nactive(self, Nactive)
             implicit none
-            type(system_st), intent(inout) :: self
+            type(system_st), intent(in) :: self
             integer(kind=4), intent(inout) :: Nactive
             Nactive = 1 + self%Nmoons_active + self%Nparticles_active  ! Includes asteroid
         end subroutine get_Nactive
@@ -1449,11 +1449,14 @@ module bodies
             integer(kind=4) :: i
             integer(kind=4) :: m_act0
             logical :: again, do_write
+            real(kind=8) :: r_max2, dist2_to_ast, ast_coord(2), aux_coord(2)
 
             if (r_max .le. cero) return  ! Nothing to do
 
             ! Init
             do_write = present(unit_file) .and. unit_file > 0   !!! -std=f08
+            ast_coord = self%asteroid%coordinates(1:2)
+            r_max2 = r_max * r_max
 
             again = .True.
             do while (again)
@@ -1461,17 +1464,23 @@ module bodies
             
                 ! Moons
                 do i = m_act0, 1, -1  ! Backwards loop
-                    if (self%moons(i)%dist_to_cm > r_max) then
-                        if (do_write) write(unit_file,s1i1x5) "Moon", i, "(", self%moons(i)%id, ") escaped."
+                    aux_coord = self%moons(i)%coordinates(1:2) - ast_coord
+                    dist2_to_ast = aux_coord(1) * aux_coord(1) + aux_coord(2) * aux_coord(2)
+                    ! if (self%moons(i)%dist_to_cm > r_max) then
+                    if (dist2_to_ast > r_max2) then
+                        if (do_write) write(unit_file,s1i5x5) "Moon", i, "(", self%moons(i)%id, ") escaped."
                         call eject_moon_i(self, i)
                     end if
                 end do
 
                 ! Particles
                 do i = self%Nparticles_active, 1, -1  ! Backwards loop
-                    if (self%particles(i)%dist_to_cm > r_max) then
+                    aux_coord = self%particles(i)%coordinates(1:2) - ast_coord
+                    dist2_to_ast = aux_coord(1) * aux_coord(1) + aux_coord(2) * aux_coord(2)
+                    ! if (self%particles(i)%dist_to_cm > r_max) then
+                    if (dist2_to_ast > r_max2) then
                         self%particles(i)%merged_to = -2  ! Escape
-                        if (do_write) write(unit_file,s1i1x5) "Particle", i, "(", self%particles(i)%id, ") escaped."
+                        if (do_write) write(unit_file,s1i5x5) "Particle", i, "(", self%particles(i)%id, ") escaped."
                         call deactivate_particle_i(self, i)
                     end if
                 end do
@@ -1511,7 +1520,7 @@ module bodies
                         dr_vec = self%moons(i)%coordinates(1:2) - moon_pos  ! Relative pos
                         dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                         if (dr .le. (moon_rad + self%moons(i)%radius)) then
-                            if (do_write) write(unit_file,s1i1x5) "Merged moon ", j, "(", self%moons(j)%id, ") into moon ", &
+                            if (do_write) write(unit_file,s1i5x5) "Merged moon ", j, "(", self%moons(j)%id, ") into moon ", &
                                             & i, "(", self%moons(i)%id, ")."
                             call merge_2_moons(self, i, j)
                             exit inner_loop
@@ -1529,7 +1538,7 @@ module bodies
                             dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
                             dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                             if (dr .le. boul_rad + self%moons(i)%radius) then
-                                if (do_write) write(unit_file,s1i1x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
+                                if (do_write) write(unit_file,s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                                 call merge_moon_i_into_ast(self, i)
                             end if
                         end do
@@ -1539,7 +1548,7 @@ module bodies
                         dr_vec = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                         dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                         if (dr .le. r_min + self%moons(i)%radius) then
-                            if (do_write) write(unit_file,s1i1x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
+                            if (do_write) write(unit_file,s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
                         end if
                     end do
@@ -1560,7 +1569,7 @@ module bodies
                     dr_vec = self%particles(i)%coordinates(1:2) - moon_pos  ! Relative pos
                     dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                     if (dr .le. moon_rad) then
-                        if (do_write) write(unit_file,s1i1x5) "Merged particle ", i, "(", self%particles(i)%id, ") into moon ", &
+                        if (do_write) write(unit_file,s1i5x5) "Merged particle ", i, "(", self%particles(i)%id, ") into moon ", &
                                         & j, "(", self%moons(j)%id, ")."
                         self%particles(i)%merged_to = moon_id  ! Set where merged to
                         call deactivate_particle_i(self, i)  ! Deactivate
@@ -1578,7 +1587,7 @@ module bodies
                         dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
                         dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                         if (dr .le. boul_rad) then
-                            if (do_write) write(unit_file,s1i1x5) "Merged particle ", i, &
+                            if (do_write) write(unit_file,s1i5x5) "Merged particle ", i, &
                                                                 & "(", self%particles(i)%id, ") into asteroid."
                             self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
                             call deactivate_particle_i(self, i)  ! Deactivate
@@ -1590,7 +1599,7 @@ module bodies
                     dr_vec = self%particles(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                     dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
                     if (dr .le. r_min) then
-                        if (do_write) write(unit_file,s1i1x5) "Merged particle ", i, "(", self%particles(i)%id, ") into asteroid."
+                        if (do_write) write(unit_file,s1i5x5) "Merged particle ", i, "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
                         call deactivate_particle_i(self, i)  ! Deactivate
                     end if
