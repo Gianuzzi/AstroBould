@@ -167,7 +167,7 @@ module bodies
             end if
 
             ! Ensure not anti-radius
-            if (radius_primary < epsilon) then
+            if (radius_primary < tini) then
                 write(*,*) "ERROR: Primary can not have zero or negative radius."
                 stop 1
             end if
@@ -225,7 +225,7 @@ module bodies
             slot_found = .False. ! Default
 
             ! Ensure not massless
-            if (mu_to_asteroid < epsilon) then
+            if (mu_to_asteroid < tini) then
                 write(*,*) "ERROR: Moons can not have zero or negative mass (I think)..."
                 stop 1
             end if
@@ -337,11 +337,11 @@ module bodies
             ! Set Rotations
             self%theta = cero  ! Initial angle with X axis
             self%omega_kep = sqrt(G * self%mass / self%boulders(0)%radius**3) ! Keplerian mean motion boulders would have
-            if (abs(lambda_kep) > epsilon) then    
+            if (abs(lambda_kep) > tini) then    
                 self%lambda_kep = lambda_kep
                 self%omega = self%omega_kep * self%lambda_kep  ! Angular velocity of body 0
                 self%rotational_period = twopi / abs(self%omega) ! Rotational period of body 0
-            else if (abs(rotational_period) > epsilon) then
+            else if (abs(rotational_period) > tini) then
                 self%rotational_period = abs(rotational_period)
                 self%omega = (twopi / rotational_period) ! Angular velocity of body 0
                 self%lambda_kep = self%omega / self%omega_kep ! Ratio of omegas
@@ -366,10 +366,10 @@ module bodies
             coords_cm_from_primary(2) = dot_product(coords_from_primary(:,2), self%boulders(1:)%mu_to_asteroid)
             coords_cm_from_primary(3) = dot_product(coords_from_primary(:,3), self%boulders(1:)%mu_to_asteroid)
             coords_cm_from_primary(4) = dot_product(coords_from_primary(:,4), self%boulders(1:)%mu_to_asteroid)
-            if (abs(coords_cm_from_primary(1)) < epsilon) coords_cm_from_primary(1) = cero  ! Little correction
-            if (abs(coords_cm_from_primary(2)) < epsilon) coords_cm_from_primary(2) = cero  ! Little correction
-            if (abs(coords_cm_from_primary(3)) < epsilon) coords_cm_from_primary(3) = cero  ! Little correction
-            if (abs(coords_cm_from_primary(4)) < epsilon) coords_cm_from_primary(4) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(1)) < tini) coords_cm_from_primary(1) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(2)) < tini) coords_cm_from_primary(2) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(3)) < tini) coords_cm_from_primary(3) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(4)) < tini) coords_cm_from_primary(4) = cero  ! Little correction
 
             !! Set Distances and Angles
             !!! Body 0
@@ -401,11 +401,11 @@ module bodies
             ! Set Rotations
             self%theta = cero  ! Initial angle with X axis
             self%omega_kep = sqrt(G * self%mass / self%boulders(0)%radius**3) ! Keplerian mean motion boulders would have
-            if (abs(lambda_kep) > epsilon) then    
+            if (abs(lambda_kep) > tini) then    
                 self%lambda_kep = lambda_kep
                 self%omega = self%omega_kep * self%lambda_kep  ! Angular velocity of body 0
                 self%rotational_period = twopi / abs(self%omega) ! Rotational period of body 0
-            else if (abs(rotational_period) > epsilon) then
+            else if (abs(rotational_period) > tini) then
                 self%rotational_period = abs(rotational_period)
                 self%omega = (twopi / rotational_period) ! Angular velocity of body 0
                 self%lambda_kep = self%omega / self%omega_kep ! Ratio of omegas
@@ -456,14 +456,14 @@ module bodies
                 !! Elements are ateroid-centric
                 combined_mass = asteroid%mass + self(i)%mass
                 aux_real = get_a_corot(combined_mass, asteroid%omega)  ! Ask. Including mass?
-                if (self(i)%mmr > epsilon) then
-                    if (aux_real < epsilon) then  ! Ensure rotating
+                if (self(i)%mmr > tini) then
+                    if (aux_real < tini) then  ! Ensure rotating
                         write(*,*) "ERROR: Can not set moon MMR with non rotating asteroid."
                         stop 1
                     end if
                     self(i)%elements(1) = self(i)%mmr**(2.d0/3.d0) * aux_real  ! a
                 else
-                    if (aux_real < epsilon) then  ! Ensure rotating
+                    if (aux_real < tini) then  ! Ensure rotating
                         self(i)%mmr = cero
                     else
                         self(i)%mmr = (self(i)%elements(1) / aux_real)**(1.5d0) ! MMR
@@ -510,14 +510,14 @@ module bodies
 
                 ! Define coordinates
                 !! Elements are ateroid-centric
-                if (self(i)%mmr > epsilon) then
-                    if (asteroid%a_corotation < epsilon) then  ! Ensure rotating
+                if (self(i)%mmr > tini) then
+                    if (asteroid%a_corotation < tini) then  ! Ensure rotating
                         write(*,*) "ERROR: Can not set particle MMR with non rotating asteroid."
                         stop 1
                     end if
                     self(i)%elements(1) = self(i)%mmr**(2.d0/3.d0) * asteroid%a_corotation  ! a
                 else
-                    if (asteroid%a_corotation < epsilon) then  ! Ensure rotating
+                    if (asteroid%a_corotation < tini) then  ! Ensure rotating
                         self(i)%mmr = cero
                     else
                         self(i)%mmr = (self(i)%elements(1) / asteroid%a_corotation)**(1.5d0) ! MMR 
@@ -547,7 +547,7 @@ module bodies
 
             ! Update Rotation
             self%theta = theta  ! Update THETA
-            if (abs(omega) > epsilon) then
+            if (abs(omega) > tini) then
                 self%a_corotation = get_a_corot(self%mass, omega)  ! This is a bit odd now...
                 self%rotational_period = twopi / omega ! Rotational period of body 0
                 self%lambda_kep = omega / self%omega_kep ! Ratio of omegas
@@ -604,7 +604,7 @@ module bodies
             real(kind=8) :: growth
             integer(kind=4) :: i
 
-            if (mass_to_add < epsilon) then
+            if (mass_to_add < tini) then
                 write(*,*) " No mass to add."
                 return  ! No mass to add
             end if
@@ -728,7 +728,7 @@ module bodies
             do i = 1, self%Nmoons_active
                 dr = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)
                 dist = sqrt(dr(1) * dr(1) + dr(2) * dr(2))
-                if (dist < epsilon) cycle
+                if (dist < tini) cycle
                 e_pot = e_pot - (self%asteroid%mass * self%moons(i)%mass) / dist
             end do
             !! Moons (here, only moons with moons are added)
@@ -736,7 +736,7 @@ module bodies
                 do j = 2, self%Nmoons_active
                     dr = self%moons(j)%coordinates(1:2) - self%moons(i)%coordinates(1:2)
                     dist = sqrt(dr(1) * dr(1) + dr(2) * dr(2))
-                    if (dist < epsilon) cycle
+                    if (dist < tini) cycle
                     e_pot = e_pot - (self%moons(i)%mass * self%moons(j)%mass) / dist
                 end do
                 energy = energy + self%moons(i)%e_kin + self%moons(i)%e_rot  ! Energy (TBD: Last moon)
@@ -771,7 +771,7 @@ module bodies
             
             if (barycentric) then 
 
-                if ((self%asteroid%dist_to_cm > epsilon) .and. (self%Nmoons_active > 0)) then
+                if ((self%asteroid%dist_to_cm > tini) .and. (self%Nmoons_active > 0)) then
                     call elem(self%mass, (/self%asteroid%coordinates(1:2), cero, self%asteroid%coordinates(3:4), cero/), &
                             & a, e, i, M, w, O)
                     self%asteroid%elements = (/a, e, M, w/)

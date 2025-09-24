@@ -21,7 +21,7 @@ module celestial
             real(kind=8), intent(in) :: mass, omega
             real(kind=8) :: acorot
 
-            if (omega < epsilon) then
+            if (omega < tini) then
                 acorot = cero
             else 
                 acorot = (G * mass / (omega * omega))**(1/3.)
