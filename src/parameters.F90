@@ -75,7 +75,7 @@ module parameters
         ! [BINS] forces/effects - [NOT AVAILABLE YET. STILL UNDER DEVELOPMENT]
         logical :: use_self_gravity = .False.
         integer(kind=4) :: Norder_self_gravity = 3
-        integer(kind=8) :: Nbins = 0
+        integer(kind=4) :: Nbins = 0
         integer(kind=4) :: binning_method = 1
         real(kind=8) :: rmin_bins = - uno ! -1 means first particle (initial)
         real(kind=8) :: rmax_bins = - uno ! -1 means last particle (initial)

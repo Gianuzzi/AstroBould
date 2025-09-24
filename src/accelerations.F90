@@ -10,7 +10,7 @@ module accelerations
     real(kind=8) :: J2_coef = cero ! J2
     logical :: use_damp = .False.
     real(kind=8) :: damp_coef_1 = cero, damp_coef_2 = cero, damp_time = cero ! Omega Damping
-    integer(kind=8) :: damp_model = -1 ! Omega Damping
+    integer(kind=4) :: damp_model = -1 ! Omega Damping
 
     contains
 
