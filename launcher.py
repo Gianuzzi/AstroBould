@@ -73,9 +73,15 @@ merge = 3  # Tipo de merge
 ## 0: No detener, 1: Luna, 2: Partícula, 3: Ambos
 stopif = 0  # Tipo de stop if
 
+# # Drag parameter
+# drag_eta = 1e-3  # 0 means no drag
+
+# # Linear spin down characteristic timescale. (Time at which spin would be 0.)
+# spin_down_tau = 0  # 0 means no spin down
+
 # Input # ("" o False si no se usa)
 config = "config.ini"  # Archivo de configuración
-bodiesfile = "particles.in"  # Archivo de partículas o lunas
+bodiesfile = "moons.in"  # Archivo de partículas o lunas
 tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 # Output # ("" o False si no se usa)
@@ -177,6 +183,7 @@ if (not datafile) and (not final_chaos):
     )
     sys.exit()
 
+
 # Leemos input
 # Bodies
 with open(oparticles, "r") as f:
@@ -184,6 +191,7 @@ with open(oparticles, "r") as f:
 # Arreglamos por si hay "e" en vez de "d"
 for i in range(len(lines)):
     lines[i] = lines[i].replace("e", "d")
+
 
 # Obtener el número de líneas del archivo de bodies
 ntot = len(lines)
@@ -194,6 +202,7 @@ if nsys == 0:
     sys.exit()
 else:
     print(f"Cantidad total de bodies: {nsys}")
+
 
 # Ver si hay que hacer todo, o ya hay alguna realizadas
 new_simulation = True
@@ -229,6 +238,7 @@ def make_done(wrk_dir, pref="dpy"):
 # Prefijo
 pref = "tomd" if tomfile else "dpy"
 
+
 # Obtener los sistemas realizados
 if os.path.isdir(wrk_dir):
     print(
@@ -262,6 +272,54 @@ args += " --noscreen --nodatascr --noperc --noparallel --nopartfile"
 args += f" -tomfile {tomfile}" if tomfile else " --notomfile"
 args += " --elem" if elements else " --noelem"
 args += f" -merge {merge}"
+
+
+# # Change drag and or spin down
+
+# # Solo se puede si hay ocini
+# if existe_ocini:
+#     with open(ocini, "r") as f:
+#         ocini_lines = f.readlines()
+    
+#     # Get drag lines
+#     drag_nline1 = len(ocini_lines) + 1 # In case it does not exist
+#     drag_nline2 = len(ocini_lines) + 2 # In case it does not exist
+#     for nline, line in enumerate(ocini_lines):
+#         strp_line = line.strip()
+#         if strp_line.startswith("include naive-stokes drag force"):
+#             drag_nline1 = nline
+#         elif strp_line.startswith("drag force coefficient"):
+#             drag_nline2 = nline
+    
+#     # Get spin-down lines
+#     drag_nline1 = len(ocini_lines) + 1 # In case it does not exist
+#     drag_nline2 = len(ocini_lines) + 2 # In case it does not exist
+#     for nline, line in enumerate(ocini_lines):
+#         strp_line = line.strip()
+#         if strp_line.startswith("include naive-stokes drag force"):
+#             drag_nline1 = nline
+#         elif strp_line.startswith("drag force coefficient"):
+#             drag_nline2 = nline
+
+# # Drag list
+# if drag_eta is False or drag_eta is None:
+#     drag_eta = 0.0
+# if isinstance(drag_eta, (float, int)):
+#     drag_list = [drag_eta]
+# elif isinstance(drag_eta, (list, tuple)):
+#     drag_list = list(drag_eta)
+# else:
+#     raise ValueError("drag_eta should be a float or a list.")
+
+# # Spin down
+# if spin_down_tau is False or spin_down_tau is None:
+#     spin_down_tau = 0.0
+# if isinstance(spin_down_tau, (float, int)):
+#     spin_down_list = [spin_down_tau]
+# elif isinstance(spin_down_tau, (list, tuple)):
+#     spin_down_list = list(spin_down_tau)
+# else:
+#     raise ValueError("spin_down_tau should be a float or a list.")
 
 
 # Función general
@@ -410,7 +468,7 @@ def make_chaos(final_chaos, suffix=""):
     final_path = os.path.join(wrk_dir, final_chaos)
 
     try:
-        num_chunks = (len(file_list) + 1) // chunk_size
+        num_chunks = (len(file_list) + chunk_size - 1) // chunk_size
         # AWK program (portable): on first line of each file FNR==1 -> set f=start ; increment start
         # then print file-index f, tab, and the original line.
         awk_prog = r'FNR==1{f=start; start++} {printf("%7d %s\n", f, $0)}'
