@@ -599,7 +599,7 @@ program main
     else 
         sim%max_distance = sim%max_distance * unit_dist
     end if
-    if (sim%max_distance <= sim%min_distance) then
+    if ((sim%max_distance > cero) .and. (sim%max_distance <= sim%min_distance)) then
         write (*,*) ACHAR(10)
         write (*,*) "ERROR: rmax <= rmin"
         stop 1
@@ -607,7 +607,11 @@ program main
     if (sim%use_screen) then
         write (*,*) "Conditions for escape/collision"
         write (*,s1r1) "  rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
-        write (*,s1r1) "  rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
+        if (sim%max_distance > cero) then
+            write (*,s1r1) "  rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
+        else
+            write (*,*) "  rmax : Infinity"
+        end if
         if (sim%use_any_merge) then
             if (sim%use_merge_part_mass) write (*,*) " Colliding particles into massive bodies will be removed."
             if (sim%use_merge_massive) write (*,*) " Colliding massive bodies will be merged."

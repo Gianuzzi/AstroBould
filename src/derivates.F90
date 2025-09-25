@@ -232,7 +232,6 @@ module derivates
                     der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - G * boulders_data(i,1) * dr_vec / (dr2 * dr)  ! G mBoul (x, y) / r³
 
                 end do
-                ! print*, t, "ACA"
 
                 !! Moons (massive)
                 do j = 2, last_moon ! +1 porque j=1 es asteroid

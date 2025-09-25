@@ -87,6 +87,7 @@ module bodies
     character(26), parameter :: i2r11 = "(I7, I7, 11(1X, 1PE22.15))"  ! 2 int y 11 real
     character(25), parameter :: i2r9 = "(I7, I7, 9(1X, 1PE22.15))"  ! 3 int y 9 real
     character(18), parameter :: s1i5x5 = "(5(A, 1X, I5, 1X))"
+    character(18), parameter :: r13 = "(13(1X, 1PE22.15))"
     
     contains
         !  -----------------------------   MEMORY    -------------------------------------
@@ -1727,7 +1728,7 @@ module bodies
                     & self%asteroid%coordinates(1:2) / unit_dist, &  ! x y
                     & self%asteroid%coordinates(3:4) / unit_vel, &  ! vx vy
                     & self%asteroid%mass / unit_mass, &  ! mass
-                    & self%asteroid%radius / unit_dist  ! dist
+                    & self%asteroid%radius / unit_dist  ! radius
             ! Boulders
             do i = 0, self%asteroid%Nboulders
                 call get_boulder_i_coord(self%asteroid, i, coords)
@@ -1740,7 +1741,7 @@ module bodies
                     & coords(1:2) / unit_dist, &  ! x y
                     & coords(3:4) / unit_vel, &  ! vx vy
                     & self%asteroid%boulders(i)%mass / unit_mass, &  ! mass
-                    & self%asteroid%boulders(i)%radius / unit_dist  ! dist
+                    & self%asteroid%boulders(i)%radius / unit_dist  ! radius
             end do
         end subroutine write_ast_coor
 
@@ -1758,7 +1759,7 @@ module bodies
                 & self%moons(i)%coordinates(1:2) / unit_dist, &  ! x y
                 & self%moons(i)%coordinates(3:4) / unit_vel, &  ! vx vy
                 & self%moons(i)%mass / unit_mass, &  ! mass
-                & self%moons(i)%radius / unit_dist  ! dist
+                & self%moons(i)%radius / unit_dist  ! radius
         end subroutine write_moon_i_coor
 
         ! Write coordinates particle i
@@ -1775,7 +1776,7 @@ module bodies
                 & self%particles(i)%coordinates(1:2) / unit_dist, &  ! x y
                 & self%particles(i)%coordinates(3:4) / unit_vel, &  ! vx vy
                 & cero, &  ! mass
-                & cero  ! dist
+                & cero  ! radius
         end subroutine write_particle_i_coor
 
         ! Write coordinates ALL
@@ -1986,7 +1987,7 @@ module bodies
             call calculate_energy_and_ang_mom(actual, energy, ang_mom)
             if (present(unit_file)) my_file = unit_file
             
-            write(my_file,*) actual%time / unit_time, &  ! time
+            write(my_file,r13) actual%time / unit_time, &  ! time
                              & mass / unit_mass, &  ! mass
                              & mass / initial%mass, &  ! mass / mass0
                              & COM(1:2) / unit_dist, &  ! x y
