@@ -38,8 +38,18 @@ program main
     if (.not. use_configfile) then ! Usaremos parámetros por defecto
         
         ! Asteroide central
-        !! Primary
+        !! Primary mass
         input%mass_primary = 6.3d18 ! Masa del cuerpo 0 [kg] ! -x =>  mAst = x
+
+        !! Primary shape
+
+        !!! Tri_Axial
+        input%use_triaxial = .False.  ! Logical para determinar si se usa triax, o Boulders
+        input%triax_a_primary = cero  ! Semieje a
+        input%triax_b_primary = cero  ! Semieje b
+        input%triax_c_primary = cero  ! Semieje c
+
+        !!! Explicit primary radius
         input%radius_primary = 129.d0 ! Radio del cuerpo 0 [km]
 
         !! ROTACIÓN
@@ -107,8 +117,6 @@ program main
         input%drag_coefficient = cero  ! Eta
         input%drag_active_time = cero  ! [day] Tiempo que actúa drag
 
-        !!!! Geo-Potential (J2)
-        input%J2_coefficient = cero
 
         !!! Parámetros corrida
 
@@ -316,9 +324,10 @@ program main
         end if
     end if
 
-    if (.not. sim%use_boulders) then
+    if ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial)) then
         write (*,*) "WARNING: No boulders to integrate. Rotation effects dissabled."
     end if
+    
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Parallel  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -358,7 +367,9 @@ program main
     call allocate_asteroid(asteroid, sim%Nboulders)  ! Alocate
     call add_primary(asteroid, &   ! Create primary 
                     & sim%mass_primary * unit_mass, &  ! mass
-                    & sim%radius_primary * unit_dist)  ! radius
+                    & sim%triax_a_primary * unit_dist, &  ! Semi-axis a
+                    & sim%triax_b_primary * unit_dist, &  ! Semi-axis b
+                    & sim%triax_c_primary * unit_dist)    ! Semi-axis c
     do i = 1, sim%Nboulders ! Add boulders
         call add_boulder(asteroid, &
                         & boulders_in(i,1), &              ! mu
@@ -415,7 +426,7 @@ program main
         write (*,s1r1) "  Angular momentum (rot):", system%asteroid%ang_mom_rot / unit_mass / &
                                     & (unit_dist**2) * unit_time, "[kg km² day⁻¹]"
         write (*,*) ACHAR(5)
-        if (.not. sim%use_boulders) then
+        if ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial)) then
             write(*,*) "Rotation is considered just to define initial parameters."
             write (*,*) ACHAR(5)
         end if
@@ -502,6 +513,22 @@ program main
         write (*,*) ACHAR(5)
     end if
 
+    !! Tri-axial gravity
+    if (sim%use_triaxial) then
+        call init_ellipsoid(sim%triax_a_primary * unit_dist, sim%triax_b_primary * unit_dist, sim%triax_c_primary * unit_dist)
+        if (sim%use_screen) then
+            write (*,*) "Tri-axial potential"
+            write (*,s1r1) "  semi-axis-a :", sim%triax_a_primary, "[km]"
+            write (*,s1r1) "  semi-axis-b :", sim%triax_b_primary, "[km]"
+            write (*,s1r1) "  semi-axis-c :", sim%triax_c_primary, "[km]"
+            write (*,s1r1) "   Effective Radius :", sim%Reffective, "[km]"
+            write (*,s1r1) "   C_20:", sim%C20
+            write (*,s1r1) "   C_22:", sim%C22
+            write (*,*) ACHAR(5)
+        end if
+    end if
+
+
     !! Moons gravity
     if (sim%use_moon_gravity .and. sim%use_screen) then
         write (*,*) "Gravity between moons DEACTIVATED."
@@ -509,7 +536,7 @@ program main
     end if
 
     !! Omega Damping
-    if (sim%use_omega_damping .and. (.not. sim%use_boulders)) then
+    if (sim%use_omega_damping .and. ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial))) then
         if (sim%use_screen) write (*,*) "WARNING: Skipping omega damping without boulders."
         sim%use_omega_damping = .False.
     else if (sim%use_omega_damping) then
@@ -519,7 +546,6 @@ program main
                             & cero, &
                             & sim%omega_damp_active_time * unit_time, &
                             & 1)
-
             if (sim%use_screen) then
                 write (*,*) "Omega Damping: linear"
                 write (*,s1r1) " tau_o :", sim%omega_lin_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"
@@ -575,15 +601,6 @@ program main
         end if
     end if
 
-    !! J2
-    if (sim%use_J2) then
-        call init_J2(sim%J2_coefficient)
-        if (sim%use_screen) then
-            write (*,s1r1) "J2:", sim%J2_coefficient, "[km⁵ day⁻²]"
-            write (*,*) ACHAR(5)
-        end if
-    end if
-
 !     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     ! Escape/Colisión
@@ -599,7 +616,7 @@ program main
     else 
         sim%max_distance = sim%max_distance * unit_dist
     end if
-    if (sim%max_distance <= sim%min_distance) then
+    if ((sim%max_distance > cero) .and. (sim%max_distance <= sim%min_distance)) then
         write (*,*) ACHAR(10)
         write (*,*) "ERROR: rmax <= rmin"
         stop 1
@@ -607,7 +624,11 @@ program main
     if (sim%use_screen) then
         write (*,*) "Conditions for escape/collision"
         write (*,s1r1) "  rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
-        write (*,s1r1) "  rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
+        if (sim%max_distance > cero) then
+            write (*,s1r1) "  rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
+        else
+            write (*,*) "  rmax : Infinity"
+        end if
         if (sim%use_any_merge) then
             if (sim%use_merge_part_mass) write (*,*) " Colliding particles into massive bodies will be removed."
             if (sim%use_merge_massive) write (*,*) " Colliding massive bodies will be merged."
@@ -728,7 +749,7 @@ program main
         call merge_sort_and_unique(tom_times, output_times, &
                                    & checkpoint_is_tom, checkpoint_is_output, &
                                    & checkpoint_times, checkpoint_number)
-        if (allocated(tom_deltaomega) .and. (.not. sim%use_boulders)) then
+        if (allocated(tom_deltaomega) .and. ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial))) then
             if (sim%use_screen) write (*,*) "WARNING: Delta_omega has no sense without boulders. It will be ignored."
             deallocate(tom_deltaomega)            
         end if

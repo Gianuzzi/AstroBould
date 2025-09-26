@@ -2,7 +2,7 @@ module parameters
     use constants
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
-    use accelerations, only: init_damping, init_drag, init_J2, init_stokes
+    use accelerations, only: init_damping, init_drag, init_ellipsoid, init_stokes
     use omp_lib
 
     implicit none
@@ -43,10 +43,15 @@ module parameters
         ! Adaptive step integrations - 
         integer(kind=4) :: error_digits = 12
         real(kind=8) :: learning_rate = uno
-        ! The primary -
+        ! Primary mass -
         real(kind=8) :: mass_primary = cero
+        ! Primary shape -
         real(kind=8) :: radius_primary = cero
-        ! Rotation -
+        logical :: use_triaxial = .False.
+        real(kind=8) :: triax_a_primary = cero
+        real(kind=8) :: triax_b_primary = cero
+        real(kind=8) :: triax_c_primary = cero
+        ! Primary rotation -
         real(kind=8) :: lambda_kep = cero
         real(kind=8) :: asteroid_rotational_period = cero
         ! Moons - 
@@ -71,7 +76,6 @@ module parameters
         real(kind=8) :: omega_exp_damp_poly_B = cero
         real(kind=8) :: omega_damp_active_time = cero
         real(kind=8) :: mass_exp_damping_time = infinity
-        real(kind=8) :: J2_coefficient = cero
         ! [BINS] forces/effects - [NOT AVAILABLE YET. STILL UNDER DEVELOPMENT]
         logical :: use_self_gravity = .False.
         integer(kind=4) :: Norder_self_gravity = 3
@@ -127,20 +131,17 @@ module parameters
         logical :: use_boulders = .False.
         logical :: use_particles = .False.
         logical :: use_moons = .False.
+        !! Triaxial
+        real(kind=8) :: Reffective = cero
+        real(kind=8) :: C20 = cero
+        real(kind=8) :: C22 = cero
         ! Forces
         logical :: use_torque = .False.  ! May disapear...
         !! Stokes
-        ! real(kind=8) :: stokes_C = cero  ! Parameter C in Stokes
-        ! real(kind=8) :: stokes_alpha = uno  ! Parameter alpha in Stokes
         !! Mass and omega damping
         logical :: use_lin_omega_damp = .False.
         logical :: use_exp_omega_damp = .False.
         logical :: use_poly_omega_damp = .False.
-        ! real(kind=8) :: omega_exp_damp_poly_AB = cero
-        ! real(kind=8) :: omega_linear_damping_slope = cero
-        !! Geo-potential
-        logical :: use_J2 = .False.
-        ! real(kind=8) :: J2_effective = cero
         !! [BINS] ( Not available yet )
         logical :: use_bins = .False.
         !!! Viscosity [Not available yet]
@@ -644,6 +645,18 @@ module parameters
                             read (value_str, *) params%mass_primary
                         case("radius of prima")
                             read (value_str, *) params%radius_primary
+                        case("use triaxial mo")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%use_triaxial = .True.
+                            else
+                                params%use_triaxial = .False.
+                            end if
+                        case("semi-axis a (km")
+                            read (value_str, *) params%triax_a_primary
+                        case("semi-axis b (km")
+                            read (value_str, *) params%triax_b_primary
+                        case("semi-axis c (km")
+                            read (value_str, *) params%triax_c_primary
                         case("ratio of spin t")
                             read (value_str, *) params%lambda_kep
                         case("rotational peri")
@@ -718,8 +731,6 @@ module parameters
                             read (value_str, *) params%omega_damp_active_time
                         case("mass exponentia")
                             read (value_str, *) params%mass_exp_damping_time
-                        case("geo-potential J")
-                            read (value_str, *) params%J2_coefficient
                         case("include self-gr")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 params%use_self_gravity = .True.
@@ -1016,24 +1027,72 @@ module parameters
 
             !! Boulders
             if (derived%Nboulders < 0) then
-                write (*,*) "ERROR: Nboulders can not be negative 0"
+                write (*,*) "ERROR: Nboulders can not be negative."
                 stop 1
             end if
-            derived%use_boulders = (derived%Nboulders > 0)
+            derived%use_boulders = derived%Nboulders > 0
+
+            ! Primary Shape
+            if (derived%use_triaxial) then
+                ! Check order and values
+                if (derived%triax_c_primary < cero) then
+                    write (*,*) "ERROR: Semi-axis 'c' can not be negative"
+                    stop 1
+                else if (derived%triax_b_primary < cero) then
+                    write (*,*) "ERROR: Semi-axis 'b' can not be negative"
+                    stop 1
+                else if  (derived%triax_a_primary .le. cero) then
+                    write (*,*) "ERROR: Semi-axis 'a' must be positive."
+                    stop 1
+                else if (derived%triax_b_primary > derived%triax_a_primary) then
+                    write (*,*) "ERROR: Semi-axis 'b' can not be greater than semi-axis 'a'."
+                    stop 1
+                else if (derived%triax_c_primary > derived%triax_b_primary) then
+                    write (*,*) "ERROR: Semi-axis 'c' can not be greater than semi-axis 'b'."
+                    stop 1
+                end if
+                ! Set values of not defined
+                if (derived%triax_b_primary .eq. cero) derived%triax_b_primary = derived%triax_a_primary
+                if (derived%triax_c_primary .eq. cero) derived%triax_c_primary = derived%triax_b_primary
+                ! Check NO BOULDERS
+                if (derived%use_boulders) then
+                    write (*,*) "ERROR: Can not set tri-axial model with boulders."
+                    stop 1
+                end if
+                if (derived%triax_a_primary - derived%triax_c_primary < tini) then
+                    write (*,*) "WARNING: Tri-axial model with equal semi-axis."
+                    write (*,*) "         Switching to single central sphere."
+                    derived%radius_primary = (derived%triax_a_primary * &
+                                            & derived%triax_b_primary * &
+                                            & derived%triax_c_primary)**(1.d0/3.d0)
+                    derived%use_triaxial = .False.
+                end if
+            else 
+                ! Set semi to a sphere
+                derived%triax_a_primary = derived%radius_primary
+                derived%triax_b_primary = derived%radius_primary
+                derived%triax_c_primary = derived%radius_primary
+            end if
+            !! Set derived Triaxial
+            derived%Reffective = (derived%triax_a_primary * derived%triax_b_primary * derived%triax_c_primary)**(1.d0/3.d0)
+            derived%C20 = (dos * derived%triax_c_primary**2 - &
+                         & derived%triax_a_primary**2 - &
+                         & derived%triax_b_primary**2) / (10.d0 * derived%Reffective**2)
+            derived%C22 = (derived%triax_a_primary**2 - derived%triax_b_primary**2) / (20.d0 * derived%Reffective**2)
 
             !! NMoons
             if (derived%Nmoons < 0) then
-                write (*,*) "ERROR: Nmoons can not be negative 0"
+                write (*,*) "ERROR: Nmoons can not be negative."
                 stop 1
             end if
-            derived%use_moons = (derived%Nmoons > 0)
+            derived%use_moons = derived%Nmoons > 0
 
             !! NParticles
             if (derived%Nparticles < 0) then
-                write (*,*) "ERROR: Nparticles can not be negative 0"
+                write (*,*) "ERROR: Nparticles can not be negative."
                 stop 1
             end if
-            derived%use_particles = (derived%Nparticles > 0)
+            derived%use_particles = derived%Nparticles > 0
                        
             
             !! Forces
@@ -1085,9 +1144,6 @@ module parameters
             
             ! ! Mass Damping [UNAVAILABLE YET]
             ! if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinity
-
-            !!! Geo-Potential
-            derived%use_J2 = abs(derived%J2_coefficient) > tini
             
             ! ! [BINS]
             ! !! Self-Gravity or Viscosity

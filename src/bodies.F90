@@ -24,6 +24,7 @@ module bodies
         type(sphere_st), allocatable :: boulders(:)  ! Includes primary  (from 0)
         real(kind=8) :: mass = cero  ! Mass  [config -]
         real(kind=8) :: radius = cero  ! Radius
+        real(kind=8), dimension(3) :: semi_axis = cero  ! a, b, c of primary
         real(kind=8) :: theta ! Rotational angle from X [dynamic]
         real(kind=8) :: omega = cero  ! Spin  [config] [dynamic]
         real(kind=8) :: a_corotation = cero  ! Corotation a, for massless
@@ -87,6 +88,7 @@ module bodies
     character(26), parameter :: i2r11 = "(I7, I7, 11(1X, 1PE22.15))"  ! 2 int y 11 real
     character(25), parameter :: i2r9 = "(I7, I7, 9(1X, 1PE22.15))"  ! 3 int y 9 real
     character(18), parameter :: s1i5x5 = "(5(A, 1X, I5, 1X))"
+    character(18), parameter :: r13 = "(13(1X, 1PE22.15))"
     
     contains
         !  -----------------------------   MEMORY    -------------------------------------
@@ -156,10 +158,11 @@ module bodies
 
         !  -----------------------------   ADD OBJECTS    -------------------------------------
 
-        subroutine add_primary(self, mass_primary_or_ast, radius_primary)
+        subroutine add_primary(self, mass_primary_or_ast, semi_a_primary, semi_b_primary, semi_c_primary)
             implicit none
             type(asteroid_st), intent(inout) :: self
-            real(kind=8), intent(in) :: mass_primary_or_ast, radius_primary
+            real(kind=8), intent(in) :: mass_primary_or_ast, semi_a_primary, semi_b_primary, semi_c_primary
+            real(kind=8) :: radius_primary = cero
             
             if (self%boulders(0)%id .ne. -1) then
                 write(*,*) "ERROR: Primary already set."
@@ -167,10 +170,13 @@ module bodies
             end if
 
             ! Ensure not anti-radius
+            radius_primary = (semi_a_primary * semi_b_primary * semi_c_primary)**(1.d0/3.d0)
             if (radius_primary < tini) then
                 write(*,*) "ERROR: Primary can not have zero or negative radius."
                 stop 1
             end if
+
+            self%semi_axis = (/semi_a_primary, semi_b_primary, semi_c_primary/)
 
             self%boulders(0)%mu_to_primary = uno
             self%boulders(0)%mass = mass_primary_or_ast
@@ -319,7 +325,13 @@ module bodies
             
             ! Correct Body 0 Mass
             aux_real = self%boulders(0)%mass
-            if (aux_real < cero) self%boulders(0)%mass = abs(aux_real) / (uno + sum(self%boulders(1:)%mu_to_primary))
+            if (aux_real < cero) then
+                if (self%Nboulders > 0) then
+                    self%boulders(0)%mass = abs(aux_real) / (uno + sum(self%boulders(1:)%mu_to_primary))
+                else 
+                    self%boulders(0)%mass = - aux_real
+                end if
+            end if
             
             ! Set boulders Masses
             do i = 1, self%Nboulders
@@ -353,23 +365,26 @@ module bodies
             self%a_corotation = get_a_corot(self%mass, self%omega)
 
             ! Calculate Coordinates and angle to CM from boulders
-            allocate(coords_from_primary(self%Nboulders,4))
-            coords_from_primary = cero
-            do i = 1, self%Nboulders
-                coords_from_primary(i,1) = self%boulders(0)%radius * cos(self%boulders(i)%theta_from_primary) ! X boulder from primary
-                coords_from_primary(i,2) = self%boulders(0)%radius * sin(self%boulders(i)%theta_from_primary) ! Y boulder from primary
-                coords_from_primary(i,3) = -self%omega * coords_from_primary(i,2)  ! vx
-                coords_from_primary(i,4) = self%omega * coords_from_primary(i,1)  ! vy
-            end do
-            !! Get coords of CM from primary
-            coords_cm_from_primary(1) = dot_product(coords_from_primary(:,1), self%boulders(1:)%mu_to_asteroid)
-            coords_cm_from_primary(2) = dot_product(coords_from_primary(:,2), self%boulders(1:)%mu_to_asteroid)
-            coords_cm_from_primary(3) = dot_product(coords_from_primary(:,3), self%boulders(1:)%mu_to_asteroid)
-            coords_cm_from_primary(4) = dot_product(coords_from_primary(:,4), self%boulders(1:)%mu_to_asteroid)
-            if (abs(coords_cm_from_primary(1)) < tini) coords_cm_from_primary(1) = cero  ! Little correction
-            if (abs(coords_cm_from_primary(2)) < tini) coords_cm_from_primary(2) = cero  ! Little correction
-            if (abs(coords_cm_from_primary(3)) < tini) coords_cm_from_primary(3) = cero  ! Little correction
-            if (abs(coords_cm_from_primary(4)) < tini) coords_cm_from_primary(4) = cero  ! Little correction
+            coords_cm_from_primary = cero
+            if (self%Nboulders > 0) then
+                allocate(coords_from_primary(self%Nboulders,4))
+                coords_from_primary = cero
+                do i = 1, self%Nboulders
+                    coords_from_primary(i,1) = self%boulders(0)%radius * cos(self%boulders(i)%theta_from_primary) ! X boulder from primary
+                    coords_from_primary(i,2) = self%boulders(0)%radius * sin(self%boulders(i)%theta_from_primary) ! Y boulder from primary
+                    coords_from_primary(i,3) = -self%omega * coords_from_primary(i,2)  ! vx
+                    coords_from_primary(i,4) = self%omega * coords_from_primary(i,1)  ! vy
+                end do
+                !! Get coords of CM from primary
+                coords_cm_from_primary(1) = dot_product(coords_from_primary(:,1), self%boulders(1:)%mu_to_asteroid)
+                coords_cm_from_primary(2) = dot_product(coords_from_primary(:,2), self%boulders(1:)%mu_to_asteroid)
+                coords_cm_from_primary(3) = dot_product(coords_from_primary(:,3), self%boulders(1:)%mu_to_asteroid)
+                coords_cm_from_primary(4) = dot_product(coords_from_primary(:,4), self%boulders(1:)%mu_to_asteroid)
+                if (abs(coords_cm_from_primary(1)) < tini) coords_cm_from_primary(1) = cero  ! Little correction
+                if (abs(coords_cm_from_primary(2)) < tini) coords_cm_from_primary(2) = cero  ! Little correction
+                if (abs(coords_cm_from_primary(3)) < tini) coords_cm_from_primary(3) = cero  ! Little correction
+                if (abs(coords_cm_from_primary(4)) < tini) coords_cm_from_primary(4) = cero  ! Little correction
+            end if
 
             !! Set Distances and Angles
             !!! Body 0
@@ -417,9 +432,9 @@ module bodies
             self%a_corotation = get_a_corot(self%mass, self%omega)
 
             ! Set Inertia
-            self%inertia = cero
-            do i = 0, self%Nboulders
-                aux_real = 0.4d0 * self%boulders(i)%mass * self%boulders(i)%radius**2 ! Inertia Sphere
+            self%inertia = 0.2d0 * self%mass * (self%semi_axis(1)**2 + self%semi_axis(2)**2)  ! Iz of Ellipsoid, or sphere if equal
+            do i = 1, self%Nboulders
+                aux_real = 0.4d0 * self%boulders(i)%mass * self%boulders(i)%radius**2 ! Inertia Sphere boulder
                 self%inertia = self%inertia + aux_real + self%boulders(i)%mass * self%boulders(i)%dist_to_asteroid**2 ! Sphere + Steiner
             end do
 
@@ -433,7 +448,7 @@ module bodies
 
 
             !! Free memory
-            deallocate(coords_from_primary)
+            if (allocated(coords_from_primary)) deallocate(coords_from_primary)
         end subroutine init_asteroid_params
 
         ! Init moon derived parameters
@@ -1727,7 +1742,7 @@ module bodies
                     & self%asteroid%coordinates(1:2) / unit_dist, &  ! x y
                     & self%asteroid%coordinates(3:4) / unit_vel, &  ! vx vy
                     & self%asteroid%mass / unit_mass, &  ! mass
-                    & self%asteroid%radius / unit_dist  ! dist
+                    & self%asteroid%radius / unit_dist  ! radius
             ! Boulders
             do i = 0, self%asteroid%Nboulders
                 call get_boulder_i_coord(self%asteroid, i, coords)
@@ -1740,7 +1755,7 @@ module bodies
                     & coords(1:2) / unit_dist, &  ! x y
                     & coords(3:4) / unit_vel, &  ! vx vy
                     & self%asteroid%boulders(i)%mass / unit_mass, &  ! mass
-                    & self%asteroid%boulders(i)%radius / unit_dist  ! dist
+                    & self%asteroid%boulders(i)%radius / unit_dist  ! radius
             end do
         end subroutine write_ast_coor
 
@@ -1758,7 +1773,7 @@ module bodies
                 & self%moons(i)%coordinates(1:2) / unit_dist, &  ! x y
                 & self%moons(i)%coordinates(3:4) / unit_vel, &  ! vx vy
                 & self%moons(i)%mass / unit_mass, &  ! mass
-                & self%moons(i)%radius / unit_dist  ! dist
+                & self%moons(i)%radius / unit_dist  ! radius
         end subroutine write_moon_i_coor
 
         ! Write coordinates particle i
@@ -1775,7 +1790,7 @@ module bodies
                 & self%particles(i)%coordinates(1:2) / unit_dist, &  ! x y
                 & self%particles(i)%coordinates(3:4) / unit_vel, &  ! vx vy
                 & cero, &  ! mass
-                & cero  ! dist
+                & cero  ! radius
         end subroutine write_particle_i_coor
 
         ! Write coordinates ALL
@@ -1986,7 +2001,7 @@ module bodies
             call calculate_energy_and_ang_mom(actual, energy, ang_mom)
             if (present(unit_file)) my_file = unit_file
             
-            write(my_file,*) actual%time / unit_time, &  ! time
+            write(my_file,r13) actual%time / unit_time, &  ! time
                              & mass / unit_mass, &  ! mass
                              & mass / initial%mass, &  ! mass / mass0
                              & COM(1:2) / unit_dist, &  ! x y

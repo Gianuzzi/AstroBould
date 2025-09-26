@@ -6,8 +6,9 @@ module accelerations
     real(kind=8) :: stokes_time = cero, stokes_C = cero, stokes_alpha = cero  ! Stokes
     logical :: use_drag = .False.
     real(kind=8) :: drag_coef = cero, drag_time = cero  ! Drag
-    logical :: use_J2 = .False.
-    real(kind=8) :: J2_coef = cero ! J2
+    logical :: use_ellipsoid = .False.
+    real(kind=8) :: C20_coef = cero, C22_coef = cero, Re_coef = cero ! Ellipsoid basics
+    real(kind=8) :: K3_coef = cero, L_coef = cero ! Ellipsoid deep
     logical :: use_damp = .False.
     real(kind=8) :: damp_coef_1 = cero, damp_coef_2 = cero, damp_time = cero ! Omega Damping
     integer(kind=4) :: damp_model = -1 ! Omega Damping
@@ -53,6 +54,63 @@ module accelerations
 
             acc = acc + acc_grav
         end subroutine gravity_and_torque_Z
+
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !!!!!!!!!!!!!!!!!!!!!!!! TRIAXIAL !!!!!!!!!!!!!!!!!!!!!!
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        !!! Init Parameters
+        subroutine init_ellipsoid(axis_a, axis_b, axis_c)
+            implicit none
+            real(kind=8), intent(in) :: axis_a, axis_b, axis_c
+            real(kind=8) :: K_coef = cero
+            
+            if ((axis_a > cero) .and. (axis_c > cero)) then
+                use_ellipsoid = .True.
+                Re_coef = (axis_a * axis_b * axis_c)**(1.d0/3.d0)
+                C20_coef = (dos * axis_c**2 - axis_a**2 - axis_b**2) / (10.d0 * Re_coef**2)
+                C22_coef = (axis_a**2 - axis_b**2) / (20.d0 * Re_coef**2)
+                K_coef = uno2 * Re_coef**2 * C20_coef
+                K3_coef = 3.d0 * K_coef  ! por unidad de mu
+                L_coef = 3.d0 * Re_coef**2 * C22_coef  ! por unidad de mu
+            else 
+                use_ellipsoid = .False.
+            end if
+        end subroutine init_ellipsoid
+
+        !!! Acceleration Example
+        subroutine ellipsoid_acceleration(mass, theta, dr_vec, dr, acc)
+            implicit none
+            real(kind=8), intent(in) :: mass, theta, dr_vec(2), dr
+            real(kind=8), intent(inout) :: acc(2)
+            real(kind=8) :: c2th, s2th
+            real(kind=8) :: Q_param, dQdx, dQdy
+            real(kind=8) :: Q_param_eff
+            real(kind=8) :: inv_dr2, inv_dr3
+            
+
+            c2th = cos(dos * theta)
+            s2th = sin(dos * theta)
+            
+            Q_param = (dr_vec(1)**2 - dr_vec(2)**2) * c2th + dos * dr_vec(1) * dr_vec(2) * s2th ! (x²-y²) cos(2th) + 2xy sin(2th)
+            dQdx = dos * (dr_vec(1) * c2th + dr_vec(2) * s2th)  ! 2x cos(2th) + 2y sin(2th)
+            dQdy = - dos * (dr_vec(2) * c2th - dr_vec(1) * s2th)  ! - 2y cos(2th) + 2x sin(2th)
+
+            inv_dr3 = uno / (dr * dr * dr)
+            inv_dr2 = dr * inv_dr3
+            
+
+            ! Q_param = (x²-y²) cos(2th) + 2xy sin(2th)
+            ! Q_param_eff = 5 * Q_param / r⁴
+            Q_param_eff = Q_param * 5.d0 * inv_dr2 * inv_dr2 ! Q_ef = 5 * Q / r⁴
+
+            ! a_unit_massx = G (x / r³ + 3K x / r⁵ + L (dQ/dx / r⁵ - 5 x Q / r⁷))  ! Long form
+            ! a_unit_massy = G y / r³ (1 + 3K / r² + L (dQ/dy / r² / y - 5 Q / r⁴))  ! Short form
+            acc(1) = acc(1) - (G * mass * inv_dr3 * dr_vec(1)) * &
+                        & (uno + K3_coef * inv_dr2 + L_coef * (dQdx * inv_dr2 / dr_vec(1) - Q_param_eff))
+            acc(2) = acc(2) - (G * mass * inv_dr3 * dr_vec(2)) * &
+                        & (uno + K3_coef * inv_dr2 + L_coef * (dQdy * inv_dr2 / dr_vec(2) - Q_param_eff))
+        end subroutine ellipsoid_acceleration
         
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!! STOKES !!!!!!!!!!!!!!!!!!!!!!!!!
@@ -73,7 +131,7 @@ module accelerations
             end if
         end subroutine init_stokes
 
-        !!! Acceleration
+        !!! Acceleration Example
         subroutine stokes(time, total_mass, dr_vec, dv_vec, dr, acc)
             implicit none
             real(kind=8), intent(in) :: total_mass, time, dr_vec(2), dv_vec(2), dr
@@ -105,7 +163,7 @@ module accelerations
         end subroutine init_drag
 
 
-        !!! Acceleration
+        !!! Acceleration Example
         subroutine drag(time, total_mass, dr_vec, dv_vec, dr, acc)
             implicit none
             real(kind=8), intent(in) :: time, total_mass, dr_vec(2), dv_vec(2), dr 
@@ -128,32 +186,6 @@ module accelerations
             acc = acc + acc_radial * dr_vec / dr * drag_factor ! = -a_r * (x, y) / r * factor
         end subroutine drag
 
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!! GEO-POTENTIAL !!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-        !!! Init Parameters
-        subroutine init_J2(J2_coefficient)
-            implicit none
-            real(kind=8), intent(in) :: J2_coefficient
-            
-            if (abs(J2_coef) > cero) then
-                use_J2 = .True.
-                J2_coef = J2_coefficient * 1.5d0
-            else 
-                use_J2 = .False.
-            end if
-        end subroutine init_J2
-
-        !!! Acceleration
-        subroutine J2_acceleration(mass, dr_vec, dr, acc)
-            implicit none
-            real(kind=8), intent(in) :: mass, dr_vec(2), dr
-            real(kind=8), intent(inout) :: acc(2)
-            
-            acc = acc - G * mass * J2_coef * dr_vec / (dr * dr * dr * dr * dr)
-        end subroutine J2_acceleration
-
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!! ROTATION DAMPING !!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -175,7 +207,7 @@ module accelerations
             end if
         end subroutine init_damping
 
-        !!! Acceleration  (These are like the torque, but not mass needed)
+        !!! Acceleration Example (These are like the torque, but not mass needed)
 
         !!!! omega(t) = omega0 + tau * t
         subroutine damping_linear(time, acc_omega)
@@ -213,75 +245,5 @@ module accelerations
             ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
             acc_omega = acc_omega + damp_coef_1 * (time - t0 + tini)**(damp_coef_2 - uno) * omega * damp_factor
         end subroutine damping_expoly
-    
-
-
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!! ALL !!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-        !! Here we try to repeat calculations as minimum as possible
-
-        subroutine acc_all(time, mass_other, mass_me, xy_vec, dr_vec, dv_vec, dr, omega, torque, acc_omega, acc)
-            implicit none
-            real(kind=8), intent(in) :: time
-            real(kind=8), intent(in) :: mass_other, mass_me
-            real(kind=8), intent(in) :: xy_vec(2), dr_vec(2), dv_vec(2), dr
-            real(kind=8), intent(in) :: omega
-            real(kind=8), intent(inout) :: torque, acc_omega, acc(2)
-            real(kind=8) :: Gmtot, Gmass, dr_ver(2), dr3, factor
-            real(kind=8) :: acc_grav(2)
-            real(kind=8) :: vel_circ(2), v2
-            real(kind=8) :: aux_real
-            real(kind=8) :: mean_movement
-            real(kind=8) :: vel_radial(2), acc_radial(2)
-
-            Gmtot = G * (mass_me + mass_other)
-            Gmass = G * mass_other
-            dr_ver = dr_vec / dr
-            dr3 = dr * dr * dr
-
-            !! Gravity
-            acc_grav = - Gmass * dr_vec / dr3  ! G m (x, y) / r
-            acc = acc + acc_grav
-
-            !! Torque
-            torque = torque + cross2D_z(xy_vec, acc_grav * mass_me)! r x F  ! mass to be added later
-
-            !! Stokes
-            factor = uno2 * (uno + tanh(1.d1 * (uno - time / stokes_time)))
-            vel_circ  = sqrt(Gmtot / dr3) * (/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
-
-            acc = acc - stokes_C * (dv_vec - stokes_alpha * vel_circ) * factor ! = -C * (v - alpha * vc) * factor
-            
-            !! Naive-Stokes (Drag)
-            factor = uno2 * (uno + tanh(1.d1 * (uno - time / drag_time)))
-            v2 = dot_product(dv_vec, dv_vec)
-            
-            aux_real = dos * Gmtot / dr - v2  ! Check if unbound
-            if (aux_real > cero) then ! Can calculate only in this case
-                mean_movement = aux_real**(1.5d0) / Gmtot ! n
-                vel_radial = dot_product(dr_ver, dv_vec)
-                acc_radial = - drag_coef * mean_movement * vel_radial                
-            
-                acc = acc + acc_radial * dr_ver * factor ! = -a_r * (x, y) / r * factor
-            end if
-
-            !! J2
-            acc = acc - G * mass_other * J2_coef * dr_ver / (dr3 * dr)
-
-            !! Damping
-            factor = uno2 * (uno + tanh(1.d1 * (uno - time / damp_time)))
-            select case (damp_model)
-                case (1) ! domega/dt = slope
-                    acc_omega = acc_omega + damp_coef_1 * factor 
-                case (2) ! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau     
-                    acc_omega = acc_omega - omega / damp_coef_1 * factor
-                case (3) ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
-                    acc_omega = acc_omega + &
-                              & damp_coef_1 * (time - cero + tini)**(damp_coef_2 - uno) * omega * factor
-            end select
-
-        end subroutine acc_all
 
 end module accelerations
