@@ -426,7 +426,7 @@ program main
         write (*,s1r1) "  Angular momentum (rot):", system%asteroid%ang_mom_rot / unit_mass / &
                                     & (unit_dist**2) * unit_time, "[kg km² day⁻¹]"
         write (*,*) ACHAR(5)
-        if (.not. sim%use_boulders) then
+        if ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial)) then
             write(*,*) "Rotation is considered just to define initial parameters."
             write (*,*) ACHAR(5)
         end if
@@ -536,7 +536,7 @@ program main
     end if
 
     !! Omega Damping
-    if (sim%use_omega_damping .and. (.not. sim%use_boulders)) then
+    if (sim%use_omega_damping .and. ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial))) then
         if (sim%use_screen) write (*,*) "WARNING: Skipping omega damping without boulders."
         sim%use_omega_damping = .False.
     else if (sim%use_omega_damping) then
@@ -750,7 +750,7 @@ program main
         call merge_sort_and_unique(tom_times, output_times, &
                                    & checkpoint_is_tom, checkpoint_is_output, &
                                    & checkpoint_times, checkpoint_number)
-        if (allocated(tom_deltaomega) .and. (.not. sim%use_boulders)) then
+        if (allocated(tom_deltaomega) .and. ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial))) then
             if (sim%use_screen) write (*,*) "WARNING: Delta_omega has no sense without boulders. It will be ignored."
             deallocate(tom_deltaomega)            
         end if
