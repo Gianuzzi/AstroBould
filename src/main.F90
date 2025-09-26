@@ -38,8 +38,18 @@ program main
     if (.not. use_configfile) then ! Usaremos parámetros por defecto
         
         ! Asteroide central
-        !! Primary
+        !! Primary mass
         input%mass_primary = 6.3d18 ! Masa del cuerpo 0 [kg] ! -x =>  mAst = x
+
+        !! Primary shape
+
+        !!! Tri_Axial
+        input%use_triaxial = .False.  ! Logical para determinar si se usa triax, o Boulders
+        input%triax_a_primary = cero  ! Semieje a
+        input%triax_b_primary = cero  ! Semieje b
+        input%triax_c_primary = cero  ! Semieje c
+
+        !!! Explicit primary radius
         input%radius_primary = 129.d0 ! Radio del cuerpo 0 [km]
 
         !! ROTACIÓN
@@ -107,8 +117,6 @@ program main
         input%drag_coefficient = cero  ! Eta
         input%drag_active_time = cero  ! [day] Tiempo que actúa drag
 
-        !!!! Geo-Potential (J2)
-        input%J2_coefficient = cero
 
         !!! Parámetros corrida
 
@@ -319,6 +327,7 @@ program main
     if (.not. sim%use_boulders) then
         write (*,*) "WARNING: No boulders to integrate. Rotation effects dissabled."
     end if
+    
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Parallel  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -358,7 +367,9 @@ program main
     call allocate_asteroid(asteroid, sim%Nboulders)  ! Alocate
     call add_primary(asteroid, &   ! Create primary 
                     & sim%mass_primary * unit_mass, &  ! mass
-                    & sim%radius_primary * unit_dist)  ! radius
+                    & sim%triax_a_primary * unit_dist, &  ! Semi-axis a
+                    & sim%triax_b_primary * unit_dist, &  ! Semi-axis b
+                    & sim%triax_c_primary * unit_dist)    ! Semi-axis c
     do i = 1, sim%Nboulders ! Add boulders
         call add_boulder(asteroid, &
                         & boulders_in(i,1), &              ! mu
@@ -502,6 +513,19 @@ program main
         write (*,*) ACHAR(5)
     end if
 
+    !! Tri-axial gravity
+    if (sim%use_triaxial) then
+        call init_ellipsoid(sim%triax_a_primary * unit_dist, sim%triax_b_primary * unit_dist, sim%triax_c_primary * unit_dist)
+        if (sim%use_screen) then
+            write (*,*) "Tri-axial potential"
+            write (*,s1r1) " semi-axis-a :", sim%triax_a_primary, "[km]"
+            write (*,s1r1) " semi-axis-b :", sim%triax_b_primary, "[km]"
+            write (*,s1r1) " semi-axis-c :", sim%triax_c_primary, "[km]"
+            write (*,*) ACHAR(5)
+        end if
+    end if
+
+
     !! Moons gravity
     if (sim%use_moon_gravity .and. sim%use_screen) then
         write (*,*) "Gravity between moons DEACTIVATED."
@@ -571,15 +595,6 @@ program main
             write (*,*) "Drag"
             write (*,s1r1) " eta   : ", sim%drag_coefficient
             write (*,s1r1) " t_drag: ", sim%drag_active_time, "[days]"
-            write (*,*) ACHAR(5)
-        end if
-    end if
-
-    !! J2
-    if (sim%use_J2) then
-        call init_J2(sim%J2_coefficient)
-        if (sim%use_screen) then
-            write (*,s1r1) "J2:", sim%J2_coefficient, "[km⁵ day⁻²]"
             write (*,*) ACHAR(5)
         end if
     end if
