@@ -131,6 +131,10 @@ module parameters
         logical :: use_boulders = .False.
         logical :: use_particles = .False.
         logical :: use_moons = .False.
+        !! Triaxial
+        real(kind=8) :: Reffective = cero
+        real(kind=8) :: C20 = cero
+        real(kind=8) :: C22 = cero
         ! Forces
         logical :: use_torque = .False.  ! May disapear...
         !! Stokes
@@ -1069,6 +1073,12 @@ module parameters
                 derived%triax_b_primary = derived%radius_primary
                 derived%triax_c_primary = derived%radius_primary
             end if
+            !! Set derived Triaxial
+            derived%Reffective = (derived%triax_a_primary * derived%triax_b_primary * derived%triax_c_primary)**(1.d0/3.d0)
+            derived%C20 = (dos * derived%triax_c_primary**2 - &
+                         & derived%triax_a_primary**2 - &
+                         & derived%triax_b_primary**2) / (10.d0 * derived%Reffective**2)
+            derived%C22 = (derived%triax_a_primary**2 - derived%triax_b_primary**2) / (20.d0 * derived%Reffective**2)
 
             !! NMoons
             if (derived%Nmoons < 0) then

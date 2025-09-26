@@ -324,7 +324,7 @@ program main
         end if
     end if
 
-    if (.not. sim%use_boulders) then
+    if ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial)) then
         write (*,*) "WARNING: No boulders to integrate. Rotation effects dissabled."
     end if
     
@@ -518,9 +518,12 @@ program main
         call init_ellipsoid(sim%triax_a_primary * unit_dist, sim%triax_b_primary * unit_dist, sim%triax_c_primary * unit_dist)
         if (sim%use_screen) then
             write (*,*) "Tri-axial potential"
-            write (*,s1r1) " semi-axis-a :", sim%triax_a_primary, "[km]"
-            write (*,s1r1) " semi-axis-b :", sim%triax_b_primary, "[km]"
-            write (*,s1r1) " semi-axis-c :", sim%triax_c_primary, "[km]"
+            write (*,s1r1) "  semi-axis-a :", sim%triax_a_primary, "[km]"
+            write (*,s1r1) "  semi-axis-b :", sim%triax_b_primary, "[km]"
+            write (*,s1r1) "  semi-axis-c :", sim%triax_c_primary, "[km]"
+            write (*,s1r1) "   Effective Radius :", sim%Reffective, "[km]"
+            write (*,s1r1) "   C_20:", sim%C20
+            write (*,s1r1) "   C_22:", sim%C22
             write (*,*) ACHAR(5)
         end if
     end if

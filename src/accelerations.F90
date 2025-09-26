@@ -73,9 +73,6 @@ module accelerations
                 K_coef = uno2 * Re_coef**2 * C20_coef
                 K3_coef = 3.d0 * K_coef  ! por unidad de mu
                 L_coef = 3.d0 * Re_coef**2 * C22_coef  ! por unidad de mu
-                write (*,*) "   Effective Radius :", Re_coef
-                write (*,*) "   C_20:", C20_coef
-                write (*,*) "   C_22:", C22_coef
             else 
                 use_ellipsoid = .False.
             end if
