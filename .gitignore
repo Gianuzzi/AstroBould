@@ -1,4 +1,11 @@
 particles.in
+moons.in
 tools/*.ipynb_checkpoints
+tools/__pycache__/*
 modules
 build
+simulation
+*/dpy*
+*/*/dpy*
+*/*/*/dpy*
+*/*/*/*/dpy*
