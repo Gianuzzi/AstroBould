@@ -134,6 +134,8 @@ module derivates
                     hard_exit = .True.
                 end if
 
+                if (dr < tini) cycle  ! Skip to avoid NaNs
+
                 ! Extra needed
                 Gmcomb = Gmast + (G * m_arr(j))
                 inv_dr3 = uno / (dr2 * dr)
@@ -148,12 +150,18 @@ module derivates
                     dQdx = dos * (dr_vec(1) * c2th + dr_vec(2) * s2th)  ! 2x cos(2th) + 2y sin(2th)
                     dQdy = - dos * (dr_vec(2) * c2th - dr_vec(1) * s2th)  ! - 2y cos(2th) + 2x sin(2th)
 
-                    ! a_unit_massx = G (x / r³ + 3K x / r⁵ + L (dQ/dx / r⁵ - 5 x Q / r⁷))  ! Long form
-                    ! a_unit_massy = G y / r³ (1 + 3K / r² + L (dQ/dy / r² / y - 5 Q / r⁴))  ! Short form
-                    acc_grav_m(1) = (G * inv_dr3 * dr_vec(1)) * &
-                                    & (uno + K3_coef * inv_dr2 + L_coef * (dQdx * inv_dr2 / dr_vec(1) - Q_param_eff))
-                    acc_grav_m(2) = (G * inv_dr3 * dr_vec(2)) * &
-                                    & (uno + K3_coef * inv_dr2 + L_coef * (dQdy * inv_dr2 / dr_vec(2) - Q_param_eff)) 
+                    ! a_unit_massx = G (x / r³ + 3K x / r⁵ + L (dQ/dx / r⁵ - x 5 Q / r⁷))
+                    ! a_unit_massy = G (y / r³ + 3K y / r⁵ + L (dQ/dy / r⁵ - y 5 Q / r⁷))
+                    acc_grav_m(1) = (G * inv_dr3) * &
+                                    & (dr_vec(1) + &
+                                    &  K3_coef * dr_vec(1) * inv_dr2 + &
+                                    &  L_coef * (dQdx * inv_dr2 - dr_vec(1) * Q_param_eff) &
+                                    &)
+                    acc_grav_m(2) = (G * inv_dr3) * &
+                                    & (dr_vec(2) + &
+                                    &  K3_coef * dr_vec(2) * inv_dr2 + &
+                                    &  L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_param_eff) &
+                                    &)
                     
                     ! Acceleration to moon from asteroid
                     der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - acc_grav_m * m_arr(1)  ! = a_unit_mass * mAsteroid
@@ -215,6 +223,8 @@ module derivates
                     hard_exit = .True.
                 end if
 
+                if (dr < tini) cycle  ! Skip to avoid NaNs
+
                 ! Extra needed
                 inv_dr3 = uno / (dr2 * dr)
 
@@ -228,12 +238,18 @@ module derivates
                     dQdx = dos * (dr_vec(1) * c2th + dr_vec(2) * s2th)  ! 2x cos(2th) + 2y sin(2th)
                     dQdy = - dos * (dr_vec(2) * c2th - dr_vec(1) * s2th)  ! - 2y cos(2th) + 2x sin(2th)
 
-                    ! a_unit_massx = G (x / r³ + 3K x / r⁵ + L (dQ/dx / r⁵ - 5 x Q / r⁷))  ! Long form
-                    ! a_unit_massy = G y / r³ (1 + 3K / r² + L (dQ/dy / r² / y - 5 Q / r⁴))  ! Short form
-                    acc_grav_m(1) = (G * inv_dr3 * dr_vec(1)) * &
-                                        & (uno + K3_coef * inv_dr2 + L_coef * (dQdx * inv_dr2 / dr_vec(1) - Q_param_eff))
-                    acc_grav_m(2) = (G * inv_dr3 * dr_vec(2)) * &
-                                        & (uno + K3_coef * inv_dr2 + L_coef * (dQdy * inv_dr2 / dr_vec(2) - Q_param_eff)) 
+                    ! a_unit_massx = G (x / r³ + 3K x / r⁵ + L (dQ/dx / r⁵ - x 5 Q / r⁷))
+                    ! a_unit_massy = G (y / r³ + 3K y / r⁵ + L (dQ/dy / r⁵ - y 5 Q / r⁷))
+                    acc_grav_m(1) = (G * inv_dr3) * &
+                                    & (dr_vec(1) + &
+                                    &  K3_coef * dr_vec(1) * inv_dr2 + &
+                                    &  L_coef * (dQdx * inv_dr2 - dr_vec(1) * Q_param_eff) &
+                                    &)
+                    acc_grav_m(2) = (G * inv_dr3) * &
+                                    & (dr_vec(2) + &
+                                    &  K3_coef * dr_vec(2) * inv_dr2 + &
+                                    &  L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_param_eff) &
+                                    &)
                     
                     ! Acceleration to moon from asteroid
                     der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - acc_grav_m * m_arr(1)  ! = a_unit_mass * mAsteroid
@@ -295,6 +311,8 @@ module derivates
                         dr2 = dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2)
                         dr = sqrt(dr2)
 
+                        if (dr < tini) cycle  ! Skip to avoid NaNs
+
                         ! Check if collision
                         if (dr < boulders_data(i,2) + R_arr(j)) hard_exit = .True.
 
@@ -323,6 +341,8 @@ module derivates
                         dr_vec = coords_P(1:2) - boulders_coords(i,1:2)  ! From Boulder to Particle
                         dr2 = dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2)
                         dr = sqrt(dr2)
+
+                        if (dr < tini) cycle  ! Skip to avoid NaNs
 
                         ! Check if collision
                         if (dr < boulders_data(i,2)) hard_exit = .True.
@@ -353,6 +373,8 @@ module derivates
                     dr2 = dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2)
                     dr = sqrt(dr2)
 
+                    if (dr < tini) cycle  ! Skip to avoid NaNs
+
                     ! Check if collision
                     if (dr < R_arr(i)) hard_exit = .True.
 
@@ -379,6 +401,8 @@ module derivates
                         dr2 = dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2)
                         dr = sqrt(dr2)
 
+                        if (dr < tini) cycle  ! Skip to avoid NaNs
+
                         ! Check if collision
                         if (dr < R_arr(i) + R_arr(j)) hard_exit = .True.
 
@@ -394,7 +418,7 @@ module derivates
                 end do
             
             end if
-
+            
         end function dydt  
     
 end module derivates
