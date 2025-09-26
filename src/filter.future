@@ -3,19 +3,21 @@ module filter
     use constants, only: pi, uno, uno2, dos, tini
     implicit none
     ! filter parameters
-    real :: filt_dt, filt_freq
+    real(kind=8) :: filt_dt, filt_freq
     integer(kind=4) :: filt_size, filt_half_size
-    real , allocatable :: filt_kernel(:)  ! convolution kernel
+    real(kind=8) , allocatable :: filt_kernel(:)  ! convolution kernel
+    real(kind=8) , allocatable :: filt_values(:)  ! filtered values
+    real(kind=8) , allocatable :: filt_tmp_values(:)  ! values to use for filtering
     
 contains
 
-    subroutine setup_filter(filter_dt, filter_size, low_pass)
+    subroutine create_filter(filter_dt, filter_size, low_pass)
         implicit none
-        real, intent(in) :: filter_dt
+        real(kind=8), intent(in) :: filter_dt
         integer(kind=4), intent(in) :: filter_size
         logical, intent(in) :: low_pass
         integer(kind=4) :: j
-        real :: omega_pass, t_j, norm
+        real(kind=8) :: omega_pass, t_j, norm
 
         !------------------------
         ! Assign parameters
@@ -59,39 +61,72 @@ contains
             ! Reverse to obtain high-pass kernel
             !------------------------
             filt_kernel = - filt_kernel
-            filt_kernel(filt_half_size + 1) = 1 + filt_kernel(filt_half_size + 1)
+            filt_kernel(filt_half_size + 1) = uno + filt_kernel(filt_half_size + 1)
         end if
+
+    end subroutine create_filter
+
+    subroutine allocate_filter(filter_size, data_size)
+        implicit none
+        integer(kind=4), intent(in) :: filter_size, data_size
+
+        allocate(filt_tmp_values(data_size, filter_size))
+        allocate(filt_values(data_size))    
+        
+    end subroutine allocate_filter
+
+    subroutine setup_filter(filter_dt, filter_size, low_pass, data_size)
+        implicit none
+        real(kind=8), intent(in) :: filter_dt
+        integer(kind=4), intent(in) :: filter_size, data_size
+        logical, intent(in) :: low_pass
+
+        call create_filter(filter_dt, filter_size, low_pass)
+
+        call allocate_filter(filt_size, data_size)   
+        
     end subroutine setup_filter
 
-    subroutine apply_filter(state_function, t_check, NW, dt_filter, h, x_raw, x_filt)
+    subroutine store_to_filter(state_vector, data_size, filter_index)
         implicit none
-        ! Inputs
-        external :: state_function        ! function to evaluate state at time t
-        real, intent(in) :: t_check
-        integer  :: NW
-        real(8)  :: dt_filter
-        real(8), dimension(-NW:NW) :: h
+        real(kind=8), dimension(:), intent(in) :: state_vector
+        integer(kind=4), intent(in) :: data_size, filter_index
 
-        ! Outputs
-        real(8), dimension(:) :: x_raw     ! state at checkpoint
-        real(8), dimension(:) :: x_filt    ! filtered state
+        filt_tmp_values(1:data_size, filter_index) = state_vector(1:data_size)    
+        
+    end subroutine store_to_filter
 
-        ! Locals
-        integer :: j
-        real(8), dimension(:) :: x_tmp     ! temporary storage for values at filter times
-        real(8) :: t_j
+    subroutine apply_filter(data_size, filtered)
+        implicit none
+        integer(kind=4), intent(in) :: data_size
+        real(kind=8), dimension(:), intent(out) :: filtered
+        real(kind=8) :: cos_th, sin_th
+        integer(kind=4) :: i, j
 
-        ! 1. Evaluate state at checkpoint
-        call state_function(t_check, x_raw)
+        ! init to 0
+        filtered(1:data_size) = cero
+        cos_th = cero
+        sin_th = cero
 
-        ! 2. Loop over filter times
-        do j = -NW, NW
-            t_j = t_check + j * dt_filter
-            call state_function(t_j, x_tmp)   ! evaluate system at t_j
-            x_filt = x_filt + h(j) * x_tmp
+        do j = 1, filt_size
+            cos_th = cos_th + cos(filt_tmp_values(1, j)) * filt_kernel(j)
+            sin_th = sin_th + sin(filt_tmp_values(1, j)) * filt_kernel(j)
+            filtered(2:data_size) = filtered(2:data_size) + filt_tmp_values(2:data_size, j) * filt_kernel(j)
         end do
 
+        ! Angle filtered
+        filtered(1) = modulo(atan2(sin_th, cos_th) twopi)
+        
     end subroutine apply_filter
+    
+    subroutine deallocate_filter(filter_size, data_size)
+        implicit none
+        integer(kind=4), intent(in) :: filter_size, data_size
+
+        if allocated(filt_tmp_values) deallocate(filt_tmp_values)
+        if allocated(filt_values) deallocate(filt_values)
+        
+    end subroutine deallocate_filter
 
     
 end module filter

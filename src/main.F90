@@ -1079,7 +1079,7 @@ program main
         time = time + timestep
         y_arr = y_arr_new
 
-        y_arr(1) = mod(y_arr(1), twopi)  ! Modulate theta
+        y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
 
         ! Update from y_new
         call update_system_from_array(system, time, y_arr)
