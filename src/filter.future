@@ -1,0 +1,97 @@
+!> Module with filtering methods
+module filter
+    use constants, only: pi, uno, uno2, dos, tini
+    implicit none
+    ! filter parameters
+    real :: filt_dt, filt_freq
+    integer(kind=4) :: filt_size, filt_half_size
+    real , allocatable :: filt_kernel(:)  ! convolution kernel
+    
+contains
+
+    subroutine setup_filter(filter_dt, filter_size, low_pass)
+        implicit none
+        real, intent(in) :: filter_dt
+        integer(kind=4), intent(in) :: filter_size
+        logical, intent(in) :: low_pass
+        integer(kind=4) :: j
+        real :: omega_pass, t_j, norm
+
+        !------------------------
+        ! Assign parameters
+        !------------------------
+        if (mod(filter_size, 2) .eq. 0) then
+            filt_size = filter_size + 1
+        else 
+            filt_size = filter_size
+        end if
+        filt_half_size = int((filter_size - 1) / 2, 4)
+        filt_dt = filter_dt
+        filt_freq = dos * filter_dt
+
+        omega_pass = dos * pi * filt_freq  ! Frequency allowed
+
+        ! Allocate kernel
+        allocate(filt_kernel(filt_size))
+
+        !------------------------
+        ! Build sinc low-pass kernel
+        ! hkernel_j = sin(omega_pass * t_j) / (pi * t_j)
+        ! For j = 0, use limit value 1
+        !------------------------
+        do j = -filt_half_size, filt_half_size
+            t_j = dble(j) * filt_dt
+            if (abs(t_j) < tini) then
+                filt_kernel(j + filt_half_size + 1) = uno
+            else
+                filt_kernel(j + filt_half_size + 1) = sin(omega_pass * t_j) / (pi * t_j)
+            end if
+        end do
+
+        !------------------------
+        ! Normalize kernel to unity sum
+        !------------------------
+        norm = sum(filt_kernel)
+        filt_kernel = filt_kernel / norm
+
+        if (.not. low_pass) then
+            !------------------------
+            ! Reverse to obtain high-pass kernel
+            !------------------------
+            filt_kernel = - filt_kernel
+            filt_kernel(filt_half_size + 1) = 1 + filt_kernel(filt_half_size + 1)
+        end if
+    end subroutine setup_filter
+
+    subroutine apply_filter(state_function, t_check, NW, dt_filter, h, x_raw, x_filt)
+        implicit none
+        ! Inputs
+        external :: state_function        ! function to evaluate state at time t
+        real, intent(in) :: t_check
+        integer  :: NW
+        real(8)  :: dt_filter
+        real(8), dimension(-NW:NW) :: h
+
+        ! Outputs
+        real(8), dimension(:) :: x_raw     ! state at checkpoint
+        real(8), dimension(:) :: x_filt    ! filtered state
+
+        ! Locals
+        integer :: j
+        real(8), dimension(:) :: x_tmp     ! temporary storage for values at filter times
+        real(8) :: t_j
+
+        ! 1. Evaluate state at checkpoint
+        call state_function(t_check, x_raw)
+
+        ! 2. Loop over filter times
+        do j = -NW, NW
+            t_j = t_check + j * dt_filter
+            call state_function(t_j, x_tmp)   ! evaluate system at t_j
+            x_filt = x_filt + h(j) * x_tmp
+        end do
+
+    end subroutine apply_filter
+
+    
+end module filter
