@@ -546,7 +546,6 @@ program main
                             & cero, &
                             & sim%omega_damp_active_time * unit_time, &
                             & 1)
-
             if (sim%use_screen) then
                 write (*,*) "Omega Damping: linear"
                 write (*,s1r1) " tau_o :", sim%omega_lin_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"

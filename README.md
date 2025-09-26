@@ -1,10 +1,10 @@
 # AstroBould
 
-**AstroBould** is a code designed to integrate particles that gravitationally interact with an asteroid featuring mass anomalies.
+**AstroBould** is a code designed to integrate particles that gravitationally interact with an asteroid featuring mass anomalies or a central tri-axial ellipsoid.
 
 The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
 
-If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [39 and 157](./src/main.F90#L39-L157).
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [39 and 165](./src/main.F90#L39-L165).
 
 ---
 
@@ -116,7 +116,7 @@ There are two modes for parallel execution:
 
 ⌨️ **Particles Input File**
 
-Both modes require the existence of a particles/moons file (e.g. _particles.in_) containing all bodies (initial conditions) to be integrated in parallel. You can generate this file using [make_particles.py](./tools/make_particles.py). Configuration is found between lines [82 and 104](./tools/make_particles.py#L82#L104).
+Both modes require the existence of a particles/moons file (e.g. _particles.in_) containing all bodies (initial conditions) to be integrated in parallel. You can generate this file using [make_particles.py](./tools/make_particles.py). Configuration is found between lines [78 and 118](./tools/make_particles.py#78#118).
 
 ### 1. **Dependent Mode**
 
@@ -130,7 +130,7 @@ To run:
 ```console
 $ ./ASTROBOULD [args] -parallel <number_of_cpus> -partfile <particles_file>
 ```
-or edit [config.ini](./config.ini) and set "use parallel threads" to the desired value (see line [15](./config.ini#L15)), and "particles input file" to the particles file name (see line [57](./config.ini#L57)). Then simply run
+or edit [config.ini](./config.ini) and set "use parallel threads" to the desired value (see line [15](./config.ini#L15)), and "particles input file" to the particles file name (see line [66](./config.ini#66)). Then simply run
 ```console
 $ ./ASTROBOULD [args]
 ```
@@ -141,7 +141,7 @@ $ ./ASTROBOULD [args]
 - Each integration is executed in parallel (e.g., across multiple CPU cores).
 - Does not require _-fopenmp_.
 
-The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [60 to 93](./launcher.py#L60#L93). More information (in spannish) is available at the top of the file(see lines [3 to 48](./launcher.py#L3#L48)).
+The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [60 to 99](./launcher.py#L60#99). More information (in spannish) is available at the top of the file(see lines [3 to 48](./launcher.py#L3#L48)).
 
 To run:
 ```console
