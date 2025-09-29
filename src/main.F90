@@ -997,7 +997,8 @@ program main
         !! Time end
         if (j == checkpoint_number + 1) keep_integrating = .False.
 
-        !! Check if Particles/Moons left
+
+        ! Check if Particles/Moons left
         if (sim%Nactive == 1 .and. keep_integrating) then
             if (sim%use_screen) then
                 write (*,*) ACHAR(5) 
@@ -1005,6 +1006,7 @@ program main
             end if
             keep_integrating = .False.
         end if
+
 
         ! Keep going?
         if (.not. keep_integrating) then
@@ -1020,34 +1022,6 @@ program main
         timestep = checkpoint_times(j) - time
 
 
-        !! Check TOM
-        if (checkpoint_is_tom(j) .and. (tom_index_number <= tom_total_number)) then
-            if (allocated(tom_deltaomega)) call spin_asteroid(system%asteroid, system%asteroid%theta, &
-                                                            & system%asteroid%omega + tom_deltaomega(tom_index_number))
-            if (allocated(tom_deltamass)) call grow_asteroid(system%asteroid, tom_deltamass(tom_index_number))
-            tom_index_number = tom_index_number + 1
-            if (sim%use_screen .and. (allocated(tom_deltaomega) .or. allocated(tom_deltamass))) then
-                write (*,*) ACHAR(5)
-                write (*,s1r1) "Updated asteroid Omega and mass following TOM data, at time = ", time / unit_time, "[days]"
-                write (*,*) ACHAR(5)
-            end if
-
-            ! Apply colissions/escapes and checks
-            call resolve_collisions(system, sim%min_distance, unit_file)
-            call check_after_col(system, sim, keep_integrating)
-            call resolve_escapes(system, sim%max_distance, unit_file)
-            call check_after_esc(system, sim, keep_integrating)
-
-            ! Update Nactive and y_arr if necessary
-            call get_Nactive(system, new_Nactive)
-            if (new_Nactive < sim%Nactive) then
-                call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-            end if
-
-            call generate_arrays(system, m_arr, R_arr, y_arr)  ! Mandatory bc of new asteroid
-        end if
-
         !!! Execute an integration method (uncomment/edit one of these)
         ! call integ_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
         !     & Ralston4, timestep, y_arr_new(:y_nvalues), check_func)
@@ -1062,6 +1036,7 @@ program main
         ! call leapfrog_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
         !     & leapfrof_KDK, sim%error_tolerance, y_nvalues, min_timestep, timestep, y_arr_new(:y_nvalues), check_func)
     
+    
         ! Check if it might be hard_exit
         if (hard_exit) then
             !! If so, the dt used is in dt_adap
@@ -1075,11 +1050,13 @@ program main
             end if
         end if
 
+
         ! Update parameters
         time = time + timestep
         y_arr = y_arr_new
 
         y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
+
 
         ! Update from y_new
         call update_system_from_array(system, time, y_arr)
@@ -1100,9 +1077,11 @@ program main
             call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
         end if
         
+
         ! Update Chaos
         call update_chaos(system, sim%use_baryc_output)
         
+
         ! Output
         if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) then
             call write_a_to_individual(system, 200)
@@ -1132,11 +1111,44 @@ program main
             !$OMP END PARALLEL
         end if
 
+
+        ! Percentage output
         if (sim%use_percentage) call percentage(time, sim%final_time)
 
-        ! Update j; only if not HardExit
+
+        ! Check update from TOM
+        if (checkpoint_is_tom(j) .and. (tom_index_number <= tom_total_number)) then
+            if (allocated(tom_deltaomega)) call spin_asteroid(system%asteroid, system%asteroid%theta, &
+                                                            & system%asteroid%omega + tom_deltaomega(tom_index_number))
+            if (allocated(tom_deltamass)) call grow_asteroid(system%asteroid, tom_deltamass(tom_index_number))
+            tom_index_number = tom_index_number + 1
+            if (sim%use_screen .and. (allocated(tom_deltaomega) .or. allocated(tom_deltamass))) then
+                write (*,*) ACHAR(5)
+                write (*,s1r1) "Updated asteroid Omega and mass following TOM data, at time = ", time / unit_time, "[days]"
+                write (*,*) ACHAR(5)
+            end if
+
+            ! Apply colissions/escapes and checks
+            call resolve_collisions(system, sim%min_distance, unit_file)
+            call check_after_col(system, sim, keep_integrating)
+            call resolve_escapes(system, sim%max_distance, unit_file)
+            call check_after_esc(system, sim, keep_integrating)
+
+            ! Update Nactive and y_arr if necessary
+            call get_Nactive(system, new_Nactive)
+            if (new_Nactive < sim%Nactive) then
+                call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
+                y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+            end if
+
+            call generate_arrays(system, m_arr, R_arr, y_arr)  ! Mandatory bc of new asteroid
+        end if
+
+
+        ! Update j; only if not premature
         if (.not. is_premature_exit) j = j + 1
         
+
     end do main_loop
 
     !! Porcentaje final

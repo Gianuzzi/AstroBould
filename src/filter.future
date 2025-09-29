@@ -1,13 +1,13 @@
 !> Module with filtering methods
 module filter
-    use constants, only: pi, uno, uno2, dos, tini
+    use constants, only: pi, twopi, cero, uno, uno2, dos, tini
     implicit none
     ! filter parameters
     real(kind=8) :: filt_dt, filt_freq
     integer(kind=4) :: filt_size, filt_half_size
     real(kind=8) , allocatable :: filt_kernel(:)  ! convolution kernel
     real(kind=8) , allocatable :: filt_values(:)  ! filtered values
-    real(kind=8) , allocatable :: filt_tmp_values(:)  ! values to use for filtering
+    real(kind=8) , allocatable :: filt_tmp_values(:,:)  ! values to use for filtering
     
 contains
 
@@ -38,7 +38,7 @@ contains
 
         !------------------------
         ! Build sinc low-pass kernel
-        ! hkernel_j = sin(omega_pass * t_j) / (pi * t_j)
+        ! kernel_j = sin(omega_pass * t_j) / (pi * t_j)
         ! For j = 0, use limit value 1
         !------------------------
         do j = -filt_half_size, filt_half_size
@@ -101,7 +101,7 @@ contains
         integer(kind=4), intent(in) :: data_size
         real(kind=8), dimension(:), intent(out) :: filtered
         real(kind=8) :: cos_th, sin_th
-        integer(kind=4) :: i, j
+        integer(kind=4) :: j
 
         ! init to 0
         filtered(1:data_size) = cero
@@ -109,22 +109,23 @@ contains
         sin_th = cero
 
         do j = 1, filt_size
+            !! Assumes the first index contains and angle (and the only one)
             cos_th = cos_th + cos(filt_tmp_values(1, j)) * filt_kernel(j)
             sin_th = sin_th + sin(filt_tmp_values(1, j)) * filt_kernel(j)
             filtered(2:data_size) = filtered(2:data_size) + filt_tmp_values(2:data_size, j) * filt_kernel(j)
         end do
 
         ! Angle filtered
-        filtered(1) = modulo(atan2(sin_th, cos_th) twopi)
+        filtered(1) = modulo(atan2(sin_th, cos_th), twopi)
         
     end subroutine apply_filter
     
-    subroutine deallocate_filter(filter_size, data_size)
+    subroutine deallocate_filter()
         implicit none
-        integer(kind=4), intent(in) :: filter_size, data_size
 
-        if allocated(filt_tmp_values) deallocate(filt_tmp_values)
-        if allocated(filt_values) deallocate(filt_values)
+        if (allocated(filt_kernel)) deallocate(filt_kernel)
+        if (allocated(filt_values)) deallocate(filt_values)
+        if (allocated(filt_tmp_values)) deallocate(filt_tmp_values)
         
     end subroutine deallocate_filter
 
