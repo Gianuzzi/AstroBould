@@ -3,7 +3,7 @@ module parameters
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
     use accelerations, only: init_damping, init_drag, init_ellipsoid, init_stokes
-    use filter
+    use filtering
     use omp_lib
 
     implicit none
@@ -81,6 +81,8 @@ module parameters
         real(kind=8) :: filter_dt = cero
         integer(kind=4) :: filter_nsamples = 0
         integer(kind=4) :: filter_nwindows = 0
+        logical :: filter_use_KH = .False.
+        integer(kind=4) :: filter_model = 0
         character(30) :: filter_prefix = ""
         ! [BINS] forces/effects - [NOT AVAILABLE YET. STILL UNDER DEVELOPMENT]
         logical :: use_self_gravity = .False.
@@ -150,7 +152,7 @@ module parameters
         logical :: use_poly_omega_damp = .False.
         !! Filter
         integer(kind=4) :: filter_size = 0
-        real(kind=8) :: filter_half_width_dt = cero
+        real(kind=8) :: filter_half_width = cero
         !! [BINS] ( Not available yet )
         logical :: use_bins = .False.
         !!! Viscosity [Not available yet]
@@ -218,6 +220,14 @@ module parameters
     real(kind=8), dimension(:), allocatable :: y_arr         ! Coordinates array
     real(kind=8), dimension(:), allocatable :: y_arr_new     ! Coordinates array (2.0)
     real(kind=8), dimension(:), allocatable :: y_der         ! Derivate of coordinates array
+
+
+    ! ----  <<<<<    FILTERING     >>>>>   -----
+    type(filter_st) :: filter
+    integer(kind=4) :: last_idx_no_filter = -1  ! Last checkpoint with no filtering
+    integer(kind=4) :: first_idx_yes_filter = 0   ! First checkpoint with no filtering
+    real(kind=8), dimension(:), allocatable :: elem_filtered  ! Filtered_data
+    real(kind=8), dimension(:), allocatable :: y_pre_filter   ! Data pre-filtering
     
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
@@ -286,7 +296,7 @@ module parameters
             integer(kind=4), intent(in) :: Nboulders
 
             if (allocated(boulders_in)) then
-                write (*,*) "ERROR: Number of boulder already defined."
+                write(*,*) "ERROR: Number of boulder already defined."
                 STOP 1
             end if
 
@@ -300,7 +310,7 @@ module parameters
             integer(kind=4), intent(in) :: Nmoons
 
             if (allocated(moons_in)) then
-                write (*,*) "ERROR: Number of moons already defined."
+                write(*,*) "ERROR: Number of moons already defined."
                 STOP 1
             end if
 
@@ -313,7 +323,7 @@ module parameters
             integer(kind=4), intent(in) :: Nparticles
 
             if (allocated(particles_in)) then
-                write (*,*) "ERROR: Number of particles already defined."
+                write(*,*) "ERROR: Number of particles already defined."
                 STOP 1
             end if
 
@@ -446,7 +456,7 @@ module parameters
                             params%use_merge_part_mass = .True.
                             params%use_merge_massive = .True.
                         else
-                            write (*,*) "ERROR: Merge type not recognized: ", merge_type
+                            write(*,*) "ERROR: Merge type not recognized: ", merge_type
                             stop 1
                         end if
                         aux_integer = 1
@@ -466,7 +476,7 @@ module parameters
                             params%use_stop_no_moon_left = .True.
                             params%use_stop_no_part_left = .True.
                         else
-                            write (*,*) "ERROR: Stop criteria not recognized: ", stop_type
+                            write(*,*) "ERROR: Stop criteria not recognized: ", stop_type
                             stop 1
                         end if
                     aux_integer = 1
@@ -483,48 +493,48 @@ module parameters
                         params%requested_threads = 1
                     case ("--help")
                         call get_command_argument(0, aux_character30)
-                        write (*,*) "Uso: " // trim(aux_character30) // " <ea> <ee> <eM> <ew> <eR> [args]"
-                        write (*,*) "    ea  : Elemento a de la partícula/luna (km)"
-                        write (*,*) "    ee  : Elemento e de la partícula/luna"
-                        write (*,*) "    eM  : Elemento M de la partícula/luna (deg)"
-                        write (*,*) "    ew  : Elemento w de la partícula/luna (deg)"
-                        write (*,*) "    eR  : Elemento R de la partícula/luna [Optional]"
-                        write (*,*) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
-                        write (*,*) "    -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0"
-                        write (*,*) "    -nsim         : Número de simulación [int]"
-                        write (*,*) "    -datafile     : Nombre de archivo de salida de datos"
-                        write (*,*) "    --nodataf     : No guardar datos de salida"
-                        write (*,*) "    -chaosfile    : Nombre de archivo de caos"
-                        write (*,*) "    --nochaosf    : No guardar caos"
-                        write (*,*) "    --screen      : Imprimir información en pantalla"
-                        write (*,*) "    --noscreen    : No imprimir en pantalla"
-                        write (*,*) "    --perc        : Imprimir porcentaje de integración"
-                        write (*,*) "    --noperc      : No imprimir porcentaje de integración"
-                        write (*,*) "    --datascr     : Imprimir datos de salida en pantalla"
-                        write (*,*) "    --nodatascr   : No imprimir datos de salida en pantalla"
-                        write (*,*) "    --diagnostic  : Imprimir datos de diagnostico en pantalla"
-                        write (*,*) "    --nodiagnostic: No imprimir datos de diagnostico en pantalla"
-                        write (*,*) "    -multifile    : Nombre base de archivo de salida de datos individuales"
-                        write (*,*) "    --nomultif    : No guardar datos en archivos individuales"
-                        write (*,*) "    -mapfile      : Nombre de archivo de mapa"
-                        write (*,*) "    --nomapf      : No guardar mapa de potencial"
-                        write (*,*) "    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]"
-                        write (*,*) "    --noelem      : Imprimir coordenadas baricéntricas"
-                        write (*,*) "    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
-                        write (*,*) "    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
-                        write (*,*) "    -moonfile     : Nombre de archivo de lunas a utilizar"
-                        write (*,*) "    --nomoonfile  : No utilizar archivo de lunas"
-                        write (*,*) "    -partfile     : Nombre de archivo de partículas a utilizar"
-                        write (*,*) "    --nopartfile  : No utilizar archivo de partículas"
-                        write (*,*) "    --noconfig    : No leer archivo de configuración"
-                        write (*,*) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
-                        write (*,*) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos"
-                        write (*,*) "    -stopif       : Detener la integración si no quedan más objetos del tipo [int]:"
-                        write (*,*) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
-                        write (*,*) "    -parallel     : Cantida de thread a utilizar en paralelo [int]"
-                        write (*,*) "    --parallel    : Paralelizar usando todos los threads disponibles"
-                        write (*,*) "    --noparallel  : No usar paralelización para lunas/partículas"
-                        write (*,*) "    --help        : Mostrar esta ayuda"
+                        write(*,*) "Uso: " // trim(aux_character30) // " <ea> <ee> <eM> <ew> <eR> [args]"
+                        write(*,*) "    ea  : Elemento a de la partícula/luna (km)"
+                        write(*,*) "    ee  : Elemento e de la partícula/luna"
+                        write(*,*) "    eM  : Elemento M de la partícula/luna (deg)"
+                        write(*,*) "    ew  : Elemento w de la partícula/luna (deg)"
+                        write(*,*) "    eR  : Elemento R de la partícula/luna [Optional]"
+                        write(*,*) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
+                        write(*,*) "    -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0"
+                        write(*,*) "    -nsim         : Número de simulación [int]"
+                        write(*,*) "    -datafile     : Nombre de archivo de salida de datos"
+                        write(*,*) "    --nodataf     : No guardar datos de salida"
+                        write(*,*) "    -chaosfile    : Nombre de archivo de caos"
+                        write(*,*) "    --nochaosf    : No guardar caos"
+                        write(*,*) "    --screen      : Imprimir información en pantalla"
+                        write(*,*) "    --noscreen    : No imprimir en pantalla"
+                        write(*,*) "    --perc        : Imprimir porcentaje de integración"
+                        write(*,*) "    --noperc      : No imprimir porcentaje de integración"
+                        write(*,*) "    --datascr     : Imprimir datos de salida en pantalla"
+                        write(*,*) "    --nodatascr   : No imprimir datos de salida en pantalla"
+                        write(*,*) "    --diagnostic  : Imprimir datos de diagnostico en pantalla"
+                        write(*,*) "    --nodiagnostic: No imprimir datos de diagnostico en pantalla"
+                        write(*,*) "    -multifile    : Nombre base de archivo de salida de datos individuales"
+                        write(*,*) "    --nomultif    : No guardar datos en archivos individuales"
+                        write(*,*) "    -mapfile      : Nombre de archivo de mapa"
+                        write(*,*) "    --nomapf      : No guardar mapa de potencial"
+                        write(*,*) "    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]"
+                        write(*,*) "    --noelem      : Imprimir coordenadas baricéntricas"
+                        write(*,*) "    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
+                        write(*,*) "    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
+                        write(*,*) "    -moonfile     : Nombre de archivo de lunas a utilizar"
+                        write(*,*) "    --nomoonfile  : No utilizar archivo de lunas"
+                        write(*,*) "    -partfile     : Nombre de archivo de partículas a utilizar"
+                        write(*,*) "    --nopartfile  : No utilizar archivo de partículas"
+                        write(*,*) "    --noconfig    : No leer archivo de configuración"
+                        write(*,*) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
+                        write(*,*) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos"
+                        write(*,*) "    -stopif       : Detener la integración si no quedan más objetos del tipo [int]:"
+                        write(*,*) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
+                        write(*,*) "    -parallel     : Cantida de thread a utilizar en paralelo [int]"
+                        write(*,*) "    --parallel    : Paralelizar usando todos los threads disponibles"
+                        write(*,*) "    --noparallel  : No usar paralelización para lunas/partículas"
+                        write(*,*) "    --help        : Mostrar esta ayuda"
                         stop 0
                     case default  ! Si no es un argumento reconocido...
                         is_number = .False.
@@ -536,17 +546,17 @@ module parameters
                             end if
                         end do
                         if (.not. is_number) then ! No es un número
-                            write (*, '(A, I0, A, A)') "ERROR: Argument not recognized ", i, ": ", trim(aux_character30)
+                            write(*, '(A, I0, A, A)') "ERROR: Argument not recognized ", i, ": ", trim(aux_character30)
                             call get_command_argument(0, aux_character30)
-                            write (*,*) "   For more help run: ", trim(aux_character30), " --help"
-                            write (*,*) "Exiting."
+                            write(*,*) "   For more help run: ", trim(aux_character30), " --help"
+                            write(*,*) "Exiting."
                             stop 1
                         end if
                         if (.not. aux_logical)  then ! No leí los parámetros aún
                             if (arguments_number < i+3) then
-                                write (*,*) "ERROR: Could not read all particle orbital elements."
-                                write (*,'(A,I0,A)') "        Missing ", 4-arguments_number, " elements."
-                                write (*,*) "Exiting."
+                                write(*,*) "ERROR: Could not read all particle orbital elements."
+                                write(*,'(A,I0,A)') "        Missing ", 4-arguments_number, " elements."
+                                write(*,*) "Exiting."
                                 stop 1
                             else ! Leo los argumentos numéricos. Considero que es 1 sola partícula
                                 ! Para generar prioridad, reallocatamos de ser necesario
@@ -598,7 +608,7 @@ module parameters
 
             inquire(file=trim(file_name), exist=existe)
             if (.not. existe) then
-                if (params%use_screen) write (*,*) "File ", trim(file_name), " does not exists."  ! use_screen is the default...
+                if (params%use_screen) write(*,*) "File ", trim(file_name), " does not exists."  ! use_screen is the default...
                 return
             end if
 
@@ -738,7 +748,7 @@ module parameters
                             read (value_str, *) params%omega_damp_active_time
                         case("mass exponentia")
                             read (value_str, *) params%mass_exp_damping_time
-                        case("use filter (yes")
+                        case("use filtering (")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 params%use_filter = .True.
                             else
@@ -750,6 +760,14 @@ module parameters
                             read (value_str, *) params%filter_nsamples
                         case("filter windows")
                             read (value_str, *) params%filter_nwindows
+                        case("apply filter to")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%filter_use_KH = .True.
+                            else
+                                params%filter_use_KH = .False.
+                            end if
+                        case("kernel weights")
+                            read (value_str, *) params%filter_model
                         case("prefix for filt")
                             if ((to_lower(trim(value_str)) == "n") .or. &
                               & (to_lower(trim(value_str)) == "no")) then
@@ -898,7 +916,7 @@ module parameters
                         case("upper y bound (")
                             read (value_str, *) params%map_max_y
                         case default
-                            write (*,*) "WARNING: Parameter not recongnized: ", trim(param_str)
+                            write(*,*) "WARNING: Parameter not recongnized: ", trim(param_str)
                     end select
                 else  ! Read boulders, moons or particles
                     param_str = trim(adjustl(line)) 
@@ -932,7 +950,7 @@ module parameters
                                 & boulders_in(j,2), &
                                 & boulders_in(j,3)
                             if (io /= 0) then
-                                write (*,*) "ERROR: Al leer boulder:", j
+                                write(*,*) "ERROR: Al leer boulder:", j
                                 stop 1
                             end if
                             j = j + 1
@@ -975,7 +993,7 @@ module parameters
                                     & moons_in(j, 6), &
                                     & moons_in(j, 7)
                                 if (io /= 0) then
-                                    write (*,*) "ERROR: Al leer luna:", j
+                                    write(*,*) "ERROR: Al leer luna:", j
                                     stop 1
                                 end if
                                 j = j + 1
@@ -1017,7 +1035,7 @@ module parameters
                                     & particles_in(j, 4), &
                                     & particles_in(j, 5) 
                                 if (io /= 0) then
-                                    write (*,*) "ERROR: Al leer partícula:", j
+                                    write(*,*) "ERROR: Al leer partícula:", j
                                     stop 1
                                 end if
                                 j = j + 1
@@ -1047,13 +1065,13 @@ module parameters
 
             !! Times
             if ((derived%case_output_type < 0) .or. (derived%case_output_type > 2)) then
-                write (*,*) "ERROR: Checkpoint times distribution method not recognized:", derived%case_output_type
+                write(*,*) "ERROR: Checkpoint times distribution method not recognized:", derived%case_output_type
                 stop 1
             end if
 
             !! Boulders
             if (derived%Nboulders < 0) then
-                write (*,*) "ERROR: Nboulders can not be negative."
+                write(*,*) "ERROR: Nboulders can not be negative."
                 stop 1
             end if
             derived%use_boulders = derived%Nboulders > 0
@@ -1062,19 +1080,19 @@ module parameters
             if (derived%use_triaxial) then
                 ! Check order and values
                 if (derived%triax_c_primary < cero) then
-                    write (*,*) "ERROR: Semi-axis 'c' can not be negative"
+                    write(*,*) "ERROR: Semi-axis 'c' can not be negative"
                     stop 1
                 else if (derived%triax_b_primary < cero) then
-                    write (*,*) "ERROR: Semi-axis 'b' can not be negative"
+                    write(*,*) "ERROR: Semi-axis 'b' can not be negative"
                     stop 1
                 else if  (derived%triax_a_primary .le. cero) then
-                    write (*,*) "ERROR: Semi-axis 'a' must be positive."
+                    write(*,*) "ERROR: Semi-axis 'a' must be positive."
                     stop 1
                 else if (derived%triax_b_primary > derived%triax_a_primary) then
-                    write (*,*) "ERROR: Semi-axis 'b' can not be greater than semi-axis 'a'."
+                    write(*,*) "ERROR: Semi-axis 'b' can not be greater than semi-axis 'a'."
                     stop 1
                 else if (derived%triax_c_primary > derived%triax_b_primary) then
-                    write (*,*) "ERROR: Semi-axis 'c' can not be greater than semi-axis 'b'."
+                    write(*,*) "ERROR: Semi-axis 'c' can not be greater than semi-axis 'b'."
                     stop 1
                 end if
                 ! Set values of not defined
@@ -1082,12 +1100,12 @@ module parameters
                 if (derived%triax_c_primary .eq. cero) derived%triax_c_primary = derived%triax_b_primary
                 ! Check NO BOULDERS
                 if (derived%use_boulders) then
-                    write (*,*) "ERROR: Can not set tri-axial model with boulders."
+                    write(*,*) "ERROR: Can not set tri-axial model with boulders."
                     stop 1
                 end if
                 if (derived%triax_a_primary - derived%triax_c_primary < tini) then
-                    write (*,*) "WARNING: Tri-axial model with equal semi-axis."
-                    write (*,*) "         Switching to single central sphere."
+                    write(*,*) "WARNING: Tri-axial model with equal semi-axis."
+                    write(*,*) "         Switching to single central sphere."
                     derived%radius_primary = (derived%triax_a_primary * &
                                             & derived%triax_b_primary * &
                                             & derived%triax_c_primary)**(1.d0/3.d0)
@@ -1108,14 +1126,14 @@ module parameters
 
             !! NMoons
             if (derived%Nmoons < 0) then
-                write (*,*) "ERROR: Nmoons can not be negative."
+                write(*,*) "ERROR: Nmoons can not be negative."
                 stop 1
             end if
             derived%use_moons = derived%Nmoons > 0
 
             !! NParticles
             if (derived%Nparticles < 0) then
-                write (*,*) "ERROR: Nparticles can not be negative."
+                write(*,*) "ERROR: Nparticles can not be negative."
                 stop 1
             end if
             derived%use_particles = derived%Nparticles > 0
@@ -1164,7 +1182,7 @@ module parameters
                 derived%omega_damp_active_time = cero
             else if ((derived%use_lin_omega_damp .and. (derived%use_exp_omega_damp .or. derived%use_poly_omega_damp)) .or. &
                      (derived%use_exp_omega_damp .and. derived%use_poly_omega_damp)) then
-                write (*,*) "ERROR: Can not use multiple omega dampings."
+                write(*,*) "ERROR: Can not use multiple omega dampings."
                 stop 1
             end if
             
@@ -1174,18 +1192,22 @@ module parameters
             ! Filter (fast check)
             if (derived%use_filter) then
                 if (derived%filter_dt .eq. 0) then
-                    write (*,*) "ERROR: Filter dt must be different than 0."
+                    write(*,*) "ERROR: Filter dt must be different than 0."
                     stop 1
                 end if
                 if (derived%filter_nsamples .le. 0) then
-                    write (*,*) "ERROR: Filter n_samples must be greater than 0."
+                    write(*,*) "ERROR: Filter n_samples must be greater than 0."
                     stop 1
                 end if
                 if (derived%filter_nwindows .le. 0) then
-                    write (*,*) "ERROR: Filter n_windows must be greater than 0."
+                    write(*,*) "ERROR: Filter n_windows must be greater than 0."
                     stop 1
                 end if
                 if (to_lower(trim(derived%filter_prefix)) == "") derived%filter_prefix = "filt"
+                if ((derived%filter_model < 0) .or. (derived%filter_model > 4)) then
+                    write(*,*) "ERROR: Filter model must be between 0 and 4 (included)."
+                    stop 1
+                end if
             end if
             
             ! ! [BINS]
@@ -1194,11 +1216,11 @@ module parameters
             !     derived%use_bins = .True.
             !     !! Check
             !     if (derived%binning_method < 1 .or. derived%binning_method > 3) then
-            !         write (*,*) "ERROR: binning_method must be 1 (equal dr), 2 (equal dA) or 3 (equal Npart)."
+            !         write(*,*) "ERROR: binning_method must be 1 (equal dr), 2 (equal dA) or 3 (equal Npart)."
             !         stop 1
             !     end if
             !     if (derived%Nbins < 2) then
-            !         write (*,*) "ERROR: Can not create less than 2 bins."
+            !         write(*,*) "ERROR: Can not create less than 2 bins."
             !         stop 1
             !     end if
             !     !! Set default update values
@@ -1222,14 +1244,14 @@ module parameters
 
             ! Error
             if (derived%error_digits < 1) then
-                write (*,*) "ERROR: Number of presition digits must be greater than 0."
+                write(*,*) "ERROR: Number of presition digits must be greater than 0."
                 stop 1
             end if
             derived%error_tolerance = 10.d0**(-derived%error_digits)
             
             ! Primary Radius
             if (derived%radius_primary <= 0) then
-                write (*,*) "ERROR: Primary radius must be positive."
+                write(*,*) "ERROR: Primary radius must be positive."
                 stop 1
             end if
 
@@ -1241,7 +1263,7 @@ module parameters
                     my_threads = 1
                     derived%use_parallel = .False.
                 else if (.not. compiled_with_openmp) then
-                    write (*,*) "ERROR: Can not use paralelization withut OpenMP."
+                    write(*,*) "ERROR: Can not use paralelization withut OpenMP."
                     stop 1
                 end if
                 !$ available_threads = OMP_GET_MAX_THREADS()
@@ -1256,15 +1278,15 @@ module parameters
             
             ! Output
             if (derived%use_datascreen .and. derived%use_percentage) then
-                write (*,*) "ERROR: Can not print both percentage and data on screen."
+                write(*,*) "ERROR: Can not print both percentage and data on screen."
                 stop 1
             end if
             if (derived%use_datascreen .and. derived%use_diagnostics) then
-                write (*,*) "ERROR: Can not print both data and diagnostics data."
+                write(*,*) "ERROR: Can not print both data and diagnostics data."
                 stop 1
             end if
             if (derived%use_percentage .and. derived%use_diagnostics) then
-                write (*,*) "ERROR: Can not print both percentage and diagnostics data."
+                write(*,*) "ERROR: Can not print both percentage and diagnostics data."
                 stop 1
             end if
             
@@ -1313,7 +1335,7 @@ module parameters
 
             ! Check no TOM and Filter
             if (derived%use_tomfile .and. derived%use_filter) then
-                write (*,*) "ERROR: Can not use both filtering and TOM at the same time."
+                write(*,*) "ERROR: Can not use both filtering and TOM at the same time."
                 stop 1
             end if
         end subroutine set_derived_parameters
@@ -1335,7 +1357,7 @@ module parameters
             
             inquire (file=trim(file_tout), exist=existe)
             if (.not. existe) then
-                write (*,*) "ERROR: No se encontró el archivo TOM: ", trim(file_tout)
+                write(*,*) "ERROR: No se encontró el archivo TOM: ", trim(file_tout)
                 stop 1
             end if
 
@@ -1364,7 +1386,7 @@ module parameters
             end do
 
             if (n_TOM == 2) then
-                write (*,*) "ERROR: No se encontraron datos válidos en el archivo."
+                write(*,*) "ERROR: No se encontraron datos válidos en el archivo."
                 stop 1
             end if
             
@@ -1518,6 +1540,8 @@ module parameters
             if (allocated(tom_deltamass)) deallocate(tom_deltamass)
             if (allocated(checkpoint_is_tom)) deallocate(checkpoint_is_tom)
             if (allocated(checkpoint_is_output)) deallocate(checkpoint_is_output)
+            if (allocated(y_pre_filter)) deallocate(y_pre_filter)
+            if (allocated(elem_filtered)) deallocate(elem_filtered)
         end subroutine free_parameters_arays
 
         ! Nullify pointers
@@ -1551,15 +1575,15 @@ module parameters
 
             if ((.not. simu%use_merge_part_mass) .and. sistema%Nparticles_active < sistema%Nparticles_active) then
                 if (simu%use_screen) then
-                    write (*,*) ACHAR(10)
-                    write (*,*) "A particle-massive merge body occured."
+                    write(*,*) ACHAR(10)
+                    write(*,*) "A particle-massive merge body occured."
                 end if
                 keep = .False.
             end if
             if ((.not. simu%use_merge_massive) .and. sistema%Nmoons_active < sistema%Nmoons_active) then
                 if (simu%use_screen) then
-                    write (*,*) ACHAR(10)
-                    write (*,*) "A massive-massive merge body occured."
+                    write(*,*) ACHAR(10)
+                    write(*,*) "A massive-massive merge body occured."
                 end if
                 keep = .False.
             end if
@@ -1574,15 +1598,15 @@ module parameters
             
             if (simu%use_stop_no_part_left .and. sistema%Nparticles_active .eq. 0 .and. simu%Nparticles > 0) then
                 if (simu%use_screen) then
-                    write (*,*) ACHAR(10)
-                    write (*,*) "No more particles left."
+                    write(*,*) ACHAR(10)
+                    write(*,*) "No more particles left."
                 end if
                 keep = .False.
             end if
             if (simu%use_stop_no_moon_left .and. sistema%Nmoons_active .eq. 0 .and. simu%Nmoons > 0) then
                 if (simu%use_screen) then
-                    write (*,*) ACHAR(10)
-                    write (*,*) "No more moons left."
+                    write(*,*) ACHAR(10)
+                    write(*,*) "No more moons left."
                 end if
                 keep = .False.
             end if
@@ -1643,6 +1667,7 @@ module parameters
             integer(kind=4), intent(in) :: y_nvalues
             real(kind=8), dimension(:), intent(inout) :: el_filtered
             real(kind=8) :: cos_th, sin_th
+            real(kind=8) :: weigth, e_times_fil
             real(kind=8), dimension(:,:), allocatable :: cos_an, sin_an
             integer(kind=4) :: nbodies, i, j, aux_i, idx
 
@@ -1657,36 +1682,43 @@ module parameters
             
             el_filtered(1:y_nvalues) = cero
             call copy_objects(system, system_filtered)
-            do i = 1, sim%filter_size
-                call update_system_from_array(system_filtered, filt_tmp_times(i), filt_tmp_values(:y_nvalues, i))
+            do i = 1, filter%size
+                weigth = filter%kernel(i)
+                call update_system_from_array(system_filtered, filter%tmp_times(i), filter%tmp_values(:y_nvalues, i))
                 call update_elements(system_filtered, sim%use_baryc_output)
 
-                cos_th = cos_th + cos(system_filtered%asteroid%theta) * filt_kernel(i)
-                sin_th = sin_th + sin(system_filtered%asteroid%theta) * filt_kernel(i)
-
-                el_filtered(2) = el_filtered(2) + system_filtered%asteroid%omega * filt_kernel(i)
-
-                el_filtered(3) = el_filtered(3) + system_filtered%asteroid%elements(1) * filt_kernel(i)
-                el_filtered(4) = el_filtered(4) + system_filtered%asteroid%elements(2) * filt_kernel(i)
-
-                cos_an(1,1) = cos_an(1,1) + cos(system_filtered%asteroid%elements(3)) * filt_kernel(i)
-                sin_an(1,1) = sin_an(1,1) + sin(system_filtered%asteroid%elements(3)) * filt_kernel(i)
-
-                cos_an(1,2) = cos_an(1,2) + cos(system_filtered%asteroid%elements(4)) * filt_kernel(i)
-                sin_an(1,2) = sin_an(1,2) + sin(system_filtered%asteroid%elements(4)) * filt_kernel(i)
+                ! Theta
+                cos_th = cos_th + cos(system_filtered%asteroid%theta) * weigth
+                sin_th = sin_th + sin(system_filtered%asteroid%theta) * weigth
+                ! Omega
+                el_filtered(2) = el_filtered(2) + system_filtered%asteroid%omega * weigth
+                ! a
+                el_filtered(3) = el_filtered(3) + system_filtered%asteroid%elements(1) * weigth
+                ! e
+                e_times_fil = system_filtered%asteroid%elements(2) * weigth
+                el_filtered(4) = el_filtered(4) + e_times_fil
+                ! M
+                cos_an(1,1) = cos_an(1,1) + cos(system_filtered%asteroid%elements(3)) * weigth
+                sin_an(1,1) = sin_an(1,1) + sin(system_filtered%asteroid%elements(3)) * weigth
+                ! w -> K & H
+                cos_an(1,2) = cos_an(1,2) + cos(system_filtered%asteroid%elements(4)) * e_times_fil
+                sin_an(1,2) = sin_an(1,2) + sin(system_filtered%asteroid%elements(4)) * e_times_fil
 
                 do j = 2, system_filtered%Nmoons_active + 1
                     aux_i = j - 1
                     idx =  4 * j - 1  ! From derivates
 
-                    el_filtered(idx) = el_filtered(idx) + system_filtered%moons(aux_i)%elements(1) * filt_kernel(i)
-                    el_filtered(idx+1) = el_filtered(idx+1) + system_filtered%moons(aux_i)%elements(2) * filt_kernel(i)
-
-                    cos_an(j,1) = cos_an(j,1) + cos(system_filtered%moons(aux_i)%elements(3)) * filt_kernel(i)
-                    sin_an(j,1) = sin_an(j,1) + sin(system_filtered%moons(aux_i)%elements(3)) * filt_kernel(i)
-
-                    cos_an(j,2) = cos_an(j,2) + cos(system_filtered%moons(aux_i)%elements(4)) * filt_kernel(i)
-                    sin_an(j,2) = sin_an(j,2) + sin(system_filtered%moons(aux_i)%elements(4)) * filt_kernel(i)
+                    ! a
+                    el_filtered(idx) = el_filtered(idx) + system_filtered%moons(aux_i)%elements(1) * weigth
+                    ! e
+                    e_times_fil = system_filtered%moons(aux_i)%elements(2) * weigth
+                    el_filtered(idx+1) = el_filtered(idx+1) + e_times_fil
+                    ! M
+                    cos_an(j,1) = cos_an(j,1) + cos(system_filtered%moons(aux_i)%elements(3)) * weigth
+                    sin_an(j,1) = sin_an(j,1) + sin(system_filtered%moons(aux_i)%elements(3)) * weigth
+                    ! w -> K & H
+                    cos_an(j,2) = cos_an(j,2) + cos(system_filtered%moons(aux_i)%elements(4)) * e_times_fil
+                    sin_an(j,2) = sin_an(j,2) + sin(system_filtered%moons(aux_i)%elements(4)) * e_times_fil
 
                 end do
 
@@ -1694,24 +1726,32 @@ module parameters
                     aux_i = j - system_filtered%Nmoons_active - 1
                     idx =  4 * j - 1  ! From derivates
 
-                    el_filtered(idx) = el_filtered(idx) + system_filtered%particles(aux_i)%elements(1) * filt_kernel(i)
-                    el_filtered(idx+1) = el_filtered(idx+1) + system_filtered%particles(aux_i)%elements(2) * filt_kernel(i)
-
-                    cos_an(j,1) = cos_an(j,1) + cos(system_filtered%particles(aux_i)%elements(3)) * filt_kernel(i)
-                    sin_an(j,1) = sin_an(j,1) + sin(system_filtered%particles(aux_i)%elements(3)) * filt_kernel(i)
-
-                    cos_an(j,2) = cos_an(j,2) + cos(system_filtered%particles(aux_i)%elements(4)) * filt_kernel(i)
-                    sin_an(j,2) = sin_an(j,2) + sin(system_filtered%particles(aux_i)%elements(4)) * filt_kernel(i)
-
+                    ! a
+                    el_filtered(idx) = el_filtered(idx) + system_filtered%particles(aux_i)%elements(1) * weigth
+                    ! e
+                    e_times_fil = system_filtered%particles(aux_i)%elements(2) * weigth
+                    el_filtered(idx+1) = el_filtered(idx+1) + e_times_fil
+                    ! M
+                    cos_an(j,1) = cos_an(j,1) + cos(system_filtered%particles(aux_i)%elements(3)) * weigth
+                    sin_an(j,1) = sin_an(j,1) + sin(system_filtered%particles(aux_i)%elements(3)) * weigth
+                    ! w -> K & H
+                    cos_an(j,2) = cos_an(j,2) + cos(system_filtered%particles(aux_i)%elements(4)) * e_times_fil
+                    sin_an(j,2) = sin_an(j,2) + sin(system_filtered%particles(aux_i)%elements(4)) * e_times_fil
                 end do
 
             end do
 
-            ! Angle filtered
+            ! theta
             el_filtered(1) = modulo(atan2(sin_th, cos_th), twopi)
             do j = 1, nbodies
                 idx =  4 * j - 1  ! From derivates
+                ! e ?
+                if (sim%filter_use_KH) then
+                    el_filtered(idx+1) = sqrt(cos_an(j,2) * cos_an(j,2) + sin_an(j,2) * sin_an(j,2))
+                end if
+                ! M
                 el_filtered(idx+2) = modulo(atan2(sin_an(j,1), cos_an(j,1)), twopi)
+                ! w
                 el_filtered(idx+3) = modulo(atan2(sin_an(j,2), cos_an(j,2)), twopi)
             end do
 
