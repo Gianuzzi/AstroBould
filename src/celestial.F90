@@ -118,7 +118,7 @@ module celestial
             real(kind=8), intent(in)  :: dm, e
             real(kind=8), intent(out) :: u, f
             real(kind=8) :: u0, dif, seno, cose
-            integer(kind=4) :: i, MAX_ITER = 50
+            integer(kind=4) :: i, MAX_ITER = 100
             
             u0 = dm
             dif = uno
@@ -129,7 +129,7 @@ module celestial
                 u0 = u
                 i = i + 1
                 if (i > MAX_ITER) then
-                    print*, 'aver: too many iterations'
+                    print*, 'aver: too many iterations. Error:', dif
                     exit
                 end if
             end do
