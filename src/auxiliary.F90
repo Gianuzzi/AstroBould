@@ -329,7 +329,7 @@ module auxiliary
 
             inquire (file=trim(file_name), exist=existe)
             if (.not. existe) then
-                write (*,*) "ERROR: File not found: ", trim(file_name)
+                write(*,*) "ERROR: File not found: ", trim(file_name)
                 stop 1
             end if
 

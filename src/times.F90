@@ -22,7 +22,7 @@ module times
 
             if (dt_out > 0.d0) then
                 if (dt_out > tf - t0) then
-                    write (*,*) "ERROR: dt_out >= (tf - t0)"
+                    write(*,*) "ERROR: dt_out >= (tf - t0)"
                     stop 1
                 end if
                 n_out = int((tf - t0) / dt_out) + 1
@@ -32,7 +32,7 @@ module times
                 dt_out = (tf - t0) / (npointsr - 1.d0)
             end if
             if (n_out < 2) then
-                write (*,*) "ERROR: n_out < 2"
+                write(*,*) "ERROR: n_out < 2"
                 stop 1
             end if
             allocate (t_out(n_out))  ! Here is allocated output_times

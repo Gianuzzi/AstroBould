@@ -99,7 +99,7 @@ module bodies
             integer(kind=4), intent(in) :: Nboulders
 
             if (allocated(self%boulders)) then
-                write (*,*) "ERROR: Number of boulder already defined."
+                write(*,*) "ERROR: Number of boulder already defined."
                 STOP 1
             end if
 
@@ -115,8 +115,8 @@ module bodies
             
             if (Nmoons > 0) then
                 if (allocated(self)) then
-                    write (*,*) "ERROR: Number of moons already defined."
-                    write (*,*) "        Use moons file or config file; not both."
+                    write(*,*) "ERROR: Number of moons already defined."
+                    write(*,*) "        Use moons file or config file; not both."
                     STOP 1
                 end if
 
@@ -131,8 +131,8 @@ module bodies
             
             if (Nparticles > 0) then
                 if (allocated(self)) then
-                    write (*,*) "ERROR: Number of particles already defined."
-                    write (*,*) "        Use particles file or config file; not both."
+                    write(*,*) "ERROR: Number of particles already defined."
+                    write(*,*) "        Use particles file or config file; not both."
                     STOP 1
                 end if
 
