@@ -3,6 +3,7 @@ module parameters
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
     use accelerations, only: init_damping, init_drag, init_ellipsoid, init_stokes
+    use filter
     use omp_lib
 
     implicit none
@@ -26,13 +27,12 @@ module parameters
     type(asteroid_st) :: asteroid
     type(system_st) :: initial_system
     type(system_st) :: system
-    type(system_st) :: system_new
+    type(system_st) :: system_filtered
     
     
     !! ----  <<<<<    GENERAL PARAMETERS     >>>>>   -----
     type :: input_params_st  !!! This contains only the input parameters
         ! Times for the integration - 
-        real(kind=8) :: initial_time = cero
         real(kind=8) :: final_time = cero
         real(kind=8) :: output_timestep = cero
         integer(kind=4) :: output_number = 0
@@ -76,6 +76,12 @@ module parameters
         real(kind=8) :: omega_exp_damp_poly_B = cero
         real(kind=8) :: omega_damp_active_time = cero
         real(kind=8) :: mass_exp_damping_time = infinity
+        ! Filter
+        logical :: use_filter = .False.
+        real(kind=8) :: filter_dt = cero
+        integer(kind=4) :: filter_nsamples = 0
+        integer(kind=4) :: filter_nwindows = 0
+        character(30) :: filter_prefix = ""
         ! [BINS] forces/effects - [NOT AVAILABLE YET. STILL UNDER DEVELOPMENT]
         logical :: use_self_gravity = .False.
         integer(kind=4) :: Norder_self_gravity = 3
@@ -142,6 +148,9 @@ module parameters
         logical :: use_lin_omega_damp = .False.
         logical :: use_exp_omega_damp = .False.
         logical :: use_poly_omega_damp = .False.
+        !! Filter
+        integer(kind=4) :: filter_size = 0
+        real(kind=8) :: filter_half_width_dt = cero
         !! [BINS] ( Not available yet )
         logical :: use_bins = .False.
         !!! Viscosity [Not available yet]
@@ -204,11 +213,11 @@ module parameters
 
     ! ----  <<<<<    PARAMETERS ARRAYS     >>>>>   -----
     integer, parameter :: equation_size = 4
-    real(kind=8), dimension(:), allocatable :: m_arr       ! Mass array
-    real(kind=8), dimension(:), allocatable :: R_arr       ! Radius array
-    real(kind=8), dimension(:), allocatable :: y_arr       ! Coordinates array
-    real(kind=8), dimension(:), allocatable :: y_arr_new   ! Coordinates array (2.0)
-    real(kind=8), dimension(:), allocatable :: y_der       ! Derivate of coordinates array
+    real(kind=8), dimension(:), allocatable :: m_arr         ! Mass array
+    real(kind=8), dimension(:), allocatable :: R_arr         ! Radius array
+    real(kind=8), dimension(:), allocatable :: y_arr         ! Coordinates array
+    real(kind=8), dimension(:), allocatable :: y_arr_new     ! Coordinates array (2.0)
+    real(kind=8), dimension(:), allocatable :: y_der         ! Derivate of coordinates array
     
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
@@ -614,8 +623,6 @@ module parameters
                     auxch2 = to_lower(value_str(:2))
                     auxch15 = param_str(:15)
                     select case (auxch15)
-                        case("initial time fo")
-                            read (value_str, *) params%initial_time
                         case("total integrati")
                             read (value_str, *) params%final_time
                         case("output time int")
@@ -731,6 +738,25 @@ module parameters
                             read (value_str, *) params%omega_damp_active_time
                         case("mass exponentia")
                             read (value_str, *) params%mass_exp_damping_time
+                        case("use filter (yes")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%use_filter = .True.
+                            else
+                                params%use_filter = .False.
+                            end if
+                        case("time period to")
+                            read (value_str, *) params%filter_dt
+                        case("filter oversamp")
+                            read (value_str, *) params%filter_nsamples
+                        case("filter windows")
+                            read (value_str, *) params%filter_nwindows
+                        case("prefix for filt")
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
+                                params%filter_prefix = ""
+                            else
+                                params%filter_prefix = trim(value_str)
+                            end if
                         case("include self-gr")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 params%use_self_gravity = .True.
@@ -1144,6 +1170,23 @@ module parameters
             
             ! ! Mass Damping [UNAVAILABLE YET]
             ! if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinity
+
+            ! Filter (fast check)
+            if (derived%use_filter) then
+                if (derived%filter_dt .eq. 0) then
+                    write (*,*) "ERROR: Filter dt must be different than 0."
+                    stop 1
+                end if
+                if (derived%filter_nsamples .le. 0) then
+                    write (*,*) "ERROR: Filter n_samples must be greater than 0."
+                    stop 1
+                end if
+                if (derived%filter_nwindows .le. 0) then
+                    write (*,*) "ERROR: Filter n_windows must be greater than 0."
+                    stop 1
+                end if
+                if (to_lower(trim(derived%filter_prefix)) == "") derived%filter_prefix = "filt"
+            end if
             
             ! ! [BINS]
             ! !! Self-Gravity or Viscosity
@@ -1179,7 +1222,7 @@ module parameters
 
             ! Error
             if (derived%error_digits < 1) then
-                write (*,*) "ERROR: Number of presition digist must be greater than 0."
+                write (*,*) "ERROR: Number of presition digits must be greater than 0."
                 stop 1
             end if
             derived%error_tolerance = 10.d0**(-derived%error_digits)
@@ -1266,6 +1309,12 @@ module parameters
                 derived%use_particlesfile = .True.
             else 
                 derived%use_particlesfile = .False.
+            end if
+
+            ! Check no TOM and Filter
+            if (derived%use_tomfile .and. derived%use_filter) then
+                write (*,*) "ERROR: Can not use both filtering and TOM at the same time."
+                stop 1
             end if
         end subroutine set_derived_parameters
         
@@ -1586,5 +1635,153 @@ module parameters
             type(system_st), intent(in) :: other
             integer(kind=4), intent(in) :: unit_file
         end subroutine do_not_write_ch
+
+        ! FILTERING
+        subroutine apply_filter(y_nvalues, el_filtered)
+            use bodies, only: get_Nactive, copy_objects, update_system_from_array, update_elements
+            implicit none
+            integer(kind=4), intent(in) :: y_nvalues
+            real(kind=8), dimension(:), intent(inout) :: el_filtered
+            real(kind=8) :: cos_th, sin_th
+            real(kind=8), dimension(:,:), allocatable :: cos_an, sin_an
+            integer(kind=4) :: nbodies, i, j, aux_i, idx
+
+            call get_Nactive(system, nbodies)
+            allocate(cos_an(nbodies, 2))
+            allocate(sin_an(nbodies, 2))
+
+            cos_th = cero
+            sin_th = cero
+            cos_an = cero
+            sin_an = cero
+            
+            el_filtered(1:y_nvalues) = cero
+            call copy_objects(system, system_filtered)
+            do i = 1, sim%filter_size
+                call update_system_from_array(system_filtered, filt_tmp_times(i), filt_tmp_values(:y_nvalues, i))
+                call update_elements(system_filtered, sim%use_baryc_output)
+
+                cos_th = cos_th + cos(system_filtered%asteroid%theta) * filt_kernel(i)
+                sin_th = sin_th + sin(system_filtered%asteroid%theta) * filt_kernel(i)
+
+                el_filtered(2) = el_filtered(2) + system_filtered%asteroid%omega * filt_kernel(i)
+
+                el_filtered(3) = el_filtered(3) + system_filtered%asteroid%elements(1) * filt_kernel(i)
+                el_filtered(4) = el_filtered(4) + system_filtered%asteroid%elements(2) * filt_kernel(i)
+
+                cos_an(1,1) = cos_an(1,1) + cos(system_filtered%asteroid%elements(3)) * filt_kernel(i)
+                sin_an(1,1) = sin_an(1,1) + sin(system_filtered%asteroid%elements(3)) * filt_kernel(i)
+
+                cos_an(1,2) = cos_an(1,2) + cos(system_filtered%asteroid%elements(4)) * filt_kernel(i)
+                sin_an(1,2) = sin_an(1,2) + sin(system_filtered%asteroid%elements(4)) * filt_kernel(i)
+
+                do j = 2, system_filtered%Nmoons_active + 1
+                    aux_i = j - 1
+                    idx =  4 * j - 1  ! From derivates
+
+                    el_filtered(idx) = el_filtered(idx) + system_filtered%moons(aux_i)%elements(1) * filt_kernel(i)
+                    el_filtered(idx+1) = el_filtered(idx+1) + system_filtered%moons(aux_i)%elements(2) * filt_kernel(i)
+
+                    cos_an(j,1) = cos_an(j,1) + cos(system_filtered%moons(aux_i)%elements(3)) * filt_kernel(i)
+                    sin_an(j,1) = sin_an(j,1) + sin(system_filtered%moons(aux_i)%elements(3)) * filt_kernel(i)
+
+                    cos_an(j,2) = cos_an(j,2) + cos(system_filtered%moons(aux_i)%elements(4)) * filt_kernel(i)
+                    sin_an(j,2) = sin_an(j,2) + sin(system_filtered%moons(aux_i)%elements(4)) * filt_kernel(i)
+
+                end do
+
+                do j = system_filtered%Nmoons_active + 2, nbodies
+                    aux_i = j - system_filtered%Nmoons_active - 1
+                    idx =  4 * j - 1  ! From derivates
+
+                    el_filtered(idx) = el_filtered(idx) + system_filtered%particles(aux_i)%elements(1) * filt_kernel(i)
+                    el_filtered(idx+1) = el_filtered(idx+1) + system_filtered%particles(aux_i)%elements(2) * filt_kernel(i)
+
+                    cos_an(j,1) = cos_an(j,1) + cos(system_filtered%particles(aux_i)%elements(3)) * filt_kernel(i)
+                    sin_an(j,1) = sin_an(j,1) + sin(system_filtered%particles(aux_i)%elements(3)) * filt_kernel(i)
+
+                    cos_an(j,2) = cos_an(j,2) + cos(system_filtered%particles(aux_i)%elements(4)) * filt_kernel(i)
+                    sin_an(j,2) = sin_an(j,2) + sin(system_filtered%particles(aux_i)%elements(4)) * filt_kernel(i)
+
+                end do
+
+            end do
+
+            ! Angle filtered
+            el_filtered(1) = modulo(atan2(sin_th, cos_th), twopi)
+            do j = 1, nbodies
+                idx =  4 * j - 1  ! From derivates
+                el_filtered(idx+2) = modulo(atan2(sin_an(j,1), cos_an(j,1)), twopi)
+                el_filtered(idx+3) = modulo(atan2(sin_an(j,2), cos_an(j,2)), twopi)
+            end do
+
+            deallocate(cos_an)
+            deallocate(sin_an)
+            
+        end subroutine apply_filter
+
+
+        ! SPECIFIC subroutines to avoid writing the same lines of code
+
+        subroutine generate_output(syst, filtered)
+            use bodies, only: write_diagnostics
+            implicit none
+            type(system_st), intent(in) :: syst
+            logical, intent(in), optional :: filtered
+            integer(kind=4) :: i, pind, pout
+
+            if (present(filtered)) then
+                pind = 1000
+                pout = 1
+            else
+                pind = 0
+                pout = 0
+            end if
+
+            call write_a_to_individual(syst, 200 + pind)
+            !$OMP PARALLEL DEFAULT(SHARED) &
+            !$OMP PRIVATE(i)
+            !$OMP DO
+            do i = 1, syst%Nmoons_active
+                call write_m_to_individual(syst, i, 200+syst%moons(i)%id + pind)
+            end do 
+            !$OMP END DO NOWAIT
+            !$OMP DO
+            do i = 1, syst%Nparticles_active
+                call write_p_to_individual(syst, i, 200+syst%particles(i)%id + pind)
+            end do 
+            !$OMP END DO NOWAIT
+            !$OMP SECTIONS
+            !$OMP SECTION
+            if (pout .eq. 0) then
+                call write_to_screen(syst, 6)
+                call flush_output(6)
+            end if
+            !$OMP SECTION
+            call write_to_general(syst, 20 + pout)
+            call flush_output(20 + pout)
+            !$OMP SECTION
+            call write_to_chaos(syst, initial_system, 40 + pout)
+            call flush_chaos(40 + pout) ! Update chaos
+            !$OMP END SECTIONS
+            !$OMP END PARALLEL        
+            
+        end subroutine generate_output
+
+        subroutine check_esc_and_col(syst, unit_out)
+            use bodies, only: resolve_collisions, resolve_escapes
+            implicit none
+            type(system_st), intent(inout) :: syst
+            integer(kind=4), intent(in) :: unit_out
+
+            ! Apply colissions and check
+            call resolve_collisions(syst, sim%min_distance, unit_out)
+            call check_after_col(syst, sim, keep_integrating)
+
+            ! Apply escapes and check
+            call resolve_escapes(syst, sim%max_distance, unit_out)
+            call check_after_esc(syst, sim, keep_integrating)
+            
+        end subroutine check_esc_and_col
 
 end module parameters

@@ -7,6 +7,7 @@ build/main :  \
 	build/celestial.o \
 	build/constants.o \
 	build/derivates.o \
+	build/filter.o \
 	build/integrators.o \
 	build/main.o \
 	build/parameters.o \
@@ -37,20 +38,26 @@ build/derivates.o :  \
 	build/constants.o \
 	build/parameters.o
 
+build/filter.o :  \
+	build/constants.o
+
 build/integrators.o : 
 
 build/main.o :  \
 	build/bodies.o \
 	build/celestial.o \
 	build/derivates.o \
+	build/filter.o \
 	build/integrators.o \
 	build/parameters.o \
 	build/times.o
 
 build/parameters.o :  \
+	build/accelerations.o \
 	build/auxiliary.o \
 	build/bodies.o \
-	build/constants.o
+	build/constants.o \
+	build/filter.o
 
 build/times.o :  \
 	build/auxiliary.o \

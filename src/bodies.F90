@@ -392,7 +392,7 @@ module bodies
             self%boulders(0)%dist_to_asteroid = sqrt(coords_cm_from_primary(1) * coords_cm_from_primary(1) + &
                                                    & coords_cm_from_primary(2) * coords_cm_from_primary(2))
             if ((self%Nboulders > 0) .and. (self%boulders(0)%dist_to_asteroid > tini)) then
-                self%boulders(0)%initial_theta = mod(atan2(coords_cm_from_primary(2), coords_cm_from_primary(1)) + pi, twopi)
+                self%boulders(0)%initial_theta = modulo(atan2(coords_cm_from_primary(2), coords_cm_from_primary(1)) + pi, twopi)
             else 
                 self%boulders(0)%initial_theta = cero
             end if
@@ -561,7 +561,7 @@ module bodies
             integer(kind=4) :: i
 
             ! Update Rotation
-            self%theta = theta  ! Update THETA
+            self%theta = modulo(theta, twopi)  ! Update THETA
             if (abs(omega) > tini) then
                 self%a_corotation = get_a_corot(self%mass, omega)  ! This is a bit odd now...
                 self%rotational_period = twopi / omega ! Rotational period of body 0
@@ -820,7 +820,7 @@ module bodies
                     a_corot = get_a_corot(mass_ast + self%moons(j)%mass, self%asteroid%omega)
                     coords_ast = self%moons(j)%coordinates - ast_cm
                     call elem(mass_ast + self%moons(j)%mass, &
-                            & (/coords_ast(1), coords_ast(2), cero, coords_ast(3), coords_ast(4), cero/), &
+                            & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
                             a, e, i, M, w, O)
                     self%moons(j)%elements = (/a, e, M, w/)
                     if (a_corot > cero) self%moons(j)%mmr = (a / a_corot)**(1.5d0) ! MMR
@@ -832,7 +832,7 @@ module bodies
                 do j = 1, self%Nparticles_active
                     coords_ast = self%particles(j)%coordinates - ast_cm
                     call elem(mass_ast, &
-                            & (/coords_ast(1), coords_ast(2), cero, coords_ast(3), coords_ast(4), cero/), &
+                            & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
                             a, e, i, M, w, O)
                     self%particles(j)%elements = (/a, e, M, w/)
                     if (a_corot > cero) self%particles(j)%mmr = (a / a_corot)**(1.5d0) ! MMR
@@ -1227,6 +1227,66 @@ module bodies
                 idx = idx + 4
             end do
         end subroutine generate_arrays
+
+        ! Update system state. ! Assumes theta, omega, a, e, M, w,...
+        subroutine update_system_from_elements(self, time, array, barycentric, error)
+            implicit none
+            type(system_st), intent(inout) :: self
+            real(kind=8), intent(in) :: time
+            real(kind=8), dimension(:), intent(in) :: array ! Includes theta and omega
+            logical, intent(in) :: barycentric
+            integer, intent(inout), optional :: error
+            real(kind=8), dimension(size(array)) :: arr_coor
+            real(kind=8), dimension(6) :: aux_coordinates
+            real(kind=8) :: mass_in
+            integer(kind=4) :: nactive, i, idx
+
+            if (barycentric) then
+                mass_in = self%mass
+            else
+                mass_in = self%asteroid%mass
+            end if
+
+            arr_coor(1) = modulo(array(1), twopi)
+            arr_coor(2) = array(2)
+
+            ! Check if a asteroid too small
+            if (array(3) < tini) then ! All 0
+                arr_coor(3:6) = cero
+            else
+                call coord(mass_in, &
+                        & array(3), &
+                        & array(4), &
+                        & cero, &
+                        & array(5), &
+                        & array(6), &
+                        & cero, &
+                        & aux_coordinates)
+                arr_coor(3) = aux_coordinates(1)
+                arr_coor(4) = aux_coordinates(2)
+                arr_coor(5) = aux_coordinates(4)
+                arr_coor(6) = aux_coordinates(5)
+            end if
+
+            call get_Nactive(self, nactive)
+            do i = 2, nactive
+                idx = i * 4 - 1
+                call coord(mass_in, &
+                        & array(idx), &
+                        & array(idx+1), &
+                        & cero, &
+                        & array(idx+2), &
+                        & array(idx+3), &
+                        & cero, &
+                        & aux_coordinates)
+                arr_coor(idx) = aux_coordinates(1)
+                arr_coor(idx+1) = aux_coordinates(2)
+                arr_coor(idx+2) = aux_coordinates(4)
+                arr_coor(idx+3) = aux_coordinates(5)
+            end do
+            call update_system_from_array(self, time, arr_coor, error)
+            
+        end subroutine update_system_from_elements
 
         !  ----------------------   GRAVITY CALCULATION  -------------------------------
 
@@ -1633,7 +1693,7 @@ module bodies
                 & 0, &  ! ID
                 & -1, &  ! type
                 & self%time / unit_time, &  ! time
-                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%theta / radian, &  ! theta
                 & self%asteroid%omega * unit_time, &  ! omega
                 & self%asteroid%elements(1) / unit_dist, &  ! a
                 & self%asteroid%elements(2), &  ! e
@@ -1654,7 +1714,7 @@ module bodies
                 & self%moons(i)%id, &  ! ID
                 & 1, &  ! type
                 & self%time / unit_time, &  ! time
-                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%theta / radian, &  ! theta
                 & self%asteroid%omega * unit_time, &  ! omega
                 & self%moons(i)%elements(1) / unit_dist, &  ! a
                 & self%moons(i)%elements(2), &  ! e
@@ -1675,7 +1735,7 @@ module bodies
                 & self%particles(i)%id, &   ! ID
                 & 2, &  ! type
                 & self%time / unit_time, &  ! time
-                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%theta / radian, &  ! theta
                 & self%asteroid%omega * unit_time, &  ! omega
                 & self%particles(i)%elements(1) / unit_dist, &  ! a
                 & self%particles(i)%elements(2), &  ! e
@@ -1737,7 +1797,7 @@ module bodies
                     & -1, &  ! ID
                     & -1, &  ! type
                     & self%time / unit_time, &  !time
-                    & self%asteroid%theta * radian, &  ! theta
+                    & self%asteroid%theta / radian, &  ! theta
                     & self%asteroid%omega * unit_time, &  ! omega
                     & self%asteroid%coordinates(1:2) / unit_dist, &  ! x y
                     & self%asteroid%coordinates(3:4) / unit_vel, &  ! vx vy
@@ -1768,7 +1828,7 @@ module bodies
                 & self%moons(i)%id + self%asteroid%Nboulders, &  ! ID + Nbould to avoid duplicates
                 & 1, &  ! type
                 & self%time / unit_time, &  !time
-                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%theta / radian, &  ! theta
                 & self%asteroid%omega * unit_time, &  ! omega
                 & self%moons(i)%coordinates(1:2) / unit_dist, &  ! x y
                 & self%moons(i)%coordinates(3:4) / unit_vel, &  ! vx vy
@@ -1785,7 +1845,7 @@ module bodies
                 & self%particles(i)%id + self%asteroid%Nboulders, &  ! ID + Nbould to avoid duplicates
                 & 2, &  ! type
                 & self%time / unit_time, &  !time
-                & self%asteroid%theta * radian, &  ! theta
+                & self%asteroid%theta / radian, &  ! theta
                 & self%asteroid%omega * unit_time, &  ! omega
                 & self%particles(i)%coordinates(1:2) / unit_dist, &  ! x y
                 & self%particles(i)%coordinates(3:4) / unit_vel, &  ! vx vy
@@ -1842,7 +1902,7 @@ module bodies
                 & -1, &  ! type
                 & -1, &  ! merged_to
                 & actual%time / unit_time, &  ! time
-                & initial%asteroid%theta * radian, &  ! theta
+                & initial%asteroid%theta / radian, &  ! theta
                 & initial%asteroid%omega * unit_time, &  ! omega
                 & initial%asteroid%elements(1) / unit_dist, &  ! a
                 & initial%asteroid%elements(2), &  ! e
@@ -1851,7 +1911,7 @@ module bodies
                 & cero, &   ! MMR
                 & initial%asteroid%mass / unit_mass, &  ! mass
                 & initial%asteroid%radius / unit_dist, &  ! radius
-                & actual%asteroid%theta * radian, &  ! theta
+                & actual%asteroid%theta / radian, &  ! theta
                 & actual%asteroid%omega * unit_time, &  ! omega
                 & actual%asteroid%elements(1) / unit_dist, &  ! a
                 & actual%asteroid%elements(2), &  ! e
@@ -1948,7 +2008,6 @@ module bodies
                 & actual%particles(i)%chaos_e  ! de
         end subroutine write_particle_i_chaos
 
-
         ! Write chaos ALL
         subroutine write_chaos(initial, actual, unit_file)
             implicit none
@@ -1990,7 +2049,7 @@ module bodies
         end subroutine write_chaos
 
         ! Write diagnostic information ALL
-        subroutine write_diagnotics(initial, actual, unit_file)
+        subroutine write_diagnostics(initial, actual, unit_file)
             type(system_st), intent(in) :: initial
             type(system_st), intent(in) :: actual
             integer(kind=4), intent(in), optional :: unit_file
@@ -2012,9 +2071,28 @@ module bodies
                              & energy / initial%energy, &  ! energy / energy0
                              & ang_mom / unit_angm, &  ! ang_mom
                              & ang_mom / initial%ang_mom  ! ang_mom / ang_mom0
-        end subroutine write_diagnotics
+        end subroutine write_diagnostics
 
+        !  -----------------------------   COPY    -------------------------------------
 
+        ! Copy the objects from another system
+        subroutine copy_objects(other, self)
+            implicit none
+            type(system_st), intent(in) :: other
+            type(system_st), intent(inout) :: self
+            
+            self%asteroid = other%asteroid
+            if (self%Nmoons > 0) then
+                self%moons = other%moons
+                self%Nmoons_active = other%Nmoons_active
+            end if
+            if (self%Nparticles > 0) then
+                self%particles = other%particles
+                self%Nparticles_active = other%Nparticles_active
+            end if
 
+            call recalculate_all(self)
+            
+        end subroutine copy_objects
 
 end module bodies
