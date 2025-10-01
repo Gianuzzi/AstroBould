@@ -3,35 +3,47 @@ module filter
     use constants, only: pi, twopi, cero, uno, uno2, dos, tini
     implicit none
     ! filter parameters
-    real(kind=8) :: filt_dt, filt_freq
+    real(kind=8) :: filt_dt, filt_half_width_dt
+    integer(kind=4) :: last_idx_no_filter, first_idx_yes_filter
     integer(kind=4) :: filt_size, filt_half_size
-    real(kind=8) , allocatable :: filt_kernel(:)  ! convolution kernel
-    real(kind=8) , allocatable :: filt_values(:)  ! filtered values
-    real(kind=8) , allocatable :: filt_tmp_values(:,:)  ! values to use for filtering
+    real(kind=8), dimension(:), allocatable :: filt_kernel  ! convolution kernel
+    real(kind=8), dimension(:), allocatable :: elem_filtered    ! Filtered_data
+    real(kind=8), dimension(:), allocatable :: y_pre_filter  ! Data pre-filtering
+    real(kind=8), dimension(:,:), allocatable :: filt_tmp_values  ! values to use for filtering
+    real(kind=8), dimension(:), allocatable :: filt_tmp_times  ! times to use for filtering
     
 contains
 
-    subroutine create_filter(filter_dt, filter_size, low_pass)
+    subroutine create_filter(dt_cutoff, oversample, window_factor, low_pass)
         implicit none
-        real(kind=8), intent(in) :: filter_dt
-        integer(kind=4), intent(in) :: filter_size
+        real(kind=8), intent(in) :: dt_cutoff
+        integer(kind=4), intent(in) :: oversample, window_factor
         logical, intent(in) :: low_pass
+        real(kind=8) :: filter_long_dt
+        integer(kind=4) :: effective_nwindows
+        real(kind=8) :: omega_pass, t_j
+        real(kind=8) :: norm, val, weight
         integer(kind=4) :: j
-        real(kind=8) :: omega_pass, t_j, norm
 
         !------------------------
         ! Assign parameters
         !------------------------
-        if (mod(filter_size, 2) .eq. 0) then
-            filt_size = filter_size + 1
-        else 
-            filt_size = filter_size
+        if (dt_cutoff < tini) then
+            write(*,*) "ERROR: Filter dt can not be too low."
+            stop 1
         end if
-        filt_half_size = int((filter_size - 1) / 2, 4)
-        filt_dt = filter_dt
-        filt_freq = dos * filter_dt
 
-        omega_pass = dos * pi * filt_freq  ! Frequency allowed
+        filter_long_dt = dt_cutoff * window_factor
+
+        effective_nwindows = window_factor
+        if (mod(window_factor, 2) .eq. 1) effective_nwindows = window_factor + 1  ! even
+
+        filt_size = oversample * effective_nwindows + 1  ! +1 for the first condition  ! odd
+        filt_half_size = int((filt_size - 1) / 2, 4)
+        filt_dt = dble(filter_long_dt / (filt_size - 1))
+        filt_half_width_dt = filter_long_dt * uno2
+        
+        omega_pass = twopi / dt_cutoff  ! Frequency allowed
 
         ! Allocate kernel
         allocate(filt_kernel(filt_size))
@@ -44,10 +56,14 @@ contains
         do j = -filt_half_size, filt_half_size
             t_j = dble(j) * filt_dt
             if (abs(t_j) < tini) then
-                filt_kernel(j + filt_half_size + 1) = uno
+                val = omega_pass / pi
             else
-                filt_kernel(j + filt_half_size + 1) = sin(omega_pass * t_j) / (pi * t_j)
+                val = sin(omega_pass * t_j) / (pi * t_j)
             end if
+            ! Hann window
+            weight = uno2 - uno2 * cos(twopi * (j + filt_half_size) / dble(filt_size - 1))
+            !weight = uno
+            filt_kernel(j + filt_half_size + 1) = val * weight
         end do
 
         !------------------------
@@ -71,32 +87,36 @@ contains
         integer(kind=4), intent(in) :: filter_size, data_size
 
         allocate(filt_tmp_values(data_size, filter_size))
-        allocate(filt_values(data_size))    
+        allocate(filt_tmp_times(filter_size))
+        allocate(elem_filtered(data_size))
+        allocate(y_pre_filter(data_size))
         
     end subroutine allocate_filter
 
-    subroutine setup_filter(filter_dt, filter_size, low_pass, data_size)
+    subroutine setup_filter(dt_cutoff, oversample, window_factor, low_pass, data_size)
         implicit none
-        real(kind=8), intent(in) :: filter_dt
-        integer(kind=4), intent(in) :: filter_size, data_size
+        real(kind=8), intent(in) :: dt_cutoff
+        integer(kind=4), intent(in) :: oversample, window_factor, data_size
         logical, intent(in) :: low_pass
 
-        call create_filter(filter_dt, filter_size, low_pass)
+        call create_filter(dt_cutoff, oversample, window_factor, low_pass)
 
         call allocate_filter(filt_size, data_size)   
         
     end subroutine setup_filter
 
-    subroutine store_to_filter(state_vector, data_size, filter_index)
+    subroutine store_to_filter(time, state_vector, data_size, filter_index)
         implicit none
+        real(kind=8), intent(in) :: time
         real(kind=8), dimension(:), intent(in) :: state_vector
         integer(kind=4), intent(in) :: data_size, filter_index
 
         filt_tmp_values(1:data_size, filter_index) = state_vector(1:data_size)    
+        filt_tmp_times(filter_index) = time
         
     end subroutine store_to_filter
 
-    subroutine apply_filter(data_size, filtered)
+    subroutine simple_apply_filter(data_size, filtered)
         implicit none
         integer(kind=4), intent(in) :: data_size
         real(kind=8), dimension(:), intent(out) :: filtered
@@ -118,16 +138,18 @@ contains
         ! Angle filtered
         filtered(1) = modulo(atan2(sin_th, cos_th), twopi)
         
-    end subroutine apply_filter
+    end subroutine simple_apply_filter
     
-    subroutine deallocate_filter()
+    subroutine free_filter_arrays()
         implicit none
 
         if (allocated(filt_kernel)) deallocate(filt_kernel)
-        if (allocated(filt_values)) deallocate(filt_values)
+        if (allocated(elem_filtered)) deallocate(elem_filtered)
+        if (allocated(y_pre_filter)) deallocate(y_pre_filter)
         if (allocated(filt_tmp_values)) deallocate(filt_tmp_values)
+        if (allocated(filt_tmp_times)) deallocate(filt_tmp_times)
         
-    end subroutine deallocate_filter
+    end subroutine free_filter_arrays
 
     
 end module filter
