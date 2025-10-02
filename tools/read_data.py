@@ -96,6 +96,7 @@ def read_outfile(
                 "dist",
             ],
         )
+        df["lam"] = np.mod(df.M + df.w, 360.)
         df.tmax = df.t.iloc[-1]
     return df
 

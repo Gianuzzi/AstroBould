@@ -97,6 +97,9 @@ elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 # Chunk size for cat
 chunk_size = 500  # Chunk size for file concatenation
 
+# Ask for rewriting
+ask_overwrite = False  # Whether to ask (screen) Y/N if needed (overwrite)
+
 # ----------------------------------------------------------------------
 # -------------------- No tocar de aquí en adelante --------------------
 # ----------------------------------------------------------------------
@@ -133,7 +136,7 @@ otom = os.path.join(
 # Checkeamos los archivos
 # Configuración
 existe_ocini = os.path.isfile(ocini)
-if not existe_ocini:
+if not existe_ocini and ask_overwrite:
     print(f"WARNING: Configuration file {ocini} does not exist.")
     print("         Se utilizarán los parámetros explicitados en el código, ")
     print("          en vez de los de algún archivo de parámetros. ")
@@ -165,7 +168,10 @@ if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
     print(f"WARNING: Chaos Output file '{final_chaos}' already exist.")
     if datafile:
         print(f"  Independently, '{datafile}' will be replaced (if exists).")
-    yes_no = input("Do you want to overwrite it? [y/[n]]: ")
+    if ask_overwrite:
+        yes_no = input("Do you want to overwrite it? [y/[n]]: ")
+    else:
+        yes_no = "yes"
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         i = 1
         unique_file = final_chaos
@@ -531,7 +537,7 @@ if __name__ == "__main__":
         # Programa
         nprogr = os.path.join(wrk_dir, program)
         # Checkeamos si existe el ejecutable
-        if os.path.isfile(nprogr):
+        if os.path.isfile(nprogr) and ask_overwrite:
             print(f"Executable file '{nprogr}' already exists in {wrk_dir}.")
             print("Do you want to overwrite it?")
             print("If NOT, the existing one will be used.")
@@ -547,7 +553,7 @@ if __name__ == "__main__":
         if existe_ocini:
             ncini = os.path.join(wrk_dir, config)
             # Chequeamos si existe el archivo de configuración
-            if os.path.isfile(ncini):
+            if os.path.isfile(ncini) and ask_overwrite:
                 print(
                     f"Configuration file '{ncini}' "
                     + f"already exists in {wrk_dir}."
@@ -565,7 +571,7 @@ if __name__ == "__main__":
         # Partículas
         nparticles = os.path.join(wrk_dir, bodiesfile)
         # Chequeamos si existe el archivo de partículas
-        if os.path.isfile(nparticles):
+        if os.path.isfile(nparticles) and ask_overwrite:
             print(
                 f"Particles file '{nparticles}' "
                 + f"already exists in {wrk_dir}."
