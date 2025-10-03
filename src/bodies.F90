@@ -73,6 +73,7 @@ module bodies
         real(kind=8) :: mass = cero
         real(kind=8) :: energy = cero
         real(kind=8) :: ang_mom = cero
+        real(kind=8) :: eta_col = uno
         type(asteroid_st) :: asteroid
         integer(kind=4) :: Nmoons = 0
         integer(kind=4) :: Nmoons_active = 0
@@ -874,20 +875,15 @@ module bodies
         !  -----------------------------   INIT MAIN SYSTEM   -------------------------------------
 
         ! Init whole system
-        subroutine init_system(self, asteroid, moons, particles, lambda_kep, rotational_period, time)
+        subroutine init_system(self, asteroid, moons, particles, lambda_kep, rotational_period)
             implicit none
             type(system_st), intent(inout) :: self
             type(asteroid_st), intent(inout) :: asteroid
             type(moon_st), allocatable, intent(inout) :: moons(:)
             type(particle_st), allocatable, intent(inout) :: particles(:)
-            real(kind=8), intent(in), optional :: time
             real(kind=8), intent(in) :: lambda_kep, rotational_period
             integer(kind=4) :: i, j
             integer(kind=4), allocatable :: id_list(:)
-
-            ! Initial time. Set TIME
-            self%time = cero
-            if (present(time)) self%time = time
 
             ! Initialize the objects and Create the system
             !! Asteroid
@@ -949,6 +945,20 @@ module bodies
             end if
 
         end subroutine init_system
+
+        ! Set extra system parameters
+        subroutine set_system_extra(self, time, eta_collision)
+            implicit none
+            type(system_st), intent(inout) :: self
+            real(kind=8), intent(in) :: time
+            real(kind=8), intent(in) ::  eta_collision
+
+            ! Initial time. Set TIME
+            self%time = time
+
+            ! Initial collisional eta. Set eta_collision
+            self%eta_col = eta_collision
+        end subroutine set_system_extra
 
         !  ---------------------------   OBJECT SWAP  -------------------------------
 
@@ -1507,7 +1517,7 @@ module bodies
             call calculate_energy_and_ang_mom(self, aux_real, ang_mom)
             aux_real = max(epsilon, abs(ang_mom))
             if (abs(ang_mom - self%ang_mom)/aux_real > epsilon) then
-                write(*,*) "ERROR: Total angular momentum differs from previously calculated."
+                write(*,*) "ERROR: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real
                 if(present(error)) error = error + 1
             end if
 
@@ -1563,7 +1573,214 @@ module bodies
             
             end do
         end subroutine resolve_escapes
+
+        ! Collide a moon(j) with a moon(i), in a system
+        subroutine collide_2_moons(self, i, j, result, error)
+            implicit none
+            type(system_st), intent(inout) :: self
+            integer(kind=4), intent(in) :: i, j
+            integer(kind=4), intent(inout) :: result
+            integer, intent(inout), optional :: error
+            real(kind=8) :: m_cm, rv_cm(4)
+            real(kind=8) :: L_rot, L_orb
+            real(kind=8) :: aux_real, ang_mom, aux_real24(2,4)
+            real(kind=8) :: mi, mj
+            real(kind=8) :: ri(2), rj(2)
+            real(kind=8) :: vi(2), vj(2)
+            real(kind=8) :: dr_vec(2), dr
+            real(kind=8) :: dv_vec(2), dv2
+            real(kind=8) :: Li_orb, Lj_orb
+            real(kind=8) :: mu, Ekin, Epot
+            real(kind=8) :: nx, ny, tx, ty
+            real(kind=8) :: vin, vit, vjn, vjt
+            real(kind=8) :: vin_new, vjn_new
+            real(kind=8) :: Li_tmp, Lj_tmp
+            real(kind=8) :: L_tmp
+            real(kind=8) :: denom
+            real(kind=8) :: delta_vi, delta_vj
+            real(kind=8) :: vi_col(2), vj_col(2)
+            real(kind=8) :: overlap, corr1, corr2
+            real(kind=8) :: new_rvi(4), new_rvj(4)
+
+            ! Result
+            result = 0
+
+            ! Individual attrs
+            ri = self%moons(i)%coordinates(1:2)
+            rj = self%moons(j)%coordinates(1:2)
+
+            dr_vec = ri - rj  ! Relative pos
+            dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
             
+            if (dr .gt. (self%moons(j)%radius + self%moons(i)%radius)) return ! Nothing to do
+            
+            ! Check if moons ar active
+            if ((.not. self%moons(i)%active) .or. ((.not. self%moons(j)%active))) then
+                if (.not. self%moons(j)%active) write(*,*) "WARNING: Colliding an inactive moon:", self%moons(j)%active
+                if (.not. self%moons(i)%active) write(*,*) "WARNING: Colliding to an inactive moon:", self%moons(i)%active
+                if (present(error)) error = error + 1
+            end if
+
+            ! Masses
+            mi = self%moons(i)%mass
+            mj = self%moons(j)%mass
+            m_cm = mi + mj
+
+            ! Relative attrs
+            dv_vec = vi - vj  ! Relative vel
+            dv2 = dv_vec(1) * dv_vec(1) + dv_vec(2) * dv_vec(2)
+
+            ! Check if gravitationally bound
+            mu   = mi * mj / m_cm
+            Ekin = uno2 * mu * dv2
+            Epot = - G * mi * mj / dr
+
+            if ((Ekin + Epot < cero) .or. (self%eta_col .ge. uno)) then ! If bounded or eta >=1 -> Plastic /merge)
+                
+                ! Result (merge)
+                result = 1
+
+                ! Get these 2 moons CM properties
+                rv_cm = (mi * self%moons(i)%coordinates + mj * self%moons(j)%coordinates) / m_cm
+
+                ! Calculate L_rot from this CM
+                aux_real24(1,:) = self%moons(i)%coordinates - rv_cm
+                aux_real24(2,:) = self%moons(j)%coordinates - rv_cm
+                L_rot = (aux_real24(1,1) * aux_real24(1,4) - aux_real24(1,2) * aux_real24(1,3)) * mi + &
+                    & (aux_real24(2,1) * aux_real24(2,4) - aux_real24(2,2) * aux_real24(2,3)) * mj
+
+                ! Update MASS and derivates
+                self%moons(i)%mass = m_cm
+                self%moons(i)%mu_to_asteroid = m_cm / self%asteroid%mass
+
+                ! Update RADIUS
+                self%moons(i)%radius = max(self%moons(i)%radius, self%moons(j)%radius)   ! HEURISTIC Maybe mean density ???
+
+                ! Update ENERGY and ANGULAR MOMENTUM
+                self%moons(i)%inertia = 0.4d0 * m_cm * self%moons(i)%radius * self%moons(i)%radius
+                self%moons(i)%ang_mom_rot = self%moons(i)%ang_mom_rot + L_rot
+                self%moons(i)%e_rot = self%moons(i)%e_rot + (uno2 * L_rot * L_rot / self%moons(i)%inertia)
+
+                ! Add the flag
+                self%moons(j)%merged_to = self%moons(i)%id  ! Merged j into i
+                
+                ! Deactivate the moon
+                call deactivate_moon_i(self, j, error)
+                
+                ! Update COORDINATES and derivates
+                call shift_single_moon(self%moons(i), rv_cm)
+            
+            else  ! Not plastic
+
+                ! Result (not plastic)
+                result = 2
+
+                ! Velocities (must read BEFORE computing dv_vec)
+                vi = self%moons(i)%coordinates(3:4)
+                vj = self%moons(j)%coordinates(3:4)
+
+                ! Relative vel (now correct)
+                dv_vec = vi - vj
+                dv2 = dv_vec(1) * dv_vec(1) + dv_vec(2) * dv_vec(2)
+
+                ! Angular momentum BEFORE collision (orbital part)
+                Li_orb = mi * (ri(1) * vi(2) - ri(2) * vi(1))
+                Lj_orb = mj * (rj(1) * vj(2) - rj(2) * vj(1))
+                L_orb  = Li_orb + Lj_orb
+
+                ! Guard: degenerate overlap
+                if (dr <= 0.0d0) then
+                    ! push a tiny separation to avoid NaNs (very unlikely)
+                    nx = 1.0d0; ny = 0.0d0
+                else
+                    ! Normal unit vector
+                    nx = dr_vec(1) / dr
+                    ny = dr_vec(2) / dr
+                end if
+
+                ! Tangential unit vector
+                tx = -ny
+                ty = nx
+
+                ! Project velocities
+                vin = vi(1) * nx + vi(2) * ny
+                vit = vi(1) * tx + vi(2) * ty
+                vjn = vj(1) * nx + vj(2) * ny
+                vjt = vj(1) * tx + vj(2) * ty
+
+                ! Normal after collision (restitution handled by self%eta_col)
+                vin_new = ((mi * vin + mj * vjn) - (uno - self%eta_col) * mj * (vin - vjn)) / m_cm
+                vjn_new = ((mi * vin + mj * vjn) + (uno - self%eta_col) * mi * (vin - vjn)) / m_cm
+
+                ! --- Position correction (push apart to avoid overlap) ---
+                overlap = (self%moons(i)%radius + self%moons(j)%radius - dr)
+                if (overlap > cero) then
+                    corr1 = overlap * (mj / m_cm)
+                    corr2 = overlap * (mi / m_cm)
+                    new_rvi(1) = ri(1) + corr1 * nx
+                    new_rvi(2) = ri(2) + corr1 * ny
+                    new_rvj(1) = rj(1) - corr2 * nx
+                    new_rvj(2) = rj(2) - corr2 * ny
+                else
+                    new_rvi(1:2) = ri
+                    new_rvj(1:2) = rj
+                end if
+
+                ! Build the post-impulse cartesian velocities (before tangential tweak)
+                ! vi_col and vj_col are the velocities after impulse using vin_new/vit etc.
+                vi_col(1) = vin_new * nx + vit * tx
+                vi_col(2) = vin_new * ny + vit * ty
+                vj_col(1) = vjn_new * nx + vjt * tx
+                vj_col(2) = vjn_new * ny + vjt * ty
+
+                ! Angular momentum AFTER position correction but BEFORE tangential tweak
+                Li_tmp = mi * (new_rvi(1) * vi_col(2) - new_rvi(2) * vi_col(1))
+                Lj_tmp = mj * (new_rvj(1) * vj_col(2) - new_rvj(2) * vj_col(1))
+                L_tmp  = Li_tmp + Lj_tmp
+
+                ! Denominator: lever arms for tangential correction (explicit symmetric form)
+                denom = mi * (new_rvi(1) * ty - new_rvi(2) * tx) + mj * (new_rvj(1) * ty - new_rvj(2) * tx)
+
+                if (abs(denom) > 1d-14) then
+                    ! Solve for tangential velocity correction (delta on vi_col along t)
+                    delta_vi = (L_orb - L_tmp) / denom
+                    delta_vj = - (mi / mj) * delta_vi
+
+                    ! Apply corrections along tangent direction, preserving linear momentum
+                    vi_col(1) = vi_col(1) + delta_vi * tx
+                    vi_col(2) = vi_col(2) + delta_vi * ty
+                    vj_col(1) = vj_col(1) + delta_vj * tx
+                    vj_col(2) = vj_col(2) + delta_vj * ty
+                end if
+
+                ! Pack the new states to pass to shift_single_moon
+                new_rvi(3) = vi_col(1)
+                new_rvi(4) = vi_col(2)
+                new_rvj(3) = vj_col(1)
+                new_rvj(4) = vj_col(2)
+
+                ! Update COORDINATES and derivates
+                call shift_single_moon(self%moons(i), new_rvi)
+                call shift_single_moon(self%moons(j), new_rvj)
+
+            end if
+
+
+            ! Check CM
+            call check_coordinates(self, error)
+
+            ! Check ANGULAR MOMENTUM
+            call calculate_energy_and_ang_mom(self, aux_real, ang_mom)
+            aux_real = max(epsilon, abs(ang_mom))
+            if (abs(ang_mom - self%ang_mom)/aux_real > epsilon) then
+                write(*,*) "ERROR: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real
+                if(present(error)) error = error + 1
+            end if
+
+            ! ENERGY loss may ocurr, and the amount is given by something like:
+            !! dE = G m1 m2 / r - (m1 m2 / (m1 + m2)) (v2 - v1)**2 / 2
+        end subroutine collide_2_moons
+
         ! Resolve collisions
         subroutine resolve_collisions(self, r_min, unit_file)
             implicit none
@@ -1574,6 +1791,7 @@ module bodies
             integer(kind=4) :: m_act0
             integer(kind=4) :: m_act, p_act
             integer(kind=4) :: moon_id
+            integer(kind=4) :: result
             real(kind=8) :: boul_pos(2), moon_pos(2)
             real(kind=8) :: boul_rad, moon_rad
             real(kind=8) :: dr_vec(2), dr
@@ -1585,19 +1803,26 @@ module bodies
             again = .True.
             do while (again)
 
+                again = .False.
                 m_act0 = self%Nmoons_active
 
                 ! Moons -> Moons
                 do j = m_act0, 2, -1  ! Backwards loop
-                    moon_pos = self%moons(j)%coordinates(1:2)
-                    moon_rad = self%moons(j)%radius
                     inner_loop: do i = j - 1, 1, -1  ! Backwards loop
-                        dr_vec = self%moons(i)%coordinates(1:2) - moon_pos  ! Relative pos
-                        dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
-                        if (dr .le. (moon_rad + self%moons(i)%radius)) then
-                            if (do_write) write(unit_file,s1i5x5) "Merged moon ", j, "(", self%moons(j)%id, ") into moon ", &
-                                            & i, "(", self%moons(i)%id, ")."
-                            call merge_2_moons(self, i, j)
+                        call collide_2_moons(self, i, j, result)
+                        if (result > 0) then
+                            if (do_write) then
+                                if (result .eq. 1) then
+                                    write(unit_file,s1i5x5) "Merged moon ", j, &
+                                                    & "(", self%moons(j)%id, ") into moon ", &
+                                                    & i, "(", self%moons(i)%id, ")."
+                                else 
+                                    write(unit_file,s1i5x5) "Collision between moon ", j, &
+                                                    & "(", self%moons(j)%id, ") and moon ", &
+                                                    & i, "(", self%moons(i)%id, ")."
+                                end if
+                            end if
+                            again = .True.
                             exit inner_loop
                         end if
                     end do inner_loop
@@ -1629,7 +1854,7 @@ module bodies
                     end do
                 end if
 
-                again = (self%Nmoons_active .ge. 1) .and. (m_act0 > self%Nmoons_active)
+                again = again .or. ((self%Nmoons_active .ge. 1) .and. (m_act0 > self%Nmoons_active))
             
             end do
 

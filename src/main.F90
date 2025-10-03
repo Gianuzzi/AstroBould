@@ -419,6 +419,8 @@ program main
                     & sim%lambda_kep, &                             ! keplerian omega
                     & sim%asteroid_rotational_period * unit_time) ! asteroid period
 
+    call set_system_extra(system, cero, sim%eta_col)
+
     !! <> Messages
     
     ! Asteroid
@@ -636,11 +638,19 @@ program main
         else
             write(*,*) "  rmax : Infinity"
         end if
-        if (sim%use_any_merge) then
-            if (sim%use_merge_part_mass) write(*,*) " Colliding particles into massive bodies will be removed."
-            if (sim%use_merge_massive) write(*,*) " Colliding massive bodies will be merged."
+        if (sim%use_merge_part_mass) then
+            write(*,*) " Colliding particles into massive bodies will be removed."
         else
-            write(*,*) " Collisions will not be solved."
+            write(*,*) " Colliding particles into massive bodies will stop the integration."
+        end if
+        if (sim%eta_col .eq. uno) then
+            if (sim%use_merge_massive) then
+                write(*,*) " Colliding massive bodies will be merged."
+            else
+                write(*,*) " Colliding massive bodies will stop the integration."
+            end if
+        else
+            write(*,s1r1) " Massive bodies collisional factor:", sim%eta_col
         end if
         if (sim%use_any_stop) then
             if (sim%use_stop_no_part_left) write(*,*) " Simulation will stop if no more particles are left."

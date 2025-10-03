@@ -98,6 +98,7 @@ module parameters
         logical :: use_merge_massive = .True.
         logical :: use_stop_no_part_left = .True.
         logical :: use_stop_no_moon_left = .True.
+        real(kind=8) :: eta_col = uno  ! 0: Elastic, 1: Plastic
         ! Manual |(t)imes omega(t) mass_add(t)| file -
         logical :: use_tomfile = .False.
         character(30) :: tomfile = ""
@@ -807,6 +808,8 @@ module parameters
                             else
                                 params%use_merge_massive = .False.
                             end if
+                        case("collisional eta")
+                            read (value_str, *) params%eta_col
                         case("stop if no part")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 params%use_stop_no_part_left = .True.
@@ -1241,6 +1244,12 @@ module parameters
             if (derived%Nparticles .eq. 0) derived%use_stop_no_part_left = .False.  ! Deactivate it
             if (derived%Nmoons .eq. 0) derived%use_stop_no_moon_left = .False.  ! Deactivate it
             derived%use_any_stop = derived%use_stop_no_part_left .or. derived%use_stop_no_moon_left
+
+            ! Eta collitions value
+            if ((derived%eta_col < cero) .or. (derived%eta_col > uno)) then
+                write(*,*) "ERROR: Collisional eta must be between 0 and 1."
+                stop 1
+            end if
 
             ! Error
             if (derived%error_digits < 1) then
