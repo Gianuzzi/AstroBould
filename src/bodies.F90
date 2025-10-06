@@ -1609,6 +1609,7 @@ module bodies
             ri = self%moons(i)%coordinates(1:2)
             rj = self%moons(j)%coordinates(1:2)
 
+            ! Relative attrs
             dr_vec = ri - rj  ! Relative pos
             dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
             
@@ -1625,6 +1626,10 @@ module bodies
             mi = self%moons(i)%mass
             mj = self%moons(j)%mass
             m_cm = mi + mj
+
+            ! Velocities
+            vi = self%moons(i)%coordinates(3:4)
+            vj = self%moons(j)%coordinates(3:4)
 
             ! Relative attrs
             dv_vec = vi - vj  ! Relative vel
@@ -1675,28 +1680,14 @@ module bodies
                 ! Result (not plastic)
                 result = 2
 
-                ! Velocities (must read BEFORE computing dv_vec)
-                vi = self%moons(i)%coordinates(3:4)
-                vj = self%moons(j)%coordinates(3:4)
-
-                ! Relative vel (now correct)
-                dv_vec = vi - vj
-                dv2 = dv_vec(1) * dv_vec(1) + dv_vec(2) * dv_vec(2)
-
                 ! Angular momentum BEFORE collision (orbital part)
                 Li_orb = mi * (ri(1) * vi(2) - ri(2) * vi(1))
                 Lj_orb = mj * (rj(1) * vj(2) - rj(2) * vj(1))
                 L_orb  = Li_orb + Lj_orb
 
-                ! Guard: degenerate overlap
-                if (dr <= 0.0d0) then
-                    ! push a tiny separation to avoid NaNs (very unlikely)
-                    nx = 1.0d0; ny = 0.0d0
-                else
-                    ! Normal unit vector
-                    nx = dr_vec(1) / dr
-                    ny = dr_vec(2) / dr
-                end if
+                ! Normal unit vector
+                nx = dr_vec(1) / dr
+                ny = dr_vec(2) / dr
 
                 ! Tangential unit vector
                 tx = -ny
@@ -1713,7 +1704,7 @@ module bodies
                 vjn_new = ((mi * vin + mj * vjn) + (uno - self%eta_col) * mi * (vin - vjn)) / m_cm
 
                 ! --- Position correction (push apart to avoid overlap) ---
-                overlap = (self%moons(i)%radius + self%moons(j)%radius - dr)
+                overlap = self%moons(i)%radius + self%moons(j)%radius - dr
                 if (overlap > cero) then
                     corr1 = overlap * (mj / m_cm)
                     corr2 = overlap * (mi / m_cm)
@@ -1759,7 +1750,7 @@ module bodies
                 new_rvj(3) = vj_col(1)
                 new_rvj(4) = vj_col(2)
 
-                ! Update COORDINATES and derivates
+                ! Update COORDINATES and VELOCITIES
                 call shift_single_moon(self%moons(i), new_rvi)
                 call shift_single_moon(self%moons(j), new_rvj)
 
