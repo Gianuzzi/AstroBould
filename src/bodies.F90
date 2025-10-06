@@ -1,6 +1,6 @@
 !> Module with System, Asteroid, Moons, and Particles structures and routines
 module bodies
-    use constants, only: cero, uno, uno2, dos, G, pi, twopi, epsilon, tini, infinity, &
+    use constants, only: cero, uno, uno2, dos, G, pi, twopi, epsilon, sqepsilon, tini, infinity, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, radian
     use celestial, only: get_a_corot, get_acc_and_pot_single, elem, coord
     use auxiliary, only: quickargsort_int
@@ -1017,24 +1017,24 @@ module bodies
             call get_cm(self, mass, coordinates)
 
             ! Check MASS
-            if (abs(mass - self%mass)/mass > epsilon) then
-                ! write(*,*) "WARNING: Total mass differs from CM mass.", mass, self%mass !abs(mass - self%mass)/mass
+            if (abs(mass - self%mass)/mass > sqepsilon) then
+                write(*,*) "WARNING: Total mass differs from CM mass. Error:", abs(mass - self%mass) / mass
                 if(present(error)) error = error + 1
             end if
 
             ! Check POS
             aux_real = sqrt(coordinates(1) * coordinates(1) + &
                           & coordinates(2) * coordinates(2))
-            if (aux_real > epsilon) then
-                ! write(*,*) "WARNING: CM is not centered at 0.", aux_real
+            if (aux_real > sqepsilon) then
+                write(*,*) "WARNING: CM is not centered at 0.", aux_real
                 if(present(error)) error = error + 1
             end if
 
             ! Check VEL
             aux_real = sqrt(coordinates(3) * coordinates(3) + &
                           & coordinates(4) * coordinates(4))
-            if (aux_real > epsilon) then
-                ! write(*,*) "WARNING: CM velocity is not 0.", aux_real
+            if (aux_real > sqepsilon) then
+                write(*,*) "WARNING: CM velocity is not 0.", aux_real
                 if(present(error)) error = error + 1
             end if
         end subroutine check_coordinates
@@ -1435,8 +1435,8 @@ module bodies
 
             ! Check ANGULAR MOMENTUM
             call calculate_energy_and_ang_mom(self, aux_real, ang_mom)
-            aux_real = max(epsilon, abs(ang_mom))
-            if (abs(ang_mom - self%ang_mom)/aux_real > epsilon) then
+            aux_real = max(sqepsilon, abs(ang_mom))
+            if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
                 write(*,*) "WARNING: Total angular momentum relative error:", abs(ang_mom - self%ang_mom)/aux_real
                 if(present(error)) error = error + 1
                 return
@@ -1708,9 +1708,9 @@ module bodies
 
             ! Check ANGULAR MOMENTUM
             call calculate_energy_and_ang_mom(self, aux_real, ang_mom)
-            aux_real = max(epsilon, abs(ang_mom))
-            if (abs(ang_mom - self%ang_mom)/aux_real > epsilon) then
-                write(*,*) "ERROR: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real
+            aux_real = max(sqepsilon, abs(ang_mom))
+            if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
+                write(*,*) "WARNING: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real
                 if(present(error)) error = error + 1
             end if
 
