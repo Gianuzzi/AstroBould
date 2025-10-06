@@ -99,6 +99,7 @@ module parameters
         logical :: use_stop_no_part_left = .True.
         logical :: use_stop_no_moon_left = .True.
         real(kind=8) :: eta_col = uno  ! 0: Elastic, 1: Plastic
+        real(kind=8) :: f_col = cero  ! Bounded: Etot < -f |Epot|
         ! Manual |(t)imes omega(t) mass_add(t)| file -
         logical :: use_tomfile = .False.
         character(30) :: tomfile = ""
@@ -816,6 +817,8 @@ module parameters
                             end if
                         case("collisional eta")
                             read (value_str, *) params%eta_col
+                        case("collisional f pa")
+                            read (value_str, *) params%f_col
                         case("stop if no part")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                                 params%use_stop_no_part_left = .True.
@@ -1251,9 +1254,13 @@ module parameters
             if (derived%Nmoons .eq. 0) derived%use_stop_no_moon_left = .False.  ! Deactivate it
             derived%use_any_stop = derived%use_stop_no_part_left .or. derived%use_stop_no_moon_left
 
-            ! Eta collitions value
+            ! Eta and f collitions values
             if ((derived%eta_col < cero) .or. (derived%eta_col > uno)) then
                 write(*,*) "ERROR: Collisional eta must be between 0 and 1."
+                stop 1
+            end if
+            if ((derived%f_col < cero) .or. (derived%f_col > uno)) then
+                write(*,*) "ERROR: Collisional f must be between 0 and 1."
                 stop 1
             end if
 

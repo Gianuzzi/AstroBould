@@ -419,7 +419,7 @@ program main
                     & sim%lambda_kep, &                             ! keplerian omega
                     & sim%asteroid_rotational_period * unit_time) ! asteroid period
 
-    call set_system_extra(system, cero, sim%eta_col)
+    call set_system_extra(system, cero, sim%eta_col, sim%f_col)
 
     !! <> Messages
     

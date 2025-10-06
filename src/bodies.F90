@@ -1,6 +1,6 @@
 !> Module with System, Asteroid, Moons, and Particles structures and routines
 module bodies
-    use constants, only: cero, uno, uno2, G, pi, twopi, epsilon, tini, infinity, &
+    use constants, only: cero, uno, uno2, dos, G, pi, twopi, epsilon, tini, infinity, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, radian
     use celestial, only: get_a_corot, get_acc_and_pot_single, elem, coord
     use auxiliary, only: quickargsort_int
@@ -74,6 +74,7 @@ module bodies
         real(kind=8) :: energy = cero
         real(kind=8) :: ang_mom = cero
         real(kind=8) :: eta_col = uno
+        real(kind=8) :: f_col = uno
         type(asteroid_st) :: asteroid
         integer(kind=4) :: Nmoons = 0
         integer(kind=4) :: Nmoons_active = 0
@@ -947,17 +948,18 @@ module bodies
         end subroutine init_system
 
         ! Set extra system parameters
-        subroutine set_system_extra(self, time, eta_collision)
+        subroutine set_system_extra(self, time, eta_collision, f_collision)
             implicit none
             type(system_st), intent(inout) :: self
             real(kind=8), intent(in) :: time
-            real(kind=8), intent(in) ::  eta_collision
+            real(kind=8), intent(in) ::  eta_collision, f_collision
 
             ! Initial time. Set TIME
             self%time = time
 
-            ! Initial collisional eta. Set eta_collision
+            ! Initial collisional eta and f. Set eta_col and f_col
             self%eta_col = eta_collision
+            self%f_col = f_collision
         end subroutine set_system_extra
 
         !  ---------------------------   OBJECT SWAP  -------------------------------
@@ -1579,7 +1581,7 @@ module bodies
             implicit none
             type(system_st), intent(inout) :: self
             integer(kind=4), intent(in) :: i, j
-            integer(kind=4), intent(inout) :: outcome
+            integer(kind=4), intent(out) :: outcome
             integer, intent(inout), optional :: error
             real(kind=8) :: m_cm, rv_cm(4)
             real(kind=8) :: L_rot, L_orb
@@ -1590,7 +1592,7 @@ module bodies
             real(kind=8) :: dr_vec(2), dr
             real(kind=8) :: dv_vec(2), dv2
             real(kind=8) :: Li_orb, Lj_orb
-            real(kind=8) :: mu, Ekin, Epot
+            real(kind=8) :: mu, Ekin, Epot, vesc2
             real(kind=8) :: nx, ny, tx, ty
             real(kind=8) :: vin, vit, vjn, vjt
             real(kind=8) :: vin_new, vjn_new
@@ -1625,7 +1627,10 @@ module bodies
             ! Masses
             mi = self%moons(i)%mass
             mj = self%moons(j)%mass
-            m_cm = mi + mj
+
+            ! Relative attrs
+            m_cm = mi + mj  ! Combined mass
+            mu = mi * mj / m_cm  ! Reduced mass
 
             ! Velocities
             vi = self%moons(i)%coordinates(3:4)
@@ -1635,12 +1640,17 @@ module bodies
             dv_vec = vi - vj  ! Relative vel
             dv2 = dv_vec(1) * dv_vec(1) + dv_vec(2) * dv_vec(2)
 
-            ! Check if gravitationally bound
-            mu   = mi * mj / m_cm
+            ! Energy
             Ekin = uno2 * mu * dv2
             Epot = - G * mi * mj / dr
 
-            if ((Ekin + Epot < cero) .or. (self%eta_col .ge. uno)) then ! If bounded or eta >=1 -> Plastic /merge)
+            ! Escape velocity
+            vesc2 = dos * G * m_cm / dr
+
+            ! Check if merge
+            !! Merge if bounded or eta = 1
+            if (((Ekin + Epot < - self%f_col * abs(Epot)) .and. (dv2 < vesc2 * (uno - self%f_col))) .or. &
+                & (self%eta_col .ge. uno)) then
                 
                 ! Result (merge)
                 outcome = 1
