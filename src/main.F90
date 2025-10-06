@@ -99,11 +99,19 @@ program main
             
         end if
 
-        !!!! Merges
+        !!!! Collision y escapes
+        input%min_distance = -1.5d0    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
+        input%max_distance = -1.d2     ! Max distance before escape [km] ! -x => R0 * x
+
+        !!!!! Merges
         input%use_merge_part_mass = .True. ! Merge particles into asteroid
         input%use_merge_massive = .True. ! Merge massive bodies
 
-        !!!! Stops
+        !!!!! Collisions factors
+        input%eta_col = uno  ! 0: Elastic, 1: Plastic
+        input%f_col = uno  ! Bounded: Etot < -f |Epot|
+
+        !!!!! Stops
         input%use_stop_no_moon_left = .True. ! Stop if no more moons left
         input%use_stop_no_part_left = .True. ! Stop if no more particles left
         
@@ -138,10 +146,6 @@ program main
         !!!! Error
         input%learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
         input%error_digits = 12        ! [For adaptive step integrators] Digits for relative error
-
-        !!!! Colision y escape
-        input%min_distance = -1.5d0    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
-        input%max_distance = -1.d2     ! Max distance before escape [km] ! -x => R0 * x
 
         !!! Map
         input%use_potential_map = .False.
