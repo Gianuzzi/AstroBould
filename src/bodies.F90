@@ -1463,70 +1463,6 @@ module bodies
             call recalculate_all(self)
         end subroutine eject_moon_i
 
-        ! Merge a moon(j) to a moon(i), in a system. DEACTIVATION HERE
-        subroutine merge_2_moons(self, i, j, error)
-            implicit none
-            type(system_st), intent(inout) :: self
-            integer(kind=4), intent(in) :: i, j
-            integer, intent(inout), optional :: error
-            real(kind=8) :: m_cm, rv_cm(4)
-            real(kind=8) :: l_rot
-            real(kind=8) :: aux_real, ang_mom, aux_real24(2,4)
-            
-            ! Check if moons ar active
-            if ((.not. self%moons(i)%active) .or. ((.not. self%moons(j)%active))) then
-                if (.not. self%moons(j)%active) write(*,*) "WARNING: Merging an inactive moon:", self%moons(j)%active
-                if (.not. self%moons(i)%active) write(*,*) "WARNING: Merging to an inactive moon:", self%moons(i)%active
-                if(present(error)) error = error + 1
-            end if
-
-            ! Get these 2 moons CM properties
-            m_cm = self%moons(i)%mass + self%moons(j)%mass
-            rv_cm = (self%moons(i)%mass * self%moons(i)%coordinates + &
-                   & self%moons(j)%mass * self%moons(j)%coordinates) / m_cm
-
-            ! Calculate L_rot from this CM
-            aux_real24(1,:) = self%moons(i)%coordinates - rv_cm
-            aux_real24(2,:) = self%moons(j)%coordinates - rv_cm
-            l_rot = (aux_real24(1,1) * aux_real24(1,4) - aux_real24(1,2) * aux_real24(1,3)) * self%moons(i)%mass + &
-                  & (aux_real24(2,1) * aux_real24(2,4) - aux_real24(2,2) * aux_real24(2,3)) * self%moons(j)%mass
-
-            ! Update MASS and derivates
-            self%moons(i)%mass = m_cm
-            self%moons(i)%mu_to_asteroid = m_cm / self%asteroid%mass
-
-            ! Update RADIUS
-            self%moons(i)%radius = max(self%moons(i)%radius, self%moons(j)%radius)   ! HEURISTIC Maybe mean density ???
-
-            ! Update ENERGY and ANGULAR MOMENTUM
-            self%moons(i)%inertia = 0.4d0 * m_cm * self%moons(i)%radius * self%moons(i)%radius
-            self%moons(i)%ang_mom_rot = self%moons(i)%ang_mom_rot + l_rot
-            self%moons(i)%e_rot = self%moons(i)%e_rot + (uno2 * l_rot * l_rot / self%moons(i)%inertia)
-
-            ! Add the flag
-            self%moons(j)%merged_to = self%moons(i)%id  ! Merged j into i
-            
-            ! Deactivate the moon
-            call deactivate_moon_i(self, j, error)
-            
-            ! Update COORDINATES and derivates
-            call shift_single_moon(self%moons(i), rv_cm)
-
-            ! Check CM
-            call check_coordinates(self, error)
-
-            ! Check ANGULAR MOMENTUM
-            call calculate_energy_and_ang_mom(self, aux_real, ang_mom)
-            aux_real = max(epsilon, abs(ang_mom))
-            if (abs(ang_mom - self%ang_mom)/aux_real > epsilon) then
-                write(*,*) "ERROR: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real
-                if(present(error)) error = error + 1
-            end if
-
-            ! ENERGY loss ocurrs, and the amount is given by:
-            !! dE = G m1 m2 / r - (m1 m2 / (m1 + m2)) (v2 - v1)**2 / 2
-        end subroutine merge_2_moons
-
         ! Resolve escapes
         subroutine resolve_escapes(self, r_max, unit_file)
             implicit none
@@ -1673,8 +1609,8 @@ module bodies
 
                 ! Update ENERGY and ANGULAR MOMENTUM
                 self%moons(i)%inertia = 0.4d0 * m_cm * self%moons(i)%radius * self%moons(i)%radius
-                self%moons(i)%ang_mom_rot = self%moons(i)%ang_mom_rot + L_rot
-                self%moons(i)%e_rot = self%moons(i)%e_rot + (uno2 * L_rot * L_rot / self%moons(i)%inertia)
+                self%moons(i)%ang_mom_rot = self%moons(i)%ang_mom_rot + self%moons(j)%ang_mom_rot + L_rot
+                self%moons(i)%e_rot = self%moons(i)%e_rot + self%moons(j)%e_rot + (uno2 * L_rot * L_rot / self%moons(i)%inertia)
 
                 ! Add the flag
                 self%moons(j)%merged_to = self%moons(i)%id  ! Merged j into i
