@@ -390,14 +390,20 @@ module parameters
                         params%use_screen = .False.
                     case ("--perc")
                         params%use_percentage = .True.
+                        params%use_diagnostics = .False.
+                        params%use_datascreen = .False.
                     case ( "--noperc")
                         params%use_percentage = .False.
                     case ("--datascr")
                         params%use_datascreen = .True.
+                        params%use_percentage = .False.
+                        params%use_diagnostics = .False.
                     case ( "--nodatascr")
                         params%use_datascreen = .False.
                     case ("--diagnostic")
                         params%use_diagnostics = .True.
+                        params%use_datascreen = .False.
+                        params%use_percentage = .False.
                     case ( "--nodiagnostic")
                         params%use_diagnostics = .False.
                     case ("-multifile")
@@ -1802,7 +1808,9 @@ module parameters
             !$OMP END DO NOWAIT
             !$OMP SECTIONS
             !$OMP SECTION
-            if (pout .eq. 0) then
+            if (sim%use_diagnostics) then
+                call write_diagnostics(initial_system, syst, 6)
+            else if (pout .eq. 0) then
                 call write_to_screen(syst, 6)
                 call flush_output(6)
             end if
