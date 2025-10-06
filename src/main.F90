@@ -541,9 +541,8 @@ program main
         end if
     end if
 
-
     !! Moons gravity
-    if (sim%use_moon_gravity .and. sim%use_screen) then
+    if ((.not. sim%use_moon_gravity) .and. sim%use_screen .and. sim%Nmoons > 0) then
         write(*,*) "Gravity between moons DEACTIVATED."
         write(*,*) ACHAR(5)
     end if
@@ -660,7 +659,7 @@ program main
             if (sim%use_stop_no_part_left) write(*,*) " Simulation will stop if no more particles are left."
             if (sim%use_stop_no_moon_left) write(*,*) " Simulation will stop if no more moons are left."
         else
-            write(*,*) " Simulation will stop if no more particles and moons are left."
+            write(*,*) "Simulation will stop if no more particles and moons are left."
         end if
         write(*,*) ACHAR(5)
     end if
@@ -847,6 +846,7 @@ program main
     y_nvalues = get_index(sim%Nactive) + 3  ! Update nvalues to use in y
 
     ! Get Arrays to integrate
+    call center_sytem(system)
     call generate_arrays(system, m_arr, R_arr, y_arr)
 
     ! CHECKS
@@ -990,12 +990,14 @@ program main
     end if
 
     ! Inicializamos Punteros
-    call define_pointers(sim)
+    call define_writing_pointers(sim)
 
     
     ! ABRIMOS ARCHIVOS
+
     !! Archivo de salida general
     if (sim%use_datafile) open (unit=20, file=trim(sim%datafile), status='replace', action='write', position="append")
+
     !! Archivos individuales
     if (sim%use_multiple_outputs) then
         do i = 0, sim%Ntotal  ! 0 is the asteroid
@@ -1004,19 +1006,21 @@ program main
                 & status='replace', action='write', position="append")
         end do
     end if
+
     !! Chaos File
     if (sim%use_chaosfile) open (unit=40, file=trim(sim%chaosfile), status='replace', action='readwrite', position="append")
 
 
-
-
+    !! Filter Files
     if (sim%use_filter) then
+
         !! Archivo de salida general
         if (sim%use_datafile) then
             open (unit=21, &
                 & file=trim(sim%filter_prefix) // trim(sim%datafile), &
                 & status='replace', action='write', position="append")
         end if
+
         !! Archivos individuales
         if (sim%use_multiple_outputs) then
             do i = 0, sim%Ntotal  ! 0 is the asteroid
@@ -1026,16 +1030,15 @@ program main
                     & status='replace', action='write', position="append")
             end do
         end if
+
         !! Chaos File
         if (sim%use_chaosfile) then
             open (unit=41, &
                 & file=trim(sim%filter_prefix) // trim(sim%chaosfile), &
                 & status='replace', action='readwrite', position="append")
         end if
+
     end if
-
-
-
 
 
 

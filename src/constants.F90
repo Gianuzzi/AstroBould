@@ -15,7 +15,7 @@ module constants
     real(kind=8), parameter :: sqepsilon  = sqrt(epsilon) ! Error usado para checkeos
     real(kind=8), parameter :: tini       = 1.d-30 ! Lowest value
     real(kind=8), parameter :: unit_mass  = 1.d0   ! [kg]
-    real(kind=8), parameter :: unit_dist  = 1.d3   ! [km]
+    real(kind=8), parameter :: unit_dist  = 1.d0   ! [km]
     real(kind=8), parameter :: unit_time  = 1.d0   ! [day]
     real(kind=8), parameter :: unit_vel   = unit_dist / unit_time ! [km day⁻¹]
     real(kind=8), parameter :: unit_acc   = unit_vel / unit_time ! [km day⁻²]

@@ -1454,7 +1454,7 @@ module parameters
         end subroutine read_tomfile
 
         ! Define IO pointers
-        subroutine define_pointers(simu)
+        subroutine define_writing_pointers(simu)
             use bodies, only: write_chaos, write_elem, write_coor, &
                             & write_ast_elem, write_moon_i_elem, write_particle_i_elem, &
                             & write_ast_coor, write_moon_i_coor, write_particle_i_coor
@@ -1523,7 +1523,7 @@ module parameters
                 flush_output => do_nothing_i
             end if
 
-        end subroutine define_pointers
+        end subroutine define_writing_pointers
             
         ! Check if continue function. This will be passed to the integ caller    
         function check_func (y) result(keep_going)
