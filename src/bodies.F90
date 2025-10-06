@@ -1575,11 +1575,11 @@ module bodies
         end subroutine resolve_escapes
 
         ! Collide a moon(j) with a moon(i), in a system
-        subroutine collide_2_moons(self, i, j, result, error)
+        subroutine collide_2_moons(self, i, j, outcome, error)
             implicit none
             type(system_st), intent(inout) :: self
             integer(kind=4), intent(in) :: i, j
-            integer(kind=4), intent(inout) :: result
+            integer(kind=4), intent(inout) :: outcome
             integer, intent(inout), optional :: error
             real(kind=8) :: m_cm, rv_cm(4)
             real(kind=8) :: L_rot, L_orb
@@ -1603,7 +1603,7 @@ module bodies
             real(kind=8) :: new_rvi(4), new_rvj(4)
 
             ! Result
-            result = 0
+            outcome = 0
 
             ! Individual attrs
             ri = self%moons(i)%coordinates(1:2)
@@ -1643,7 +1643,7 @@ module bodies
             if ((Ekin + Epot < cero) .or. (self%eta_col .ge. uno)) then ! If bounded or eta >=1 -> Plastic /merge)
                 
                 ! Result (merge)
-                result = 1
+                outcome = 1
 
                 ! Get these 2 moons CM properties
                 rv_cm = (mi * self%moons(i)%coordinates + mj * self%moons(j)%coordinates) / m_cm
@@ -1678,7 +1678,7 @@ module bodies
             else  ! Not plastic
 
                 ! Result (not plastic)
-                result = 2
+                outcome = 2
 
                 ! Angular momentum BEFORE collision (orbital part)
                 Li_orb = mi * (ri(1) * vi(2) - ri(2) * vi(1))
@@ -1782,7 +1782,7 @@ module bodies
             integer(kind=4) :: m_act0
             integer(kind=4) :: m_act, p_act
             integer(kind=4) :: moon_id
-            integer(kind=4) :: result
+            integer(kind=4) :: outcome
             real(kind=8) :: boul_pos(2), moon_pos(2)
             real(kind=8) :: boul_rad, moon_rad
             real(kind=8) :: dr_vec(2), dr
@@ -1800,10 +1800,10 @@ module bodies
                 ! Moons -> Moons
                 do j = m_act0, 2, -1  ! Backwards loop
                     inner_loop: do i = j - 1, 1, -1  ! Backwards loop
-                        call collide_2_moons(self, i, j, result)
-                        if (result > 0) then
+                        call collide_2_moons(self, i, j, outcome)
+                        if (outcome > 0) then
                             if (do_write) then
-                                if (result .eq. 1) then
+                                if (outcome .eq. 1) then
                                     write(unit_file,s1i5x5) "Merged moon ", j, &
                                                     & "(", self%moons(j)%id, ") into moon ", &
                                                     & i, "(", self%moons(i)%id, ")."
