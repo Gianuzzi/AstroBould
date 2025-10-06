@@ -817,7 +817,7 @@ module parameters
                             end if
                         case("collisional eta")
                             read (value_str, *) params%eta_col
-                        case("collisional f pa")
+                        case("collisional f p")
                             read (value_str, *) params%f_col
                         case("stop if no part")
                             if (((auxch1 == "y") .or. (auxch1 == "s"))) then
