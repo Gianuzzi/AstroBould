@@ -94,6 +94,10 @@ def read_outfile(
                 "mass",
                 "radius",
                 "dist",
+                "amin",
+                "amax",
+                "emin",
+                "emax",
             ],
         )
         df["lam"] = np.mod(df.M + df.w, 360.)

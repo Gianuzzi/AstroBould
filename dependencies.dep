@@ -11,7 +11,8 @@ build/main :  \
 	build/integrators.o \
 	build/main.o \
 	build/parameters.o \
-	build/times.o
+	build/times.o \
+	build/tom.o
 
 build/accelerations.o :  \
 	build/auxiliary.o \
@@ -57,8 +58,12 @@ build/parameters.o :  \
 	build/auxiliary.o \
 	build/bodies.o \
 	build/constants.o \
-	build/filtering.o
+	build/filtering.o \
+	build/tom.o
 
 build/times.o :  \
 	build/auxiliary.o \
+	build/constants.o
+
+build/tom.o :  \
 	build/constants.o

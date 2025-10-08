@@ -71,8 +71,8 @@ module accelerations
                 C20_coef = (dos * axis_c**2 - axis_a**2 - axis_b**2) / (10.d0 * Re_coef**2)
                 C22_coef = (axis_a**2 - axis_b**2) / (20.d0 * Re_coef**2)
                 K_coef = uno2 * Re_coef**2 * C20_coef
-                K3_coef = 3.d0 * K_coef  ! por unidad de mu
-                L_coef = 3.d0 * Re_coef**2 * C22_coef  ! por unidad de mu
+                K3_coef = 3.d0 * K_coef
+                L_coef = 3.d0 * Re_coef**2 * C22_coef
             else 
                 use_ellipsoid = .False.
             end if
@@ -106,10 +106,10 @@ module accelerations
 
             ! a_unit_massx = G (x / r³ + 3K x / r⁵ + L (dQ/dx / r⁵ - 5 x Q / r⁷))  ! Long form
             ! a_unit_massy = G y / r³ (1 + 3K / r² + L (dQ/dy / r² / y - 5 Q / r⁴))  ! Short form
-            acc(1) = acc(1) - (G * mass * inv_dr3 * dr_vec(1)) * &
-                        & (uno + K3_coef * inv_dr2 + L_coef * (dQdx * inv_dr2 / dr_vec(1) - Q_param_eff))
-            acc(2) = acc(2) - (G * mass * inv_dr3 * dr_vec(2)) * &
-                        & (uno + K3_coef * inv_dr2 + L_coef * (dQdy * inv_dr2 / dr_vec(2) - Q_param_eff))
+            acc(1) = acc(1) - (G * mass * inv_dr3) * &
+                        & (dr_vec(1) + K3_coef * inv_dr2 * dr_vec(1) + L_coef * (dQdx * inv_dr2 - Q_param_eff * dr_vec(1)))
+            acc(2) = acc(2) - (G * mass * inv_dr3) * &
+                        & (dr_vec(2) + K3_coef * inv_dr2 * dr_vec(2) + L_coef * (dQdy * inv_dr2 - Q_param_eff * dr_vec(2)))
         end subroutine ellipsoid_acceleration
         
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
