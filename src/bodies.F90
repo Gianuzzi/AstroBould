@@ -87,7 +87,7 @@ module bodies
    
     !!!!!!!!!!!   Used I/O formats     !!!!!!!!!
     character(30), parameter :: i3r23 = "(I7, I7, I7, 23(1X, 1PE22.15))"  ! 3 int y 21 real
-    character(26), parameter :: i2r11 = "(I7, I7, 11(1X, 1PE22.15))"  ! 2 int y 11 real
+    character(26), parameter :: i2r15 = "(I7, I7, 15(1X, 1PE22.15))"  ! 2 int y 11 real
     character(25), parameter :: i2r9 = "(I7, I7, 9(1X, 1PE22.15))"  ! 3 int y 9 real
     character(18), parameter :: s1i5x5 = "(5(A, 1X, I5, 1X))"
     character(18), parameter :: r13 = "(13(1X, 1PE22.15))"
@@ -1897,7 +1897,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: unit_file
-            write (unit_file,i2r11) &
+            write (unit_file,i2r15) &
                 & 0, &  ! ID
                 & -1, &  ! type
                 & self%time / unit_time, &  ! time
@@ -1910,7 +1910,9 @@ module bodies
                 & cero, &   ! MMR
                 & self%asteroid%mass / unit_mass, &  ! mass
                 & self%asteroid%radius / unit_dist, &  ! radius
-                & self%asteroid%dist_to_cm / unit_dist  ! distance
+                & self%asteroid%dist_to_cm / unit_dist, &  ! distance
+                & self%asteroid%chaos_a / unit_dist, &  ! da
+                & self%asteroid%chaos_e  ! de
         end subroutine write_ast_elem
 
         ! Write elements moon i
@@ -1918,7 +1920,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
-            write (unit_file,i2r11) &
+            write (unit_file,i2r15) &
                 & self%moons(i)%id, &  ! ID
                 & 1, &  ! type
                 & self%time / unit_time, &  ! time
@@ -1931,7 +1933,9 @@ module bodies
                 & self%moons(i)%mmr, &  ! MMR
                 & self%moons(i)%mass / unit_mass, &  ! mass
                 & self%moons(i)%radius / unit_dist, &  ! radius
-                & self%moons(i)%dist_to_cm / unit_dist  ! distance
+                & self%moons(i)%dist_to_cm / unit_dist, &  ! distance
+                & self%moons(i)%chaos_a / unit_dist, &  ! da
+                & self%moons(i)%chaos_e  ! de
         end subroutine write_moon_i_elem
 
         ! Write elements particle i
@@ -1939,7 +1943,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
-            write (unit_file,i2r11) &
+            write (unit_file,i2r15) &
                 & self%particles(i)%id, &   ! ID
                 & 2, &  ! type
                 & self%time / unit_time, &  ! time
@@ -1952,7 +1956,9 @@ module bodies
                 & self%particles(i)%mmr, &  ! MMR
                 & cero, &  ! mass
                 & cero, &  ! radius
-                & self%particles(i)%dist_to_cm / unit_dist  ! distance
+                & self%particles(i)%dist_to_cm / unit_dist, &  ! distance
+                & self%particles(i)%chaos_a / unit_dist, &  ! da
+                & self%particles(i)%chaos_e  ! de
         end subroutine write_particle_i_elem
 
         ! Write elements ALL

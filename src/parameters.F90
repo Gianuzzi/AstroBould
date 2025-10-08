@@ -5,6 +5,7 @@ module parameters
     use accelerations, only: init_damping, init_drag, init_ellipsoid, init_stokes
     use filtering
     use omp_lib
+    use tomodule
 
     implicit none
 
@@ -37,6 +38,7 @@ module parameters
         real(kind=8) :: output_timestep = cero
         integer(kind=4) :: output_number = 0
         integer(kind=4) :: case_output_type = 2
+        integer(kind=4) :: extra_checkpoints = 0
         ! Parameters for the Integration - 
         logical :: use_parallel = .False.
         integer(kind=4) :: requested_threads = 1
@@ -133,6 +135,8 @@ module parameters
     end type input_params_st
 
     type, extends(input_params_st) :: sim_params_st  !! Extra DERIVED parameters
+        ! Times
+        integer(kind=4) :: checkpoint_number = 0
         ! Bodies
         integer(kind=4) :: Ntotal = 0  ! Amount of all bodies (asteroid is just 1)
         integer(kind=4) :: Npart_active = 0 ! Active particles
@@ -188,7 +192,7 @@ module parameters
     real(kind=8), dimension(:,:), allocatable :: boulders_in !! mu, radius, theta  | (Nb, 3)
     real(kind=8), dimension(:,:), allocatable :: moons_in !! mass, a, e, M, w, MMR, radius  | (Nm, 7)
     real(kind=8), dimension(:,:), allocatable :: particles_in !! a, e, M, w, MMR  | (Np, 5)
-    real(kind=8) :: cl_body_in(7) = cero!! mass, a, e, M, w, MMR, radius  | (7)
+    real(kind=8) :: cl_body_in(7) = cero  !! mass, a, e, M, w, MMR, radius  | (7)  | COMMAND LINE Input
 
 
     ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
@@ -200,23 +204,22 @@ module parameters
     real(kind=8) :: time  ! Actual time of the integration
     real(kind=8) :: timestep  ! This timestep 
     real(kind=8) :: adaptive_timestep  ! This adaptive timestep
-    integer(kind=4) :: checkpoint_number  ! Number of actual timestep
     real(kind=8) :: min_timestep = cero  ! Minimum timestep
     
 
     ! ----  <<<<<    TOM     >>>>>   -----
-    integer(kind=4) :: tom_index_number  ! Index to count which TOM row is active
-    integer(kind=4) :: tom_total_number  ! Total amount of lines in TOM
-    real(kind=8), dimension(:), allocatable :: tom_times  ! Times in TOM
-    real(kind=8), dimension(:), allocatable :: tom_deltaomega  ! Delta Omega in TOM
-    real(kind=8), dimension(:), allocatable :: tom_deltamass  ! Delta Mass in TOM
-    real(kind=8) :: tom_mass_growth_param
+    type(tom_st) :: tom  ! This is the structure with TOM data
+
+    ! ----  <<<<<    CHECKPOINTS     >>>>>   -----
+    real(kind=8), dimension(:), allocatable :: output_times  ! Vector con tiempos de salida
+    real(kind=8), dimension(:), allocatable :: checkpoint_times  ! Vector con checkpoints
     logical, dimension(:), allocatable :: checkpoint_is_tom  ! Array with whether each checkpoint is TOM
     logical, dimension(:), allocatable :: checkpoint_is_output ! Array with whether each checkpoint is output
         
 
     ! ----  <<<<<    PARAMETERS ARRAYS     >>>>>   -----
     integer, parameter :: equation_size = 4
+    integer(kind=4) :: y_nvalues = 0  ! Will change dynamically
     real(kind=8), dimension(:), allocatable :: m_arr         ! Mass array
     real(kind=8), dimension(:), allocatable :: R_arr         ! Radius array
     real(kind=8), dimension(:), allocatable :: y_arr         ! Coordinates array
@@ -243,6 +246,7 @@ module parameters
     character(24), parameter :: s1r1 = "(3(A, 1X, 1PE22.15, 1X))"
     character(21), parameter :: i1r5 = "(I7, 5(1X, 1PE22.15))"
     character(21), parameter :: i1r7 = "(I7, 7(1X, 1PE22.15))"
+
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    POINTERS     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     procedure (write_to_unit_template), pointer :: write_to_general => null ()
@@ -332,6 +336,7 @@ module parameters
             allocate(particles_in(Nparticles,5))  ! FROM 1 to Nparticles
         end subroutine allocate_params_particles
         
+
         ! 1. Read command line input
         subroutine load_command_line_arguments(params, use_config)
             implicit none
@@ -601,6 +606,7 @@ module parameters
             character(1) :: auxch1
             character(2) :: auxch2
             character(15) :: auxch15
+            character(15) :: auxch30
             integer(kind=4)  :: colonPos, commentPos
             integer(kind=4) :: nlines
             integer(kind=4) :: io
@@ -608,6 +614,16 @@ module parameters
             integer(kind=4) :: j
             integer(kind=4) :: aux_integer
             integer(kind=4) :: Nboulders, Nmoons, Nparticles
+
+            ! CHECK IF 
+            aux_integer = command_argument_count()
+            do j = 1, aux_integer
+                call get_command_argument(j, auxch30)
+                if (trim(auxch30) .eq. "--noconfig") then
+                    use_configfile = .False.
+                    return
+                end if
+            end do
 
             ! Init
             Nboulders = 0
@@ -647,6 +663,8 @@ module parameters
                             read (value_str, *) params%output_timestep
                         case("number of outpu")
                             read (value_str, *) params%output_number
+                        case("number of extra")
+                            read (value_str, *) params%extra_checkpoints
                         case("output distribu")
                             read (value_str, *) params%case_output_type
                         case("use parallel th")
@@ -1077,7 +1095,13 @@ module parameters
 
             !! Times
             if ((derived%case_output_type < 0) .or. (derived%case_output_type > 2)) then
-                write(*,*) "ERROR: Checkpoint times distribution method not recognized:", derived%case_output_type
+                write(*,*) "ERROR: Output times distribution method not recognized:", derived%case_output_type
+                stop 1
+            end if
+
+            !! Expand checkpoints
+            if (derived%extra_checkpoints < 0) then
+                write(*,*) "ERROR: Extra checkpoint number can not be lower than 0."
                 stop 1
             end if
 
@@ -1360,98 +1384,9 @@ module parameters
                 write(*,*) "ERROR: Can not use both filtering and TOM at the same time."
                 stop 1
             end if
+
         end subroutine set_derived_parameters
         
-        ! Read TOMfile
-        subroutine read_tomfile(t0, tf, t_TOM, domega_TOM, dmass_TOM, file_tout)
-            implicit none
-            real(kind=8), intent(in) :: t0, tf
-            real(kind=8), dimension(:), allocatable, intent(out) :: t_TOM, domega_TOM, dmass_TOM
-            character(LEN=*), intent(in) :: file_tout
-            integer(kind=4) :: n_TOM
-            integer(kind=4) :: i, j, io
-            integer(kind=4) :: ncols
-            real(kind=8) :: t_aux
-            character(80) :: auxstr
-            logical :: existe
-
-            n_TOM = 2
-            
-            inquire (file=trim(file_tout), exist=existe)
-            if (.not. existe) then
-                write(*,*) "ERROR: No se encontró el archivo TOM: ", trim(file_tout)
-                stop 1
-            end if
-
-            open (unit=30, file=file_tout, status="old", action="read")
-
-            !! Count number of columns
-            ncols = 0
-            read (30, '(A)') auxstr
-            do i = 1,3   ! The very maximum that the string can contain: 3
-                io = 0
-                read (auxstr, *, iostat=io) (t_aux, j=1,i)
-                if (io .ne. 0) exit
-            end do
-            if (io .eq. 0) then 
-                ncols = i
-            else
-                ncols = i - 1
-            end if
-            
-            rewind (30) ! Go to the beginning of the file
-            do ! Count number of (valid) lines 
-                read (30, *, iostat=io) t_aux
-                if ((io /= 0) .or. (t_aux > tf)) exit
-                if (t_aux < t0) cycle
-                n_TOM = n_TOM + 1
-            end do
-
-            if (n_TOM == 2) then
-                write(*,*) "ERROR: No se encontraron datos válidos en el archivo."
-                stop 1
-            end if
-            
-            ! Allocate arrays
-            allocate (t_TOM(n_TOM))
-            t_TOM = -1.d0
-            if (ncols > 1) then
-                allocate (domega_TOM(n_TOM))
-                domega_TOM = -1.d0
-            end if
-            if (ncols > 2) then
-                allocate (dmass_TOM(n_TOM))
-                dmass_TOM = -1.d0
-            end if
-            rewind (30) ! Go to the beginning of the file
-
-            ! Read data
-            i = 2
-            if (ncols == 1) then
-                do
-                    read (30, *, iostat=io) t_TOM(i)
-                    if ((io /= 0) .or. (t_TOM(i) > tf)) exit
-                    if (t_TOM(i) < t0) cycle
-                    i = i + 1
-                end do
-            else if (ncols == 2) then
-                do
-                    read (30, *, iostat=io) t_TOM(i), domega_TOM(i)
-                    if ((io /= 0) .or. (t_TOM(i) > tf)) exit
-                    if (t_TOM(i) < t0) cycle
-                    i = i + 1
-                end do
-            else 
-                do
-                    read (30, *, iostat=io) t_TOM(i), domega_TOM(i), dmass_TOM(i)
-                    if ((io /= 0) .or. (t_TOM(i) > tf)) exit
-                    if (t_TOM(i) < t0) cycle
-                    i = i + 1
-                end do
-            end if
-
-            close (30)
-        end subroutine read_tomfile
 
         ! Define IO pointers
         subroutine define_writing_pointers(simu)
@@ -1525,6 +1460,7 @@ module parameters
 
         end subroutine define_writing_pointers
             
+
         ! Check if continue function. This will be passed to the integ caller    
         function check_func (y) result(keep_going)
             implicit none
@@ -1535,6 +1471,7 @@ module parameters
             ! if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
             keep_going = .not. hard_exit
         end function check_func
+
 
         ! Deallocate initial arrays
         subroutine free_initial_arays()
@@ -1557,9 +1494,8 @@ module parameters
             if (allocated(y_arr)) deallocate(y_arr)
             if (allocated(y_arr_new)) deallocate(y_arr_new)
             if (allocated(y_der)) deallocate(y_der)
-            if (allocated(tom_times)) deallocate(tom_times)
-            if (allocated(tom_deltaomega)) deallocate(tom_deltaomega)
-            if (allocated(tom_deltamass)) deallocate(tom_deltamass)
+            if (allocated(output_times)) deallocate(output_times)
+            if (allocated(checkpoint_times)) deallocate(checkpoint_times)
             if (allocated(checkpoint_is_tom)) deallocate(checkpoint_is_tom)
             if (allocated(checkpoint_is_output)) deallocate(checkpoint_is_output)
             if (allocated(y_pre_filter)) deallocate(y_pre_filter)
@@ -1578,6 +1514,7 @@ module parameters
             nullify(flush_chaos)
         end subroutine nullify_pointers
 
+
         ! Update sim Nactive values
         subroutine update_sim_Nactive(simu, Npart_active, Nmoon_active)
             implicit none
@@ -1587,6 +1524,7 @@ module parameters
             simu%Nmoon_active = Nmoon_active  ! Update Nmoon_active
             simu%Nactive = 1 + Npart_active + Nmoon_active ! Update Nactive, including asteroid
         end subroutine update_sim_Nactive
+
 
         ! Check if keep integrating after collisions
         subroutine check_after_col(sistema, simu, keep)

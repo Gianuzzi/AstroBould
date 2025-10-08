@@ -6,34 +6,30 @@ program main
     use times
     use derivates
     use filtering
+
     implicit none
+
     external :: create_map   ! Declare the external function for map
-    logical :: only_potential_map = .False.
+    logical :: only_potential_map = .False.  ! Change this if only map desired
+
+    ! Auxiliar variables
     integer(kind=4) :: aux_int
     character(1) :: aux_character1
     character(20) :: aux_character20
-    character(30) :: aux_character30
     logical :: aux_logical
     real(kind=8) :: aux_real
+    real(kind=8), dimension(:), allocatable :: aux_1D
     real(kind=8), dimension(:,:), allocatable :: aux_2D  ! To read files
-    integer(kind=4) :: i, j  ! Loops
-    integer(kind=4) :: new_Nactive = 0,  y_nvalues = 0
-    integer(kind=4) :: unit_file = -1  ! Where to write escapes/collisions
-    
-    use_configfile = .True. ! Usar archivo de configuración
-    arguments_number = command_argument_count()
-    do i = 1, arguments_number
-        call get_command_argument(i, aux_character30)
-        if (trim(aux_character30) .eq. "--noconfig") then
-            use_configfile = .False.
-            exit
-        end if
-    end do
 
+    integer(kind=4) :: i, j  ! Loops
+    integer(kind=4) :: new_Nactive = 0  ! When escapes/collisions occur
+    integer(kind=4) :: unit_file = -1  ! Where to write escapes/collisions
+
+    use_configfile = .True. ! Manual override if needed
     if (use_configfile) call read_config_file(input, "config.ini", configfile_exists) ! Leemos archivo de configuración
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!! Editar aquí abajo de ser necesario !!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!! Edit from here to change configuration without configfile !!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (.not. use_configfile) then ! Usaremos parámetros por defecto
@@ -141,7 +137,8 @@ program main
         input%final_time = 2.d3        ! Final time [day]
         input%case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
         input%output_timestep = cero   ! Output timestep [day] (used if case_output_type != 1)
-        input%output_number = 10000    ! Number of outputs (if output_timestep = 0)
+        input%output_number = 100      ! Number of outputs (if output_timestep = 0)
+        input%extra_checkpoints = 2000 ! Number of extra checkpoints for chaos calculations
 
         !!!! Error
         input%learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
@@ -178,9 +175,23 @@ program main
     end if
 
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!! No tocar de aquí a abajo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!! No tocar de aquí a abajo !!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
     ! Load command line arguments
@@ -190,10 +201,15 @@ program main
     if ((arguments_number .le. 1) .and. (use_configfile .and. (.not. configfile_exists))) then  ! Global variable
         print*, "WARNING: No command line arguments."
         print*, "¿Do you want to run with in-code set parameters? [y/N]"
-        read(*,*) aux_character1
-        if (index("YySs", aux_character1) == 0) then
-            print*, "Exiting."
-            stop
+        read(*,*) aux_character20
+        aux_character20 = adjustl(aux_character20)
+        aux_character1 = aux_character20(1:1)   
+        if (index("YySs", aux_character1) /= 0) then
+            write(*,*) "Exiting."
+            stop 1
+        else if (sim%use_screen) then
+            write(*,*) "Resuming..."
+            write(*,*) ACHAR(5)
         end if
     end if
     
@@ -341,9 +357,9 @@ program main
     end if
     
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Parallel  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Parallel  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         if (sim%use_parallel) then
@@ -357,9 +373,9 @@ program main
         write(*,*) ACHAR(5)
     end if
     
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!! COMIENZO DE CÁLCULOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!! COMIENZO DE CÁLCULOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (sim%use_screen) then
         write(*,s1i1) "Starting simulation number: ", simulation_number
@@ -518,7 +534,7 @@ program main
     end if
 
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!! EXTERNA EFFECTS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!! EXTERNAL EFFECTS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
@@ -526,7 +542,7 @@ program main
         write(*,*) ACHAR(5)
     end if
 
-    !! Tri-axial gravity
+    !! <<<< Tri-axial gravity >>>>
     if (sim%use_triaxial) then
         call init_ellipsoid(sim%triax_a_primary * unit_dist, sim%triax_b_primary * unit_dist, sim%triax_c_primary * unit_dist)
         if (sim%use_screen) then
@@ -541,13 +557,13 @@ program main
         end if
     end if
 
-    !! Moons gravity
+    !! <<<< Moons gravity >>>>
     if ((.not. sim%use_moon_gravity) .and. sim%use_screen .and. sim%Nmoons > 0) then
         write(*,*) "Gravity between moons DEACTIVATED."
         write(*,*) ACHAR(5)
     end if
 
-    !! Omega Damping
+    !! <<<< Omega Damping >>>>
     if (sim%use_omega_damping .and. ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial))) then
         if (sim%use_screen) write(*,*) "WARNING: Skipping omega damping without boulders."
         sim%use_omega_damping = .False.
@@ -588,7 +604,7 @@ program main
         end if
     end if
 
-    !! Stokes
+    !! <<<< Stokes >>>>
     if (sim%use_stokes) then
         call init_stokes(sim%stokes_a_damping_time * unit_time, &
                        & sim%stokes_e_damping_time * unit_time, &
@@ -602,7 +618,7 @@ program main
         end if
     end if
 
-    !! Naive-Stokes (Drag)
+    !! <<<< Naive-Stokes (Drag) >>>>
     if (sim%use_drag) then
         call init_drag(sim%drag_coefficient, sim%drag_active_time * unit_time)
         if (sim%use_screen) then
@@ -613,7 +629,7 @@ program main
         end if
     end if
 
-!     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!  Escape/Colisión !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     ! Escape/Colisión
     if (sim%min_distance < cero) then
@@ -686,18 +702,16 @@ program main
         end if
         stop 0
     end if
+    
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!! FIN DE CÁLCULOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!! FIN DE CÁLCULOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRACIÓN !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRACIÓN !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     ! Mensaje
     if (sim%use_screen) then
@@ -718,6 +732,7 @@ program main
     else
         sim%final_time = sim%final_time * unit_time
     end if
+
     if (sim%final_time .le. cero) then
         write(*,*) ACHAR(10)
         write(*,*) "ERROR: tf < 0"
@@ -734,63 +749,68 @@ program main
 
     !! TOMFILE
     if (sim%use_tomfile) then
-        !! En este caso, leeremos los tiempos desde un archivo
-        if (sim%use_screen) write(*,*) "Reading times from TOM file: ", trim(sim%tomfile)
-        call read_tomfile(cero, sim%final_time / unit_time, & 
-                        & tom_times, tom_deltaomega, tom_deltamass, sim%tomfile) ! Read LOOP checkpoints
-        tom_total_number = size(tom_times, 1)
-        !!! Unidades
-        tom_times = tom_times * unit_time
-        if (allocated(tom_deltaomega)) tom_deltaomega = tom_deltaomega / unit_time
-        if (allocated(tom_deltamass)) tom_deltamass = tom_deltamass * unit_mass
-        !!! Condicion inicial (y final)
-        tom_times(1) = cero
-        tom_times(tom_total_number) = sim%final_time
-        if (allocated(tom_deltaomega)) then
-            tom_deltaomega(1) = cero
-            tom_deltaomega(tom_total_number) = cero
-        end if
-        if (allocated(tom_deltamass)) then
-            tom_deltamass(1) = cero
-            tom_deltamass(tom_total_number) = cero
-        end if
-        !!! Mensaje !
-        if (sim%use_screen) then
-            if (allocated(tom_deltamass)) then
-                write(*,*) "  - 3 columns read: t, Delta_omega, Delta_m"
-            else if (allocated(tom_deltaomega)) then
-                write(*,*) "  - 2 columns read: t, Delta_omega"
-            else
-                write(*,*) "  - 1 column read: t"
+
+        call setup_TOM(tom, sim%tomfile, sim%final_time / unit_time, sim%use_screen)
+        ! Warning if delta_omega with no rotation
+        if (tom%use_domega .and. ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial))) then
+            if (sim%use_screen) then
+                write(*,*) "WARNING: Delta_omega has no sense without boulders or triaxial elipsoid. It will be ignored."
             end if
+            deallocate(tom%deltaomega)  ! Deallocate
+            tom%use_domega = .False.
         end if
+        ! SET UNITS
+        if (tom%total_number > 0) tom%times = tom%times * unit_time
+        if (tom%use_domega) tom%deltaomega = tom%deltaomega / unit_time
+        if (tom%use_dmass) tom%deltamass = tom%deltamass * unit_mass
+
         !! Ahora debemos combinar los tiempos de TOM con los tiempos de Output, y crear un nuevo vector de tiempos Checkpoints
-        call merge_sort_and_unique(tom_times, output_times, &
+        call merge_sort_and_unique(tom%times, output_times, &
                                    & checkpoint_is_tom, checkpoint_is_output, &
-                                   & checkpoint_times, checkpoint_number)
-        if (allocated(tom_deltaomega) .and. ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial))) then
-            if (sim%use_screen) write(*,*) "WARNING: Delta_omega has no sense without boulders. It will be ignored."
-            deallocate(tom_deltaomega)            
-        end if
+                                   & checkpoint_times, sim%checkpoint_number)
+
     else
+
         !! En este caso, los tiempos de check son los mismos que los de LOOP
-        checkpoint_number = sim%output_number
-        allocate(checkpoint_times(checkpoint_number))
-        allocate(checkpoint_is_output(checkpoint_number))
-        allocate(checkpoint_is_tom(checkpoint_number))
+        sim%checkpoint_number = sim%output_number
+
+        allocate(checkpoint_times(sim%checkpoint_number))
+        allocate(checkpoint_is_output(sim%checkpoint_number))
+        allocate(checkpoint_is_tom(sim%checkpoint_number))
+
         checkpoint_times = output_times
+
         checkpoint_is_output = .True.
         checkpoint_is_tom = .False.
-        tom_total_number = 0
+
     end if
+
+    !! Extra checkpoint times
+    if (sim%extra_checkpoints > 0) then
+
+        ! Get expected new amount of checkpoints
+        aux_int = sim%checkpoint_number + sim%extra_checkpoints
+
+        !! More checkpoint times than only the output+tom ones
+        call set_output_times(cero, sim%final_time, aux_int, aux_real, sim%case_output_type, aux_1D)
+
+        !! Ahora debemos combinar los checkpoints previos con los nuevos, y crear un nuevo vector de tiempos Checkpoints
+        call expand_checkpoints(aux_1D, checkpoint_times, checkpoint_is_output, checkpoint_is_tom, sim%checkpoint_number)
+
+        ! Message
+        if (sim%use_screen) write(*,*) "Checkpoint times amount expanded."
+
+    end if
+
 
     ! Variable temporal (para integración)
     time = cero ! Tiempo actual
-    timestep = output_times(1) ! Paso de tiempo inicial
-    min_timestep = max(min(min_timestep, sim%output_timestep), tini) ! Paso de tiempo mínimo
+    timestep = checkpoint_times(1) ! Paso de tiempo inicial
+    min_timestep = max(min(min_timestep, min(timestep, sim%output_timestep)), tini) ! Paso de tiempo mínimo
     if (system%asteroid%rotational_period > tini) then
         adaptive_timestep = system%asteroid%rotational_period * 0.01d0 ! Paso de tiempo adaptativo inicial: 1% del periodo de rotación
     else
+        ! Set adaptive to minimum between periods
         adaptive_timestep = infinity
         do i = 1, system%Nmoons_active
             adaptive_timestep = min(adaptive_timestep, &
@@ -818,15 +838,16 @@ program main
             write(*,s1r1) "    dt_out: ", sim%output_timestep / unit_time, "[day]"
             write(*,s1r1) "    dt_min: ", min_timestep / unit_time, "[day]"
         end if
-        write(*,s1i1) "    n_out : ", sim%output_number
+        write(*,s1i1) "    n_out         : ", sim%output_number
+        write(*,s1i1) "    n_checkpoints : ", sim%checkpoint_number
         write(*,*) ACHAR(5)
     end if
 
 
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!! Integration Arrays !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!! Integration Arrays !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     ! Allocate
     allocate(m_arr(sim%Ntotal))  ! Masses
@@ -887,16 +908,15 @@ program main
             write(*,*) "WARNING: More than 1000 output files will be created."
             write(*,*) "         This could generate an issue."
             write(*,*) "Do you wish to continue? (y/[N])"
-            read(*,*) aux_character30
-            aux_character1 = trim(adjustl(aux_character30))
-            if ((aux_character1 == "y") .or. (aux_character1 == "s")) then
-                if (sim%use_screen) then
-                    write(*,*) "Resuming..."
-                    write(*,*) ACHAR(5)
-                end if
-            else
+            read(*,*) aux_character20
+            aux_character20 = adjustl(aux_character20)
+            aux_character1 = aux_character20(1:1)   
+            if (index("YySs", aux_character1) /= 0) then
                 write(*,*) "Exiting."
                 stop 1
+            else if (sim%use_screen) then
+                    write(*,*) "Resuming..."
+                    write(*,*) ACHAR(5)
             end if
         end if
     end if
@@ -919,9 +939,9 @@ program main
     call free_initial_arays()
 
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!     FILTERING      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!     FILTERING      !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (sim%use_filter) then
         ! Create aux system
@@ -977,9 +997,9 @@ program main
         write(*,*) ACHAR(5)
     end if
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Integration  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Integration  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
     !!!! Mensaje de inicio
@@ -1041,12 +1061,18 @@ program main
     end if
 
 
-
-
-
-
-
-
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 
@@ -1090,14 +1116,14 @@ program main
     end if
 
     ! >>>>>>>>>>>>>>>>>>----------------- MAIN LOOP  ---------------<<<<<<<<<<<<<<<<<<<<<<<<
-    tom_index_number = 2  !!!! Inicializamos en 2 porque el primer checkpoint es el IC (t0)
+    tom%index_number = 2  !!!! Inicializamos en 2 porque el primer checkpoint es el IC (t0)
     j = 2  ! From 2 because 1 is the IC (t0) !! +1 por si hay HardExit en el último
 
     ! Check if filter used
     if (sim%use_filter) then
 
         ! Identify which will have filter, and whi0hc don't
-        do first_idx_yes_filter = 2, checkpoint_number
+        do first_idx_yes_filter = 2, sim%checkpoint_number
             ! If too short, cycle to next
             if ((checkpoint_times(first_idx_yes_filter)) < filter%half_width) cycle
 
@@ -1339,7 +1365,7 @@ program main
 
         ! Set value of j and keep_integ
         j = first_idx_yes_filter + 1  ! next checkpoint
-        keep_integrating = j .le. checkpoint_number
+        keep_integrating = j .le. sim%checkpoint_number
 
         ! Re-set the time, system, and y_arr to the last useful state.
         !! It must be the last time before the first filter value of the next checkpoint
@@ -1374,7 +1400,7 @@ program main
 
             ! Check if all done
             !! Time end
-            if (j .ge. checkpoint_number + 1) keep_integrating = .False.
+            if (j .ge. sim%checkpoint_number + 1) keep_integrating = .False.
 
             ! Check if Particles/Moons left
             if (sim%Nactive == 1) then
@@ -1492,7 +1518,7 @@ program main
 
                 ! Re-set the time, system, and y_arr to the last useful state.
                 !! It must be the last time before the first filter value of the next checkpoint
-                if (j .le. checkpoint_number) then
+                if (j .le. sim%checkpoint_number) then
 
                     !! Really needed?
                     if (time > checkpoint_times(j)) then
@@ -1561,7 +1587,7 @@ program main
             
             ! Check if all done
             !! Time end
-            if (j == checkpoint_number + 1) keep_integrating = .False.
+            if (j == sim%checkpoint_number + 1) keep_integrating = .False.
 
 
             ! Check if Particles/Moons left
@@ -1647,12 +1673,13 @@ program main
             if (sim%use_percentage) call percentage(time, sim%final_time)
 
             ! Check update from TOM
-            if (checkpoint_is_tom(j) .and. (tom_index_number <= tom_total_number)) then
-                if (allocated(tom_deltaomega)) call spin_asteroid(system%asteroid, system%asteroid%theta, &
-                                                                & system%asteroid%omega + tom_deltaomega(tom_index_number))
-                if (allocated(tom_deltamass)) call grow_asteroid(system%asteroid, tom_deltamass(tom_index_number))
-                tom_index_number = tom_index_number + 1
-                if (sim%use_screen .and. (allocated(tom_deltaomega) .or. allocated(tom_deltamass))) then
+            if (checkpoint_is_tom(j) .and. (tom%index_number <= tom%total_number)) then
+                if (tom%use_domega) call spin_asteroid(system%asteroid, &
+                                                     & system%asteroid%theta, &
+                                                     & system%asteroid%omega + tom%deltaomega(tom%index_number))
+                if (tom%use_dmass) call grow_asteroid(system%asteroid, tom%deltamass(tom%index_number))
+                tom%index_number = tom%index_number + 1
+                if (sim%use_screen .and. (tom%use_dmass .or. tom%use_domega)) then
                     write(*,*) ACHAR(5)
                     write(*,s1r1) "Updated asteroid Omega and mass following TOM data, at time = ", time / unit_time, "[days]"
                     write(*,*) ACHAR(5)
@@ -1787,11 +1814,11 @@ program main
         write(*,*) ACHAR(5)
     end if
 
-    !!!!!!!!! TIMES !!!!!!!!
-    call free_times_arrays()
-
     !!!!!!!!! PARAMS !!!!!!!!
     call free_parameters_arays()
+
+    !!!!!!!!! TOM !!!!!!!!
+    call free_tom(tom)
     
     !!!!!!!!! POINTERS !!!!!!!!
     call nullify_pointers()    
