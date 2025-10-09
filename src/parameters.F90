@@ -1385,6 +1385,13 @@ module parameters
                 stop 1
             end if
 
+            ! Check no Extra checkpoints and Filter
+            if (derived%use_tomfile .and. (derived%extra_checkpoints > 0)) then
+                write(*,*) "ERROR: Can not use both filtering and extra checkpoints at the same time (yet)."
+                write(*,*) "       Set all checkpoints to outputs."
+                stop 1
+            end if
+
         end subroutine set_derived_parameters
         
 

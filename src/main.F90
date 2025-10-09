@@ -1122,7 +1122,7 @@ program main
     ! Check if filter used
     if (sim%use_filter) then
 
-        ! Identify which will have filter, and whi0hc don't
+        ! Identify which will have filter, and which don't
         do first_idx_yes_filter = 2, sim%checkpoint_number
             ! If too short, cycle to next
             if ((checkpoint_times(first_idx_yes_filter)) < filter%half_width) cycle
