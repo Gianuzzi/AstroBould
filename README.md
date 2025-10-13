@@ -4,7 +4,7 @@
 
 The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
 
-If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [36 and 174](./src/main.F90#L36-L174).
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [36 and 177](./src/main.F90#L36-L177).
 
 ---
 
@@ -63,9 +63,10 @@ $ ./ASTROBOULD --help
     eM  : Elemento M de la partícula/luna (deg)
     ew  : Elemento w de la partícula/luna (deg)
     mmr : Valor de MMR de la partícula/luna [Optional]
-    -mumoon       : Cociente de masa entre la luna individual y el asteroide
-    -rmoon        : Radio de la luna individual (km).
+    --onlyprint   : No integrar; solo imprimir configuraciones
     -nsim         : Número de simulación [int]
+    -mumoon       : Cociente de masa entre la luna individual y el asteroide
+    -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0
     -datafile     : Nombre de archivo de salida de datos
     --nodataf     : No guardar datos de salida
     -chaosfile    : Nombre de archivo de caos

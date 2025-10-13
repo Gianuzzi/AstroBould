@@ -31,8 +31,8 @@
 # 4    ! total time integrated
 # 5-13 ! initial body: theta (ast), omega (ast), a, e, M, w, MMR, mass, radius
 # 14-22! final body: theta (ast), omega (ast), a, e, M, w, MMR, mass, radius
-# 23-25! a_min, a_max
-# 26-27! e_min, e_max
+# 23-24! a_min, a_max
+# 25-26! e_min, e_max
 
 # Excepto <final_chaos>, el resto de los archivos estarán en carpetas creadas
 # con nombre 'dpi[pid]' asociado al ID del procesador que ejecutó el sistema.
@@ -63,7 +63,7 @@ from concurrent.futures import ProcessPoolExecutor
 program = "ASTROBOULD"  # Nombre del ejecutable
 
 # Configuración de integración #
-workers = 1  # Número de procesadores a usar (workers). -1 para usar todos.
+workers = 4  # Número de procesadores a usar (workers). -1 para usar todos.
 
 # Merge kind
 ## 0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos
@@ -76,12 +76,12 @@ stopif = 0  # Tipo de stop if
 # # Drag parameter
 # drag_eta = 1e-3  # 0 means no drag
 
-# # Linear spin down characteristic timescale. (Time at which spin would be 0.)
+# # Linear spin down characteristic timescale. (Time at which spin would be 0)
 # spin_down_tau = 0  # 0 means no spin down
 
 # Input # ("" o False si no se usa)
 config = "config.ini"  # Archivo de configuración
-bodiesfile = "moons.in"  # Archivo de partículas o lunas
+bodiesfile = "particles.in"  # Archivo de partículas o lunas
 tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 # Output # ("" o False si no se usa)
@@ -89,25 +89,28 @@ new_dir = True  # Directorio donde volcar las salidas.
 datafile = "salida"  # Nombre del archivo de salidas de datos (sin extensión)
 final_chaos = "chaos"  # Final Chaos Output file name (sin extensión)
 suffix = ""  # Suffix for the output files
+# Summary file
+summaryfile = "summary"  # Archivo con resumen de parámetros
 # Screen #
-screen_info = True  # Información en pantalla?
+screen_info = True  # Información en pantalla (para integración individual)
 # Elements #
 elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 
 # Chunk size for cat
 chunk_size = 500  # Chunk size for file concatenation
 
-# Ask for rewriting
-ask_overwrite = False  # Whether to ask (screen) Y/N if needed (overwrite)
 
 # ----------------------------------------------------------------------
 # -------------------- No tocar de aquí en adelante --------------------
 # ----------------------------------------------------------------------
 
+
 # Iniciamos #
+
 
 # Obtener el path actual
 cwd = os.getcwd()
+
 
 # Define work_dir
 if isinstance(new_dir, str):
@@ -117,12 +120,18 @@ elif isinstance(new_dir, bool):
 else:
     raise ValueError("new_dir must be either a string or a boolean")
 
+
 # Redefine datafile if bool
 if isinstance(datafile, bool) and datafile:
+
     datafile = "salida"
 # Redefine final_chaos if bool
 if isinstance(final_chaos, bool) and final_chaos:
+
     final_chaos = "chaos"
+# Redefine summary if bool
+if isinstance(summaryfile, bool) and summaryfile:
+    summaryfile = "summary"
 
 
 # Archivos
@@ -133,10 +142,11 @@ otom = os.path.join(
     cwd, tomfile
 )  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
+
 # Checkeamos los archivos
 # Configuración
 existe_ocini = os.path.isfile(ocini)
-if not existe_ocini and ask_overwrite:
+if not existe_ocini:
     print(f"WARNING: Configuration file {ocini} does not exist.")
     print("         Se utilizarán los parámetros explicitados en el código, ")
     print("          en vez de los de algún archivo de parámetros. ")
@@ -144,34 +154,46 @@ if not existe_ocini and ask_overwrite:
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         print("Saliendo.")
         sys.exit()
+
 # Ejecutable
 if not os.path.isfile(oprogr):
     msg = f"Executable file {oprogr} does not exist."
     raise FileNotFoundError(msg)
+
 # Partículas
 if not os.path.isfile(oparticles):
     msg = f"Particles file {oparticles} does not exist."
     raise FileNotFoundError(msg)
+
 # Tomfile
 existe_otom = os.path.isfile(otom)
 if tomfile and (not existe_otom):
     print(f"ERROR: Tau-Omega-Mass file '{otom}' does not exist.")
     print("Saliendo.")
     sys.exit()
+
 # Datafile
 if datafile is None:
     datafile = ""
+
 # Chaosfile
 if final_chaos is None:
     final_chaos = ""
+
+# Summaryfile
+if summaryfile is None:
+    summaryfile = ""
+
+
 if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
     print(f"WARNING: Chaos Output file '{final_chaos}' already exist.")
     if datafile:
         print(f"  Independently, '{datafile}' will be replaced (if exists).")
-    if ask_overwrite:
-        yes_no = input("Do you want to overwrite it? [y/[n]]: ")
-    else:
-        yes_no = "yes"
+    if summaryfile:
+        print(
+            f"  Independently, '{summaryfile}' will be replaced (if exists)."
+        )
+    yes_no = input("Do you want to overwrite it? [y/[n]]: ")
     if yes_no.lower() not in ["y", "yes", "s", "si"]:
         i = 1
         unique_file = final_chaos
@@ -180,7 +202,9 @@ if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
             i += 1
         final_chaos = unique_file
 
+
 # Checks #
+
 # Si no hay datafile ni final_chaos, entonces no hay nada que hacer
 if (not datafile) and (not final_chaos):
     print(
@@ -286,7 +310,7 @@ args += f" -merge {merge}"
 # if existe_ocini:
 #     with open(ocini, "r") as f:
 #         ocini_lines = f.readlines()
-    
+
 #     # Get drag lines
 #     drag_nline1 = len(ocini_lines) + 1 # In case it does not exist
 #     drag_nline2 = len(ocini_lines) + 2 # In case it does not exist
@@ -296,7 +320,7 @@ args += f" -merge {merge}"
 #             drag_nline1 = nline
 #         elif strp_line.startswith("drag force coefficient"):
 #             drag_nline2 = nline
-    
+
 #     # Get spin-down lines
 #     drag_nline1 = len(ocini_lines) + 1 # In case it does not exist
 #     drag_nline2 = len(ocini_lines) + 2 # In case it does not exist
@@ -529,15 +553,19 @@ def generate_unique_dir(base_dir):
 
 
 if __name__ == "__main__":
+
     if new_simulation and (not os.path.exists(wrk_dir)):
         os.mkdir(wrk_dir)  # Creamos directorio donde volcaremos todo
         print(f"Directory  '{os.path.basename(wrk_dir)}' created")
+
     # Pasamos todo al dir de trabajo (organizado)
     if not os.path.samefile(wrk_dir, cwd) and len(missing_lines) > 0:
+
         # Programa
         nprogr = os.path.join(wrk_dir, program)
+
         # Checkeamos si existe el ejecutable
-        if os.path.isfile(nprogr) and ask_overwrite:
+        if os.path.isfile(nprogr):
             print(f"Executable file '{nprogr}' already exists in {wrk_dir}.")
             print("Do you want to overwrite it?")
             print("If NOT, the existing one will be used.")
@@ -548,12 +576,14 @@ if __name__ == "__main__":
         else:
             # Copiamos el ejecutable
             subprocess.run(["cp", oprogr, nprogr], check=True)
+
         oprogr = nprogr
+
         # Archivo de configuracion inicial
         if existe_ocini:
             ncini = os.path.join(wrk_dir, config)
             # Chequeamos si existe el archivo de configuración
-            if os.path.isfile(ncini) and ask_overwrite:
+            if os.path.isfile(ncini):
                 print(
                     f"Configuration file '{ncini}' "
                     + f"already exists in {wrk_dir}."
@@ -567,11 +597,14 @@ if __name__ == "__main__":
             else:
                 # Copiamos el archivo de configuración
                 subprocess.run(["cp", ocini, ncini], check=True)
+
             ocini = ncini
+
         # Partículas
         nparticles = os.path.join(wrk_dir, bodiesfile)
+
         # Chequeamos si existe el archivo de partículas
-        if os.path.isfile(nparticles) and ask_overwrite:
+        if os.path.isfile(nparticles):
             print(
                 f"Particles file '{nparticles}' "
                 + f"already exists in {wrk_dir}."
@@ -584,30 +617,60 @@ if __name__ == "__main__":
                 subprocess.run(["cp", oparticles, nparticles], check=True)
         else:
             subprocess.run(["cp", oparticles, nparticles], check=True)
+
         oparticles = nparticles
+
         # Archivo TOM
         if existe_otom:
             ntom = os.path.join(wrk_dir, tomfile)
             subprocess.run(["cp", otom, ntom], check=True)
             otom = ntom
+
+    # Creamos archivo de resumen si es necesario
+    if summaryfile:
+        try:
+            tmp_args = args.replace(" --noscreen", "")
+            with open(summaryfile, "w") as f:
+                p = subprocess.run(
+                    [f"./{program} {tmp_args} --onlyprint"],
+                    cwd=wrk_dir,
+                    check=False,
+                    shell=True,
+                    stdout=f,
+                    stderr=f,
+                )
+                p.check_returncode()
+                print("")
+                print(f"Summary file '{summaryfile}' created.\n")
+        except subprocess.CalledProcessError as e:
+            print(f"The summary file creation has failed.")
+            print(f"Error: {e}")
+
+    # Checkeamos si faltan e integramos
     if len(missing_lines) > 0:
+
         with ProcessPoolExecutor(max_workers=workers) as executor:
             results = executor.map(integrate_n, missing_lines)
+
         # Check if all results are True
         if not all(results):
             print("Some systems failed to integrate.")
             print("Will not create chaos or data files.")
             sys.exit(1)
+
         # Check if all systems were integrated, using the done.txt files
         done = make_done(wrk_dir, pref)
+
         if len(done) != ntot:
             print(
                 "WARNING: Not all systems were integrated. "
                 + "Will not create chaos or data files."
             )
             sys.exit(1)
+
     # Creamos el archivo de caos
     if final_chaos:
+
         print("")
         print(f"Creando archivo de caos '{final_chaos}.out'")
         if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
@@ -615,5 +678,7 @@ if __name__ == "__main__":
                 "WARNING: Se ha reemplazando archivo "
                 + f"{final_chaos}.out ya existente."
             )
+
         make_chaos(final_chaos, suffix)
+
     print("LISTO!")

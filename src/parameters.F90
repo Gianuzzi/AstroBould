@@ -20,6 +20,7 @@ module parameters
     integer(kind=4) :: available_threads = 1  ! Available threads to use
     integer(kind=4) :: my_threads = 1  ! Amount of threads actually used
     logical :: compiled_with_openmp = .False.  ! Flag of compile with OpenMP
+    logical :: any_extra_effect = .False.  ! If any extra is loaded. Just for message.
 
 
     !! ----  <<<<<    BODIES (bodies)     >>>>>   -----
@@ -33,6 +34,8 @@ module parameters
     
     !! ----  <<<<<    GENERAL PARAMETERS     >>>>>   -----
     type :: input_params_st  !!! This contains only the input parameters
+        ! Something to do?
+        logical :: only_print = .False.    
         ! Times for the integration - 
         real(kind=8) :: final_time = cero
         real(kind=8) :: output_timestep = cero
@@ -364,6 +367,8 @@ module parameters
                     end if
                     call get_command_argument(i, aux_character30)
                     select case (trim(aux_character30))
+                    case ("--onlyprint")
+                        params%only_print = .True.
                     case ("-nsim")
                         call get_command_argument(i+1, aux_character20)
                         read (aux_character20,*) simulation_number  ! Global variable
@@ -492,7 +497,7 @@ module parameters
                             write(*,*) "ERROR: Stop criteria not recognized: ", stop_type
                             stop 1
                         end if
-                    aux_integer = 1
+                        aux_integer = 1
                     case ("-parallel")
                         params%use_parallel = .True.
                         call get_command_argument(i+1, aux_character20)
@@ -511,10 +516,11 @@ module parameters
                         write(*,*) "    ee  : Elemento e de la partícula/luna"
                         write(*,*) "    eM  : Elemento M de la partícula/luna (deg)"
                         write(*,*) "    ew  : Elemento w de la partícula/luna (deg)"
-                        write(*,*) "    eR  : Elemento R de la partícula/luna [Optional]"
+                        write(*,*) "    eR  : Elemento R de la partícula/luna [Opcional]"
+                        write(*,*) "    --onlyprint   : No integrar; solo imprimir configuraciones"
+                        write(*,*) "    -nsim         : Número de simulación [int]"
                         write(*,*) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
                         write(*,*) "    -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0"
-                        write(*,*) "    -nsim         : Número de simulación [int]"
                         write(*,*) "    -datafile     : Nombre de archivo de salida de datos"
                         write(*,*) "    --nodataf     : No guardar datos de salida"
                         write(*,*) "    -chaosfile    : Nombre de archivo de caos"
@@ -525,8 +531,8 @@ module parameters
                         write(*,*) "    --noperc      : No imprimir porcentaje de integración"
                         write(*,*) "    --datascr     : Imprimir datos de salida en pantalla"
                         write(*,*) "    --nodatascr   : No imprimir datos de salida en pantalla"
-                        write(*,*) "    --diagnostic  : Imprimir datos de diagnostico en pantalla"
-                        write(*,*) "    --nodiagnostic: No imprimir datos de diagnostico en pantalla"
+                        write(*,*) "    --diagnostic  : Imprimir datos de diagnóstico en pantalla"
+                        write(*,*) "    --nodiagnostic: No imprimir datos de diagnóstico en pantalla"
                         write(*,*) "    -multifile    : Nombre base de archivo de salida de datos individuales"
                         write(*,*) "    --nomultif    : No guardar datos en archivos individuales"
                         write(*,*) "    -mapfile      : Nombre de archivo de mapa"

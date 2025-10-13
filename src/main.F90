@@ -33,6 +33,9 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (.not. use_configfile) then ! Usaremos parámetros por defecto
+
+        ! Solo imprimir? O integrar
+        input%only_print = .False.
         
         ! Asteroide central
         !! Primary mass
@@ -193,6 +196,10 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!! EXTRA ARGUMENTS AND DERIVED !!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
 
     ! Load command line arguments
     call load_command_line_arguments(input, use_configfile)
@@ -216,8 +223,7 @@ program main
     ! Init derived parameters
     sim%input_params_st = input ! Create sim with input parameters
     call set_derived_parameters(sim) ! Inicializamos parámetros derivados
-    if (sim%use_screen) unit_file = 6  ! Unit_file to std out ( for collisions and escapes )
-
+    if (sim%use_screen) unit_file = 6  ! Unit_file to std out (for collisions and escapes)
     
     ! <> Check Output
 
@@ -235,8 +241,14 @@ program main
             stop 1
         else 
             write(*,*)  "WARNING: No integration to be done. Just printing information on screen."
+            ! Re-set only_print if not set
+            sim%only_print = .True.
         end if
     end if
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!! READ BODIES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     
     ! <> Check Bodies
@@ -341,25 +353,23 @@ program main
 
     !! Check
     if (sim%Ntotal - 1 == 0) then ! No Hay partículas para integrar?
-        if (.not. sim%use_potential_map) then
+        if (.not. (sim%use_potential_map .or. sim%only_print)) then
             write(*,*) ACHAR(10)
-            write(*,*)  "EXITING: No moon/particle to integrate."
+            write(*,*)  "EXITING: No moons/particles to integrate."
             stop 1
-        end if
-        only_potential_map = .True.  ! Global
-        if (sim%use_screen) then
-            write(*,*)  "WARNING: Performing only potential map calculation."
+        else if (sim%use_potential_map .and. .not. sim%only_print) then
+            only_potential_map = .True.  ! Global
+            if (sim%use_screen) then
+                write(*,*)  "WARNING: Performing only potential map calculation."
+            write(*,*) ACHAR(5)
+            end if
         end if
     end if
-
-    if ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial)) then
-        write(*,*) "WARNING: No boulders to integrate. Rotation effects dissabled."
-    end if
-    
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!  Parallel  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         if (sim%use_parallel) then
@@ -368,17 +378,17 @@ program main
             write(*,s1i1) "  Requested threads:", sim%requested_threads
             write(*,s1i1) "  Used threads     :", my_threads
         else
-            write(*,*) " Serial integration (No parallel)"
+            write(*,*) "Serial integration (No parallel)"
         end if
         write(*,*) ACHAR(5)
     end if
     
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!! COMIENZO DE CÁLCULOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!! CONFIGURATION !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (sim%use_screen) then
-        write(*,s1i1) "Starting simulation number: ", simulation_number
+        write(*,s1i1) "Configurating simulation number: ", simulation_number
         write(*,*) ACHAR(5)
         write(*,*) "---------- Initial parameters ----------"
         write(*,*) ACHAR(5)
@@ -405,6 +415,7 @@ program main
                         & boulders_in(i,3) * radian)       ! theta
     end do
 
+
     !!!!!!!!!!!!!! Moons !!!!!!!!!!!!!!
 
     call allocate_moons(moons_arr, sim%Nmoons)
@@ -418,6 +429,7 @@ program main
                      & moons_in(i,6), &              ! MMR
                      & moons_in(i,7) * unit_dist)    ! radius
     end do
+
 
     !!!!!!!!!!!!!! Particles !!!!!!!!!!!!!
 
@@ -445,6 +457,11 @@ program main
     
     ! Asteroid
     if (sim%use_screen) then
+        if ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial)) then
+            write(*,*) "WARNING: No boulders or triaxial shape to integrate. "
+            write(*,*) "         Rotation is considered just to define initial parameters."
+            write(*,*) ACHAR(5)
+        end if
         write(*,*) "Asteroid Rotation:"
         write(*,s1r1) "  a_corot               :", system%asteroid%a_corotation / unit_dist, "[km]"
         write(*,s1r1) "  omega                 :", system%asteroid%omega * unit_time, "[rad day⁻¹]"
@@ -452,14 +469,34 @@ program main
         write(*,s1r1) "  lambda_kep            :", system%asteroid%lambda_kep
         write(*,s1r1) "  Period                :", system%asteroid%rotational_period * 24 * unit_time, "[hs]"
         write(*,s1r1) "  Inertial momentum     :", system%asteroid%inertia / (unit_mass * unit_dist**2), "[kg km²]"
-        write(*,s1r1) "  Angular momentum (rot):", system%asteroid%ang_mom_rot / unit_mass / &
-                                    & (unit_dist**2) * unit_time, "[kg km² day⁻¹]"
+        write(*,s1r1) "  Angular momentum (rot):", system%asteroid%ang_mom_rot / unit_angm, "[kg km² day⁻¹]"
         write(*,*) ACHAR(5)
-        if ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial)) then
-            write(*,*) "Rotation is considered just to define initial parameters."
+        write(*,s1r1) " Asteroid mass: ", asteroid%mass / unit_mass, "[kg]"
+        write(*,*) ACHAR(5)
+    end if
+
+
+    !! Tri-axial
+    if (sim%use_triaxial) then
+        if (sim%use_screen) then
+            write(*,*) "Asteroid tri-axial potential"
+            write(*,s1r1) " semi-axis-a :", sim%triax_a_primary, "[km]"
+            write(*,s1r1) " semi-axis-b :", sim%triax_b_primary, "[km]"
+            write(*,s1r1) " semi-axis-c :", sim%triax_c_primary, "[km]"
+            write(*,s1r1) "  Effective Radius :", sim%Reffective, "[km]"
+            write(*,s1r1) "  C_20:", sim%C20
+            write(*,s1r1) "  C_22:", sim%C22
             write(*,*) ACHAR(5)
         end if
     end if
+
+
+    ! < Message >
+    if (sim%use_screen) then
+        write(*,*) "System comfiguration:"
+        write(*,*) ACHAR(5)
+    end if
+
 
     ! Individual boulder positions
     allocate(boulders_coords(0:sim%Nboulders, 4))
@@ -477,6 +514,7 @@ program main
         write(*,*) ACHAR(5)
     end if
 
+
     ! Moons positions
     if (sim%use_screen .and. sim%use_moons) then
         write(*,*) "   Barycentric moons: [x, y, vx, vy, mass, distance]"
@@ -490,6 +528,7 @@ program main
         write(*,*) ACHAR(5)
     end if
 
+
     ! Particles positions
     if (sim%use_screen .and. sim%use_particles) then
         write(*,*) "   Barycentric particles: [x, y, vx, vy, distance]"
@@ -502,13 +541,15 @@ program main
         write(*,*) ACHAR(5)
     end if
 
+
     ! Energy and ang_mom
     if (sim%use_screen) then
-        write(*,s1r1) "   Mass            : ", system%mass / unit_mass, "[kg]"
-        write(*,s1r1) "   Energy          : ", system%energy / unit_ener * (metro**2 / segundo), "[J]"
-        write(*,s1r1) "   Angular Momentum: ", system%ang_mom / unit_angm * (metro**2 / segundo**2), "[J s⁻¹]"
+        write(*,s1r1) "  Total mass            : ", system%mass / unit_mass, "[kg]"
+        write(*,s1r1) "  Total energy          : ", system%energy / unit_ener * (metro**2 / segundo), "[J]"
+        write(*,s1r1) "  Total angular momentum: ", system%ang_mom / unit_angm * (metro**2 / segundo**2), "[J s⁻¹]"
         write(*,*) ACHAR(5)
     end if
+
 
     ! <<<< Save initial data >>>>
     initial_system = system
@@ -534,34 +575,32 @@ program main
     end if
 
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!! EXTERNAL EFFECTS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXTRA EFFECTS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
-        write(*,*) ("---------- External/Internal forces ----------")
+        write(*,*) ("---------- External / Internal forces ----------")
         write(*,*) ACHAR(5)
     end if
 
     !! <<<< Tri-axial gravity >>>>
     if (sim%use_triaxial) then
         call init_ellipsoid(sim%triax_a_primary * unit_dist, sim%triax_b_primary * unit_dist, sim%triax_c_primary * unit_dist)
-        if (sim%use_screen) then
-            write(*,*) "Tri-axial potential"
-            write(*,s1r1) "  semi-axis-a :", sim%triax_a_primary, "[km]"
-            write(*,s1r1) "  semi-axis-b :", sim%triax_b_primary, "[km]"
-            write(*,s1r1) "  semi-axis-c :", sim%triax_c_primary, "[km]"
-            write(*,s1r1) "   Effective Radius :", sim%Reffective, "[km]"
-            write(*,s1r1) "   C_20:", sim%C20
-            write(*,s1r1) "   C_22:", sim%C22
-            write(*,*) ACHAR(5)
-        end if
     end if
 
+
+
     !! <<<< Moons gravity >>>>
-    if ((.not. sim%use_moon_gravity) .and. sim%use_screen .and. sim%Nmoons > 0) then
-        write(*,*) "Gravity between moons DEACTIVATED."
-        write(*,*) ACHAR(5)
+    if ((.not. sim%use_moon_gravity) .and. sim%Nmoons > 0) then
+        if (sim%use_screen) then
+            write(*,*) "Gravity between moons DEACTIVATED."
+            write(*,*) ACHAR(5)
+        end if
+        any_extra_effect = .True.
     end if
+
 
     !! <<<< Omega Damping >>>>
     if (sim%use_omega_damping .and. ((.not. sim%use_boulders) .and. (.not. sim%use_triaxial))) then
@@ -576,7 +615,7 @@ program main
                             & 1)
             if (sim%use_screen) then
                 write(*,*) "Omega Damping: linear"
-                write(*,s1r1) " tau_o :", sim%omega_lin_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"
+                write(*,s1r1) "  tau_o :", sim%omega_lin_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"
                 write(*,*) ACHAR(5)
             end if
         else if (sim%use_exp_omega_damp) then
@@ -586,7 +625,7 @@ program main
                             & 2)
             if (sim%use_screen) then
                 write(*,*) "Omega Damping: exponential"
-                write(*,s1r1) " tau_o :", sim%omega_exp_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"
+                write(*,s1r1) "  tau_o :", sim%omega_exp_damping_time / (system%asteroid%rotational_period / unit_time), "[Prot]"
                 write(*,*) ACHAR(5)
             end if
         else if (sim%use_poly_omega_damp) then
@@ -601,8 +640,14 @@ program main
                 write(*,s1r1) "  B :", sim%omega_exp_damp_poly_B
                 write(*,*) ACHAR(5)
             end if
+        else 
+            write(*,*) ACHAR(10)
+            write(*,*) "ERROR: Can not identify omega damping model."
+            stop 1
         end if
+        any_extra_effect = .True.        
     end if
+
 
     !! <<<< Stokes >>>>
     if (sim%use_stokes) then
@@ -611,27 +656,48 @@ program main
                        & sim%stokes_active_time * unit_time)
         if (sim%use_screen) then
             write(*,*) "Stokes"
-            write(*,s1r1) " tau_a   : ", sim%stokes_a_damping_time, "[days]"
-            write(*,s1r1) " tau_e   : ", sim%stokes_e_damping_time, "[days]"
-            write(*,s1r1) " t_stokes: ", sim%stokes_active_time, "[days]"
+            write(*,s1r1) "  tau_a   : ", sim%stokes_a_damping_time, "[days]"
+            write(*,s1r1) "  tau_e   : ", sim%stokes_e_damping_time, "[days]"
+            write(*,s1r1) "  t_stokes: ", sim%stokes_active_time, "[days]"
             write(*,*) ACHAR(5)
         end if
+        any_extra_effect = .True. 
     end if
+
 
     !! <<<< Naive-Stokes (Drag) >>>>
     if (sim%use_drag) then
         call init_drag(sim%drag_coefficient, sim%drag_active_time * unit_time)
         if (sim%use_screen) then
             write(*,*) "Drag"
-            write(*,s1r1) " eta   : ", sim%drag_coefficient
-            write(*,s1r1) " t_drag: ", sim%drag_active_time, "[days]"
+            write(*,s1r1) "  eta   : ", sim%drag_coefficient
+            write(*,s1r1) "  t_drag: ", sim%drag_active_time, "[days]"
             write(*,*) ACHAR(5)
         end if
+        any_extra_effect = .True. 
     end if
 
-    !!!!!!!!!!!!!!!!!!!!!!!!  Escape/Colisión !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    ! Escape/Colisión
+    
+    ! Final message
+    if (sim%use_screen .and. .not. any_extra_effect) then
+        write(*,*) "No extra internal / external effects activated."
+        write(*,*) ACHAR(5)
+    end if
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!! ESCAPES /COLLISIONS !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    if (sim%use_screen) then
+        write(*,*) ACHAR(5)
+        write(*,*) ("---------- Escapes / Collisions parameters ----------")
+        write(*,*) ACHAR(5)
+    end if
+
+
+    ! <<<< Escape/Colisión >>>>
     if (sim%min_distance < cero) then
         sim%min_distance = system%asteroid%radius * abs(sim%min_distance)
     else if (sim%min_distance < tini) then
@@ -650,30 +716,41 @@ program main
         stop 1
     end if
     if (sim%use_screen) then
-        write(*,*) "Conditions for escape/collision"
-        write(*,s1r1) "  rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
+        write(*,*) "Conditions for escape / collision"
+        write(*,s1r1) "   rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
         if (sim%max_distance > cero) then
-            write(*,s1r1) "  rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
+            write(*,s1r1) "   rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
         else
-            write(*,*) "  rmax : Infinity"
+            write(*,*) "   rmax : Infinity"
         end if
-        if (sim%use_merge_part_mass) then
-            write(*,*) " Colliding particles into massive bodies will be removed."
-        else
-            write(*,*) " Colliding particles into massive bodies will stop the integration."
-        end if
-        if (sim%eta_col .eq. uno) then
-            if (sim%use_merge_massive) then
-                write(*,*) " Colliding massive bodies will be merged."
+        write(*,*) ACHAR(5)
+        if (sim%use_particles) then
+            if (sim%use_merge_part_mass) then
+                write(*,*) "Colliding particles into massive bodies will be removed."
             else
-                write(*,*) " Colliding massive bodies will stop the integration."
+                write(*,*) "Colliding particles into massive bodies will stop the integration."
             end if
-        else
-            write(*,s1r1) " Massive bodies collisional factor:", sim%eta_col
+            write(*,*) ACHAR(5)
+        end if
+        if (sim%use_moons) then
+            if (sim%eta_col .eq. uno) then
+                if (sim%use_merge_massive) then
+                    write(*,*) "Colliding massive bodies will be merged."
+                else
+                    write(*,*) "Colliding massive bodies will stop the integration."
+                end if
+            else
+                write(*,s1r1) " Massive bodies collisional factor:", sim%eta_col
+            end if
+            write(*,*) ACHAR(5)
         end if
         if (sim%use_any_stop) then
-            if (sim%use_stop_no_part_left) write(*,*) " Simulation will stop if no more particles are left."
-            if (sim%use_stop_no_moon_left) write(*,*) " Simulation will stop if no more moons are left."
+            if (sim%use_stop_no_part_left .and. sim%use_particles) then
+                write(*,*) " Simulation will stop if no more particles are left."
+            end if
+            if (sim%use_stop_no_moon_left .and. sim%use_moons) then
+                write(*,*) " Simulation will stop if no more moons are left."
+            end if
         else
             write(*,*) "Simulation will stop if no more particles and moons are left."
         end if
@@ -681,8 +758,13 @@ program main
     end if
 
 
-    !!!!!!!!!!!!!!!!!!!!! MAPA Potencial y Aceleraciones !!!!!!!!!!!!!!!!!!!!!!
-    if (sim%use_potential_map) then
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! MAPS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+    if (sim%use_potential_map .and. .not. sim%only_print) then
         if (sim%use_screen) then
             write(*,*) ACHAR(5)
             write(*,*) "---------- MAP (Gravitational Energy and Acceleration) ----------"
@@ -695,18 +777,13 @@ program main
             write(*,*) ACHAR(5)
         end if
     end if
-    if (only_potential_map) then  ! Global
+    if (only_potential_map .and. .not. sim%only_print) then  ! Global
         if (sim%use_screen) then
             write(*,*) "END: Only the Map was requested."
             write(*,*) ACHAR(5)
         end if
         stop 0
     end if
-    
-
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!! FIN DE CÁLCULOS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -716,17 +793,18 @@ program main
     ! Mensaje
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
-        write(*,*) "---------- Preparing integration ----------"
+        write(*,*) "---------- Times ----------"
         write(*,*) ACHAR(5)
     end if
 
 
     !!!!!!!! TIEMPOS !!!!!!!
 
-    ! Tiempos de integración
+    ! <<<< Tiempos de integración >>>>
     if (sim%final_time < cero) then
         if (abs(system%asteroid%rotational_period) < tini) then
-            write(*,*) "ERROR: Can not calculate total integration time with non-rotating asteroid."
+            write(*,*) "WARNING: Setting total integration time with non-rotating asteroid."
+            write(*,*) ACHAR(5)
         end if
         sim%final_time = abs(sim%final_time) * system%asteroid%rotational_period
     else
@@ -739,15 +817,18 @@ program main
         stop 1
     end if
 
-    !! Timesteps
+
+    !! <<<< Timesteps >>>>
     sim%output_timestep = sim%output_timestep * unit_time
     min_timestep = min_timestep * unit_time ! Global
 
-    !! Output times
+
+    !! <<<< Output times >>>>
     call set_output_times(cero, sim%final_time, sim%output_number, &
                         & sim%output_timestep, sim%case_output_type, output_times)
 
-    !! TOMFILE
+
+    !! <<<< TOMFILE >>>>
     if (sim%use_tomfile) then
 
         call setup_TOM(tom, sim%tomfile, sim%final_time / unit_time, sim%use_screen)
@@ -785,7 +866,8 @@ program main
 
     end if
 
-    !! Extra checkpoint times
+
+    !! <<<< Extra checkpoint times >>>>
     if (sim%extra_checkpoints > 0) then
 
         ! Get expected new amount of checkpoints
@@ -798,12 +880,12 @@ program main
         call expand_checkpoints(aux_1D, checkpoint_times, checkpoint_is_output, checkpoint_is_tom, sim%checkpoint_number)
 
         ! Message
-        if (sim%use_screen) write(*,*) "Checkpoint times amount expanded."
+        if (sim%use_screen) write(*,s1r1) "Checkpoint times amount expanded. Total:", sim%checkpoint_number
 
     end if
 
 
-    ! Variable temporal (para integración)
+    ! <<<<  Variables temporales (para integración) >>>>
     time = cero ! Tiempo actual
     timestep = checkpoint_times(1) ! Paso de tiempo inicial
     min_timestep = max(min(min_timestep, min(timestep, sim%output_timestep)), tini) ! Paso de tiempo mínimo
@@ -823,23 +905,25 @@ program main
         adaptive_timestep = adaptive_timestep * unit_time
     end if
 
+
     !! Mensaje
     if (sim%use_screen) then
         write(*,*) "Times:"
         if (system%asteroid%rotational_period > tini) then
-            write(*,s1r1) "    tf    : ", sim%final_time / system%asteroid%rotational_period, "[Prot] = ", &
+            write(*,s1r1) "  tf    : ", sim%final_time / system%asteroid%rotational_period, "[Prot] = ", &
             & sim%final_time / unit_time, "[day]"
-            write(*,s1r1) "    dt_out: ", sim%output_timestep / system%asteroid%rotational_period, "[Prot] = ", &
+            write(*,s1r1) "  dt_out: ", sim%output_timestep / system%asteroid%rotational_period, "[Prot] = ", &
             & sim%output_timestep / unit_time, "[day]"
-            write(*,s1r1) "    dt_min: ", min_timestep / system%asteroid%rotational_period, "[Prot] = ", &
+            write(*,s1r1) "  dt_min: ", min_timestep / system%asteroid%rotational_period, "[Prot] = ", &
             & min_timestep / unit_time, "[day]"
         else 
-            write(*,s1r1) "    tf    : ", sim%final_time / unit_time, "[day]"
-            write(*,s1r1) "    dt_out: ", sim%output_timestep / unit_time, "[day]"
-            write(*,s1r1) "    dt_min: ", min_timestep / unit_time, "[day]"
+            write(*,s1r1) "  tf    : ", sim%final_time / unit_time, "[day]"
+            write(*,s1r1) "  dt_out: ", sim%output_timestep / unit_time, "[day]"
+            write(*,s1r1) "  dt_min: ", min_timestep / unit_time, "[day]"
         end if
-        write(*,s1i1) "    n_out         : ", sim%output_number
-        write(*,s1i1) "    n_checkpoints : ", sim%checkpoint_number
+        write(*,*) ACHAR(5)
+        write(*,s1i1) "  n_out         : ", sim%output_number
+        write(*,s1i1) "  n_checkpoints : ", sim%checkpoint_number
         write(*,*) ACHAR(5)
     end if
 
@@ -849,100 +933,43 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!! Integration Arrays !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    ! Allocate
+
+    ! <<<< Allocate >>>>
     allocate(m_arr(sim%Ntotal))  ! Masses
     allocate(R_arr(sim%Ntotal))  ! Radii
     allocate(y_arr(2 + sim%Ntotal * 4))     ! Theta, Omega, Positions
     allocate(y_arr_new(2 + sim%Ntotal * 4)) ! Theta, Omega, Positions
     allocate(y_der(2 + sim%Ntotal * 4))     ! derivate(Theta, Omega, Positions)
 
-    ! Init to 0
+    ! <<<< Init to 0 >>>>
     m_arr = cero
     R_arr = cero
     y_arr = cero
     y_arr_new = cero
     y_der = cero
 
-    ! get amount of values of Y to use
+    ! <<<< Amount of values of Y to use >>>>
     y_nvalues = get_index(sim%Nactive) + 3  ! Update nvalues to use in y
 
-    ! Get Arrays to integrate
+    ! <<<< Arrays to integrate >>>>
     call center_sytem(system)
     call generate_arrays(system, m_arr, R_arr, y_arr)
 
-    ! CHECKS
-    if (sim%use_screen) then
-        write(*,*) ACHAR(5)
-        write(*,*) "---------- FINAL CHECKS ----------"
-        write(*,*) ACHAR(5) 
-    end if
-
-    !!! Check workers
-    if (sim%use_parallel) then
-        aux_int = MIN(MAX(sim%Ntotal, 3), my_threads)
-        if (aux_int .ne. my_threads) then
-            my_threads = aux_int
-            !$ call OMP_SET_NUM_THREADS(my_threads)
-            if (sim%use_screen) write(*,*) "WARNING: Se usarán ", my_threads, " hilos para la integración."
-        end if
-    end if
-
-
-    !!!! Mensaje
-    if (sim%use_screen .and. (sim%error_tolerance <= 1.d-16)) write(*,*) " WARNING: e_tol might be too low (<= 10⁻¹⁶)"
-
-
-    !!!! Ahora si, si no hay que hacer más nada entonces terminamos.
-    if (.not. any((/sim%use_datascreen, sim%use_datafile, sim%use_chaosfile, & 
-                  & sim%use_potential_map, sim%use_multiple_outputs/))) then ! No tiene sentido hacer nada
-        write(*,*) ACHAR(10)
-        write(*,*) "As nothing will be stored, there is no integration."
-        write(*,*) "Exiting."
-        stop 1
-    end if
-
-    !!! Check if not too much multiple files
-    if (sim%use_multiple_outputs) then
-        if (sim%Ntotal > 1000) then
-            write(*,*) ACHAR(5)
-            write(*,*) "WARNING: More than 1000 output files will be created."
-            write(*,*) "         This could generate an issue."
-            write(*,*) "Do you wish to continue? (y/[N])"
-            read(*,*) aux_character20
-            aux_character20 = adjustl(aux_character20)
-            aux_character1 = aux_character20(1:1)   
-            if (index("YySs", aux_character1) /= 0) then
-                write(*,*) "Exiting."
-                stop 1
-            else if (sim%use_screen) then
-                    write(*,*) "Resuming..."
-                    write(*,*) ACHAR(5)
-            end if
-        end if
-    end if
-
-    !!! Mensaje
-    if (sim%use_screen) then
-        if (sim%use_datafile) write(*,*) "General output file: ", trim(sim%datafile)
-        if (sim%use_multiple_outputs) write(*,*) "Individuals output files: ", trim(sim%multfile) // "_*"
-        if (sim%use_datascreen) then
-            write(*,*) "Data will be printed on screen."
-        else 
-            write(*,*) "Data will not be printed on screen."
-        end if
-        write(*,*) ACHAR(5)
-        write(*,*) "FINAL CKECHS OK"
-        write(*,*) ACHAR(5)
-    end if
-
-    ! Free initial arrays
-    call free_initial_arays()
-
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!     FILTERING      !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! FILTER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+
+
+    ! Mensaje
+    if (sim%use_screen) then
+        write(*,*) ACHAR(5)
+        write(*,*) "---------- Filter settings ----------"
+        write(*,*) ACHAR(5)
+    end if
+
+    ! <<<< SET UP FILTER >>>>
     if (sim%use_filter) then
         ! Create aux system
         system_filtered = system
@@ -974,12 +1001,12 @@ program main
 
         ! CHECK
         if (filter%dt * filter%size > sim%final_time) then
-            write(*,*) "ERROR: Filter has more time window than simulation final time."
+            write(*,*) ACHAR(10)
+            write(*,*) "ERROR: Filter has more window timespan than simulation final time."
             stop 1
         end if
 
         if (sim%use_screen) then
-            write(*,*) ACHAR(5)
             write(*,*) "Filter ON"
             write(*,s1r1) "  dt    :", filter%dt / system%asteroid%omega, "[Prot] = ", &
                           & filter%dt / unit_time, "[day]"
@@ -991,11 +1018,126 @@ program main
             write(*,*) ACHAR(5)
         end if
     
-    else if (sim%use_screen) then
-        write(*,*) ACHAR(5)
+    else if (sim%use_screen) then  ! NO FILTER
         write(*,*) "Filter OFF"
         write(*,*) ACHAR(5)
     end if
+
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! OUTPUT  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+    if (sim%use_screen) then
+        write(*,*) ACHAR(5)
+        write(*,*) "---------- OUTPUT ----------"
+        write(*,*) ACHAR(5) 
+    end if
+
+    !!!! Ahora si, si no hay que hacer más nada entonces terminamos.
+    if (.not. any((/sim%use_datascreen, sim%use_datafile, sim%use_chaosfile, & 
+                  & sim%use_potential_map, sim%use_multiple_outputs/))) then ! No tiene sentido hacer nada
+        write(*,*) ACHAR(10)
+        write(*,*) "As nothing will be stored, there is no integration."
+        write(*,*) "Exiting."
+        stop 1
+    end if
+
+
+    !!! Check if not too much multiple files
+    if (sim%use_multiple_outputs) then
+        if (sim%Ntotal > 1000) then
+            write(*,*) ACHAR(5)
+            write(*,*) "WARNING: More than 1000 output files will be created."
+            write(*,*) "         This could generate an issue."
+            write(*,*) "Do you wish to continue? (y/[N])"
+            read(*,*) aux_character20
+            aux_character20 = adjustl(aux_character20)
+            aux_character1 = aux_character20(1:1)   
+            if (index("YySs", aux_character1) /= 0) then
+                write(*,*) "Exiting."
+                stop 1
+            else if (sim%use_screen) then
+                    write(*,*) "Resuming..."
+                    write(*,*) ACHAR(5)
+            end if
+        end if
+    end if
+
+
+    !!! Mensaje
+    if (sim%use_screen) then
+        if (sim%use_datafile) write(*,*) "General output file: ", trim(sim%datafile)
+        if (sim%use_multiple_outputs) write(*,*) "Individuals output files: ", trim(sim%multfile) // "_*"
+        write(*,*) ACHAR(5)
+        if (sim%use_datascreen) then
+            write(*,*) "Data will be printed on screen."
+        else 
+            write(*,*) "Data will not be printed on screen."
+        end if
+        write(*,*) ACHAR(5)
+    end if
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!! FINAL CHECKS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+    if (sim%use_screen) then
+        write(*,*) ACHAR(5)
+        write(*,*) "---------- FINAL CHECKS ----------"
+        write(*,*) ACHAR(5) 
+    end if
+
+    !!! <<<< Check workers >>>>
+    if (sim%use_parallel) then
+        aux_int = MIN(MAX(sim%Ntotal, 3), my_threads)
+        if (aux_int .ne. my_threads) then
+            my_threads = aux_int
+            !$ call OMP_SET_NUM_THREADS(my_threads)
+            if (sim%use_screen) write(*,*) "WARNING: ", my_threads, " threads will be used for integration."
+        end if
+    end if
+
+
+    !!!! Mensaje
+    if (sim%use_screen) then
+        if (sim%error_tolerance <= 1.d-16) write(*,*) " WARNING: e_tol might be too low (<= 10⁻¹⁶)"
+        write(*,*) ACHAR(5)
+        write(*,*) "FINAL CKECHS OK"
+        write(*,*) ACHAR(5)
+    end if
+
+
+
+    ! <<<< Free initial arrays >>>>
+    call free_initial_arays()
+
+
+
+    !! <<<< CHECK IF GO ON >>>>
+    if (sim%only_print) then
+        if (sim%use_screen) then
+            write(*,*) ACHAR(5)
+            write(*,*) "Only printing was requested. No integration to perform."
+            write(*,*) "Exiting."
+            write(*,*) ACHAR(5)
+        end if
+        stop 0
+    end if
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Integration  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1009,11 +1151,12 @@ program main
         write(*,*) ACHAR(5) 
     end if
 
-    ! Inicializamos Punteros
+    ! <<<< Inicializamos Punteros >>>>
     call define_writing_pointers(sim)
 
     
-    ! ABRIMOS ARCHIVOS
+    ! <<<< ABRIMOS ARCHIVOS >>>>
+
 
     !! Archivo de salida general
     if (sim%use_datafile) open (unit=20, file=trim(sim%datafile), status='replace', action='write', position="append")
@@ -1854,10 +1997,12 @@ subroutine create_map(sim, system)
 
     !!! Check
     if ((sim%map_grid_size_x < 2) .or. (sim%map_grid_size_y < 2)) then
+        write(*,*) ACHAR(10)
         write(*,*) "ERROR: Check that (ngx > 2) and (ngy > 2)"
         stop 1
     end if
     if ((sim%map_min_x >= sim%map_max_x) .or. (sim%map_min_y >= sim%map_max_y)) then
+        write(*,*) ACHAR(10)
         write(*,*) "ERROR: Check that (xmin < xmax) and (ymin < ymax)"
         stop 1
     end if
