@@ -57,7 +57,7 @@ module derivates
             integer(kind=4) :: j, jdx
             integer(kind=4) :: N_total, last_moon
             real(kind=8) :: c2th, s2th  ! For triaxial
-            real(kind=8) :: Q_param_eff, dQdx, dQdy  ! For triaxial
+            real(kind=8) :: Q_eff, dQdx, dQdy  ! For triaxial
             real(kind=8) :: inv_dr, inv_dr2, inv_dr3  ! For triaxial
             real(kind=8) :: theta_moon  ! For triaxial
             real(kind=8) :: Gmast, Gmcomb  ! For extra/COM forces
@@ -143,24 +143,24 @@ module derivates
                 ! ---> Triaxial <---
                 if (use_ellipsoid) then
                     inv_dr2 = inv_dr3 * dr
-                    ! Q_param = (x²-y²) cos(2th) + 2xy sin(2th)
-                    ! Q_param_eff = 5 * Q_param / r⁴
-                    Q_param_eff = ((dr_vec(1)**2 - dr_vec(2)**2) * c2th + &
-                                 & dos * dr_vec(1) * dr_vec(2) * s2th) * 5.d0 * inv_dr2 * inv_dr2
+                    ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
+                    ! Q_eff = 5 Q / r⁴
+                    Q_eff = 5.d0 * ((dr_vec(1)**2 - dr_vec(2)**2) * c2th &
+                                    & + dos * dr_vec(1) * dr_vec(2) * s2th) * inv_dr2 * inv_dr2
                     dQdx = dos * (dr_vec(1) * c2th + dr_vec(2) * s2th)  ! 2x cos(2th) + 2y sin(2th)
                     dQdy = - dos * (dr_vec(2) * c2th - dr_vec(1) * s2th)  ! - 2y cos(2th) + 2x sin(2th)
 
-                    ! a_unit_massx = G (x / r³ - K x / r⁵ + L (dQ/dx / r⁵ - x 5 Q / r⁷))
-                    ! a_unit_massy = G (y / r³ - K y / r⁵ + L (dQ/dy / r⁵ - y 5 Q / r⁷))
-                    acc_grav_m(1) = (G * inv_dr3) * &
-                                    & (dr_vec(1) - &
-                                    &  K_coef * dr_vec(1) * inv_dr2 + &
-                                    &  L_coef * (dQdx * inv_dr2 - dr_vec(1) * Q_param_eff) &
+                    ! a_unit_massx = G / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴))
+                    ! a_unit_massy = G / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴))
+                    acc_grav_m(1) = (G * inv_dr3) * ( &
+                                    &  dr_vec(1) &
+                                    &  - K_coef * dr_vec(1) * inv_dr2 &
+                                    &  - L_coef * (dQdx * inv_dr2 - dr_vec(1) * Q_eff) &
                                     &)
-                    acc_grav_m(2) = (G * inv_dr3) * &
-                                    & (dr_vec(2) - &
-                                    &  K_coef * dr_vec(2) * inv_dr2 + &
-                                    &  L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_param_eff) &
+                    acc_grav_m(2) = (G * inv_dr3) * ( &
+                                    &  dr_vec(2) &
+                                    &  - K_coef * dr_vec(2) * inv_dr2 &
+                                    &  - L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_eff) &
                                     &)
                     
                     ! Acceleration to moon from asteroid
@@ -231,24 +231,24 @@ module derivates
                 ! ---> Triaxial <---
                 if (use_ellipsoid) then
                     inv_dr2 = inv_dr3 * dr
-                    ! Q_param = (x²-y²) cos(2th) + 2xy sin(2th)
-                    ! Q_param_eff = 5 * Q_param / r⁴
-                    Q_param_eff = ((dr_vec(1)**2 - dr_vec(2)**2) * c2th + &
-                                 & dos * dr_vec(1) * dr_vec(2) * s2th) * 5.d0 * inv_dr2 * inv_dr2
+                    ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
+                    ! Q_eff = 5 Q / r⁴
+                    Q_eff = 5.d0 * ((dr_vec(1)**2 - dr_vec(2)**2) * c2th + &
+                                    & dos * dr_vec(1) * dr_vec(2) * s2th) * inv_dr2 * inv_dr2
                     dQdx = dos * (dr_vec(1) * c2th + dr_vec(2) * s2th)  ! 2x cos(2th) + 2y sin(2th)
                     dQdy = - dos * (dr_vec(2) * c2th - dr_vec(1) * s2th)  ! - 2y cos(2th) + 2x sin(2th)
 
-                    ! a_unit_massx = G (x / r³ - K x / r⁵ + L (dQ/dx / r⁵ - x 5 Q / r⁷))
-                    ! a_unit_massy = G (y / r³ - K y / r⁵ + L (dQ/dy / r⁵ - y 5 Q / r⁷))
-                    acc_grav_m(1) = (G * inv_dr3) * &
-                                    & (dr_vec(1) - &
-                                    &  K_coef * dr_vec(1) * inv_dr2 + &
-                                    &  L_coef * (dQdx * inv_dr2 - dr_vec(1) * Q_param_eff) &
+                    ! a_unit_massx = G / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴))
+                    ! a_unit_massy = G / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴))
+                    acc_grav_m(1) = (G * inv_dr3) * ( &
+                                    &  dr_vec(1) &
+                                    &  - K_coef * dr_vec(1) * inv_dr2 &
+                                    &  - L_coef * (dQdx * inv_dr2 - dr_vec(1) * Q_eff) &
                                     &)
-                    acc_grav_m(2) = (G * inv_dr3) * &
-                                    & (dr_vec(2) - &
-                                    &  K_coef * dr_vec(2) * inv_dr2 + &
-                                    &  L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_param_eff) &
+                    acc_grav_m(2) = (G * inv_dr3) * ( &
+                                    &  dr_vec(2) &
+                                    &  - K_coef * dr_vec(2) * inv_dr2 &
+                                    &  - L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_eff) &
                                     &)
                     
                     ! Acceleration to particle from asteroid

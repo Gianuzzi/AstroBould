@@ -100,14 +100,18 @@ module accelerations
 
             ! Q_param = (x²-y²) cos(2th) + 2xy sin(2th)
             ! Q_param_eff = 5 * Q_param / r⁴
-            Q_param_eff = Q_param * 5.d0 * inv_dr2 * inv_dr2 ! Q_ef = 5 * Q / r⁴
+            Q_param_eff = 5.d0 * Q_param * inv_dr2 * inv_dr2 ! Q_ef = 5 * Q / r⁴
 
-            ! a_unit_massx = G (x / r³ - K x / r⁵ + L (dQ/dx / r⁵ - 5 x Q / r⁷))  ! Long form
-            ! a_unit_massy = G y / r³ (1 - K / r² + L (dQ/dy / r² / y - 5 Q / r⁴))  ! Short form
+            ! a_unit_massx = G / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴)) 
+            ! a_unit_massy = G / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴)) 
             acc(1) = acc(1) - (G * mass * inv_dr3) * &
-                        & (dr_vec(1) - K_coef * inv_dr2 * dr_vec(1) + L_coef * (dQdx * inv_dr2 - Q_param_eff * dr_vec(1)))
+                        & (dr_vec(1) &
+                        &  - K_coef * dr_vec(1) * inv_dr2 &
+                        &  - L_coef * (dQdx * inv_dr2 - dr_vec(1) * Q_param_eff))
             acc(2) = acc(2) - (G * mass * inv_dr3) * &
-                        & (dr_vec(2) - K_coef * inv_dr2 * dr_vec(2) + L_coef * (dQdy * inv_dr2 - Q_param_eff * dr_vec(2)))
+                        & (dr_vec(2) &
+                        &  - K_coef * dr_vec(2) * inv_dr2 &
+                        &  - L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_param_eff))
         end subroutine ellipsoid_acceleration
         
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
