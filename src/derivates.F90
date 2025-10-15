@@ -7,7 +7,7 @@ module derivates
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
                             & use_drag, drag_coef, drag_time, &
                             & use_stokes, stokes_C, stokes_alpha, stokes_time, &
-                            & use_ellipsoid, K3_coef, L_coef
+                            & use_ellipsoid, K_coef, L_coef
 
 
     implicit none
@@ -45,7 +45,7 @@ module derivates
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
         function dydt (t, y) result(der)
-            !y = /theta, omega, xA, yA, vxA, vyA, Part, .../
+            !y = /theta, omega, xA, yA, vxA, vyA, Moon, Part, .../
             implicit none
             real(kind=8), intent(in)               :: t
             real(kind=8), dimension(:), intent(in) :: y
@@ -150,16 +150,16 @@ module derivates
                     dQdx = dos * (dr_vec(1) * c2th + dr_vec(2) * s2th)  ! 2x cos(2th) + 2y sin(2th)
                     dQdy = - dos * (dr_vec(2) * c2th - dr_vec(1) * s2th)  ! - 2y cos(2th) + 2x sin(2th)
 
-                    ! a_unit_massx = G (x / r³ + 3K x / r⁵ + L (dQ/dx / r⁵ - x 5 Q / r⁷))
-                    ! a_unit_massy = G (y / r³ + 3K y / r⁵ + L (dQ/dy / r⁵ - y 5 Q / r⁷))
+                    ! a_unit_massx = G (x / r³ - K x / r⁵ + L (dQ/dx / r⁵ - x 5 Q / r⁷))
+                    ! a_unit_massy = G (y / r³ - K y / r⁵ + L (dQ/dy / r⁵ - y 5 Q / r⁷))
                     acc_grav_m(1) = (G * inv_dr3) * &
-                                    & (dr_vec(1) + &
-                                    &  K3_coef * dr_vec(1) * inv_dr2 + &
+                                    & (dr_vec(1) - &
+                                    &  K_coef * dr_vec(1) * inv_dr2 + &
                                     &  L_coef * (dQdx * inv_dr2 - dr_vec(1) * Q_param_eff) &
                                     &)
                     acc_grav_m(2) = (G * inv_dr3) * &
-                                    & (dr_vec(2) + &
-                                    &  K3_coef * dr_vec(2) * inv_dr2 + &
+                                    & (dr_vec(2) - &
+                                    &  K_coef * dr_vec(2) * inv_dr2 + &
                                     &  L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_param_eff) &
                                     &)
                     
@@ -238,20 +238,20 @@ module derivates
                     dQdx = dos * (dr_vec(1) * c2th + dr_vec(2) * s2th)  ! 2x cos(2th) + 2y sin(2th)
                     dQdy = - dos * (dr_vec(2) * c2th - dr_vec(1) * s2th)  ! - 2y cos(2th) + 2x sin(2th)
 
-                    ! a_unit_massx = G (x / r³ + 3K x / r⁵ + L (dQ/dx / r⁵ - x 5 Q / r⁷))
-                    ! a_unit_massy = G (y / r³ + 3K y / r⁵ + L (dQ/dy / r⁵ - y 5 Q / r⁷))
+                    ! a_unit_massx = G (x / r³ - K x / r⁵ + L (dQ/dx / r⁵ - x 5 Q / r⁷))
+                    ! a_unit_massy = G (y / r³ - K y / r⁵ + L (dQ/dy / r⁵ - y 5 Q / r⁷))
                     acc_grav_m(1) = (G * inv_dr3) * &
-                                    & (dr_vec(1) + &
-                                    &  K3_coef * dr_vec(1) * inv_dr2 + &
+                                    & (dr_vec(1) - &
+                                    &  K_coef * dr_vec(1) * inv_dr2 + &
                                     &  L_coef * (dQdx * inv_dr2 - dr_vec(1) * Q_param_eff) &
                                     &)
                     acc_grav_m(2) = (G * inv_dr3) * &
-                                    & (dr_vec(2) + &
-                                    &  K3_coef * dr_vec(2) * inv_dr2 + &
+                                    & (dr_vec(2) - &
+                                    &  K_coef * dr_vec(2) * inv_dr2 + &
                                     &  L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_param_eff) &
                                     &)
                     
-                    ! Acceleration to moon from asteroid
+                    ! Acceleration to particle from asteroid
                     der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - acc_grav_m * m_arr(1)  ! = a_unit_mass * mAsteroid
 
                 end if

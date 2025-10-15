@@ -8,7 +8,7 @@ module accelerations
     real(kind=8) :: drag_coef = cero, drag_time = cero  ! Drag
     logical :: use_ellipsoid = .False.
     real(kind=8) :: C20_coef = cero, C22_coef = cero, Re_coef = cero ! Ellipsoid basics
-    real(kind=8) :: K3_coef = cero, L_coef = cero ! Ellipsoid deep
+    real(kind=8) :: K_coef = cero, L_coef = cero ! Ellipsoid deep
     logical :: use_damp = .False.
     real(kind=8) :: damp_coef_1 = cero, damp_coef_2 = cero, damp_time = cero ! Omega Damping
     integer(kind=4) :: damp_model = -1 ! Omega Damping
@@ -63,15 +63,13 @@ module accelerations
         subroutine init_ellipsoid(axis_a, axis_b, axis_c)
             implicit none
             real(kind=8), intent(in) :: axis_a, axis_b, axis_c
-            real(kind=8) :: K_coef = cero
             
             if ((axis_a > cero) .and. (axis_c > cero)) then
                 use_ellipsoid = .True.
                 Re_coef = (axis_a * axis_b * axis_c)**(1.d0/3.d0)
                 C20_coef = (dos * axis_c**2 - axis_a**2 - axis_b**2) / (10.d0 * Re_coef**2)
                 C22_coef = (axis_a**2 - axis_b**2) / (20.d0 * Re_coef**2)
-                K_coef = uno2 * Re_coef**2 * C20_coef
-                K3_coef = 3.d0 * K_coef
+                K_coef = 3.d0 * uno2 * Re_coef**2 * C20_coef
                 L_coef = 3.d0 * Re_coef**2 * C22_coef
             else 
                 use_ellipsoid = .False.
@@ -104,12 +102,12 @@ module accelerations
             ! Q_param_eff = 5 * Q_param / r⁴
             Q_param_eff = Q_param * 5.d0 * inv_dr2 * inv_dr2 ! Q_ef = 5 * Q / r⁴
 
-            ! a_unit_massx = G (x / r³ + 3K x / r⁵ + L (dQ/dx / r⁵ - 5 x Q / r⁷))  ! Long form
-            ! a_unit_massy = G y / r³ (1 + 3K / r² + L (dQ/dy / r² / y - 5 Q / r⁴))  ! Short form
+            ! a_unit_massx = G (x / r³ - K x / r⁵ + L (dQ/dx / r⁵ - 5 x Q / r⁷))  ! Long form
+            ! a_unit_massy = G y / r³ (1 - K / r² + L (dQ/dy / r² / y - 5 Q / r⁴))  ! Short form
             acc(1) = acc(1) - (G * mass * inv_dr3) * &
-                        & (dr_vec(1) + K3_coef * inv_dr2 * dr_vec(1) + L_coef * (dQdx * inv_dr2 - Q_param_eff * dr_vec(1)))
+                        & (dr_vec(1) - K_coef * inv_dr2 * dr_vec(1) + L_coef * (dQdx * inv_dr2 - Q_param_eff * dr_vec(1)))
             acc(2) = acc(2) - (G * mass * inv_dr3) * &
-                        & (dr_vec(2) + K3_coef * inv_dr2 * dr_vec(2) + L_coef * (dQdy * inv_dr2 - Q_param_eff * dr_vec(2)))
+                        & (dr_vec(2) - K_coef * inv_dr2 * dr_vec(2) + L_coef * (dQdy * inv_dr2 - Q_param_eff * dr_vec(2)))
         end subroutine ellipsoid_acceleration
         
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

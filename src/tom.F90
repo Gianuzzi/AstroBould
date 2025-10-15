@@ -3,17 +3,17 @@ module tomodule
     implicit none
 
     type :: tom_st  !!! This contains only the input parameters
-    integer(kind=4) :: index_number = -1  ! Index to count which TOM row is active
-    integer(kind=4) :: total_number = 0  ! Total amount of lines in TOM
-    real(kind=8), dimension(:), allocatable :: times  ! Times in TOM
-    real(kind=8), dimension(:), allocatable :: deltaomega  ! Delta Omega in TOM
-    real(kind=8), dimension(:), allocatable :: deltamass  ! Delta Mass in TOM
-    logical :: use_dmass = .False.
-    logical :: use_domega = .False.
-    real(kind=8) :: mass_growth_param = cero
-end type tom_st
+        integer(kind=4) :: index_number = -1  ! Index to count which TOM row is active
+        integer(kind=4) :: total_number = 0  ! Total amount of lines in TOM
+        real(kind=8), dimension(:), allocatable :: times  ! Times in TOM
+        real(kind=8), dimension(:), allocatable :: deltaomega  ! Delta Omega in TOM
+        real(kind=8), dimension(:), allocatable :: deltamass  ! Delta Mass in TOM
+        logical :: use_dmass = .False.
+        logical :: use_domega = .False.
+        real(kind=8) :: mass_growth_param = cero
+    end type tom_st
 
-contains
+    contains
 
         ! Read TOMfile
         subroutine read_tomfile(t0, tf, t_TOM, domega_TOM, dmass_TOM, file_tout)
