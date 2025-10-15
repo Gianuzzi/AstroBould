@@ -12,7 +12,7 @@ build/main :  \
 	build/main.o \
 	build/parameters.o \
 	build/times.o \
-	build/tom.o
+	build/tomodule.o
 
 build/accelerations.o :  \
 	build/auxiliary.o \
@@ -59,11 +59,11 @@ build/parameters.o :  \
 	build/bodies.o \
 	build/constants.o \
 	build/filtering.o \
-	build/tom.o
+	build/tomodule.o
 
 build/times.o :  \
 	build/auxiliary.o \
 	build/constants.o
 
-build/tom.o :  \
+build/tomodule.o :  \
 	build/constants.o
