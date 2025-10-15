@@ -2158,8 +2158,8 @@ module bodies
                 & 1, &  ! type
                 & actual%moons(i)%merged_to, &  ! merged_to
                 & actual%moons(i)%tmax / unit_time, &  ! time
-                & cero, &  ! theta
-                & cero, &  ! omega
+                & initial%asteroid%theta / radian, &  ! theta
+                & initial%asteroid%omega * unit_time, &  ! omega
                 & initial%moons(i_initial)%elements(1) / unit_dist, &  ! a
                 & initial%moons(i_initial)%elements(2), &  ! e
                 & initial%moons(i_initial)%elements(3) / radian, &  ! M
@@ -2167,8 +2167,8 @@ module bodies
                 & initial%moons(i_initial)%mmr, &   ! MMR
                 & initial%moons(i_initial)%mass / unit_mass, &  ! mass
                 & initial%moons(i_initial)%radius / unit_dist, &  ! radius
-                & cero, &  ! theta
-                & cero, &  ! omega
+                & actual%asteroid%theta / radian, &  ! theta
+                & actual%asteroid%omega * unit_time, &  ! omega
                 & actual%moons(i)%elements(1) / unit_dist, &  ! a
                 & actual%moons(i)%elements(2), &  ! e
                 & actual%moons(i)%elements(3) / radian, &  ! M
@@ -2200,8 +2200,8 @@ module bodies
                 & 2, &  ! type
                 & actual%particles(i)%merged_to, &  ! merged_to
                 & actual%particles(i)%tmax / unit_time, &  ! time
-                & cero, &  ! theta
-                & cero, &  ! omega
+                & initial%asteroid%theta / radian, &  ! theta
+                & initial%asteroid%omega * unit_time, &  ! omega
                 & initial%particles(i_initial)%elements(1) / unit_dist, &  ! a
                 & initial%particles(i_initial)%elements(2), &  ! e
                 & initial%particles(i_initial)%elements(3) / radian, &  ! M
@@ -2209,8 +2209,8 @@ module bodies
                 & initial%particles(i_initial)%mmr, &   ! MMR
                 & cero, &  ! mass
                 & cero, &  ! radius
-                & cero, &  ! theta
-                & cero, &  ! omega
+                & actual%asteroid%theta / radian, &  ! theta
+                & actual%asteroid%omega * unit_time, &  ! omega
                 & actual%particles(i)%elements(1) / unit_dist, &  ! a
                 & actual%particles(i)%elements(2), &  ! e
                 & actual%particles(i)%elements(3) / radian, &  ! M
