@@ -192,7 +192,7 @@ module auxiliary
         end subroutine reorder
 
         ! Reorder an integer array from given order
-        subroutine reorder_int(array,  order, n)
+        subroutine reorder_int(array, order, n)
             integer(kind=4), dimension(:), intent(inout) :: array
             integer(kind=4), dimension(:), intent(in) :: order
             integer(kind=4), intent(in) :: n
@@ -302,6 +302,17 @@ module auxiliary
 
             res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
         end function cross3D_z
+
+        ! Rotate a 2D vector an angle theta counter-clockwise
+        function rotate2D(a, theta) result(res)
+            implicit none
+            real(kind=8), dimension(2), intent(in) :: a
+            real(kind=8), intent(in) :: theta
+            real(kind=8), dimension(2) :: res
+
+            res = (/a(1) * cos(theta) - a(2) * sin(theta), & ! x cos(th) - y sin(th),
+                    a(1) * sin(theta) + a(2) * cos(theta)/)  ! x sin(th) + y cos(th)
+        end function rotate2D
         
         ! Read a file with data structured in columns
         subroutine read_columns_file(file_name, values_arr, method)
