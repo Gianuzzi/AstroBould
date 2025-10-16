@@ -47,7 +47,7 @@ module celestial
             vcm = vcm / mcm ! vcm = sum_i m_i * v_i / M
         end subroutine get_center_of_mass
 
-        ! Get acceleration and potential energy from single mass (MISSING G)
+        ! Get acceleration and potential energy from single mass
         subroutine get_acc_and_pot_single(mass, rib, xy_target, dr_max, acc, pot, inside)
             implicit none
             real(kind=8), intent(in) :: mass, rib(2), xy_target(2), dr_max
@@ -59,13 +59,14 @@ module celestial
             dy = xy_target(2) - rib(2)
             dr2 = dx * dx + dy * dy
             dr = sqrt(dr2)
-            if (dr < max(dr_max, tini)) then
-                if (present(inside)) inside = .True.
-                return
+            
+            if (dr > tini) then
+                acc = acc - G * (mass / (dr2 * dr)) * (/dx, dy/)
+                pot = pot - G * mass / dr
             end if
-            acc = acc - (mass / (dr2 * dr)) * (/dx, dy/)
-            pot = pot - mass / dr
-            if (present(inside)) inside = .False.
+
+            if (present(inside)) inside = dr < max(dr_max, tini)
+
         end subroutine get_acc_and_pot_single
 
         ! Get coordinates from a body
