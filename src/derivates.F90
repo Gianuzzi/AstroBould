@@ -1,10 +1,13 @@
 module derivates
     use constants, only: G, cero, uno, uno2, dos, tini
     use auxiliary, only: cross2D_z
-    use parameters, only: sim, system, &
+    use parameters, only: sim, &
+                          & system, &  ! asteroid inertia
                           & boulders_coords, boulders_data, & !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
-                          & m_arr, R_arr, hard_exit
+                          & m_arr, R_arr, &
+                          & hard_exit
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
+
                             & use_drag, drag_coef, drag_time, &
                             & use_stokes, stokes_C, stokes_alpha, stokes_time, &
                             & use_ellipsoid, K_coef, L_coef
@@ -32,7 +35,7 @@ module derivates
     
     contains
 
-        function get_index(i) result(idx)
+        pure function get_index(i) result(idx)
             implicit none
             integer(kind=4), intent(in) :: i
             integer(kind=4) :: idx
@@ -70,8 +73,8 @@ module derivates
             
             der = cero  ! init der at cero
 
-            last_moon = system%Nmoons_active + 1  ! This would be the last moon (+ 1 bc asteroid is 1)
-            N_total = last_moon + system%Nparticles_active
+            last_moon = sim%Nmoon_active + 1  ! This would be the last moon (+ 1 bc asteroid is 1)
+            N_total = last_moon + sim%Npart_active
 
             ! Calculate the angle of the asteroid
             theta = y(1)
@@ -291,7 +294,7 @@ module derivates
 
             ! First, Asteroid to all
             if (.not. use_ellipsoid) then  ! Only if NOT triaxial
-                do i = 0, system%asteroid%Nboulders
+                do i = 0, sim%Nboulders  ! arrays have data of primary at 0
 
                     !! Get boulder coords
                     boulders_coords(i,1) = boulders_data(i,4) * cos(theta + boulders_data(i,3))  ! y

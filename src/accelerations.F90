@@ -1,7 +1,9 @@
 module accelerations
     use auxiliary, only: cross2D_z
     use constants, only: cero, uno, uno2, dos, G, tini
+
     implicit none
+    
     logical :: use_stokes = .False.
     real(kind=8) :: stokes_time = cero, stokes_C = cero, stokes_alpha = cero  ! Stokes
     logical :: use_drag = .False.
@@ -25,7 +27,7 @@ module accelerations
         !!!!!!!!!!!!!!!!!!!!!!! GRAVITY !!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        subroutine gravity(mass, dr_vec, dr, acc)
+        pure subroutine gravity(mass, dr_vec, dr, acc)
             implicit none
             real(kind=8), intent(in) :: mass, dr_vec(2), dr
             real(kind=8), intent(inout) :: acc(2)
@@ -33,7 +35,7 @@ module accelerations
             acc = acc - G * mass * dr_vec / (dr * dr * dr)  ! G m (x, y) / r
         end subroutine gravity
 
-        subroutine torque_grav_Z(xy_vec, acc_applied, torque_m) ! torque / mass
+        pure subroutine torque_grav_Z(xy_vec, acc_applied, torque_m) ! torque / mass
             implicit none
             real(kind=8), intent(in) :: xy_vec(2), acc_applied(2)
             real(kind=8), intent(inout) :: torque_m
@@ -42,7 +44,7 @@ module accelerations
         end subroutine torque_grav_Z
 
         ! Both
-        subroutine gravity_and_torque_Z(mass, xy_vec, dr_vec, dr, torque_m, acc)
+        pure subroutine gravity_and_torque_Z(mass, xy_vec, dr_vec, dr, torque_m, acc)
             implicit none
             real(kind=8), intent(in) :: mass, xy_vec(2), dr_vec(2), dr
             real(kind=8), intent(inout) :: torque_m, acc(2)
@@ -85,7 +87,6 @@ module accelerations
             real(kind=8) :: Q_param, dQdx, dQdy
             real(kind=8) :: Q_param_eff
             real(kind=8) :: inv_dr2, inv_dr3
-            
 
             c2th = cos(dos * theta)
             s2th = sin(dos * theta)
