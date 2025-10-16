@@ -155,7 +155,7 @@ module tomodule
 
 
         ! Deallocate all params arrays
-        subroutine free_tom(self)
+        pure subroutine free_tom(self)
             implicit none
             type(tom_st), intent(inout) :: self
             if (allocated(self%times)) deallocate(self%times)

@@ -1,12 +1,13 @@
 !> Module with coordinates, and some cel-mech routines
 module celestial
     use constants, only: cero, uno, uno2, dos, G, pi, twopi, tini, epsilon, sqepsilon
+    
     implicit none
     
     contains
 
         ! Get period
-        function get_Period(mass, a) result(per)
+        pure function get_Period(mass, a) result(per)
             implicit none
             real(kind=8), intent(in) :: mass, a
             real(kind=8) :: per
@@ -16,7 +17,7 @@ module celestial
         end function get_Period
 
         ! Get corotation a from rotating body
-        function get_a_corot(mass, omega) result(acorot)
+        pure function get_a_corot(mass, omega) result(acorot)
             implicit none
             real(kind=8), intent(in) :: mass, omega
             real(kind=8) :: acorot
@@ -29,7 +30,7 @@ module celestial
         end function get_a_corot
 
         ! Get center of mass from masses, positions and velocities
-        subroutine get_center_of_mass(mass, rib, vib, mcm, rcm, vcm)
+        pure subroutine get_center_of_mass(mass, rib, vib, mcm, rcm, vcm)
             implicit none
             real(kind=8), intent(in) :: mass(:), rib(:,:), vib(:,:)
             real(kind=8), intent(out) :: mcm, rcm(2), vcm(2)
@@ -48,7 +49,7 @@ module celestial
         end subroutine get_center_of_mass
 
         ! Get acceleration and potential energy from single mass
-        subroutine get_acc_and_pot_single(mass, rib, xy_target, dr_max, acc, pot, inside)
+        pure subroutine get_acc_and_pot_single(mass, rib, xy_target, dr_max, acc, pot, inside)
             implicit none
             real(kind=8), intent(in) :: mass, rib(2), xy_target(2), dr_max
             real(kind=8), intent(inout) :: acc(2), pot
@@ -119,7 +120,8 @@ module celestial
             real(kind=8), intent(in)  :: dm, e
             real(kind=8), intent(out) :: u, f
             real(kind=8) :: u0, dif, seno, cose
-            integer(kind=4) :: i, MAX_ITER = 100
+            integer(kind=4), parameter :: MAX_ITER = 100
+            integer(kind=4) :: i
             
             u0 = dm
             dif = uno
@@ -140,7 +142,7 @@ module celestial
         end subroutine aver
 
         ! Get elements from a body
-        subroutine elem(msum, xc, a, e, inc, capm, omega, capom)
+        pure subroutine elem(msum, xc, a, e, inc, capm, omega, capom)
             implicit none
             real(kind=8), intent(in)  :: msum, xc(6)
             real(kind=8), intent(out) :: a, e, inc, capm, omega, capom
@@ -149,7 +151,7 @@ module celestial
             real(kind=8) :: hx, hy, hz, h2, h, fac, u
             real(kind=8) :: r, v, v2, vdotr, energy
             real(kind=8) :: cape, cw, sw, w, face, capf, tmpf
-            integer(kind=4) :: ialpha = 0 ! Just initialization
+            integer(kind=4) :: ialpha
                 
             gmsum = G * msum
             x = xc(1)
@@ -296,7 +298,7 @@ module celestial
         end subroutine elem
 
         ! Get astrocentric from jacobi coordinates
-        subroutine jacobi_to_astroc (mass_array, coords_j, coords_a)
+        pure subroutine jacobi_to_astroc (mass_array, coords_j, coords_a)
             implicit none
             real(kind=8), dimension(:), intent(in) :: mass_array
             real(kind=8), dimension(:,:), intent(in) :: coords_j
@@ -316,7 +318,7 @@ module celestial
         end subroutine jacobi_to_astroc
 
         ! Get jacobi from astrocentric coordinates
-        subroutine astroc_to_jacob (mass_array, coords_a, coords_j)
+        pure subroutine astroc_to_jacob (mass_array, coords_a, coords_j)
             implicit none
             real(kind=8), dimension(:), intent(in) :: mass_array
             real(kind=8), dimension(:,:), intent(in) :: coords_a
@@ -336,13 +338,15 @@ module celestial
         end subroutine astroc_to_jacob
 
         ! Get barycentric from astrocentric coordinates
-        subroutine baric_to_astroc (mass_array, coords_b, coords_a)
+        pure subroutine baric_to_astroc (mass_array, coords_b, coords_a)
             implicit none
             real(kind=8), dimension(:), intent(in) :: mass_array
             real(kind=8), dimension(:,:), intent(in) :: coords_b
             real(kind=8), dimension(:,:), intent(out) :: coords_a
             integer(kind=4) :: i
-            real(kind=8), dimension(4) :: xyvxvy = cero
+            real(kind=8), dimension(4) :: xyvxvy
+
+            xyvxvy = cero
             
             do i = 2, size(coords_b,1)
                 xyvxvy = xyvxvy - coords_b(i,1:4) * mass_array(i) / mass_array(1)
@@ -354,16 +358,18 @@ module celestial
         end subroutine baric_to_astroc
 
         ! Get astrocentric from barycentric coordinates
-        subroutine astroc_to_baric (mass_array, coords_a, coords_b)
+        pure subroutine astroc_to_baric (mass_array, coords_a, coords_b)
             implicit none
             real(kind=8), dimension(:), intent(in) :: mass_array
             real(kind=8), dimension(:,:), intent(in) :: coords_a
             real(kind=8), dimension(:,:), intent(out) :: coords_b
             integer(kind=4) :: i
             real(kind=8) :: mass_tot
-            real(kind=8), dimension(4) :: xyvxvy = cero
+            real(kind=8), dimension(4) :: xyvxvy
 
             mass_tot = mass_array(1)
+            xyvxvy = cero
+
             do i = 2, size(coords_a,1)
                 mass_tot = mass_tot + mass_array(i)
                 xyvxvy = xyvxvy + coords_a(i,1:4) * mass_array(i)

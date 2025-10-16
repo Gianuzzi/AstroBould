@@ -1529,7 +1529,7 @@ module parameters
 
 
         ! Update sim Nactive values
-        subroutine update_sim_Nactive(simu, Npart_active, Nmoon_active)
+        pure subroutine update_sim_Nactive(simu, Npart_active, Nmoon_active)
             implicit none
             type(sim_params_st), intent(inout) :: simu
             integer(kind=4), intent(in) :: Npart_active, Nmoon_active

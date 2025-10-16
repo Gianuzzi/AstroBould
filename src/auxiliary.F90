@@ -1,11 +1,12 @@
 !> Module with array, string, ordering, ... routines
 module auxiliary
+    
     implicit none
     
     contains
 
         ! From lower to upper case
-        function to_upper(strIn) result(strOut)
+        pure function to_upper(strIn) result(strOut)
             ! Adapted from http://www.star.le.ac.uk/~cgp/fortran.html (25 May 2012)
             ! Original author: Clive Page
             implicit none
@@ -24,7 +25,7 @@ module auxiliary
         end function to_upper
 
         ! From lower to upper case
-        function to_lower(strIn) result(strOut)
+        pure function to_lower(strIn) result(strOut)
             implicit none
             character(len=*), intent(in) :: strIn
             character(len=len(strIn)) :: strOut
@@ -41,7 +42,7 @@ module auxiliary
         end function to_lower
 
         ! Get indices to order a real array
-        recursive subroutine quickargsort(a, b, first, last)
+        pure recursive subroutine quickargsort(a, b, first, last)
             implicit none
             real(kind=8), intent(in) :: a(:)          ! Input array (not modified)
             integer(kind=4), intent(inout) :: b(size(a))    ! Indices array to be sorted
@@ -77,7 +78,7 @@ module auxiliary
         end subroutine quickargsort
 
         ! Get indices to order an integer array
-        recursive subroutine quickargsort_int(a, b, first, last)
+        pure recursive subroutine quickargsort_int(a, b, first, last)
             implicit none
             integer(kind=4), intent(in) :: a(:)    ! Input array (not modified)
             integer(kind=4), intent(inout) :: b(size(a)) ! Indices array to be sorted
@@ -113,7 +114,7 @@ module auxiliary
         end subroutine quickargsort_int
         
         ! Order a real array
-        subroutine quicksort(a, first, last)
+        pure subroutine quicksort(a, first, last)
             implicit none
             real(kind=8), intent(inout) :: a(:)          ! Input array
             integer(kind=4), intent(in) :: first, last   ! First and last indices
@@ -145,7 +146,7 @@ module auxiliary
         end subroutine quicksort
         
         ! Order an integer array
-        subroutine quicksort_int(a, first, last)
+        pure subroutine quicksort_int(a, first, last)
             implicit none
             integer(kind=4), intent(inout) :: a(:)       ! Input array
             integer(kind=4), intent(in) :: first, last   ! First and last indices
@@ -177,7 +178,7 @@ module auxiliary
         end subroutine quicksort_int
         
         ! Reorder a real array from given order
-        subroutine reorder(array, order, n)
+        pure subroutine reorder(array, order, n)
             real(kind=8), dimension(:), intent(inout) :: array
             integer(kind=4), dimension(:), intent(in) :: order
             integer(kind=4), intent(in) :: n
@@ -192,7 +193,7 @@ module auxiliary
         end subroutine reorder
 
         ! Reorder an integer array from given order
-        subroutine reorder_int(array, order, n)
+        pure subroutine reorder_int(array, order, n)
             integer(kind=4), dimension(:), intent(inout) :: array
             integer(kind=4), dimension(:), intent(in) :: order
             integer(kind=4), intent(in) :: n
@@ -207,7 +208,7 @@ module auxiliary
         end subroutine reorder_int
 
         ! Reorder a 2D real array from given order, along 1st axis
-        subroutine reorder2D(array, order, n)
+        pure subroutine reorder2D(array, order, n)
             real(kind=8), dimension(:,:), intent(inout) :: array
             integer(kind=4), dimension(:), intent(in) :: order
             integer(kind=4), intent(in) :: n
@@ -224,7 +225,7 @@ module auxiliary
         end subroutine reorder2D
 
         ! Combine, order, and remove duplicated values between 2 real arrays
-        subroutine merge_sort_and_unique(a, b, ina, inb, c, kfin)
+        pure subroutine merge_sort_and_unique(a, b, ina, inb, c, kfin)
             implicit none
             real(kind=8), dimension(:), intent(in) :: a, b ! Arreglos de reales
             logical, dimension(:), allocatable, intent(out) :: ina, inb ! Booleanos de elementos en a y b
@@ -286,7 +287,7 @@ module auxiliary
         end subroutine merge_sort_and_unique
 
         ! Calculate z component of 2D cross product
-        function cross2D_z(a, b) result(res)
+        pure function cross2D_z(a, b) result(res)
             implicit none
             real(kind=8), dimension(2), intent(in) :: a, b
             real(kind=8) :: res
@@ -295,7 +296,7 @@ module auxiliary
         end function cross2D_z
 
         ! Calculate z component of 3D cross product
-        function cross3D_z(a, b) result(res)
+        pure function cross3D_z(a, b) result(res)
             implicit none
             real(kind=8), dimension(3), intent(in) :: a, b
             real(kind=8) :: res
@@ -304,7 +305,7 @@ module auxiliary
         end function cross3D_z
 
         ! Rotate a 2D vector an angle theta counter-clockwise
-        function rotate2D(a, theta) result(res)
+        pure function rotate2D(a, theta) result(res)
             implicit none
             real(kind=8), dimension(2), intent(in) :: a
             real(kind=8), intent(in) :: theta

@@ -1,6 +1,7 @@
 !> Module with filtering methods
 module filtering
     use constants, only: pi, twopi, cero, uno, uno2, dos, tini
+    
     implicit none
 
     type :: filter_st
@@ -113,7 +114,7 @@ contains
 
     end subroutine create_filter
 
-    subroutine allocate_filter(self, data_size)
+    pure subroutine allocate_filter(self, data_size)
         implicit none
         type(filter_st), intent(inout) :: self
         integer(kind=4), intent(in) :: data_size
@@ -136,7 +137,7 @@ contains
         
     end subroutine setup_filter
 
-    subroutine store_to_filter(self, time, state_vector, data_size, filter_index)
+    pure subroutine store_to_filter(self, time, state_vector, data_size, filter_index)
         implicit none
         type(filter_st), intent(inout) :: self
         real(kind=8), intent(in) :: time
@@ -148,7 +149,7 @@ contains
         
     end subroutine store_to_filter
     
-    subroutine free_filter(self)
+    pure subroutine free_filter(self)
         implicit none
         type(filter_st), intent(inout) :: self
 
