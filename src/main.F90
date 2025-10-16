@@ -448,12 +448,37 @@ program main
     !!!!!!!!!!!!!! SYSTEM !!!!!!!!!!!!!!
 
     call init_system(system, asteroid, moons_arr, particles_arr, &
-                    & sim%lambda_kep, &                             ! keplerian omega
+                    & sim%lambda_kep, &                           ! keplerian omega
                     & sim%asteroid_rotational_period * unit_time) ! asteroid period
 
-    call set_system_extra(system, cero, sim%eta_col, sim%f_col)
+    call set_system_extra(system, cero, sim%eta_col, sim%f_col)  ! Extra parameters
 
-    !! <> Messages
+
+    ! <<<< Save initial data >>>>
+    initial_system = system
+
+    ! <<<< Fill auxiliar arrays >>>>
+    allocate(boulders_data(0:sim%Nboulders, 4))   ! To use in dydt
+    allocate(boulders_coords(0:sim%Nboulders, 4)) ! To use in dydt
+
+    !! Primary
+    boulders_coords(0,:) = system%asteroid%primary%coordinates_CM + system%asteroid%coordinates
+    boulders_data(0,1) = system%asteroid%primary%mass
+    boulders_data(0,2) = system%asteroid%primary%radius
+    boulders_data(0,3) = system%asteroid%primary%initial_theta
+    boulders_data(0,4) = system%asteroid%primary%dist_to_asteroid
+
+    !! Boulders
+    do i = 1, sim%Nboulders
+        boulders_coords(i,:) = system%asteroid%boulders(i)%coordinates_CM + system%asteroid%coordinates
+        boulders_data(i,1) = system%asteroid%boulders(i)%mass
+        boulders_data(i,2) = system%asteroid%boulders(i)%radius
+        boulders_data(i,3) = system%asteroid%boulders(i)%initial_theta
+        boulders_data(i,4) = system%asteroid%boulders(i)%dist_to_asteroid
+    end do
+
+
+    !! <<<< Messages >>>>
     
     ! Asteroid
     if (sim%use_screen) then
@@ -473,43 +498,42 @@ program main
         write(*,*) ACHAR(5)
         write(*,s1r1) " Asteroid mass: ", asteroid%mass / unit_mass, "[kg]"
         write(*,*) ACHAR(5)
-    end if
-
-
-    !! Tri-axial
-    if (sim%use_triaxial) then
-        if (sim%use_screen) then
-            write(*,*) "Asteroid tri-axial potential"
-            write(*,s1r1) " semi-axis-a :", sim%triax_a_primary, "[km]"
-            write(*,s1r1) " semi-axis-b :", sim%triax_b_primary, "[km]"
-            write(*,s1r1) " semi-axis-c :", sim%triax_c_primary, "[km]"
-            write(*,s1r1) "  Effective Radius :", sim%Reffective, "[km]"
-            write(*,s1r1) "  C_20:", sim%C20
-            write(*,s1r1) "  C_22:", sim%C22
+        
+        !! Tri-axial
+        if (sim%use_triaxial) then
+            write(*,*) "Asteroid ellipsoid:"
+            write(*,s1r1) "  semi-axis-a :", system%asteroid%primary%semi_axis(1), "[km]"
+            write(*,s1r1) "  semi-axis-b :", system%asteroid%primary%semi_axis(2), "[km]"
+            write(*,s1r1) "  semi-axis-c :", system%asteroid%primary%semi_axis(3), "[km]"
+            write(*,s1r1) "   Effective Radius :", system%asteroid%primary%radius, "[km]"
+            write(*,s1r1) "   C_20:", system%asteroid%primary%C20
+            write(*,s1r1) "   C_22:", system%asteroid%primary%C22
+            write(*,*) ACHAR(5)
+        else
+            write(*,s1r1) " Asteroid radius :", system%asteroid%radius, "[km]"
             write(*,*) ACHAR(5)
         end if
+
     end if
 
 
-    ! < Message >
+    ! < Messages >
     if (sim%use_screen) then
-        write(*,*) "System comfiguration:"
+        write(*,*) "System configuration:"
         write(*,*) ACHAR(5)
     end if
 
 
     ! Individual boulder positions
-    allocate(boulders_coords(0:sim%Nboulders, 4))
     if (sim%use_screen .and. sim%use_boulders) then
         write(*,*) "   Asteroid-centric boulders: [x, y, vx, vy, mass, distance, radius]"
-        do i = 0, sim%Nboulders
-            call get_boulder_i_coord(system%asteroid, i, boulders_coords(i,:))
+        do i = 0, sim%Nboulders  ! aux_arrays include primary
             write(*,i1r7) i, &
-                     & boulders_coords(i,1:2) / unit_dist, &
-                     & boulders_coords(i,3:4) / unit_vel, &
-                     & system%asteroid%boulders(i)%mass / unit_mass, &
-                     & system%asteroid%boulders(i)%dist_to_asteroid / unit_dist, &
-                     & system%asteroid%boulders(i)%radius / unit_dist
+                & boulders_coords(i,1:2) / unit_dist, &
+                & boulders_coords(i,3:4) / unit_vel, &
+                & boulders_data(i,1) / unit_mass, &
+                & boulders_data(i,4) / unit_dist, &
+                & boulders_data(i,2) / unit_dist
         end do
         write(*,*) ACHAR(5)
     end if
@@ -520,10 +544,10 @@ program main
         write(*,*) "   Barycentric moons: [x, y, vx, vy, mass, distance]"
         do i = 1, sim%Nmoons
             write(*,i1r7) i, &
-                     & system%moons(i)%coordinates(1:2) / unit_dist, &
-                     & system%moons(i)%coordinates(3:4) / unit_vel, &
-                     & system%moons(i)%mass / unit_mass, &
-                     & system%moons(i)%dist_to_cm / unit_dist
+                & system%moons(i)%coordinates(1:2) / unit_dist, &
+                & system%moons(i)%coordinates(3:4) / unit_vel, &
+                & system%moons(i)%mass / unit_mass, &
+                & system%moons(i)%dist_to_cm / unit_dist
         end do
         write(*,*) ACHAR(5)
     end if
@@ -550,17 +574,6 @@ program main
         write(*,*) ACHAR(5)
     end if
 
-
-    ! <<<< Save initial data >>>>
-    initial_system = system
-    allocate(boulders_data(0:sim%Nboulders, 4))  ! To use in dydt
-    do i = 0, sim%Nboulders
-        call get_boulder_i_coord(system%asteroid, i, boulders_coords(i,:))
-        boulders_data(i,1) = system%asteroid%boulders(i)%mass
-        boulders_data(i,2) = system%asteroid%boulders(i)%radius
-        boulders_data(i,3) = system%asteroid%boulders(i)%initial_theta
-        boulders_data(i,4) = system%asteroid%boulders(i)%dist_to_asteroid
-    end do
 
 
     ! <> Parallel revisted
@@ -704,6 +717,12 @@ program main
         sim%min_distance = system%asteroid%radius
     else
         sim%min_distance = sim%min_distance * unit_dist
+    end if
+    !! Check
+    if (sim%min_distance < system%asteroid%radius) then
+        write(*,*) ACHAR(10)
+        write(*,s1r1) "ERROR: rmin can not be lower than asteroid radius. Ratio:", sim%min_distance / system%asteroid%radius
+        stop 1
     end if
     if (sim%max_distance < cero) then
         sim%max_distance = system%asteroid%radius * abs(sim%max_distance)
@@ -1864,7 +1883,7 @@ program main
 
     !! Cerrar archivos individuales
     if (sim%use_multiple_outputs) then
-        do i = 0, sim%Ntotal
+        do i = 0, sim%Ntotal  ! 0 is the asteroid
             close (200+i)
         end do
         if (sim%use_screen) then
@@ -1911,7 +1930,7 @@ program main
 
         !! Cerrar archivos individuales
         if (sim%use_multiple_outputs) then
-            do i = 0, sim%Ntotal
+            do i = 0, sim%Ntotal  ! 0 is the asteroid
                 close (200+i+1000)
             end do
             if (sim%use_screen) then
@@ -2013,16 +2032,16 @@ subroutine create_map(sim, system)
     
     pot = cero
     acc = cero
-    dx_nx = (sim%map_max_x - sim%map_min_x) / sim%map_grid_size_x
-    dy_ny = (sim%map_max_y - sim%map_min_y) / sim%map_grid_size_y
+    dx_nx = (sim%map_max_x - sim%map_min_x) / (sim%map_grid_size_x - 1)
+    dy_ny = (sim%map_max_y - sim%map_min_y) / (sim%map_grid_size_y - 1)
 
     !$OMP PARALLEL DEFAULT(SHARED) &
     !$OMP PRIVATE(i,j,rb)
     !$OMP DO SCHEDULE (STATIC)
     do i = 1, sim%map_grid_size_x
         do j = 1, sim%map_grid_size_y
-            rb(1) = sim%map_min_x + i * dx_nx
-            rb(2) = sim%map_min_y + j * dy_ny
+            rb(1) = sim%map_min_x + (i - 1) * dx_nx
+            rb(2) = sim%map_min_y + (j - 1) * dy_ny
             call get_acc_and_pot_xy(system, rb, acc(i,j,:), pot(i,j))
         end do
     end do
@@ -2033,7 +2052,7 @@ subroutine create_map(sim, system)
     open (unit=50, file=trim(sim%mapfile), status='replace', action='write')
     do i = 1, sim%map_grid_size_x
         do j = 1, sim%map_grid_size_y
-            write (50,*) sim%map_min_x + i * dx_nx, sim%map_min_y + j * dy_ny, pot(i,j), acc(i,j,:)
+            write (50,*) sim%map_min_x + (i - 1) * dx_nx, sim%map_min_y + (j - 1) * dy_ny, pot(i,j), acc(i,j,:)
         end do
     end do
     close (50)
