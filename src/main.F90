@@ -2052,7 +2052,7 @@ subroutine create_map(sim, system)
     open (unit=50, file=trim(sim%mapfile), status='replace', action='write')
     do i = 1, sim%map_grid_size_x
         do j = 1, sim%map_grid_size_y
-            write (50,*) sim%map_min_x + (i - 1) * dx_nx, sim%map_min_y + (j - 1) * dy_ny, pot(i,j), acc(i,j,:)
+            write (50,'(5(1PE22.15,1X))') sim%map_min_x + (i - 1) * dx_nx, sim%map_min_y + (j - 1) * dy_ny, pot(i,j), acc(i,j,:)
         end do
     end do
     close (50)
