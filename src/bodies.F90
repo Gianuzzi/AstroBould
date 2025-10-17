@@ -2212,7 +2212,7 @@ module bodies
             ! Primary
             coords = self%asteroid%primary%coordinates_CM + self%asteroid%coordinates
             write (unit_file,i2r9) &
-                & i, &  ! ID
+                & 0, &  ! ID
                 & 0, &  ! type
                 & self%time / unit_time, &  !time
                 & (self%asteroid%theta + self%asteroid%primary%initial_theta) * radian, &  ! theta
