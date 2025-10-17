@@ -1,13 +1,12 @@
 module derivates
     use constants, only: G, cero, uno, uno2, dos, tini
-    use auxiliary, only: cross2D_z
+    use auxiliary, only: cross2D_z, rotate2D
     use parameters, only: sim, &
                           & system, &  ! asteroid inertia
                           & boulders_coords, boulders_data, & !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
                           & m_arr, R_arr, &
                           & hard_exit
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
-
                             & use_drag, drag_coef, drag_time, &
                             & use_stokes, stokes_C, stokes_alpha, stokes_time, &
                             & use_ellipsoid, K_coef, L_coef
@@ -63,6 +62,7 @@ module derivates
             real(kind=8) :: Q_eff, dQdx, dQdy  ! For triaxial
             real(kind=8) :: inv_dr, inv_dr2, inv_dr3  ! For triaxial
             real(kind=8) :: theta_moon  ! For triaxial
+            real(kind=8) :: xy_rotated(2)  ! For triaxial
             real(kind=8) :: Gmast, Gmcomb  ! For extra/COM forces
             real(kind=8) :: dr_ver(2), dv_vec(2)  ! For extra forces
             real(kind=8) :: vel_circ(2), v2  ! For extra forces
@@ -145,6 +145,14 @@ module derivates
 
                 ! ---> Triaxial <---
                 if (use_ellipsoid) then
+
+                    ! Anti-rotate target to check if inside
+                    xy_rotated = rotate2D(dr_vec, -theta)
+                    if (((xy_rotated(1) + R_arr(j)) / system%asteroid%primary%semi_axis(1))**2 &
+                    & + ((xy_rotated(2) + R_arr(j)) / system%asteroid%primary%semi_axis(2))**2 < uno) then
+                        hard_exit = .True.
+                    end if
+
                     inv_dr2 = inv_dr3 * dr
                     ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
                     ! Q_eff = 5 Q / r⁴
@@ -233,6 +241,14 @@ module derivates
 
                 ! ---> Triaxial <---
                 if (use_ellipsoid) then
+
+                    ! Anti-rotate target to check if inside
+                    xy_rotated = rotate2D(dr_vec, -theta)
+                    if ((xy_rotated(1) / system%asteroid%primary%semi_axis(1))**2 &
+                    & + (xy_rotated(2) / system%asteroid%primary%semi_axis(2))**2 < uno) then
+                        hard_exit = .True.
+                    end if
+
                     inv_dr2 = inv_dr3 * dr
                     ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
                     ! Q_eff = 5 Q / r⁴

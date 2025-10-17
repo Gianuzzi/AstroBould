@@ -436,10 +436,14 @@ module bodies
             self%coordinates = cero  ! We begin at the origin
 
             ! Set Radius
-            self%radius = self%primary%radius
-            do i = 1, self%Nboulders
-                self%radius = max(self%radius, self%boulders(i)%radius + self%boulders(i)%dist_to_asteroid) ! Radius
-            end do
+            if (self%primary%is_sphere) then
+                self%radius = self%primary%radius
+                do i = 1, self%Nboulders
+                    self%radius = max(self%radius, self%boulders(i)%radius + self%boulders(i)%dist_to_asteroid) ! Radius
+                end do
+            else  ! If ellipsoid, set maximum semi-axis
+                self%radius = self%primary%semi_axis(1)  ! a
+            end if
 
             ! Set Rotations
             self%theta = cero  ! Initial angle with X axis
@@ -1490,7 +1494,7 @@ module bodies
 
             !! Check if inside
             if (is_inside) then
-                pot = - G * self%asteroid%mass / self%asteroid%radius
+                pot = - G * self%asteroid%mass / self%asteroid%radius  ! Convenience
                 acc = cero
                 if (has_inside) inside = .True.
                 return
@@ -1895,6 +1899,7 @@ module bodies
             real(kind=8) :: boul_pos(2), moon_pos(2)
             real(kind=8) :: boul_rad, moon_rad
             real(kind=8) :: dr_vec(2), dr
+            real(kind=8) :: xy_rotated(2), dx, dy  ! For ellipsoid
             logical :: again, do_write
 
             ! Init
@@ -1931,17 +1936,33 @@ module bodies
                 ! Moons -> Primary + Boulders
                 m_act = self%Nmoons_active
                 if (r_min .le. cero) then  ! Only if not r_min
+
                     ! Primary
                     boul_pos = self%asteroid%primary%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
-                    boul_rad = self%asteroid%primary%radius
-                    do i = m_act, 1, -1  ! Backwards loop
-                        dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
-                        dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
-                        if (dr .le. boul_rad + self%moons(i)%radius) then
-                            if (do_write) write(unit_file,s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
-                            call merge_moon_i_into_ast(self, i)
-                        end if
-                    end do
+                    if (self%asteroid%primary%is_sphere) then  ! Sphere
+                        boul_rad = self%asteroid%primary%radius
+                        do i = m_act, 1, -1  ! Backwards loop
+                            dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
+                            dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
+                            if (dr .le. boul_rad + self%moons(i)%radius) then
+                                if (do_write) write(unit_file,s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
+                                call merge_moon_i_into_ast(self, i)
+                            end if
+                        end do
+                    else  ! Ellipsoid
+                        do i = m_act, 1, -1  ! Backwards loop
+                            xy_rotated = rotate2D(self%moons(i)%coordinates(1:2), -self%asteroid%theta)
+                            dx = xy_rotated(1) - boul_pos(1) + self%moons(i)%radius
+                            dy = xy_rotated(2) - boul_pos(2) + self%moons(i)%radius
+                            if (((dx / self%asteroid%primary%semi_axis(1))**2 &
+                             & + (dy / self%asteroid%primary%semi_axis(2))**2) < uno) then
+                                if (do_write) write(unit_file,s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
+                                call merge_moon_i_into_ast(self, i)
+                            end if
+                        end do
+                    end if
+
+                    m_act = self%Nmoons_active
                     ! Boulders
                     do j = 1, self%asteroid%Nboulders
                         boul_pos = self%asteroid%boulders(j)%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
@@ -1957,6 +1978,7 @@ module bodies
                     end do
 
                 else ! Check only if distance to asteroid is lower than r_min
+
                     do i = m_act, 1, -1  ! Backwards loop
                         dr_vec = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                         dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
@@ -1965,6 +1987,7 @@ module bodies
                             call merge_moon_i_into_ast(self, i)
                         end if
                     end do
+                    
                 end if
 
                 again = again .or. ((self%Nmoons_active .ge. 1) .and. (m_act0 > self%Nmoons_active))
@@ -1993,19 +2016,37 @@ module bodies
             ! Particles -> Primary + Boulders (Only if not r_min)
             p_act = self%Nparticles_active
             if (r_min .le. cero) then
+
                 ! Primary
                 boul_pos = self%asteroid%primary%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
-                boul_rad = self%asteroid%primary%radius
-                do i = p_act, 1, -1  ! Backwards loop
-                    dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
-                    dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
-                    if (dr .le. boul_rad) then
-                        if (do_write) write(unit_file,s1i5x5) "Merged particle ", i, &
-                                                            & "(", self%particles(i)%id, ") into asteroid."
-                        self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
-                        call deactivate_particle_i(self, i)  ! Deactivate
-                    end if
-                end do
+                if (self%asteroid%primary%is_sphere) then  ! Sphere
+                    boul_rad = self%asteroid%primary%radius
+                    do i = p_act, 1, -1  ! Backwards loop
+                        dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
+                        dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
+                        if (dr .le. boul_rad) then
+                            if (do_write) write(unit_file,s1i5x5) "Merged particle ", i, &
+                                                                & "(", self%particles(i)%id, ") into asteroid."
+                            self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
+                            call deactivate_particle_i(self, i)  ! Deactivate
+                        end if
+                    end do
+                else  ! Ellipsoid
+                    do i = p_act, 1, -1  ! Backwards loop
+                        xy_rotated = rotate2D(self%particles(i)%coordinates(1:2), -self%asteroid%theta)
+                        dx = xy_rotated(1) - boul_pos(1)
+                        dy = xy_rotated(2) - boul_pos(2)
+                        if (((dx / self%asteroid%primary%semi_axis(1))**2 &
+                         & + (dy / self%asteroid%primary%semi_axis(2))**2) < uno) then
+                            if (do_write) write(unit_file,s1i5x5) "Merged particle ", i, &
+                                                                & "(", self%particles(i)%id, ") into asteroid."
+                            self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
+                            call deactivate_particle_i(self, i)  ! Deactivate
+                        end if
+                    end do
+                end if
+
+                p_act = self%Nparticles_active
                 ! Boulders
                 do j = 1, self%asteroid%Nboulders
                     boul_pos = self%asteroid%boulders(j)%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
@@ -2021,7 +2062,9 @@ module bodies
                         end if
                     end do
                 end do
+
             else ! Check only if distance to asteroid is lower than r_min
+
                 do i = p_act, 1, -1  ! Backwards loop
                     dr_vec = self%particles(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                     dr = sqrt(dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2))  ! Distance
@@ -2031,6 +2074,7 @@ module bodies
                         call deactivate_particle_i(self, i)  ! Deactivate
                     end if
                 end do
+
             end if
         end subroutine resolve_collisions
 
@@ -2161,6 +2205,10 @@ module bodies
                     & self%asteroid%coordinates(3:4) / unit_vel, &  ! vx vy
                     & self%asteroid%mass / unit_mass, &  ! mass
                     & self%asteroid%radius / unit_dist  ! radius
+            
+            ! Else, only if at least 1 boulder
+            if (self%asteroid%Nboulders .eq. 0) return
+
             ! Primary
             coords = self%asteroid%primary%coordinates_CM + self%asteroid%coordinates
             write (unit_file,i2r9) &
@@ -2173,6 +2221,7 @@ module bodies
                 & coords(3:4) / unit_vel, &  ! vx vy
                 & self%asteroid%primary%mass / unit_mass, &  ! mass
                 & self%asteroid%primary%radius / unit_dist  ! radius
+
             ! Boulders
             do i = 1, self%asteroid%Nboulders
                 coords = self%asteroid%boulders(i)%coordinates_CM + self%asteroid%coordinates

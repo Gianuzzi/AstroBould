@@ -712,18 +712,19 @@ program main
 
     ! <<<< Escape/Colisión >>>>
     if (sim%min_distance < cero) then
+        !! Check
+        if (abs(sim%min_distance) < uno) then
+            write(*,*) ACHAR(10)
+            write(*,s1r1) "ERROR: rmin can not be lower than asteroid radius. Ratio:", abs(sim%min_distance)
+            stop 1
+        end if
         sim%min_distance = system%asteroid%radius * abs(sim%min_distance)
-    else if (sim%min_distance < tini) then
-        sim%min_distance = system%asteroid%radius
-    else
-        sim%min_distance = sim%min_distance * unit_dist
+    else if (sim%min_distance > tini) then
+        sim%min_distance = max(sim%min_distance * unit_dist, system%asteroid%radius)
+    else  ! Assume its cero
+        sim%min_distance = cero
     end if
-    !! Check
-    if (sim%min_distance < system%asteroid%radius) then
-        write(*,*) ACHAR(10)
-        write(*,s1r1) "ERROR: rmin can not be lower than asteroid radius. Ratio:", sim%min_distance / system%asteroid%radius
-        stop 1
-    end if
+    
     if (sim%max_distance < cero) then
         sim%max_distance = system%asteroid%radius * abs(sim%max_distance)
     else 
@@ -736,7 +737,11 @@ program main
     end if
     if (sim%use_screen) then
         write(*,*) "Conditions for escape / collision"
-        write(*,s1r1) "   rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
+        if (sim%min_distance > tini) then
+            write(*,s1r1) "   rmin : ", sim%min_distance / unit_dist, "[km] =", sim%min_distance / system%asteroid%radius, "[Rast]"
+        else
+            write(*,s1r1) "   rmin : Asteroid surface ~", system%asteroid%radius / unit_dist, "[km]"
+        end if
         if (sim%max_distance > cero) then
             write(*,s1r1) "   rmax : ", sim%max_distance / unit_dist, "[km] =", sim%max_distance / system%asteroid%radius, "[Rast]"
         else
