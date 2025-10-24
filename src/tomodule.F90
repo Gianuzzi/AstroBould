@@ -36,11 +36,11 @@ module tomodule
                 stop 1
             end if
 
-            open (unit=30, file=file_tout, status="old", action="read")
+            open (unit=12, file=file_tout, status="old", action="read")
 
             !! Count number of columns
             ncols = 0
-            read (30, '(A)') auxstr
+            read (12, '(A)') auxstr
             do i = 1,3   ! The very maximum that the string can contain: 3
                 io = 0
                 read (auxstr, *, iostat=io) (t_aux, j=1,i)
@@ -52,9 +52,9 @@ module tomodule
                 ncols = i - 1
             end if
             
-            rewind (30) ! Go to the beginning of the file
+            rewind (12) ! Go to the beginning of the file
             do ! Count number of (valid) lines 
-                read (30, *, iostat=io) t_aux
+                read (12, *, iostat=io) t_aux
                 if ((io /= 0) .or. (t_aux > tf)) exit
                 if (t_aux < t0) cycle
                 n_TOM = n_TOM + 1
@@ -76,34 +76,34 @@ module tomodule
                 allocate (dmass_TOM(n_TOM))
                 dmass_TOM = -uno
             end if
-            rewind (30) ! Go to the beginning of the file
+            rewind (12) ! Go to the beginning of the file
 
             ! Read data
             i = 2
             if (ncols == 1) then
                 do
-                    read (30, *, iostat=io) t_TOM(i)
+                    read (12, *, iostat=io) t_TOM(i)
                     if ((io /= 0) .or. (t_TOM(i) > tf)) exit
                     if (t_TOM(i) < t0) cycle
                     i = i + 1
                 end do
             else if (ncols == 2) then
                 do
-                    read (30, *, iostat=io) t_TOM(i), domega_TOM(i)
+                    read (12, *, iostat=io) t_TOM(i), domega_TOM(i)
                     if ((io /= 0) .or. (t_TOM(i) > tf)) exit
                     if (t_TOM(i) < t0) cycle
                     i = i + 1
                 end do
             else 
                 do
-                    read (30, *, iostat=io) t_TOM(i), domega_TOM(i), dmass_TOM(i)
+                    read (12, *, iostat=io) t_TOM(i), domega_TOM(i), dmass_TOM(i)
                     if ((io /= 0) .or. (t_TOM(i) > tf)) exit
                     if (t_TOM(i) < t0) cycle
                     i = i + 1
                 end do
             end if
 
-            close (30)
+            close (12)
         end subroutine read_tomfile
 
         ! Set TOM times and arrays

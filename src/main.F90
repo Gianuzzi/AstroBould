@@ -395,7 +395,6 @@ program main
         write(*,*) ACHAR(5)
     end if
 
-
     
     !!!!!!!!!!!!!!!!!!!!!!!!!! Bodies !!!!!!!!!!!!!!!!!!!!!!!!!!
     
@@ -593,17 +592,18 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXTRA EFFECTS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         write(*,*) ("---------- External / Internal forces ----------")
         write(*,*) ACHAR(5)
     end if
 
+
     !! <<<< Tri-axial gravity >>>>
     if (sim%use_triaxial) then
         call init_ellipsoid(sim%triax_a_primary * unit_dist, sim%triax_b_primary * unit_dist, sim%triax_c_primary * unit_dist)
     end if
-
 
 
     !! <<<< Moons gravity >>>>
@@ -783,7 +783,6 @@ program main
     end if
 
 
-
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! MAPS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -802,6 +801,7 @@ program main
             write(*,*) ACHAR(5)
         end if
     end if
+
     if (only_potential_map .and. .not. sim%only_print) then  ! Global
         if (sim%use_screen) then
             write(*,*) "END: Only the Map was requested."
@@ -814,6 +814,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRACIÓN !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
     ! Mensaje
     if (sim%use_screen) then
@@ -953,7 +954,6 @@ program main
     end if
 
 
-
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!! Integration Arrays !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -984,7 +984,6 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! FILTER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 
 
     ! Mensaje
@@ -1018,11 +1017,11 @@ program main
         sim%filter_nwindows = filter%n_windows
         
         ! Create filter file
-        open (unit=12321, file=trim(trim(sim%filter_prefix)), status='replace', action='write', position="append")
-        write(12321,*) "dt ", "n_samples ", "n_windows ", "size ", "total_dt"
-        write(12321,*) filter%dt, filter%n_samples, filter%n_windows, filter%size, filter%dt * filter%size
-        write(12321,*) filter%kernel
-        close(12321)
+        open (unit=30, file=trim(trim(sim%filter_prefix)), status='replace', action='write', position="append")
+        write(30,*) "dt ", "n_samples ", "n_windows ", "size ", "total_dt"
+        write(30,*) filter%dt, filter%n_samples, filter%n_windows, filter%size, filter%dt * filter%size
+        write(30,*) filter%kernel
+        close(30)
 
         ! CHECK
         if (filter%dt * filter%size > sim%final_time) then
@@ -1049,11 +1048,9 @@ program main
     end if
 
 
-
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! OUTPUT  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 
 
     if (sim%use_screen) then
@@ -1182,60 +1179,76 @@ program main
 
     
     ! <<<< ABRIMOS ARCHIVOS >>>>
+    !     10:  config file
+    !     11:  initial moons/particles (columns) file 
+    !     12:  TOM file
+    !     21:  data
+    !     22:  chaos
+    !     23:  geometric
+    !     24:  chaos geometric
+    !     30:  filter summary
+    !     31:  filtered data
+    !     32:  filtered chaos
+    !     50:  potential map
+    !  100+i:  individual bodies data 
+    ! 3100+i:  filtered individual bodies data 
 
 
     !! Archivo de salida general
-    if (sim%use_datafile) open (unit=20, file=trim(sim%datafile), status='replace', action='write', position="append")
-
-    !! Archivos individuales
-    if (sim%use_multiple_outputs) then
-        do i = 0, sim%Ntotal  ! 0 is the asteroid
-            write (aux_character20, *) i
-            open (unit=200+i, file=trim(sim%multfile) // "_" // trim(adjustl(aux_character20)), &
-                & status='replace', action='write', position="append")
-        end do
-    end if
+    if (sim%use_datafile) open (unit=21, file=trim(sim%datafile), status='replace', action='write', position="append")
 
     !! Chaos File
-    if (sim%use_chaosfile) open (unit=40, file=trim(sim%chaosfile), status='replace', action='readwrite', position="append")
+    if (sim%use_chaosfile) open (unit=22, file=trim(sim%chaosfile), status='replace', action='readwrite', position="append")
 
     !! Geometric file
-    if (sim%use_geometricfile) open (unit=60, file=trim(sim%geometricfile), status='replace', action='readwrite', position="append")
+    if (sim%use_geometricfile) open (unit=23, file=trim(sim%geometricfile),status='replace', action='write', position="append")
+
+    !! Geometric chaos file
+    if (sim%use_geomchaosfile) open (unit=24, file=trim(sim%geomchaosfile), status='replace', action='readwrite', position="append")
 
     !! Filter Files
     if (sim%use_filter) then
 
         !! Archivo de salida general
         if (sim%use_datafile) then
-            open (unit=21, &
+            open (unit=31, &
                 & file=trim(sim%filter_prefix) // trim(sim%datafile), &
                 & status='replace', action='write', position="append")
         end if
 
-        !! Archivos individuales
-        if (sim%use_multiple_outputs) then
-            do i = 0, sim%Ntotal  ! 0 is the asteroid
-                write (aux_character20, *) i
-                open (unit=200+i+1000, &
-                    & file=trim(sim%filter_prefix) // trim(sim%multfile) // "_" // trim(adjustl(aux_character20)), &
-                    & status='replace', action='write', position="append")
-            end do
-        end if
-
         !! Chaos File
         if (sim%use_chaosfile) then
-            open (unit=41, &
+            open (unit=32, &
                 & file=trim(sim%filter_prefix) // trim(sim%chaosfile), &
                 & status='replace', action='readwrite', position="append")
         end if
 
         ! !! Geometric File
         ! if (sim%use_geometricfile) then
-        !     open (unit=61, &
+        !     open (unit=33, &
         !         & file=trim(sim%filter_prefix) // trim(sim%geometricfile), &
         !         & status='replace', action='readwrite', position="append")
         ! end if
 
+        !! Archivos individuales
+        if (sim%use_multiple_outputs) then
+            do i = 0, sim%Ntotal  ! 0 is the asteroid
+                write (aux_character20, *) i
+                open (unit=3100+i, &
+                    & file=trim(sim%filter_prefix) // trim(sim%multfile) // "_" // trim(adjustl(aux_character20)), &
+                    & status='replace', action='write', position="append")
+            end do
+        end if
+
+    end if
+
+    !! Archivos individuales
+    if (sim%use_multiple_outputs) then
+        do i = 0, sim%Ntotal  ! 0 is the asteroid
+            write (aux_character20, *) i
+            open (unit=100+i, file=trim(sim%multfile) // "_" // trim(adjustl(aux_character20)), &
+                & status='replace', action='write', position="append")
+        end do
     end if
 
 
@@ -1911,36 +1924,25 @@ program main
 
     !! Cerrar archivo de salida
     if (sim%use_datafile) then
-        close (20)
+        close (21)
         if (sim%use_screen) then
             write(*,*) ACHAR(10)
             write(*,*) "Output data saved to file: ", trim(sim%datafile)
         end if
     end if
 
-    !! Cerrar archivos individuales
-    if (sim%use_multiple_outputs) then
-        do i = 0, sim%Ntotal  ! 0 is the asteroid
-            close (200+i)
-        end do
-        if (sim%use_screen) then
-            write(*,*) ACHAR(10)
-            write(*,*) "Individual output data saved to files: ", trim(sim%multfile) // "_*"
-        end if
-    end if
-
-    !! Final chaos
+    !! Final chaos y cierre
     if (sim%use_chaos) then
         if (sim%use_chaosfile) then
             !! Chaosfile
-            inquire (unit=40, opened=aux_logical)
+            inquire (unit=22, opened=aux_logical)
             if (.not. aux_logical) then
-                open (unit=40, file=trim(sim%chaosfile), status='unknown', action='write')
+                open (unit=22, file=trim(sim%chaosfile), status='unknown', action='write')
             else
-                rewind(40)
+                rewind(22)
             end if
-            call write_chaos(initial_system, system, 40)
-            close (40)
+            call write_chaos(initial_system, system, 22)
+            close (22)
             !! Mensaje
             if (sim%use_screen) then 
                 write(*,*) ACHAR(10)
@@ -1956,32 +1958,47 @@ program main
 
     !! Cerrar archivo de geométricos
     if (sim%use_geometricfile) then
-        close (60)
+        close (23)
         if (sim%use_screen) then
             write(*,*) ACHAR(10)
             write(*,*) "Geometric output data saved to file: ", trim(sim%geometricfile)
         end if
     end if
 
+    !! Final geometric chaos y cierre
+    if (sim%use_chaos) then
+        if (sim%use_geomchaosfile) then
+            !! Chaosfile
+            inquire (unit=24, opened=aux_logical)
+            if (.not. aux_logical) then
+                open (unit=24, file=trim(sim%geomchaosfile), status='unknown', action='write')
+            else
+                rewind(24)
+            end if
+            call write_to_geomchaos(initial_system, system, 24)
+            close (24)
+            !! Mensaje
+            if (sim%use_screen) then 
+                write(*,*) ACHAR(10)
+                write(*,*) "Geometric chaos data saved into: ", trim(sim%geomchaosfile)
+            end if
+        end if
+        if (sim%use_datascreen) then
+            write(*,*) ACHAR(10)        
+            write(*,*) "Geometric chaos:"
+            call write_geomchaos(initial_system, system, 6)
+        end if
+    end if
+
+    !! Cerrar archivos de filtrado
     if (sim%use_filter) then
 
         !! Cerrar archivo de salida filtrado
         if (sim%use_datafile) then
-            close (21)
+            close (31)
             if (sim%use_screen) then
                 write(*,*) ACHAR(10)
                 write(*,*) "Filterd output data saved to file: ", trim(sim%filter_prefix) // trim(sim%datafile)
-            end if
-        end if
-
-        !! Cerrar archivos individuales filtrados
-        if (sim%use_multiple_outputs) then
-            do i = 0, sim%Ntotal  ! 0 is the asteroid
-                close (200+i+1000)
-            end do
-            if (sim%use_screen) then
-                write(*,*) ACHAR(10)
-                write(*,*) "Filterd individual output data saved to files: ", trim(sim%filter_prefix) // trim(sim%multfile) // "_*"
             end if
         end if
 
@@ -1989,14 +2006,14 @@ program main
         if (sim%use_chaos) then
             if (sim%use_chaosfile) then
                 !! Chaosfile
-                inquire (unit=41, opened=aux_logical)
+                inquire (unit=32, opened=aux_logical)
                 if (.not. aux_logical) then
-                    open (unit=41, file=trim(sim%chaosfile), status='unknown', action='write')
+                    open (unit=32, file=trim(sim%chaosfile), status='unknown', action='write')
                 else
-                    rewind(41)
+                    rewind(32)
                 end if
-                call write_chaos(initial_system, system_filtered, 41)
-                close (41)
+                call write_chaos(initial_system, system_filtered, 32)
+                close (32)
                 !! Mensaje
                 if (sim%use_screen) then 
                     write(*,*) ACHAR(10)
@@ -2012,18 +2029,42 @@ program main
 
         ! !! Cerrar archivo de geométricos filtrado
         ! if (sim%use_geometricfile) then
-        !     close (61)
+        !     close (33)
         !     if (sim%use_screen) then
         !         write(*,*) ACHAR(10)
         !         write(*,*) "Filterd geometric data saved to file: ", trim(sim%filter_prefix) // trim(sim%geometricfile)
         !     end if
         ! end if
 
+        !! Cerrar archivos individuales filtrados
+        if (sim%use_multiple_outputs) then
+            do i = 0, sim%Ntotal  ! 0 is the asteroid
+                close (3100+i)
+            end do
+            if (sim%use_screen) then
+                write(*,*) ACHAR(10)
+                write(*,*) "Filterd individual output data saved to files: ", trim(sim%filter_prefix) // trim(sim%multfile) // "_*"
+            end if
+        end if
+
     end if
+
+    !! Cerrar archivos individuales
+    if (sim%use_multiple_outputs) then
+        do i = 0, sim%Ntotal  ! 0 is the asteroid
+            close (100+i)
+        end do
+        if (sim%use_screen) then
+            write(*,*) ACHAR(10)
+            write(*,*) "Individual output data saved to files: ", trim(sim%multfile) // "_*"
+        end if
+    end if
+
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!! LIBERACION MEMORIA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
     if (sim%use_screen) then
         write(*,*) ACHAR(10)

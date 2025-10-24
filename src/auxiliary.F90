@@ -345,10 +345,10 @@ module auxiliary
                 stop 1
             end if
 
-            open (unit=20, file=trim(file_name), status="old", action="read")
+            open (unit=11, file=trim(file_name), status="old", action="read")
 
             !! Count number of columns
-            read (20, '(A)') auxstr
+            read (11, '(A)') auxstr
             do i = 1,MAX_COLS
                 io = 0
                 read (auxstr, *, iostat=io) (aux_real, j=1,i)
@@ -360,29 +360,29 @@ module auxiliary
                 ncols = i - 1
             end if
             
-            rewind (20) ! Go to the beginning of the file
+            rewind (11) ! Go to the beginning of the file
             
             if (my_method .eq. 0) then
 
                 !! Count number of rows
                 do ! Count number of (valid) lines 
-                    read (20, *, iostat=io) aux_real
+                    read (11, *, iostat=io) aux_real
                     if (is_iostat_end(io)) exit
                     nrows = nrows + 1
                 end do
 
                 ! Allocate arrays
                 allocate (values_arr(nrows, ncols))
-                rewind (20) ! Go to the beginning of the file
+                rewind (11) ! Go to the beginning of the file
                 do i = 1, nrows
-                    read (20, *) (values_arr(i,j), j=1,ncols)
+                    read (11, *) (values_arr(i,j), j=1,ncols)
                 end do
 
             else
                 ! Allocate auxiliar array
                 allocate (aux_real_arr(MAX_ROWS, ncols))
                 do i = 1, MAX_ROWS
-                    read (20, *, iostat=io) (aux_real_arr(i,j), j=1,ncols)
+                    read (11, *, iostat=io) (aux_real_arr(i,j), j=1,ncols)
                     if (is_iostat_end(io)) exit
                     nrows = nrows + 1
                 end do
@@ -391,7 +391,7 @@ module auxiliary
                 values_arr = aux_real_arr(1:nrows, 1:ncols)
                 deallocate (aux_real_arr)
             end if
-            close (20)
+            close (11)
         end subroutine read_columns_file
 
         ! Write percentage to file unit or std out

@@ -2171,6 +2171,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: unit_file
+
             write (unit_file,i2r15) &
                 & 0, &  ! ID
                 & -1, &  ! type
@@ -2194,6 +2195,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
+
             write (unit_file,i2r15) &
                 & self%moons(i)%id, &  ! ID
                 & 1, &  ! type
@@ -2217,6 +2219,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
+
             write (unit_file,i2r15) &
                 & self%particles(i)%id, &   ! ID
                 & 2, &  ! type
@@ -2270,7 +2273,8 @@ module bodies
                 call write_particle_i_elem(self, 1, unit_file)
             end if
         
-            deallocate(ids)            
+            deallocate(ids)
+
         end subroutine write_elem
 
         ! Write coordinates asteroid
@@ -2280,6 +2284,7 @@ module bodies
             integer(kind=4), intent(in) :: unit_file
             integer(kind=4) :: i
             real(kind=8) :: coords(4)
+
             ! Asteroid
             write (unit_file,i2r9) &
                     & -1, &  ! ID
@@ -2322,6 +2327,7 @@ module bodies
                     & self%asteroid%boulders(i)%mass / unit_mass, &  ! mass
                     & self%asteroid%boulders(i)%radius / unit_dist  ! radius
             end do
+
         end subroutine write_ast_coor
 
         ! Write coordinates moon i
@@ -2329,6 +2335,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
+
             write (unit_file,i2r9) &
                 & self%moons(i)%id + self%asteroid%Nboulders, &  ! ID + Nbould to avoid duplicates
                 & 1, &  ! type
@@ -2346,6 +2353,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
+
             write (unit_file,i2r9) &
                 & self%particles(i)%id + self%asteroid%Nboulders, &  ! ID + Nbould to avoid duplicates
                 & 2, &  ! type
@@ -2394,6 +2402,7 @@ module bodies
             end if
         
             deallocate(ids)
+
         end subroutine write_coor
 
         ! Write chaos asteroid
@@ -2402,6 +2411,7 @@ module bodies
             type(system_st), intent(in) :: initial
             type(system_st), intent(in) :: actual
             integer(kind=4), intent(in) :: unit_file
+
             write (unit_file,i3r23) &
                 & 0, &  ! ID
                 & -1, &  ! type
@@ -2436,14 +2446,16 @@ module bodies
             type(system_st), intent(in) :: actual
             integer(kind=4), intent(in) :: i, unit_file
             integer(kind=4):: i_initial
-            i_initial = -1
-            do i_initial = 1, initial%Nparticles
+            
+            do i_initial = 1, initial%Nmoons
                 if (actual%moons(i)%id .eq. initial%moons(i_initial)%id) exit
             end do
+
             if (i_initial .eq. -1) then
                 write(*,*) "ERROR: Moon not found in initial system:", actual%moons(i)%id
                 stop 2
             end if
+
             write (unit_file,i3r23) &
                 & actual%moons(i)%id, &  ! ID
                 & 1, &  ! type
@@ -2478,14 +2490,16 @@ module bodies
             type(system_st), intent(in) :: actual
             integer(kind=4), intent(in) :: i, unit_file
             integer(kind=4) :: i_initial
-            i_initial = -1
+            
             do i_initial = 1, initial%Nparticles
                 if (actual%particles(i)%id .eq. initial%particles(i_initial)%id) exit
             end do
+
             if (i_initial .eq. -1) then
                 write(*,*) "ERROR: Particle not found in initial system:", actual%particles(i)%id
                 stop 2
             end if
+
             write (unit_file,i3r23) &
                 & actual%particles(i)%id, &  ! ID
                 & 2, &  ! type
@@ -2550,7 +2564,8 @@ module bodies
                 call write_particle_i_chaos(initial, actual, 1, unit_file)
             end if
         
-            deallocate(ids)            
+            deallocate(ids)
+
         end subroutine write_chaos
 
         ! Write geometric elements moon i
@@ -2558,6 +2573,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
+
             write (unit_file,i2r15) &
                 & self%moons(i)%id, &  ! ID
                 & 1, &  ! type
@@ -2581,6 +2597,7 @@ module bodies
             implicit none
             type(system_st), intent(in) :: self
             integer(kind=4), intent(in) :: i, unit_file
+
             write (unit_file,i2r15) &
                 & self%particles(i)%id, &   ! ID
                 & 2, &  ! type
@@ -2633,8 +2650,136 @@ module bodies
                 call write_particle_i_geom(self, 1, unit_file)
             end if
         
-            deallocate(ids)            
+            deallocate(ids)
+
         end subroutine write_geom
+
+        ! Write chaos moon i
+        subroutine write_moon_i_geomchaos(initial, actual, i, unit_file)
+            implicit none
+            type(system_st), intent(in) :: initial
+            type(system_st), intent(in) :: actual
+            integer(kind=4), intent(in) :: i, unit_file
+            integer(kind=4):: i_initial
+            
+            do i_initial = 1, initial%Nmoons
+                if (actual%moons(i)%id .eq. initial%moons(i_initial)%id) exit
+            end do
+
+            if (i_initial .eq. -1) then
+                write(*,*) "ERROR: Moon not found in initial system:", actual%moons(i)%id
+                stop 2
+            end if
+
+            write (unit_file,i3r23) &
+                & actual%moons(i)%id, &  ! ID
+                & 1, &  ! type
+                & actual%moons(i)%merged_to, &  ! merged_to
+                & actual%moons(i)%tmax / unit_time, &  ! time
+                & initial%asteroid%theta / radian, &  ! theta
+                & initial%asteroid%omega * unit_time, &  ! omega
+                & initial%moons(i_initial)%geometric(1) / unit_dist, &  ! a
+                & initial%moons(i_initial)%geometric(2), &  ! e
+                & initial%moons(i_initial)%geometric(3) / radian, &  ! M
+                & initial%moons(i_initial)%geometric(4) / radian, &  ! w
+                & initial%moons(i_initial)%mmr_geom, &   ! MMR
+                & initial%moons(i_initial)%mass / unit_mass, &  ! mass
+                & initial%moons(i_initial)%radius / unit_dist, &  ! radius
+                & actual%asteroid%theta / radian, &  ! theta
+                & actual%asteroid%omega * unit_time, &  ! omega
+                & actual%moons(i)%geometric(1) / unit_dist, &  ! a
+                & actual%moons(i)%geometric(2), &  ! e
+                & actual%moons(i)%geometric(3) / radian, &  ! M
+                & actual%moons(i)%geometric(4) / radian, &  ! w
+                & actual%moons(i)%mmr_geom, &   ! MMR
+                & actual%moons(i)%mass / unit_mass, &  ! mass
+                & actual%moons(i)%radius / unit_dist, &  ! radius
+                & actual%moons(i)%chaos_a_geom / unit_dist, &  ! da
+                & actual%moons(i)%chaos_e_geom  ! de
+        end subroutine write_moon_i_geomchaos
+
+        ! Write chaos particle i
+        subroutine write_particle_i_geomchaos(initial, actual, i, unit_file)
+            implicit none
+            type(system_st), intent(in) :: initial
+            type(system_st), intent(in) :: actual
+            integer(kind=4), intent(in) :: i, unit_file
+            integer(kind=4) :: i_initial
+
+            do i_initial = 1, initial%Nparticles
+                if (actual%particles(i)%id .eq. initial%particles(i_initial)%id) exit
+            end do
+
+            if (i_initial .eq. -1) then
+                write(*,*) "ERROR: Particle not found in initial system:", actual%particles(i)%id
+                stop 2
+            end if
+
+            write (unit_file,i3r23) &
+                & actual%particles(i)%id, &  ! ID
+                & 2, &  ! type
+                & actual%particles(i)%merged_to, &  ! merged_to
+                & actual%particles(i)%tmax / unit_time, &  ! time
+                & initial%asteroid%theta / radian, &  ! theta
+                & initial%asteroid%omega * unit_time, &  ! omega
+                & initial%particles(i_initial)%geometric(1) / unit_dist, &  ! a
+                & initial%particles(i_initial)%geometric(2), &  ! e
+                & initial%particles(i_initial)%geometric(3) / radian, &  ! M
+                & initial%particles(i_initial)%geometric(4) / radian, &  ! w
+                & initial%particles(i_initial)%mmr_geom, &   ! MMR
+                & cero, &  ! mass
+                & cero, &  ! radius
+                & actual%asteroid%theta / radian, &  ! theta
+                & actual%asteroid%omega * unit_time, &  ! omega
+                & actual%particles(i)%geometric(1) / unit_dist, &  ! a
+                & actual%particles(i)%geometric(2), &  ! e
+                & actual%particles(i)%geometric(3) / radian, &  ! M
+                & actual%particles(i)%geometric(4) / radian, &  ! w
+                & actual%particles(i)%mmr_geom, &   ! MMR
+                & cero, &  ! mass
+                & cero, &  ! radius
+                & actual%particles(i)%chaos_a_geom / unit_dist, &  ! da
+                & actual%particles(i)%chaos_e_geom  ! de
+        end subroutine write_particle_i_geomchaos
+
+        ! Write chaos ALL
+        subroutine write_geomchaos(initial, actual, unit_file)
+            implicit none
+            type(system_st), intent(in) :: initial
+            type(system_st), intent(in) :: actual
+            integer(kind=4), intent(in) :: unit_file
+            integer(kind=4) :: i
+            integer(kind=4), dimension(:), allocatable :: ids
+
+            allocate(ids(max(actual%Nmoons, actual%Nparticles)))
+
+            if (actual%Nmoons > 1) then 
+                do i = 1, actual%Nmoons
+                    ids(i) = i
+                end do
+                call quickargsort_int(actual%moons%id, ids, 1, actual%Nmoons)
+                do i = 1, actual%Nmoons
+                    call write_moon_i_geomchaos(initial, actual, ids(i), unit_file)
+                end do
+            else if (actual%Nmoons .eq. 1) then
+                call write_moon_i_geomchaos(initial, actual, 1, unit_file)
+            end if
+
+            if (actual%Nparticles > 1) then 
+                do i = 1, actual%Nparticles
+                    ids(i) = i
+                end do
+                call quickargsort_int(actual%particles%id, ids, 1, actual%Nparticles)
+                do i = 1, actual%Nparticles
+                    call write_particle_i_geomchaos(initial, actual, ids(i), unit_file)
+                end do
+            else if (actual%Nparticles .eq. 1) then
+                call write_particle_i_geomchaos(initial, actual, 1, unit_file)
+            end if
+        
+            deallocate(ids)
+
+        end subroutine write_geomchaos
 
         ! Write diagnostic information ALL
         subroutine write_diagnostics(initial, actual, unit_file)

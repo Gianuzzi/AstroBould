@@ -21,6 +21,8 @@ module parameters
     integer(kind=4) :: my_threads = 1  ! Amount of threads actually used
     logical :: compiled_with_openmp = .False.  ! Flag of compile with OpenMP
     logical :: any_extra_effect = .False.  ! If any extra is loaded. Just for message.
+    logical :: use_flush_chaos = .False.  ! Flush chaos at every checkpoint
+    logical :: use_flush_output = .False.  ! Flush data at every checkpoint
 
 
     !! ----  <<<<<    BODIES (bodies)     >>>>>   -----
@@ -150,12 +152,6 @@ module parameters
         logical :: use_boulders = .False.
         logical :: use_particles = .False.
         logical :: use_moons = .False.
-        !! Triaxial
-        real(kind=8) :: Reffective = cero
-        real(kind=8) :: C20 = cero
-        real(kind=8) :: C22 = cero
-        ! Forces
-        logical :: use_torque = .False.  ! May disapear...
         !! Stokes
         !! Mass and omega damping
         logical :: use_lin_omega_damp = .False.
@@ -179,8 +175,8 @@ module parameters
         logical :: use_any_stop = .False.
         ! Chaos
         logical :: use_chaos = .False.  ! Need to output chaos values
-        logical :: use_flush_chaos = .False.  ! Flush at every checkpoint
-        logical :: use_flush_output = .False.  ! Flush at every checkpoint
+        character(30) :: geomchaosfile = ""
+        logical :: use_geomchaosfile = .False.  ! Need to output geometric chaos values
         ! Error
         real(kind=8) :: error_tolerance = cero
         !!! Command line body
@@ -259,8 +255,11 @@ module parameters
     procedure (write_i_to_unit_template), pointer :: write_m_to_individual => null ()
     procedure (write_i_to_unit_template), pointer :: write_p_to_individual => null ()
     procedure (write_to_unit_template), pointer :: write_to_geometric => null ()
+    procedure (write_ch_to_unit_template), pointer :: write_to_geomchaos => null ()
     procedure (int_i_template), pointer :: flush_output => null ()
     procedure (int_i_template), pointer :: flush_chaos => null ()
+    procedure (int_i_template), pointer :: flush_geometric => null ()
+    procedure (int_i_template), pointer :: flush_geomchaos => null ()
 
 
 
@@ -1106,6 +1105,8 @@ module parameters
         subroutine set_derived_parameters(derived)
             implicit none
             type(sim_params_st), intent(inout) :: derived
+            integer(kind=4) :: i
+            character(:), allocatable :: aux_ch1, aux_ch2
 
             ! ----------------------- GLOBALS ---------------------------------
             if (derived%use_command_body) then
@@ -1354,17 +1355,33 @@ module parameters
                 write(*,*) "ERROR: Can not print both percentage and diagnostics data."
                 stop 1
             end if
-            
-            derived%use_chaos = derived%use_chaosfile .or. derived%use_chaos
 
+            !! Geometric
             if (derived%use_geometricfile .and. .not. derived%use_triaxial) then
                 write(*,*) "WARNING: No geometric file created as not triaxial body is used."
                 derived%use_geometricfile = .False.
             end if
+            
+            !! Chaos
+            derived%use_chaos = derived%use_chaosfile .or. (derived%extra_checkpoints > 0)
+            if (derived%use_chaos .and. derived%use_geometricfile) then
+                derived%use_geomchaosfile = .True.  ! Need to output geometric chaos values
+                aux_ch1 = trim(adjustl(derived%geometricfile))
+                i = index(aux_ch1, ".", back=.True.)
+                if (i .eq. 0) i = len_trim(aux_ch1) + 1 ! No "." in geometricfile
+                aux_ch2 = aux_ch1(1:i-1)
+                if (len_trim(derived%chaosfile) > 0) then 
+                    derived%geomchaosfile = trim(aux_ch2) // "_" // trim(adjustl(derived%chaosfile))
+                else
+                    derived%geomchaosfile = trim(aux_ch2) // "_chaos.out"
+                end if
+                deallocate(aux_ch1)
+                deallocate(aux_ch2)
+            else
+                derived%use_geomchaosfile = .True.  ! Need to output geometric chaos values
+            end if
 
-            if (.not. derived%use_chaosfile) derived%use_flush_chaos = .False.
-            if (.not. derived%use_datafile) derived%use_flush_output = .False.
-
+            !! Names
             if ((trim(derived%datafile) /= "") .and. (trim(derived%datafile) /= "no")) then
                 derived%use_datafile = .True.
             else 
@@ -1423,7 +1440,7 @@ module parameters
             use bodies, only: write_chaos, write_elem, write_coor, &
                             & write_ast_elem, write_moon_i_elem, write_particle_i_elem, &
                             & write_ast_coor, write_moon_i_coor, write_particle_i_coor, &
-                            & write_geom
+                            & write_geom, write_geomchaos
             implicit none
             type (sim_params_st), intent(in) :: simu
 
@@ -1447,8 +1464,14 @@ module parameters
                 else
                     write_to_general => write_coor
                 end if
+                if (use_flush_output) then
+                    flush_output => flush_to_file
+                else 
+                    flush_output => do_nothing_i
+                end if  
             else 
                 write_to_general => do_not_write
+                flush_output => do_nothing_i
             end if
 
             ! Multiple Files
@@ -1472,7 +1495,7 @@ module parameters
             if (simu%use_chaosfile) then
                 write_to_chaos => write_chaos
                 ! Flush chaos
-                if (simu%use_flush_chaos) then
+                if (use_flush_chaos) then
                     flush_chaos => flush_and_rewind
                 else 
                     flush_chaos => rewind_a_file
@@ -1485,15 +1508,27 @@ module parameters
             ! Geometric file
             if (simu%use_geometricfile) then
                 write_to_geometric => write_geom
+                if (use_flush_output) then
+                    flush_geometric => flush_to_file
+                else 
+                    flush_geometric => do_nothing_i
+                end if
+                if (simu%use_geomchaosfile) then
+                    write_to_geomchaos => write_chaos
+                    if (use_flush_chaos) then
+                        flush_geomchaos => flush_and_rewind
+                    else 
+                        flush_geomchaos => rewind_a_file
+                    end if
+                else
+                    write_to_geomchaos => do_not_write_ch
+                    flush_geomchaos => do_nothing_i
+                end if
             else
                 write_to_geometric => do_not_write
-            end if
-
-            ! Flush ouput
-            if (simu%use_flush_output) then
-                flush_output => flush_to_file
-            else 
-                flush_output => do_nothing_i
+                write_to_geomchaos => do_not_write_ch
+                flush_geometric => do_nothing_i
+                flush_geomchaos => do_nothing_i
             end if
 
         end subroutine define_writing_pointers
@@ -1547,12 +1582,16 @@ module parameters
             implicit none
             nullify(write_to_general)
             nullify(write_to_screen)
+            nullify(write_to_chaos)
             nullify(write_to_geometric)
+            nullify(write_to_geomchaos)
             nullify(write_a_to_individual)
             nullify(write_m_to_individual)
             nullify(write_p_to_individual)
             nullify(flush_output)
             nullify(flush_chaos)
+            nullify(flush_geometric)
+            nullify(flush_geomchaos)
         end subroutine nullify_pointers
 
 
@@ -1774,24 +1813,24 @@ module parameters
             integer(kind=4) :: i, pind, pout
 
             if (present(filtered)) then
-                pind = 1000
-                pout = 1
+                pind = 3000
+                pout = 10
             else
                 pind = 0
                 pout = 0
             end if
 
-            call write_a_to_individual(syst, 200 + pind)
+            call write_a_to_individual(syst, 100 + pind)
             !$OMP PARALLEL DEFAULT(SHARED) &
             !$OMP PRIVATE(i)
             !$OMP DO
             do i = 1, syst%Nmoons_active
-                call write_m_to_individual(syst, i, 200+syst%moons(i)%id + pind)
+                call write_m_to_individual(syst, i, 100+syst%moons(i)%id + pind)
             end do 
             !$OMP END DO NOWAIT
             !$OMP DO
             do i = 1, syst%Nparticles_active
-                call write_p_to_individual(syst, i, 200+syst%particles(i)%id + pind)
+                call write_p_to_individual(syst, i, 100+syst%particles(i)%id + pind)
             end do 
             !$OMP END DO NOWAIT
             !$OMP SECTIONS
@@ -1800,18 +1839,21 @@ module parameters
                 call write_diagnostics(initial_system, syst, 6)
             else if (pout .eq. 0) then
                 call write_to_screen(syst, 6)
-                call flush_output(6)
+                flush(6)
             end if
             !$OMP SECTION
-            call write_to_general(syst, 20 + pout)
-            call flush_output(20 + pout)
+            call write_to_general(syst, 21 + pout)
+            call flush_output(21 + pout)
             !$OMP SECTION
-            call write_to_chaos(syst, initial_system, 40 + pout)
-            call flush_chaos(40 + pout) ! Update chaos
+            call write_to_chaos(syst, initial_system, 22 + pout)
+            call flush_chaos(22 + pout) ! Update chaos
             !$OMP SECTION
-            call write_to_geometric(syst, 60)
-            call flush_output(60)
-            !$OMP SECTION
+            if (pout .eq. 0) then
+                call write_to_geometric(syst, 23)
+                call flush_geometric(23)
+                call write_to_geomchaos(syst, initial_system, 24)
+                call flush_geomchaos(24)
+            end if
             !$OMP END SECTIONS
             !$OMP END PARALLEL        
             
