@@ -1273,12 +1273,12 @@ module bodies
             ! Moons
             do i = 1, self%Nmoons_active
                 !! a
-                aux_real2(1) = min(self%moons(i)%chaos_a_geom(1), self%moons(i)%elements(1))
-                aux_real2(2) = max(self%moons(i)%chaos_a_geom(2), self%moons(i)%elements(1))
+                aux_real2(1) = min(self%moons(i)%chaos_a_geom(1), self%moons(i)%geometric(1))
+                aux_real2(2) = max(self%moons(i)%chaos_a_geom(2), self%moons(i)%geometric(1))
                 self%moons(i)%chaos_a_geom = aux_real2
                 !! e
-                aux_real2(1) = min(self%moons(i)%chaos_e_geom(1), self%moons(i)%elements(2))
-                aux_real2(2) = max(self%moons(i)%chaos_e_geom(2), self%moons(i)%elements(2))
+                aux_real2(1) = min(self%moons(i)%chaos_e_geom(1), self%moons(i)%geometric(2))
+                aux_real2(2) = max(self%moons(i)%chaos_e_geom(2), self%moons(i)%geometric(2))
                 self%moons(i)%chaos_e_geom = aux_real2
                 !! time
                 self%moons(i)%tmax = self%time
@@ -1287,12 +1287,12 @@ module bodies
             ! Particles
             do i = 1, self%Nparticles_active
                 !! a
-                aux_real2(1) = min(self%particles(i)%chaos_a_geom(1), self%particles(i)%elements(1))
-                aux_real2(2) = max(self%particles(i)%chaos_a_geom(2), self%particles(i)%elements(1))
+                aux_real2(1) = min(self%particles(i)%chaos_a_geom(1), self%particles(i)%geometric(1))
+                aux_real2(2) = max(self%particles(i)%chaos_a_geom(2), self%particles(i)%geometric(1))
                 self%particles(i)%chaos_a_geom = aux_real2
                 !! e
-                aux_real2(1) = min(self%particles(i)%chaos_e_geom(1), self%particles(i)%elements(2))
-                aux_real2(2) = max(self%particles(i)%chaos_e_geom(2), self%particles(i)%elements(2))
+                aux_real2(1) = min(self%particles(i)%chaos_e_geom(1), self%particles(i)%geometric(2))
+                aux_real2(2) = max(self%particles(i)%chaos_e_geom(2), self%particles(i)%geometric(2))
                 self%particles(i)%chaos_e_geom = aux_real2
                 !! time
                 self%particles(i)%tmax = self%time

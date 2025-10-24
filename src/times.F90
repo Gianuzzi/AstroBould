@@ -18,6 +18,7 @@ module times
             integer(kind=4) :: i
             real(kind=8) :: npointsr
 
+            ! Define n_out
             if (dt_out > cero) then
                 if (dt_out > tf - t0) then
                     write(*,*) "ERROR: dt_out >= (tf - t0)"
@@ -29,12 +30,25 @@ module times
                 npointsr = dble(n_out)
                 dt_out = (tf - t0) / (npointsr - uno)
             end if
+
+            ! Sanity check > 2
             if (n_out < 2) then
                 write(*,*) "ERROR: n_out < 2"
                 stop 1
             end if
+
+            ! Allocate
             if (allocated(t_out)) deallocate(t_out)  ! Deallocate if needed
             allocate (t_out(n_out))  ! Here is allocated output_times
+
+            ! Define borders
+            t_out(1) = t0
+            t_out(n_out) = tf
+
+            ! Sanity check 2
+            if (n_out .eq. 2) return
+
+            ! Create dist
             select case (case_dist)
             case(0) ! Lineal
                 t_aux = (tf - t0) / (npointsr - uno)
@@ -70,8 +84,7 @@ module times
                 ! Y al final ordenamos
                 call quicksort(t_out, 2, n_out-1)
             end select
-            t_out(1) = t0
-            t_out(n_out) = tf
+
         end subroutine set_output_times
 
         ! Expand the checkpoints
