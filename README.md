@@ -144,7 +144,7 @@ $ ./ASTROBOULD [args]
 - Each integration is executed in parallel (e.g., across multiple CPU cores).
 - Does not require _-fopenmp_.
 
-The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [62 to 106](./launcher.py#L62#106). More information (in spannish) is available at the top of the file(see lines [3 to 49](./launcher.py#L3#L49)).
+The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [62 to 105](./launcher.py#L62#105). More information (in spannish) is available at the top of the file(see lines [3 to 49](./launcher.py#L3#L49)).
 
 To run:
 ```console

@@ -90,7 +90,6 @@ new_dir = True  # Directorio donde volcar las salidas.
 datafile = "salida"  # Archivo de salidas de datos (sin extensión)
 final_chaos = "chaos"  # Archivo de caos final (sin extensión)
 geomfile = "geometric"  # Archivo de elementos geométricos (sin extensión)
-suffix = ""  # Suffix for the output files
 # Summary file
 summaryfile = "summary"  # Archivo con resumen de parámetros
 # Screen #
@@ -193,7 +192,7 @@ if geomfile is None:
 if summaryfile is None:
     summaryfile = ""
 
-
+# Redefine chaos
 if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
     print(f"WARNING: Chaos Output file '{final_chaos}' already exist.")
     if datafile:
@@ -215,6 +214,14 @@ if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
             unique_file = f"{final_chaos}_{i}"
             i += 1
         final_chaos = unique_file
+
+
+# Geometric chaos
+if final_chaos and geomfile:
+    base, _ = os.path.splitext(geomfile)
+    geomchaosfile = f"{base}_{final_chaos or 'chaos.out'}"
+else:
+    geomchaosfile = ""
 
 
 # Checks #
@@ -366,6 +373,12 @@ args += f" -merge {merge}"
 #     raise ValueError("spin_down_tau should be a float or a list.")
 
 
+# Auxiliar rename function
+def rename_file(src, dst):
+    if os.path.exists(src):
+        os.rename(src, dst)
+
+
 # Función general
 def integrate_n(i):
     # Get processor ID
@@ -384,11 +397,11 @@ def integrate_n(i):
         if existe_otom:
             subprocess.run(["cp", otom, ntom], check=True)
 
-    this_datafile = f"salida{i}{suffix}"  # Without extension
+    this_datafile = f"salida{i}"  # Without extension
 
-    this_chaosfile = f"chaos{i}{suffix}"  # Without extension
+    this_chaosfile = f"chaos{i}"  # Without extension
 
-    this_geomfile = f"geom{i}{suffix}"  # Without extension
+    this_geomfile = f"geom{i}"  # Without extension
 
     this_args = f"-nsim {i}"
 
@@ -451,43 +464,36 @@ def integrate_n(i):
         f.write(f"{i}\n")
 
     # Renombramos el archivo de salida
-    if datafile:
-        subprocess.run(
-            [
-                "mv",
-                os.path.join(dirp, f"{this_datafile}_undone.out"),
-                os.path.join(dirp, f"{this_datafile}.out"),
-            ],
-            check=True,
-        )
+    rename_file(
+        os.path.join(dirp, f"{this_datafile}_undone.out"),
+        os.path.join(dirp, f"{this_datafile}.out"),
+    )
 
     # Renombramos el archivo de caos
-    if final_chaos:
-        subprocess.run(
-            [
-                "mv",
-                os.path.join(dirp, f"{this_chaosfile}_undone.out"),
-                os.path.join(dirp, f"{this_chaosfile}.out"),
-            ],
-            check=True,
-        )
+    rename_file(
+        os.path.join(dirp, f"{this_chaosfile}_undone.out"),
+        os.path.join(dirp, f"{this_chaosfile}.out"),
+    )
 
     # Renombramos el archivo de geométricos
-    if geomfile:
-        subprocess.run(
-            [
-                "mv",
-                os.path.join(dirp, f"{this_geomfile}_undone.out"),
-                os.path.join(dirp, f"{this_geomfile}.out"),
-            ],
-            check=True,
-        )
+    rename_file(
+        os.path.join(dirp, f"{this_geomfile}_undone.out"),
+        os.path.join(dirp, f"{this_geomfile}.out"),
+    )
+
+    # Renombramos el archivo de chaos geométrico
+    old_geomchaosfile = f"geom{i}_undone_chaos{i}"
+    new_geomchaosfile = f"geom_chaos{i}"
+    rename_file(
+        os.path.join(dirp, f"{old_geomchaosfile}_undone.out"),
+        os.path.join(dirp, f"{new_geomchaosfile}.out"),
+    )
 
     return True
 
 
 # Crear archivo chaos
-def make_chaos(final_chaos, suffix=""):
+def make_chaos(final_chaos, base="chaos", suffix=""):
     root_dir = wrk_dir
     file_list = []
 
@@ -497,7 +503,7 @@ def make_chaos(final_chaos, suffix=""):
             subdir_path = os.path.join(root_dir, subdir)
             for filename in os.listdir(subdir_path):
                 if (
-                    filename.startswith("chaos")
+                    filename.startswith(base)
                     and filename.endswith(".out")
                     and "_undone" not in filename
                     and (suffix in filename)
@@ -508,13 +514,13 @@ def make_chaos(final_chaos, suffix=""):
     # Ordena los nombres de los archivos
     if suffix == "":
         file_list = sorted(
-            file_list, key=lambda x: int(x.split("chaos")[1].split(".out")[0])
+            file_list, key=lambda x: int(x.split(base)[1].split(".out")[0])
         )
     else:
         file_list = sorted(
             file_list,
             key=lambda x: int(
-                x.split("chaos")[1].split(".out")[0].split(suffix)[0]
+                x.split(base)[1].split(".out")[0].split(suffix)[0]
             ),
         )
 
@@ -681,7 +687,6 @@ if __name__ == "__main__":
 
     # Checkeamos si faltan e integramos
     if len(missing_lines) > 0:
-
         with ProcessPoolExecutor(max_workers=workers) as executor:
             results = executor.map(integrate_n, missing_lines)
 
@@ -703,15 +708,27 @@ if __name__ == "__main__":
 
     # Creamos el archivo de caos
     if final_chaos:
-
         print("")
         print(f"Creando archivo de caos '{final_chaos}.out'")
         if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
             print(
-                "WARNING: Se ha reemplazando archivo "
+                "WARNING: Se está reemplazando el archivo "
                 + f"{final_chaos}.out ya existente."
             )
 
-        make_chaos(final_chaos, suffix)
+        make_chaos(final_chaos)
+
+    # Creamos el archivo de chaos de geométricos
+    if geomchaosfile:
+
+        print("")
+        print(f"Creando archivo de caos '{geomchaosfile}.out'")
+        if os.path.isfile(os.path.join(wrk_dir, f"{geomchaosfile}.out")):
+            print(
+                "WARNING: Se está reemplazando el archivo "
+                + f"{geomchaosfile}.out ya existente."
+            )
+
+        make_chaos(geomchaosfile, base="geom_chaos")
 
     print("LISTO!")
