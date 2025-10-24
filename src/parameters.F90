@@ -396,6 +396,13 @@ module parameters
                     case ("--nochaosf")
                         params%use_chaosfile = .False.
                         params%chaosfile = ""
+                    case ("-geomfile")
+                        params%use_geometricfile = .True.
+                        call get_command_argument(i+1, params%geometricfile)
+                        aux_integer = 1
+                    case ("--nogeomf")
+                        params%use_geometricfile = .False.
+                        params%geometricfile = ""
                     case ("--screen")
                         params%use_screen = .True.
                     case ("--noscreen")
@@ -524,8 +531,10 @@ module parameters
                         write(*,*) "    -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0"
                         write(*,*) "    -datafile     : Nombre de archivo de salida de datos"
                         write(*,*) "    --nodataf     : No guardar datos de salida"
-                        write(*,*) "    -chaosfile    : Nombre de archivo de caos"
-                        write(*,*) "    --nochaosf    : No guardar caos"
+                        write(*,*) "    -chaosfile    : Nombre de archivo de salida caos"
+                        write(*,*) "    --nochaosf    : No guardar salida de caos"
+                        write(*,*) "    -geomfile     : Nombre de archivo de salida de elementos geométricos"
+                        write(*,*) "    --nogeomf     : No guardar salida de elementos geométricos"
                         write(*,*) "    --screen      : Imprimir información en pantalla"
                         write(*,*) "    --noscreen    : No imprimir en pantalla"
                         write(*,*) "    --perc        : Imprimir porcentaje de integración"
@@ -901,6 +910,15 @@ module parameters
                                 params%use_chaosfile = .True.
                                 params%chaosfile = trim(value_str)
                             end if
+                        case("geometric eleme")
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
+                                params%use_geometricfile = .False.
+                                params%geometricfile = ""
+                            else
+                                params%use_geometricfile = .True.
+                                params%geometricfile = trim(value_str)
+                            end if
                         case("output data on")
                             if ((auxch1 == "y") .or. (auxch1 == "s")) then
                                 params%use_datascreen = .True.
@@ -930,15 +948,6 @@ module parameters
                                 params%use_baryc_output = .True.
                             else
                                 params%use_baryc_output = .False.
-                            end if
-                        case("geometric eleme")
-                            if ((to_lower(trim(value_str)) == "n") .or. &
-                              & (to_lower(trim(value_str)) == "no")) then
-                                params%use_geometricfile = .False.
-                                params%geometricfile = ""
-                            else
-                                params%use_geometricfile = .True.
-                                params%geometricfile = trim(value_str)
                             end if
                         case("create map file")
                             if ((to_lower(trim(value_str)) == "n") .or. &
@@ -1512,6 +1521,7 @@ module parameters
             if (allocated(particles_in)) deallocate(particles_in)
         end subroutine free_initial_arays
 
+
         ! Deallocate all params arrays
         subroutine free_parameters_arays()
             implicit none
@@ -1530,6 +1540,7 @@ module parameters
             if (allocated(y_pre_filter)) deallocate(y_pre_filter)
             if (allocated(elem_filtered)) deallocate(elem_filtered)
         end subroutine free_parameters_arays
+
 
         ! Nullify pointers
         subroutine nullify_pointers()
@@ -1579,6 +1590,7 @@ module parameters
             end if
         end subroutine check_after_col
 
+
         ! Check if keep integrating after escapes (and collisions)
         subroutine check_after_esc(sistema, simu, keep)
             implicit none
@@ -1601,6 +1613,7 @@ module parameters
                 keep = .False.
             end if
         end subroutine check_after_esc
+
 
         ! IO subroutines (and dummies)
 

@@ -69,8 +69,10 @@ $ ./ASTROBOULD --help
     -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0
     -datafile     : Nombre de archivo de salida de datos
     --nodataf     : No guardar datos de salida
-    -chaosfile    : Nombre de archivo de caos
-    --nochaosf    : No guardar caos
+    -chaosfile    : Nombre de archivo de salida caos
+    --nochaosf    : No guardar salida de caos
+    -geomfile     : Nombre de archivo de salida de elementos geométricos
+    --nogeomf     : No guardar salida de elementos geométricos
     --screen      : Imprimir información en pantalla
     --noscreen    : No imprimir en pantalla
     --perc        : Imprimir porcentaje de integración
@@ -142,7 +144,7 @@ $ ./ASTROBOULD [args]
 - Each integration is executed in parallel (e.g., across multiple CPU cores).
 - Does not require _-fopenmp_.
 
-The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [60 to 104](./launcher.py#L60#104). More information (in spannish) is available at the top of the file(see lines [3 to 48](./launcher.py#L3#L48)).
+The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [62 to 106](./launcher.py#L62#106). More information (in spannish) is available at the top of the file(see lines [3 to 49](./launcher.py#L3#L49)).
 
 To run:
 ```console

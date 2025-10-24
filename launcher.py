@@ -17,6 +17,7 @@
 
 # En caso de dejar puesta la salida en archivo (<datafile>),
 # se creará un archivo llamado salida[id].out por cada partícula.
+# Lo mismo en el caso de (<geomfile>).
 
 # Este código crea un archivo de caos (chaos[id].out) por cada partícula.
 # Luego los concatena en un solo archivo <final_chaos>,
@@ -86,8 +87,9 @@ tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 
 # Output # ("" o False si no se usa)
 new_dir = True  # Directorio donde volcar las salidas.
-datafile = "salida"  # Nombre del archivo de salidas de datos (sin extensión)
-final_chaos = "chaos"  # Final Chaos Output file name (sin extensión)
+datafile = "salida"  # Archivo de salidas de datos (sin extensión)
+final_chaos = "chaos"  # Archivo de caos final (sin extensión)
+geomfile = "geometric"  # Archivo de elementos geométricos (sin extensión)
 suffix = ""  # Suffix for the output files
 # Summary file
 summaryfile = "summary"  # Archivo con resumen de parámetros
@@ -125,12 +127,13 @@ else:
 
 # Redefine datafile if bool
 if isinstance(datafile, bool) and datafile:
-
     datafile = "salida"
 # Redefine final_chaos if bool
 if isinstance(final_chaos, bool) and final_chaos:
-
     final_chaos = "chaos"
+# Redefine geomfile if bool
+if isinstance(geomfile, bool) and geomfile:
+    geomfile = "geometric"
 # Redefine summary if bool
 if isinstance(summaryfile, bool) and summaryfile:
     summaryfile = "summary"
@@ -182,6 +185,10 @@ if datafile is None:
 if final_chaos is None:
     final_chaos = ""
 
+# Geometricfile
+if geomfile is None:
+    geomfile = ""
+
 # Summaryfile
 if summaryfile is None:
     summaryfile = ""
@@ -191,6 +198,8 @@ if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
     print(f"WARNING: Chaos Output file '{final_chaos}' already exist.")
     if datafile:
         print(f"  Independently, '{datafile}' will be replaced (if exists).")
+    if geomfile:
+        print(f"  Independently, '{geomfile}' will be replaced (if exists).")
     if summaryfile:
         print(
             f"  Independently, '{summaryfile}' will be replaced (if exists)."
@@ -210,10 +219,10 @@ if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
 
 # Checks #
 
-# Si no hay datafile ni final_chaos, entonces no hay nada que hacer
-if (not datafile) and (not final_chaos):
+# Si no hay datafile ni final_chaos ni geometricfile, entonces no hay nada que hacer
+if (not datafile) and (not final_chaos) and (not geomfile):
     print(
-        "WARNING: No datafile or final_chaos specified. "
+        "WARNING: No datafile or final_chaos or geomfile specified. "
         + "Nothing to do, exiting."
     )
     sys.exit()
@@ -379,7 +388,15 @@ def integrate_n(i):
 
     this_chaosfile = f"chaos{i}{suffix}"  # Without extension
 
+    this_geomfile = f"geom{i}{suffix}"  # Without extension
+
     this_args = f"-nsim {i}"
+
+    this_args += "%s" % (
+        " --nodataf"
+        if not datafile
+        else f" -datafile {this_datafile}_undone.out"
+    )
 
     this_args += "%s" % (
         " --nochaosf"
@@ -388,9 +405,9 @@ def integrate_n(i):
     )
 
     this_args += "%s" % (
-        " --nodataf"
-        if not datafile
-        else f" -datafile {this_datafile}_undone.out"
+        " --nogeomf"
+        if not geomfile
+        else f" -geomfile {this_geomfile}_undone.out"
     )
 
     # Extract the data from the lines
@@ -451,6 +468,17 @@ def integrate_n(i):
                 "mv",
                 os.path.join(dirp, f"{this_chaosfile}_undone.out"),
                 os.path.join(dirp, f"{this_chaosfile}.out"),
+            ],
+            check=True,
+        )
+
+    # Renombramos el archivo de geométricos
+    if geomfile:
+        subprocess.run(
+            [
+                "mv",
+                os.path.join(dirp, f"{this_geomfile}_undone.out"),
+                os.path.join(dirp, f"{this_geomfile}.out"),
             ],
             check=True,
         )
