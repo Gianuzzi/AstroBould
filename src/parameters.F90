@@ -116,6 +116,8 @@ module parameters
         character(30) :: multfile = ""
         logical :: use_chaosfile = .False.
         character(30) :: chaosfile = ""
+        logical :: use_geometricfile = .False.
+        character(30) :: geometricfile = ""
         logical :: use_datascreen = .False.
         logical :: use_diagnostics = .True.
         logical :: use_percentage = .False.
@@ -181,8 +183,6 @@ module parameters
         logical :: use_flush_output = .False.  ! Flush at every checkpoint
         ! Error
         real(kind=8) :: error_tolerance = cero
-        ! I/O
-        logical :: use_elements = .True.
         !!! Command line body
         logical :: cl_body_is_moon = .False. ! Wether a moon was given through command line
     end type sim_params_st
@@ -258,6 +258,7 @@ module parameters
     procedure (write_to_unit_template), pointer :: write_a_to_individual => null ()
     procedure (write_i_to_unit_template), pointer :: write_m_to_individual => null ()
     procedure (write_i_to_unit_template), pointer :: write_p_to_individual => null ()
+    procedure (write_to_unit_template), pointer :: write_to_geometric => null ()
     procedure (int_i_template), pointer :: flush_output => null ()
     procedure (int_i_template), pointer :: flush_chaos => null ()
 
@@ -921,7 +922,7 @@ module parameters
                         case("output variable")
                             if (auxch1 == "c") then
                                 params%use_elements_output = .False.
-                            else
+                            else 
                                 params%use_elements_output = .True.
                             end if
                         case("output elements")
@@ -929,6 +930,15 @@ module parameters
                                 params%use_baryc_output = .True.
                             else
                                 params%use_baryc_output = .False.
+                            end if
+                        case("geometric eleme")
+                            if ((to_lower(trim(value_str)) == "n") .or. &
+                              & (to_lower(trim(value_str)) == "no")) then
+                                params%use_geometricfile = .False.
+                                params%geometricfile = ""
+                            else
+                                params%use_geometricfile = .True.
+                                params%geometricfile = trim(value_str)
                             end if
                         case("create map file")
                             if ((to_lower(trim(value_str)) == "n") .or. &
@@ -1159,12 +1169,6 @@ module parameters
                 derived%triax_b_primary = derived%radius_primary
                 derived%triax_c_primary = derived%radius_primary
             end if
-            !! Set derived Triaxial
-            derived%Reffective = (derived%triax_a_primary * derived%triax_b_primary * derived%triax_c_primary)**(1.d0/3.d0)
-            derived%C20 = (dos * derived%triax_c_primary**2 - &
-                         & derived%triax_a_primary**2 - &
-                         & derived%triax_b_primary**2) / (10.d0 * derived%Reffective**2)
-            derived%C22 = (derived%triax_a_primary**2 - derived%triax_b_primary**2) / (20.d0 * derived%Reffective**2)
 
             !! NMoons
             if (derived%Nmoons < 0) then
@@ -1343,7 +1347,11 @@ module parameters
             end if
             
             derived%use_chaos = derived%use_chaosfile .or. derived%use_chaos
-            derived%use_elements = derived%use_elements_output .or. derived%use_chaos
+
+            if (derived%use_geometricfile .and. .not. derived%use_triaxial) then
+                write(*,*) "WARNING: No geometric file created as not triaxial body is used."
+                derived%use_geometricfile = .False.
+            end if
 
             if (.not. derived%use_chaosfile) derived%use_flush_chaos = .False.
             if (.not. derived%use_datafile) derived%use_flush_output = .False.
@@ -1405,7 +1413,8 @@ module parameters
         subroutine define_writing_pointers(simu)
             use bodies, only: write_chaos, write_elem, write_coor, &
                             & write_ast_elem, write_moon_i_elem, write_particle_i_elem, &
-                            & write_ast_coor, write_moon_i_coor, write_particle_i_coor
+                            & write_ast_coor, write_moon_i_coor, write_particle_i_coor, &
+                            & write_geom
             implicit none
             type (sim_params_st), intent(in) :: simu
 
@@ -1464,6 +1473,13 @@ module parameters
                 flush_chaos => do_nothing_i
             end if
 
+            ! Geometric file
+            if (simu%use_geometricfile) then
+                write_to_geometric => write_geom
+            else
+                write_to_geometric => do_not_write
+            end if
+
             ! Flush ouput
             if (simu%use_flush_output) then
                 flush_output => flush_to_file
@@ -1520,6 +1536,7 @@ module parameters
             implicit none
             nullify(write_to_general)
             nullify(write_to_screen)
+            nullify(write_to_geometric)
             nullify(write_a_to_individual)
             nullify(write_m_to_individual)
             nullify(write_p_to_individual)
@@ -1778,6 +1795,10 @@ module parameters
             !$OMP SECTION
             call write_to_chaos(syst, initial_system, 40 + pout)
             call flush_chaos(40 + pout) ! Update chaos
+            !$OMP SECTION
+            call write_to_geometric(syst, 60)
+            call flush_output(60)
+            !$OMP SECTION
             !$OMP END SECTIONS
             !$OMP END PARALLEL        
             

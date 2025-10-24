@@ -2,7 +2,7 @@
 module bodies
     use constants, only: cero, uno, uno2, dos, G, pi, twopi, epsilon, sqepsilon, tini, infinity, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, radian
-    use celestial, only: get_a_corot, get_acc_and_pot_single, elem, coord
+    use celestial, only: get_a_corot, get_acc_and_pot_single, elem, coord, coord2geom
     use auxiliary, only: quickargsort_int, rotate2D
 
     implicit none
@@ -62,11 +62,15 @@ module bodies
         logical :: active  ! Whether this particle is active (orbiting) or not
         integer(kind=4) :: id = -1  ! Identifier
         real(kind=8) :: dist_to_cm = cero  ! Distance to origin
-        real(kind=8), dimension(4) :: elements = cero  ! a, e, M, w  [config]
         real(kind=8), dimension(4) :: coordinates = cero  ! x, y vx, vy
-        real(kind=8) :: mmr = cero  ! initial mean motion ratio to asteroid  [config] 
+        real(kind=8), dimension(4) :: elements = cero  ! a, e, M, w  [config]
+        real(kind=8), dimension(4) :: geometric = cero  ! a_geom, e_geom, M_geom, w_geom [config]
+        real(kind=8) :: mmr = cero  ! mean motion ratio to asteroid  [config]
+        real(kind=8) :: mmr_geom = cero  ! geometric mean motion ratio to asteroid 
         real(kind=8) :: chaos_a(2) = (/infinity, cero/) ! (a_min, a_max)
         real(kind=8) :: chaos_e(2) = (/infinity, cero/) ! (e_min, e_max)
+        real(kind=8) :: chaos_a_geom(2) = (/infinity, cero/) ! (a_geom_min, a_geom_max)
+        real(kind=8) :: chaos_e_geom(2) = (/infinity, cero/) ! (e_geom_min, e_geom_max)
         real(kind=8) :: tmax = cero ! max time integrated
         integer(kind=4) :: merged_to = -1  ! IDX of body it was merged to
     end type particle_st
@@ -895,6 +899,49 @@ module bodies
             end if
         end subroutine update_elements
 
+        ! Recalculate geometric elements
+        pure subroutine update_geometric(self)
+            implicit none
+            type(system_st), intent(inout) :: self
+            integer(kind=4) :: j
+            real(kind=8) :: a, e, i, M, w, O
+            real(kind=8) :: n
+            real(kind=8) :: coords_ast(4), ast_cm(4)
+            real(kind=8) :: mass_ast, radius_ast, omega_ast
+            real(kind=8) :: J2
+
+            coords_ast = cero
+            mass_ast = self%asteroid%primary%mass
+            radius_ast = self%asteroid%primary%radius
+            omega_ast = self%asteroid%omega
+            ast_cm = self%asteroid%coordinates
+            J2 = - self%asteroid%primary%C20
+
+            ! Moons
+            do j = 1, self%Nmoons_active
+                coords_ast = self%moons(j)%coordinates - ast_cm
+                call coord2geom(mass_ast + self%moons(j)%mass, radius_ast, J2, &
+                        & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
+                        a, e, i, M, w, O, n)
+                M = modulo(M, twopi)
+                w = modulo(w, twopi)
+                self%moons(j)%geometric = (/a, e, M, w/)
+                self%moons(j)%mmr_geom = omega_ast / n
+            end do
+
+            ! Particles
+            do j = 1, self%Nparticles_active
+                coords_ast = self%particles(j)%coordinates - ast_cm
+                call coord2geom(mass_ast, radius_ast, J2, &
+                        & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
+                        a, e, i, M, w, O, n)
+                M = modulo(M, twopi)
+                w = modulo(w, twopi)
+                self%particles(j)%geometric = (/a, e, M, w/)
+                self%particles(j)%mmr_geom = omega_ast / n
+            end do
+        end subroutine update_geometric
+
         ! (Re)calculate all system main parameters
         pure subroutine recalculate_all(self)
             implicit none
@@ -1213,6 +1260,45 @@ module bodies
             end do
             
         end subroutine update_chaos
+
+        ! Update bodies chaos at system
+        pure subroutine update_chaos_geometric(self)
+            implicit none
+            type(system_st), intent(inout) :: self
+            real(kind=8) :: aux_real2(2)
+            integer(kind=4) :: i
+
+            call update_geometric(self)
+
+            ! Moons
+            do i = 1, self%Nmoons_active
+                !! a
+                aux_real2(1) = min(self%moons(i)%chaos_a_geom(1), self%moons(i)%elements(1))
+                aux_real2(2) = max(self%moons(i)%chaos_a_geom(2), self%moons(i)%elements(1))
+                self%moons(i)%chaos_a_geom = aux_real2
+                !! e
+                aux_real2(1) = min(self%moons(i)%chaos_e_geom(1), self%moons(i)%elements(2))
+                aux_real2(2) = max(self%moons(i)%chaos_e_geom(2), self%moons(i)%elements(2))
+                self%moons(i)%chaos_e_geom = aux_real2
+                !! time
+                self%moons(i)%tmax = self%time
+            end do
+
+            ! Particles
+            do i = 1, self%Nparticles_active
+                !! a
+                aux_real2(1) = min(self%particles(i)%chaos_a_geom(1), self%particles(i)%elements(1))
+                aux_real2(2) = max(self%particles(i)%chaos_a_geom(2), self%particles(i)%elements(1))
+                self%particles(i)%chaos_a_geom = aux_real2
+                !! e
+                aux_real2(1) = min(self%particles(i)%chaos_e_geom(1), self%particles(i)%elements(2))
+                aux_real2(2) = max(self%particles(i)%chaos_e_geom(2), self%particles(i)%elements(2))
+                self%particles(i)%chaos_e_geom = aux_real2
+                !! time
+                self%particles(i)%tmax = self%time
+            end do
+            
+        end subroutine update_chaos_geometric
 
         ! Update system state. ! Assumes theta, omega, x, y, vx, vy,...
         subroutine update_system_from_array(self, time, array, error)
@@ -2466,6 +2552,89 @@ module bodies
         
             deallocate(ids)            
         end subroutine write_chaos
+
+        ! Write geometric elements moon i
+        subroutine write_moon_i_geom(self, i, unit_file)
+            implicit none
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(in) :: i, unit_file
+            write (unit_file,i2r15) &
+                & self%moons(i)%id, &  ! ID
+                & 1, &  ! type
+                & self%time / unit_time, &  ! time
+                & self%asteroid%theta / radian, &  ! theta
+                & self%asteroid%omega * unit_time, &  ! omega
+                & self%moons(i)%geometric(1) / unit_dist, &  ! a
+                & self%moons(i)%geometric(2), &  ! e
+                & self%moons(i)%geometric(3) / radian, &  ! M
+                & self%moons(i)%geometric(4) / radian, &  ! w
+                & self%moons(i)%mmr_geom, &  ! MMR
+                & self%moons(i)%mass / unit_mass, &  ! mass
+                & self%moons(i)%radius / unit_dist, &  ! radius
+                & self%moons(i)%dist_to_cm / unit_dist, &  ! distance
+                & self%moons(i)%chaos_a_geom / unit_dist, &  ! da
+                & self%moons(i)%chaos_e_geom  ! de
+        end subroutine write_moon_i_geom
+
+        ! Write geometric elements particle i
+        subroutine write_particle_i_geom(self, i, unit_file)
+            implicit none
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(in) :: i, unit_file
+            write (unit_file,i2r15) &
+                & self%particles(i)%id, &   ! ID
+                & 2, &  ! type
+                & self%time / unit_time, &  ! time
+                & self%asteroid%theta / radian, &  ! theta
+                & self%asteroid%omega * unit_time, &  ! omega
+                & self%particles(i)%geometric(1) / unit_dist, &  ! a
+                & self%particles(i)%geometric(2), &  ! e
+                & self%particles(i)%geometric(3) / radian, &  ! M
+                & self%particles(i)%geometric(4) / radian, &  ! w
+                & self%particles(i)%mmr_geom, &  ! MMR
+                & cero, &  ! mass
+                & cero, &  ! radius
+                & self%particles(i)%dist_to_cm / unit_dist, &  ! distance
+                & self%particles(i)%chaos_a_geom / unit_dist, &  ! da
+                & self%particles(i)%chaos_e_geom  ! de
+        end subroutine write_particle_i_geom
+
+        ! Write geometric elements ALL
+        subroutine write_geom(self, unit_file)
+            implicit none
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(in) :: unit_file
+            integer(kind=4) :: i
+            integer(kind=4), dimension(:), allocatable :: ids
+
+            allocate(ids(max(self%Nmoons_active, self%Nparticles_active)))
+
+            if (self%Nmoons_active > 1) then
+                do i = 1, self%Nmoons_active
+                    ids(i) = i
+                end do
+                call quickargsort_int(self%moons%id, ids, 1, self%Nmoons_active)
+                do i = 1, self%Nmoons_active
+                    call write_moon_i_geom(self, ids(i), unit_file)
+                end do
+            else if (self%Nmoons_active .eq. 1) then
+                call write_moon_i_geom(self, 1, unit_file)
+            end if
+
+            if (self%Nparticles_active > 1) then 
+                do i = 1, self%Nparticles_active
+                    ids(i) = i
+                end do
+                call quickargsort_int(self%particles%id, ids, 1, self%Nparticles_active)
+                do i = 1, self%Nparticles_active
+                    call write_particle_i_geom(self, ids(i), unit_file)
+                end do
+            else if (self%Nparticles_active .eq. 1) then
+                call write_particle_i_geom(self, 1, unit_file)
+            end if
+        
+            deallocate(ids)            
+        end subroutine write_geom
 
         ! Write diagnostic information ALL
         subroutine write_diagnostics(initial, actual, unit_file)

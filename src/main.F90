@@ -1,7 +1,7 @@
 program main
     use parameters
     use integrators
-    use celestial, only: get_Period
+    use celestial, only: get_Period, coord2geom
     use bodies
     use times
     use derivates
@@ -161,6 +161,7 @@ program main
         input%datafile = ""
         input%chaosfile = ""
         input%multfile = ""
+        input%geometricfile = ""
 
         !!!!! Screeen
         input%use_screen = .True. ! Print info in screen
@@ -233,7 +234,7 @@ program main
         write(*,*) "         Using in-code parameters."
     end if
 
-    if (.not. any((/sim%use_datascreen, sim%use_datafile, sim%use_chaosfile, &
+    if (.not. any((/sim%use_datascreen, sim%use_datafile, sim%use_chaosfile, sim%use_geometricfile, &
                   & sim%use_potential_map, sim%use_multiple_outputs/))) then ! No tiene sentido hacer nada
         if (.not. sim%use_screen) then
             write(*,*) ACHAR(10)
@@ -904,7 +905,7 @@ program main
         call expand_checkpoints(aux_1D, checkpoint_times, checkpoint_is_output, checkpoint_is_tom, sim%checkpoint_number)
 
         ! Message
-        if (sim%use_screen) write(*,s1r1) "Checkpoint times amount expanded. Total:", sim%checkpoint_number
+        if (sim%use_screen) write(*,s1i1) "Checkpoint times amount expanded. Total:", sim%checkpoint_number
 
     end if
 
@@ -1062,7 +1063,7 @@ program main
     end if
 
     !!!! Ahora si, si no hay que hacer más nada entonces terminamos.
-    if (.not. any((/sim%use_datascreen, sim%use_datafile, sim%use_chaosfile, & 
+    if (.not. any((/sim%use_datascreen, sim%use_datafile, sim%use_chaosfile, sim%use_geometricfile, &
                   & sim%use_potential_map, sim%use_multiple_outputs/))) then ! No tiene sentido hacer nada
         write(*,*) ACHAR(10)
         write(*,*) "As nothing will be stored, there is no integration."
@@ -1096,6 +1097,7 @@ program main
     if (sim%use_screen) then
         if (sim%use_datafile) write(*,*) "General output file: ", trim(sim%datafile)
         if (sim%use_multiple_outputs) write(*,*) "Individuals output files: ", trim(sim%multfile) // "_*"
+        if (sim%use_geometricfile) write(*,*) "Geometric output file: ", trim(sim%geometricfile)
         write(*,*) ACHAR(5)
         if (sim%use_datascreen) then
             write(*,*) "Data will be printed on screen."
@@ -1197,6 +1199,8 @@ program main
     !! Chaos File
     if (sim%use_chaosfile) open (unit=40, file=trim(sim%chaosfile), status='replace', action='readwrite', position="append")
 
+    !! Geometric file
+    if (sim%use_geometricfile) open (unit=60, file=trim(sim%geometricfile), status='replace', action='readwrite', position="append")
 
     !! Filter Files
     if (sim%use_filter) then
@@ -1224,6 +1228,13 @@ program main
                 & file=trim(sim%filter_prefix) // trim(sim%chaosfile), &
                 & status='replace', action='readwrite', position="append")
         end if
+
+        ! !! Geometric File
+        ! if (sim%use_geometricfile) then
+        !     open (unit=61, &
+        !         & file=trim(sim%filter_prefix) // trim(sim%geometricfile), &
+        !         & status='replace', action='readwrite', position="append")
+        ! end if
 
     end if
 
@@ -1258,8 +1269,11 @@ program main
         call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
     end if
     
-    ! Update Chaos
+    ! Update Chaos (triggers update elements)
     call update_chaos(system, sim%use_baryc_output)
+
+    ! Update geometric chaos (and elements) if needed
+    if (sim%use_geometricfile) call update_chaos_geometric(system)
 
     !! Reduce threads if necessary...
     if (sim%use_parallel) then
@@ -1366,8 +1380,11 @@ program main
                 call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
             end if
         
-            ! Update Chaos
+            ! Update Chaos (triggers update elements)
             call update_chaos(system, sim%use_baryc_output)
+
+            ! Update geometric Chaos (triggers update geometric elements)
+            if (sim%use_geometricfile) call update_chaos_geometric(system)
             
             ! Output and Update j; only if not premature
             if (.not. is_premature_exit) then
@@ -1447,8 +1464,11 @@ program main
 
             end if
             
-            ! Update Chaos
+            ! Update Chaos (triggers update elements)
             call update_chaos(system, sim%use_baryc_output)
+
+            ! Update geometric Chaos (triggers update geometric elements)
+            if (sim%use_geometricfile) call update_chaos_geometric(system)
 
             ! Percentage output
             if (sim%use_percentage) call percentage(time, sim%final_time)            
@@ -1491,6 +1511,9 @@ program main
                     ! Update Chaos (triggers update elements)
                     call update_chaos(system, sim%use_baryc_output)
 
+                    ! Update geometric Chaos (triggers update geometric elements)
+                    if (sim%use_geometricfile) call update_chaos_geometric(system)
+
                     ! Output
                     call generate_output(system)
 
@@ -1509,7 +1532,7 @@ program main
                                        & checkpoint_times(first_idx_yes_filter), &
                                        & elem_filtered, &
                                        & sim%use_baryc_output)
-        ! Update Chaos (triggers update elements)
+        ! Update filtered chaos (triggers update elements)
         call update_chaos(system_filtered, sim%use_baryc_output)
         ! Filtered output
         call generate_output(system_filtered, .True.)
@@ -1521,8 +1544,11 @@ program main
         ! ! Apply colissions/escapes and checks ??
         ! call check_esc_and_col(system, unit_file)
 
-        ! Update Chaos
+        ! Update Chaos (triggers update elements)
         call update_chaos(system, sim%use_baryc_output)
+
+        ! Update geometric Chaos (triggers update geometric elements)
+        if (sim%use_geometricfile) call update_chaos_geometric(system)
 
         ! Output
         call generate_output(system)
@@ -1674,8 +1700,11 @@ program main
                     call copy_objects(system, system_filtered)
                 end if
 
-                ! Update Chaos
+                ! Update Chaos (triggers update elements)
                 call update_chaos(system, sim%use_baryc_output)
+
+                ! Update geometric Chaos (triggers update geometric elements)
+                if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                 ! Output
                 call generate_output(system)
@@ -1830,8 +1859,11 @@ program main
                 call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
             end if
 
-            ! Update Chaos
+            ! Update Chaos (triggers update elements)
             call update_chaos(system, sim%use_baryc_output)
+
+            ! Update geometric Chaos (triggers update geometric elements)
+            if (sim%use_geometricfile) call update_chaos_geometric(system)
 
             ! Output
             if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) call generate_output(system)
@@ -1922,9 +1954,18 @@ program main
         end if
     end if
 
+    !! Cerrar archivo de geométricos
+    if (sim%use_geometricfile) then
+        close (60)
+        if (sim%use_screen) then
+            write(*,*) ACHAR(10)
+            write(*,*) "Geometric output data saved to file: ", trim(sim%geometricfile)
+        end if
+    end if
+
     if (sim%use_filter) then
 
-        !! Cerrar archivo de salida
+        !! Cerrar archivo de salida filtrado
         if (sim%use_datafile) then
             close (21)
             if (sim%use_screen) then
@@ -1933,7 +1974,7 @@ program main
             end if
         end if
 
-        !! Cerrar archivos individuales
+        !! Cerrar archivos individuales filtrados
         if (sim%use_multiple_outputs) then
             do i = 0, sim%Ntotal  ! 0 is the asteroid
                 close (200+i+1000)
@@ -1944,7 +1985,7 @@ program main
             end if
         end if
 
-        !! Final chaos
+        !! Final chaos filtrados
         if (sim%use_chaos) then
             if (sim%use_chaosfile) then
                 !! Chaosfile
@@ -1968,6 +2009,15 @@ program main
                 call write_chaos(initial_system, system_filtered, 6)
             end if
         end if
+
+        ! !! Cerrar archivo de geométricos filtrado
+        ! if (sim%use_geometricfile) then
+        !     close (61)
+        !     if (sim%use_screen) then
+        !         write(*,*) ACHAR(10)
+        !         write(*,*) "Filterd geometric data saved to file: ", trim(sim%filter_prefix) // trim(sim%geometricfile)
+        !     end if
+        ! end if
 
     end if
 

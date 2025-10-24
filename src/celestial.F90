@@ -379,5 +379,236 @@ module celestial
                 coords_b(i,1:4) = coords_a(i,1:4) + xyvxvy
             end do
         end subroutine astroc_to_baric
+
+        ! Osculating to geometrical
+        pure subroutine coord2geom(mass, radius, J2, xc, a, e, inc, capm, omega, capom, n)
+            implicit none
+            real(kind=8), intent(in) :: mass, radius, J2
+            real(kind=8), dimension(6), intent(in) :: xc
+            real(kind=8), intent(out) :: a, e, inc, capm, omega, capom
+            real(kind=8), intent(out) :: n
+            ! Coordinates
+            real(kind=8):: x, y, z
+            real(kind=8):: vx, vy, vz
+            !! Polar
+            real(kind=8) :: r, L
+            real(kind=8) :: vr, vL
+            logical :: coplanar
+            ! Corrections
+            real(kind=8) :: rc, Lc
+            real(kind=8) :: vrc, vLc
+            real(kind=8) :: zc, vzc
+            ! Extra Geometric elements
+            real(kind=8) :: lambda, varpi
+            ! For extra a corrections
+            logical, parameter :: extra_cor = .True.
+            real(kind=8) :: aux, det, aux_a, aux_b, aux_c
+            real(kind=8) :: Hz
+            real(kind=8) :: r0
+            ! Iterations
+            integer(kind=4) :: i
+            integer(kind=4), parameter :: MAX_ITER = 100
+            real(kind=8), parameter :: err_rel = 1.d-9
+            real(kind=8) :: a_prev
+
+            ! Check
+            if (abs(J2) < tini) then
+                call elem(mass, xc, a, e, inc, capm, omega, capom)
+                return
+            end if
+
+            ! Get coordinates
+            x = xc(1)
+            y = xc(2)
+            z = xc(3)
+            vx = xc(4)
+            vy = xc(5)
+            vz = xc(6)
+
+            coplanar = (abs(z) < tini) .and. (abs(vz) < tini)
+
+            r = sqrt(x * x + y * y)
+            L = atan2(y, x)
+            vr = vx * cos(L) + vy * sin(L)
+            vL = (-vx * sin(L) + vy * cos(L)) / r
+
+            Hz = x * vy - y * vx
+
+            ! Parameters or extra 'a' corrections
+            aux_a = uno
+            aux_b = - Hz * Hz / (G * mass)  ! Negative
+            aux_c = 1.5d0 * radius * radius * J2
+            det = aux_b**2 - 4.d0 * aux_a * aux_c
+            if (det < cero) then
+                r0 = r
+            else 
+                aux = sqrt(det)
+                if (aux > aux_b) then
+                    r0 = (-aux_b + aux) / (dos * aux_a)
+                else
+                    r0 = (-aux_b - aux) / (dos * aux_a)
+                end if
+            end if
+
+            ! Initial condition
+            a = r
+            e = cero
+            inc = cero
+
+            rc = cero
+            Lc = cero
+            zc = cero
+            vrc = cero
+            vLc = cero
+            vzc = cero
+
+            ! Loop
+            do i = 1, MAX_ITER
+                a_prev = a
+                call get_geom(a, e, inc, lambda, varpi, capom, rc, Lc, zc, vrc, vLc, vzc, n)
+                if ((abs(a_prev - a) / a_prev) < err_rel) exit
+            end do
+
+            ! Get output elements
+            capm = lambda - varpi
+
+            if (inc < (uno2 * pi)) then
+                omega = varpi - capom
+            else
+                omega = capom - varpi
+            end if            
+
+            contains
+
+                pure subroutine get_geom(a, e, inc, lambda, varpi, capom, rc, Lc, zc, vrc, vLc, vzc, n)
+                    implicit none
+                    real(kind=8), intent(inout) :: a, e, inc, lambda, varpi, capom
+                    real(kind=8), intent(inout) :: rc, Lc, zc, vrc, vLc, vzc
+                    real(kind=8), intent(out) :: n  ! The only important
+
+                    real(kind=8) :: kappa, nu, eta, chi
+                    real(kind=8) :: n2, kappa2, nu2, eta2, chi2
+                    real(kind=8) :: alpha_1, alpha_2, alpha2
+
+                    real(kind=8), parameter :: cn1 = 3.d0/4.d0
+                    real(kind=8), parameter :: cn2 = -9.d0/32.d0
+                    real(kind=8), parameter :: cn3 = 27.d0/128.d0
+                    real(kind=8), parameter :: cn4 = 3.d0
+                    real(kind=8), parameter :: cn5 = -12.d0
+
+                    real(kind=8), parameter :: ck1 = -cn1
+                    real(kind=8), parameter :: ck2 = cn2
+                    real(kind=8), parameter :: ck3 = -cn3
+                    real(kind=8), parameter :: ck4 = -9.d0
+
+                    real(kind=8), parameter :: cnu1 = 9.d0/4.d0
+                    real(kind=8), parameter :: cnu2 = -81.d0/32.d0
+                    real(kind=8), parameter :: cnu3 = 729.d0/128.d0
+                    real(kind=8), parameter :: cnu4 = 6.d0
+                    real(kind=8), parameter :: cnu5 = -51.d0/4.d0
+
+                    real(kind=8) :: nKep, R2_a2
+
+                    real(kind=8) :: aux_x, aux_y
+
+                    ! Compute frequencies
+                    
+                    nKep = sqrt(G * mass / (a * a * a))
+                    R2_a2 = radius * radius / (a * a)
+
+                    n = nKep * (uno + J2 * R2_a2 * (cn1 &
+                                            & + cn2 * R2_a2 * J2 &
+                                            & + cn3 * R2_a2**2 * J2**2 &
+                                            & + cn4 * e**2 &
+                                            & + cn5 * inc**2))
+                    n2 = n * n
+
+                    kappa = nKep * (uno + J2 * R2_a2 * (ck1 &
+                                                & + ck2 * R2_a2 * J2 &
+                                                & + ck3 * R2_a2**2 * J2**2 &
+                                                & + ck4 * inc**2))
+                    kappa2 = kappa * kappa
+
+                    nu = nKep * (uno + J2 * R2_a2 * (cnu1 &
+                                            & + cnu2 * R2_a2 * J2 &
+                                            & + cnu3 * R2_a2**2 * J2**2 &
+                                            & + cnu4 * e**2 &
+                                            & + cnu5 * inc**2))
+                    nu2 = nu * nu
+                    
+                    eta2 = nKep * nKep * (uno - dos * J2 * R2_a2)
+                    eta = sqrt(eta2)
+
+                    chi2 = nKep * nKep * (uno + 7.5d0 * J2 * R2_a2)
+                    chi = sqrt(chi2)
+
+                    alpha_1 = (dos * nu + kappa) / 3.0d0
+                    alpha_2 = (dos * nu - kappa)
+                    alpha2 = alpha_1 * alpha_2
+
+                    ! Compute geometric elements
+
+                    a = (r - rc) / (uno - (vL - vLc - n) / (dos * n))
+
+                    e = sqrt( ((vL - vLc - n) / (dos * n))**2 + ((vr - vrc) / (a * kappa))**2 )
+
+                    inc = sqrt( ((z - zc) / a)**2 + ((vz - vzc) / (a * nu))**2 )
+
+                    lambda = L - Lc - dos * (n * (vr - vrc) / (a * kappa2))
+
+                    aux_y = vr - vrc
+                    aux_x = a * kappa * (uno - (r - rc) / a)
+                    varpi = lambda - atan2(aux_y, aux_x)
+
+                    if (.not. coplanar) then
+                        aux_y = nu * (z - zc)
+                        aux_x = vz - vzc
+                        capom = lambda - atan2(aux_y, aux_x)
+                    else
+                        capom = cero
+                    end if
+
+
+                    ! Compute corrections
+
+                    rc = a * (e**2 * (1.5d0 * (eta2 / kappa2) &
+                                    & - uno &
+                                    & - uno2 * eta2 / kappa2 * cos(dos * (lambda - varpi))) &
+                    & + inc**2 * (0.75d0 * chi2 / kappa2 &
+                                & - uno &
+                                & + 0.25d0 * chi2 / alpha2 * cos(dos * (lambda - capom))) &
+                    &)
+                    
+                    Lc = n * (e**2 * (0.75d0 + uno2 * eta2 / kappa2) / kappa * sin(dos * (lambda - varpi)) &
+                            & - inc**2 * 0.25d0 * chi2 / (alpha2 * nu) * sin(dos * (lambda - capom)) &
+                        &)
+
+                    zc = a * inc * e * chi2 / kappa * (uno2 / alpha_1 * sin(dos * lambda - varpi - capom) &
+                                                    & - 1.5d0 / alpha_2 * sin(varpi - capom))
+                    
+                    vrc = a * (e**2 * eta2 / kappa * sin(dos * (lambda - varpi)) &
+                            & - inc**2 * uno2 * chi2 / alpha2 * nu * sin(dos * (lambda - capom)))
+                    
+                    vLc = n * (e**2 * (3.5d0 &
+                                    & - 3.d0 * eta2 / kappa2 &
+                                    & - uno2 * kappa2 / n**2 &
+                                    & + (1.5d0 + eta2 / kappa2) * cos(dos * (lambda - varpi))) &
+                            & + inc**2 * uno2 * (4.d0 &
+                                                & - kappa2 / n2 &
+                                                & - 3.d0 * chi2 / kappa2 &
+                                                & - chi2 / alpha2 * cos(dos * (lambda - capom))) &
+                            &)
+                    
+                    vzc = a * e * inc * uno2 * chi2 / kappa * (&
+                                    & (kappa + nu) / alpha_1 * cos(dos * lambda - varpi - capom) &
+                                    & + 3.d0 * (kappa - nu) / alpha_2 * cos(varpi - capom) &
+                                                            &)
+
+                    ! Extra a corrections
+                    if (extra_cor) a = r0 * (uno + e**2 + inc**2)
+                    
+                end subroutine get_geom
+        
+        end subroutine coord2geom
     
 end module celestial

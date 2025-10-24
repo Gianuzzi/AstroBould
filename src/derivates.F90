@@ -187,32 +187,38 @@ module derivates
 
                 end if
 
-                ! ---> Drag <---
-                if (use_drag) then
+                ! ---> Drag and/or Stokes <---
+                if (use_drag .or. use_stokes) then
                     inv_dr = inv_dr3 * dr2
                     dr_ver = dr_vec * inv_dr
                     dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
                     v2 = dot_product(dv_vec, dv_vec)
                     
                     aux_real = dos * Gmcomb * inv_dr - v2  ! Check if unbound
+
                     if (aux_real > cero) then ! Can calculate only in this case
                         mean_movement = aux_real**(1.5d0) / Gmcomb ! n
-                        vel_radial = dot_product(dr_ver, dv_vec)
-                        acc_radial = - drag_coef * mean_movement * vel_radial   
 
-                        ! Drag acceleration
-                        der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_radial * dr_ver * drag_f ! = -a_r * (x, y) / r * factor
+                        ! ---> Drag <---
+                        if (use_drag) then
+                            vel_radial = dot_product(dr_ver, dv_vec)
+                            acc_radial = - drag_coef * mean_movement * vel_radial   
+
+                            ! Drag acceleration
+                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_radial * dr_ver * drag_f ! = -a_r * (x, y) / r * factor
+
+                        end if
+
+                        ! ---> Stokes <---
+                        if (use_stokes) then
+                            vel_circ = mean_movement * (/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+
+                            ! Stokes acceleration
+                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - stokes_C * (dv_vec - stokes_alpha * vel_circ) * stokes_f ! = -C * (v - alpha * vc) * factor
+
+                        end if
 
                     end if
-                    
-                end if
-
-                ! ---> Stokes <---
-                if (use_stokes) then
-                    vel_circ  = sqrt(Gmcomb * inv_dr3) * (/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
-
-                    ! Stokes acceleration
-                    der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - stokes_C * (dv_vec - stokes_alpha * vel_circ) * stokes_f ! = -C * (v - alpha * vc) * factor
 
                 end if
 
@@ -275,32 +281,38 @@ module derivates
 
                 end if
 
-                ! ---> Drag <---
-                if (use_drag) then
+                ! ---> Drag and/or Stokes <---
+                if (use_drag .or. use_stokes) then
                     inv_dr = inv_dr3 * dr2
                     dr_ver = dr_vec * inv_dr
-                    dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Particle 
+                    dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
                     v2 = dot_product(dv_vec, dv_vec)
                     
                     aux_real = dos * Gmast * inv_dr - v2  ! Check if unbound
+
                     if (aux_real > cero) then ! Can calculate only in this case
                         mean_movement = aux_real**(1.5d0) / Gmast ! n
-                        vel_radial = dot_product(dr_ver, dv_vec)
-                        acc_radial = - drag_coef * mean_movement * vel_radial   
 
-                        ! Drag acceleration
-                        der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_radial * dr_ver * drag_f ! = -a_r * (x, y) / r * factor
+                        ! ---> Drag <---
+                        if (use_drag) then
+                            vel_radial = dot_product(dr_ver, dv_vec)
+                            acc_radial = - drag_coef * mean_movement * vel_radial   
 
+                            ! Drag acceleration
+                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_radial * dr_ver * drag_f ! = -a_r * (x, y) / r * factor
+
+                        end if
+
+                        ! ---> Stokes <---
+                        if (use_stokes) then
+                            vel_circ = mean_movement * (/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+
+                            ! Stokes acceleration
+                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - stokes_C * (dv_vec - stokes_alpha * vel_circ) * stokes_f ! = -C * (v - alpha * vc) * factor
+
+                        end if
+                        
                     end if
-                    
-                end if
-
-                ! ---> Stokes <---
-                if (use_stokes) then
-                    vel_circ  = sqrt(Gmast * inv_dr3) * (/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
-
-                    ! Stokes acceleration
-                    der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - stokes_C * (dv_vec - stokes_alpha * vel_circ) * stokes_f ! = -C * (v - alpha * vc) * factor
 
                 end if
 
