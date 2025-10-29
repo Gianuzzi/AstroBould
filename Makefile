@@ -156,7 +156,7 @@ install:
 
 clean:
 	@echo "Cleaning up..."
-	@rm -rf *.o *.mod $(OBJ_DIR)/*.o $(MOD_DIR)/*.mod $(EXE_FILE)
+	@rm -rf *.o *.mod $(OBJ_DIR)/*.o $(OBJ_DIR)/*.optrpt $(MOD_DIR)/*.mod $(EXE_FILE)
 	@[ -d $(OBJ_DIR) ] && rmdir --ignore-fail-on-non-empty $(OBJ_DIR) || true
 	@[ -d $(MOD_DIR) ] && rmdir --ignore-fail-on-non-empty $(MOD_DIR) || true
 
