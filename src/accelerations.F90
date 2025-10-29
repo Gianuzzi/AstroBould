@@ -222,7 +222,8 @@ module accelerations
             real(kind=8) :: damp_factor
 
             damp_factor = uno2 * (uno + tanh(1.d1 * (uno - time / damp_time)))
-            acc_omega = acc_omega + damp_coef_1 * damp_factor ! domega/dt = tau
+            !! domega/dt = tau
+            acc_omega = acc_omega + damp_coef_1 * damp_factor 
         end subroutine damping_linear
 
         !!!! omega(t) = omega0 * exp (- (t - t0) / tau) = omega0 * exp (- (t - t0) / tau)
@@ -233,7 +234,8 @@ module accelerations
             real(kind=8) :: damp_factor
 
             damp_factor = uno2 * (uno + tanh(1.d1 * (uno - time / damp_time)))
-            acc_omega = acc_omega - omega / damp_coef_1 * damp_factor ! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau
+            !! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau
+            acc_omega = acc_omega - omega / damp_coef_1 * damp_factor 
         end subroutine damping_exp
 
         !!!! omega(t) = omega0 * exp (A * (t-t0)**B)
@@ -247,7 +249,7 @@ module accelerations
             if (present(initial_time)) t0 = initial_time
             damp_factor = uno2 * (uno + tanh(1.d1 * (uno - time / damp_time)))
 
-            ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
+            !! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
             acc_omega = acc_omega + damp_coef_1 * (time - t0 + tini)**(damp_coef_2 - uno) * omega * damp_factor
         end subroutine damping_expoly
 

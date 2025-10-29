@@ -30,10 +30,15 @@ endif
 # Flags
 
 # Base settings
-STD        = -std=f2008
-ARCH       = -march=native
+ifeq ($(INTEL),1)
+  STD  = -stand f08
+  ARCH = -xHost
+else
+  STD = -std=f2008
+  ARCH       = -march=native
+endif
 WARN_GCC   = -Wall -Wextra -Wshadow
-WARN_INTEL = -warn -nogen-interfaces -Wshadow
+WARN_INTEL = -warn all -nogen-interfaces
 WARN_AMD   =    # (no good Fortran warning flags in AOCC yet)
 
 #--------------------------------------------------------------------------
@@ -54,7 +59,7 @@ else
   MYCFLAGS = -O$(OPT)
   ifeq ($(INTEL),1)
     MYFFLAGS = -funsafe-math-optimizations -funroll-loops \
-               -xHost -qopt-report -fimf-domain-exclusion=15
+               -qopt-report -fimf-domain-exclusion=15
   else ifeq ($(AMD),1)
     MYFFLAGS = -ffast-math -funroll-loops -fvectorize
   else

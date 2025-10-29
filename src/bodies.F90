@@ -402,10 +402,10 @@ module bodies
                 allocate(coords_from_primary(self%Nboulders,4))
                 coords_from_primary = cero
                 do i = 1, self%Nboulders
-                    coords_from_primary(i,1) = self%primary%radius * cos(self%boulders(i)%theta_from_primary) ! X boulder from primary
-                    coords_from_primary(i,2) = self%primary%radius * sin(self%boulders(i)%theta_from_primary) ! Y boulder from primary
-                    coords_from_primary(i,3) = -self%omega * coords_from_primary(i,2)  ! vx
-                    coords_from_primary(i,4) = self%omega * coords_from_primary(i,1)  ! vy
+                    coords_from_primary(i,1) = self%primary%radius * cos(self%boulders(i)%theta_from_primary) ! X from primary
+                    coords_from_primary(i,2) = self%primary%radius * sin(self%boulders(i)%theta_from_primary) ! Y from primary
+                    coords_from_primary(i,3) = -self%omega * coords_from_primary(i,2)  ! vX
+                    coords_from_primary(i,4) = self%omega * coords_from_primary(i,1)  ! vY
                 end do
                 !! Get coords of CM from primary
                 coords_cm_from_primary(1) = dot_product(coords_from_primary(:,1), self%boulders(1:)%mu_to_asteroid)
@@ -468,10 +468,13 @@ module bodies
             self%a_corotation = get_a_corot(self%mass, self%omega)
 
             ! Set Inertia
-            self%inertia = 0.2d0 * self%primary%mass * (self%primary%semi_axis(1)**2 + self%primary%semi_axis(2)**2)  ! Iz of Ellipsoid, or sphere if equal
+            !! Iz of Ellipsoid, or sphere if equal
+            self%inertia = 0.2d0 * self%primary%mass * (self%primary%semi_axis(1)**2 + self%primary%semi_axis(2)**2)  
             do i = 1, self%Nboulders
-                aux_real = 0.4d0 * self%boulders(i)%mass * self%boulders(i)%radius**2 ! Inertia Sphere boulder
-                self%inertia = self%inertia + aux_real + self%boulders(i)%mass * self%boulders(i)%dist_to_asteroid**2 ! Sphere + Steiner
+                !! Inertia Sphere boulder
+                aux_real = 0.4d0 * self%boulders(i)%mass * self%boulders(i)%radius**2 
+                !! Sphere + Steiner
+                self%inertia = self%inertia + aux_real + self%boulders(i)%mass * self%boulders(i)%dist_to_asteroid**2 
             end do
 
             ! Set Angular momentum
@@ -812,15 +815,17 @@ module bodies
                     if (dist < tini) cycle
                     e_pot = e_pot - (self%moons(i)%mass * self%moons(j)%mass) / dist
                 end do
-                energy = energy + self%moons(i)%e_kin + self%moons(i)%e_rot  ! Energy (TBD: Last moon)
-                ang_mom = ang_mom + self%moons(i)%ang_mom_orb + self%moons(i)%ang_mom_rot  ! Angular Momentum (TBD: Last moon)
+                !! Energy and Ang Mom (TBD: Last moon)
+                energy = energy + self%moons(i)%e_kin + self%moons(i)%e_rot  ! Energy
+                ang_mom = ang_mom + self%moons(i)%ang_mom_orb + self%moons(i)%ang_mom_rot  ! Angular Momentum
             end do
 
             energy = energy + e_pot * G  ! G
 
+            !! Now the last Moon
             if (self%Nmoons_active > 0) then
-                ang_mom = ang_mom + self%moons(self%Nmoons_active)%ang_mom_orb + self%moons(self%Nmoons_active)%ang_mom_rot  ! Last Moon
-                energy = energy + self%moons(self%Nmoons_active)%e_kin + self%moons(self%Nmoons_active)%e_rot  ! Last Moon
+                ang_mom = ang_mom + self%moons(self%Nmoons_active)%ang_mom_orb + self%moons(self%Nmoons_active)%ang_mom_rot
+                energy = energy + self%moons(self%Nmoons_active)%e_kin + self%moons(self%Nmoons_active)%e_rot
             end if
         end subroutine calculate_energy_and_ang_mom
 

@@ -916,7 +916,7 @@ program main
     timestep = checkpoint_times(1) ! Paso de tiempo inicial
     min_timestep = max(min(min_timestep, min(timestep, sim%output_timestep)), tini) ! Paso de tiempo mínimo
     if (system%asteroid%rotational_period > tini) then
-        adaptive_timestep = system%asteroid%rotational_period * 0.01d0 ! Paso de tiempo adaptativo inicial: 1% del periodo de rotación
+        adaptive_timestep = system%asteroid%rotational_period * 0.01d0 ! dt0: 1% del periodo de rotación
     else
         ! Set adaptive to minimum between periods
         adaptive_timestep = infinity

@@ -206,7 +206,8 @@ module derivates
                             acc_radial = - drag_coef * mean_movement * vel_radial   
 
                             ! Drag acceleration
-                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_radial * dr_ver * drag_f ! = -a_r * (x, y) / r * factor
+                            !! acc = -a_r * (x, y) / r * factor
+                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_radial * dr_ver * drag_f 
 
                         end if
 
@@ -215,7 +216,8 @@ module derivates
                             vel_circ = mean_movement * (/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                             ! Stokes acceleration
-                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - stokes_C * (dv_vec - stokes_alpha * vel_circ) * stokes_f ! = -C * (v - alpha * vc) * factor
+                            !! acc = -C * (v - alpha * vc) * factor
+                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - stokes_C * (dv_vec - stokes_alpha * vel_circ) * stokes_f 
 
                         end if
 
@@ -300,7 +302,8 @@ module derivates
                             acc_radial = - drag_coef * mean_movement * vel_radial   
 
                             ! Drag acceleration
-                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_radial * dr_ver * drag_f ! = -a_r * (x, y) / r * factor
+                            !! acc = -a_r * (x, y) / r * factor
+                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_radial * dr_ver * drag_f
 
                         end if
 
@@ -309,7 +312,8 @@ module derivates
                             vel_circ = mean_movement * (/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                             ! Stokes acceleration
-                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - stokes_C * (dv_vec - stokes_alpha * vel_circ) * stokes_f ! = -C * (v - alpha * vc) * factor
+                            !! acc = -C * (v - alpha * vc) * factor
+                            der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - stokes_C * (dv_vec - stokes_alpha * vel_circ) * stokes_f
 
                         end if
                         

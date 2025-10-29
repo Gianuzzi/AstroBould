@@ -1275,7 +1275,8 @@ module integrators
             end if
             h = htry
             ysav = y
-            if ((abs(h - hnext) > SAFE_LOW) .or. (abs(x - xnew) > SAFE_LOW)) then !E_TOL? ! A new stepsize or a new integration: Reestablish the order window.
+            if ((abs(h - hnext) > SAFE_LOW) .or. (abs(x - xnew) > SAFE_LOW)) then !E_TOL?
+                ! A new stepsize or a new integration: Reestablish the order window.
                 first = .True.
                 kopt = kmax
             end if
@@ -1341,7 +1342,8 @@ module integrators
                 end if
             end do
             hnext = h / scala
-            if (kopt .ge. k .and. kopt .ne. kmax .and. .not. reduct) then! Check for possible order increase, but not if stepsize was just reduced.
+            ! Check for possible order increase, but not if stepsize was just reduced.
+            if (kopt .ge. k .and. kopt .ne. kmax .and. .not. reduct) then
                 fact = max (scala / alf(kopt - 1, kopt), scalmx)
                 if (arr(kopt + 1) * fact .le. wrkmin) then
                     hnext = h / fact
