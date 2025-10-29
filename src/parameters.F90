@@ -1378,7 +1378,7 @@ module parameters
                 deallocate(aux_ch1)
                 deallocate(aux_ch2)
             else
-                derived%use_geomchaosfile = .True.  ! Need to output geometric chaos values
+                derived%use_geomchaosfile = .False.  ! Need to output geometric chaos values
             end if
 
             !! Names
