@@ -1,4 +1,4 @@
-!> Module with array, string, ordering, ... routines
+!> Module with array, string, ordering, ... routines.
 module auxiliary
     
     implicit none

@@ -1,3 +1,4 @@
+!> Module with bins routines. Unused yet.
 module bins
     use constants, only: cero, uno2, G, pi, tini
 

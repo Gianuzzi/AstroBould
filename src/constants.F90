@@ -1,4 +1,4 @@
-!> Module with constant values
+!> Module with constant values.
 module constants
     implicit none
     !!! Constantes.

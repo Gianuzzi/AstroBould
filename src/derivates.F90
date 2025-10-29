@@ -1,3 +1,4 @@
+!> Module with main derivate function.
 module derivates
     use constants, only: G, cero, uno, uno2, dos, tini
     use auxiliary, only: cross2D_z, rotate2D

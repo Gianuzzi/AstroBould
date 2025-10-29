@@ -1,3 +1,5 @@
+!> Module with acceleration initializers, and some usage examples.
+
 module accelerations
     use auxiliary, only: cross2D_z
     use constants, only: cero, uno, uno2, dos, G, tini

@@ -1,4 +1,4 @@
-!> Module with filtering methods
+!> Module with filtering methods.
 module filtering
     use constants, only: pi, twopi, cero, uno, uno2, dos, tini
     

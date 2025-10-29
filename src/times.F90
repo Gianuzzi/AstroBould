@@ -1,4 +1,4 @@
-!> Module with time and checkpoint calculation routines
+!> Module with time and checkpoint calculation routines.
 module times
     use constants, only: cero, uno, uno2, tini
     use auxiliary, only: quicksort, merge_sort_and_unique

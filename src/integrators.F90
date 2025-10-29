@@ -1,4 +1,4 @@
-!> Module with different kind of integrators
+!> Module with different integrators.
 module integrators
     implicit none
     !! Changes WILL be made, following:

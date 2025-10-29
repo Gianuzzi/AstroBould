@@ -1,4 +1,4 @@
-!> Module with coordinates, and some cel-mech routines
+!> Module with coordinates/elements, and some extra cel-mech routines.
 module celestial
     use constants, only: cero, uno, uno2, dos, G, pi, twopi, tini, epsilon, sqepsilon
     

@@ -1,3 +1,4 @@
+!> Module with TimesOmegaMass routines.
 module tomodule
     use constants, only: cero, uno
     implicit none

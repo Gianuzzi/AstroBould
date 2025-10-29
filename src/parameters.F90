@@ -1,3 +1,4 @@
+!> Module with main parameters and implementation routines.
 module parameters
     use constants
     use auxiliary
@@ -1378,7 +1379,7 @@ module parameters
                 deallocate(aux_ch1)
                 deallocate(aux_ch2)
             else
-                derived%use_geomchaosfile = .False.  ! Need to output geometric chaos values
+                derived%use_geomchaosfile = .False.  ! Do not output geometric chaos values
             end if
 
             !! Names
