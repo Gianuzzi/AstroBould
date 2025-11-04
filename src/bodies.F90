@@ -185,7 +185,7 @@ module bodies
             real(kind=8), intent(in) :: mass_primary_or_ast, semi_a_primary, semi_b_primary, semi_c_primary
             real(kind=8) :: aux_radius = cero, radius_primary = cero
             
-            if (self%primary%id .ne. -1) then
+            if (self%primary%id /= -1) then
                 write(*,*) "ERROR: Primary already set."
                 stop 1
             end if
@@ -1021,7 +1021,7 @@ module bodies
             do i = 1, self%Nmoons
                 id_list(i) = self%moons(i)%id
                 do j = i - 1, 1, -1  ! Back loop
-                    if (id_list(i) .eq. id_list(j)) then
+                    if (id_list(i) == id_list(j)) then
                         write(*,*) "WARNING: Moons IDs are not unique. Repeated:", id_list(i)
                         return
                     end if
@@ -1030,7 +1030,7 @@ module bodies
             do i = self%Nmoons + 1, self%Nmoons + self%Nparticles
                 id_list(i) = self%particles(i - self%Nmoons)%id
                 do j = i - 1, 1, -1  ! Back loop
-                    if (id_list(i) .eq. id_list(j)) then
+                    if (id_list(i) == id_list(j)) then
                         write(*,*) "WARNING: Particles + Moons IDs are not unique. Repeated:", id_list(i)
                         return
                     end if
@@ -1042,7 +1042,7 @@ module bodies
 
             ! Now, they are barycentric
             !! Sanity check for low values in case of no moons
-            if ((self%Nmoons .eq. 0) .and. self%asteroid%dist_to_cm > cero) then
+            if ((self%Nmoons == 0) .and. self%asteroid%dist_to_cm > cero) then
                 ! Manual shift
                 self%asteroid%coordinates = cero
                 self%asteroid%dist_to_cm = cero
@@ -1171,7 +1171,7 @@ module bodies
             if (i < self%Nmoons_active) then
                 ! Switch deactivated moon with last active
                 do j = self%Nmoons_active, 1, -1
-                    if (i .eq. j) cycle
+                    if (i == j) cycle
                     if (self%moons(j)%active) then
                         call swap_moons(self%moons, i, j)
                         exit
@@ -1204,7 +1204,7 @@ module bodies
             ! Switch deactivated particle with last active
             if (i < self%Nparticles_active) then
                 do j = self%Nparticles_active, 1, -1
-                    if (i .eq. j) cycle
+                    if (i == j) cycle
                     if (self%particles(j)%active) then
                         call swap_particles(self%particles, i, j)
                         exit
@@ -2008,7 +2008,7 @@ module bodies
                         call collide_2_moons(self, i, j, outcome)
                         if (outcome > 0) then
                             if (do_write) then
-                                if (outcome .eq. 1) then
+                                if (outcome == 1) then
                                     write(unit_file,s1i5x5) "Merged moon ", j, &
                                                     & "(", self%moons(j)%id, ") into moon ", &
                                                     & i, "(", self%moons(i)%id, ")."
@@ -2262,7 +2262,7 @@ module bodies
                 do i = 1, self%Nmoons_active
                     call write_moon_i_elem(self, ids(i), unit_file)
                 end do
-            else if (self%Nmoons_active .eq. 1) then
+            else if (self%Nmoons_active == 1) then
                 call write_moon_i_elem(self, 1, unit_file)
             end if
 
@@ -2274,7 +2274,7 @@ module bodies
                 do i = 1, self%Nparticles_active
                     call write_particle_i_elem(self, ids(i), unit_file)
                 end do
-            else if (self%Nparticles_active .eq. 1) then
+            else if (self%Nparticles_active == 1) then
                 call write_particle_i_elem(self, 1, unit_file)
             end if
         
@@ -2303,7 +2303,7 @@ module bodies
                     & self%asteroid%radius / unit_dist  ! radius
             
             ! Else, only if at least 1 boulder
-            if (self%asteroid%Nboulders .eq. 0) return
+            if (self%asteroid%Nboulders == 0) return
 
             ! Primary
             coords = self%asteroid%primary%coordinates_CM + self%asteroid%coordinates
@@ -2390,7 +2390,7 @@ module bodies
                 do i = 1, self%Nmoons_active
                     call write_moon_i_coor(self, ids(i), unit_file)
                 end do
-            else if (self%Nmoons_active .eq. 1) then
+            else if (self%Nmoons_active == 1) then
                 call write_moon_i_coor(self, 1, unit_file)
             end if
 
@@ -2402,7 +2402,7 @@ module bodies
                 do i = 1, self%Nparticles_active
                     call write_particle_i_coor(self, ids(i), unit_file)
                 end do
-            else if (self%Nparticles_active .eq. 1) then
+            else if (self%Nparticles_active == 1) then
                 call write_particle_i_coor(self, 1, unit_file)
             end if
         
@@ -2453,10 +2453,10 @@ module bodies
             integer(kind=4):: i_initial
             
             do i_initial = 1, initial%Nmoons
-                if (actual%moons(i)%id .eq. initial%moons(i_initial)%id) exit
+                if (actual%moons(i)%id == initial%moons(i_initial)%id) exit
             end do
 
-            if (i_initial .eq. -1) then
+            if (i_initial == -1) then
                 write(*,*) "ERROR: Moon not found in initial system:", actual%moons(i)%id
                 stop 2
             end if
@@ -2497,10 +2497,10 @@ module bodies
             integer(kind=4) :: i_initial
             
             do i_initial = 1, initial%Nparticles
-                if (actual%particles(i)%id .eq. initial%particles(i_initial)%id) exit
+                if (actual%particles(i)%id == initial%particles(i_initial)%id) exit
             end do
 
-            if (i_initial .eq. -1) then
+            if (i_initial == -1) then
                 write(*,*) "ERROR: Particle not found in initial system:", actual%particles(i)%id
                 stop 2
             end if
@@ -2553,7 +2553,7 @@ module bodies
                 do i = 1, actual%Nmoons
                     call write_moon_i_chaos(initial, actual, ids(i), unit_file)
                 end do
-            else if (actual%Nmoons .eq. 1) then
+            else if (actual%Nmoons == 1) then
                 call write_moon_i_chaos(initial, actual, 1, unit_file)
             end if
 
@@ -2565,7 +2565,7 @@ module bodies
                 do i = 1, actual%Nparticles
                     call write_particle_i_chaos(initial, actual, ids(i), unit_file)
                 end do
-            else if (actual%Nparticles .eq. 1) then
+            else if (actual%Nparticles == 1) then
                 call write_particle_i_chaos(initial, actual, 1, unit_file)
             end if
         
@@ -2639,7 +2639,7 @@ module bodies
                 do i = 1, self%Nmoons_active
                     call write_moon_i_geom(self, ids(i), unit_file)
                 end do
-            else if (self%Nmoons_active .eq. 1) then
+            else if (self%Nmoons_active == 1) then
                 call write_moon_i_geom(self, 1, unit_file)
             end if
 
@@ -2651,7 +2651,7 @@ module bodies
                 do i = 1, self%Nparticles_active
                     call write_particle_i_geom(self, ids(i), unit_file)
                 end do
-            else if (self%Nparticles_active .eq. 1) then
+            else if (self%Nparticles_active == 1) then
                 call write_particle_i_geom(self, 1, unit_file)
             end if
         
@@ -2668,10 +2668,10 @@ module bodies
             integer(kind=4):: i_initial
             
             do i_initial = 1, initial%Nmoons
-                if (actual%moons(i)%id .eq. initial%moons(i_initial)%id) exit
+                if (actual%moons(i)%id == initial%moons(i_initial)%id) exit
             end do
 
-            if (i_initial .eq. -1) then
+            if (i_initial == -1) then
                 write(*,*) "ERROR: Moon not found in initial system:", actual%moons(i)%id
                 stop 2
             end if
@@ -2712,10 +2712,10 @@ module bodies
             integer(kind=4) :: i_initial
 
             do i_initial = 1, initial%Nparticles
-                if (actual%particles(i)%id .eq. initial%particles(i_initial)%id) exit
+                if (actual%particles(i)%id == initial%particles(i_initial)%id) exit
             end do
 
-            if (i_initial .eq. -1) then
+            if (i_initial == -1) then
                 write(*,*) "ERROR: Particle not found in initial system:", actual%particles(i)%id
                 stop 2
             end if
@@ -2766,7 +2766,7 @@ module bodies
                 do i = 1, actual%Nmoons
                     call write_moon_i_geomchaos(initial, actual, ids(i), unit_file)
                 end do
-            else if (actual%Nmoons .eq. 1) then
+            else if (actual%Nmoons == 1) then
                 call write_moon_i_geomchaos(initial, actual, 1, unit_file)
             end if
 
@@ -2778,7 +2778,7 @@ module bodies
                 do i = 1, actual%Nparticles
                     call write_particle_i_geomchaos(initial, actual, ids(i), unit_file)
                 end do
-            else if (actual%Nparticles .eq. 1) then
+            else if (actual%Nparticles == 1) then
                 call write_particle_i_geomchaos(initial, actual, 1, unit_file)
             end if
         

@@ -212,7 +212,7 @@ program main
         read(*,*) aux_character20
         aux_character20 = adjustl(aux_character20)
         aux_character1 = aux_character20(1:1)   
-        if (index("YySs", aux_character1) /= 0) then
+        if (index("YySs", aux_character1) == 0) then
             write(*,*) "Exiting."
             stop 1
         else if (sim%use_screen) then
@@ -281,7 +281,7 @@ program main
         !!!! Formato: [mu, a, e, M, w, MMR, radius]
         call read_columns_file(sim%moonsfile, aux_2D)
         sim%Nmoons = size(aux_2D, 1)
-        if (sim%Nmoons .eq. 0) then
+        if (sim%Nmoons == 0) then
             write(*,*) ACHAR(10)
             write(*,*) "ERROR: Could not read moons from moons file."
             stop 1
@@ -326,7 +326,7 @@ program main
         !!!! Formato: [mu, a, e, M, w, MMR]
         call read_columns_file(sim%particlesfile, aux_2D)
         sim%Nparticles = size(aux_2D, 1)
-        if (sim%Nparticles .eq. 0) then
+        if (sim%Nparticles == 0) then
             write(*,*) ACHAR(10)
             write(*,*) "ERROR: Could not read particles from particles file."
             stop 1
@@ -758,7 +758,7 @@ program main
             write(*,*) ACHAR(5)
         end if
         if (sim%use_moons) then
-            if (sim%eta_col .eq. uno) then
+            if (sim%eta_col == uno) then
                 if (sim%use_merge_massive) then
                     write(*,*) "Colliding massive bodies will be merged."
                 else
@@ -1079,12 +1079,12 @@ program main
             read(*,*) aux_character20
             aux_character20 = adjustl(aux_character20)
             aux_character1 = aux_character20(1:1)   
-            if (index("YySs", aux_character1) /= 0) then
+            if (index("YySs", aux_character1) == 0) then
                 write(*,*) "Exiting."
                 stop 1
             else if (sim%use_screen) then
-                    write(*,*) "Resuming..."
-                    write(*,*) ACHAR(5)
+                write(*,*) "Resuming..."
+                write(*,*) ACHAR(5)
             end if
         end if
     end if
@@ -1119,7 +1119,7 @@ program main
     !!! <<<< Check workers >>>>
     if (sim%use_parallel) then
         aux_int = MIN(MAX(sim%Ntotal, 3), my_threads)
-        if (aux_int .ne. my_threads) then
+        if (aux_int /= my_threads) then
             my_threads = aux_int
             !$ call OMP_SET_NUM_THREADS(my_threads)
             if (sim%use_screen) write(*,*) "WARNING: ", my_threads, " threads will be used for integration."
@@ -1291,7 +1291,7 @@ program main
     !! Reduce threads if necessary...
     if (sim%use_parallel) then
         aux_int = MIN(MAX(sim%Nactive, 3), my_threads)
-        if (aux_int .ne. my_threads) then
+        if (aux_int /= my_threads) then
             my_threads = aux_int
             !$ call OMP_SET_NUM_THREADS(my_threads)
             if (sim%use_screen) then
@@ -1920,7 +1920,7 @@ program main
     end if
 
     !! Porcentaje final
-    if (sim%use_percentage .and. time .ne. sim%final_time) call percentage(sim%final_time + uno, sim%final_time)
+    if (sim%use_percentage .and. time /= sim%final_time) call percentage(sim%final_time + uno, sim%final_time)
 
     !! Cerrar archivo de salida
     if (sim%use_datafile) then
@@ -1982,11 +1982,11 @@ program main
                 write(*,*) ACHAR(10)
                 write(*,*) "Geometric chaos data saved into: ", trim(sim%geomchaosfile)
             end if
-        end if
-        if (sim%use_datascreen) then
-            write(*,*) ACHAR(10)        
-            write(*,*) "Geometric chaos:"
-            call write_geomchaos(initial_system, system, 6)
+            if (sim%use_datascreen) then
+                write(*,*) ACHAR(10)        
+                write(*,*) "Geometric chaos:"
+                call write_geomchaos(initial_system, system, 6)
+            end if
         end if
     end if
 

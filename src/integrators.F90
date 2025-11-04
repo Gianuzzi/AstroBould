@@ -265,7 +265,7 @@ module integrators
                     iter = 0
                 else
                     dt_adap = dt_adap * min (beta * ratio**(ONE / oaux), MAX_DT_FAC)
-                    if ((dt_adap .ne. dt_adap) .or. (dt_adap < dt_min) .or. (iter .eq. MAX_N_ITER)) then
+                    if ((dt_adap /= dt_adap) .or. (dt_adap < dt_min) .or. (iter == MAX_N_ITER)) then
                         dt_adap = dt_min
                         dt_used = dt_min
                         call integ (t, y, der, dt_adap, dydt, osol, oaux, yaux, ynew)
@@ -321,7 +321,7 @@ module integrators
                     iter = 0
                 else
                     dt_adap = dt_adap * min (beta * ratio**(ONE / ordr), MAX_DT_FAC)
-                    if ((dt_adap .ne. dt_adap) .or. (dt_adap .le. dt_min) .or. (iter .eq. MAX_N_ITER)) then
+                    if ((dt_adap /= dt_adap) .or. (dt_adap .le. dt_min) .or. (iter == MAX_N_ITER)) then
                         dt_used = dt_min
                         dt_adap = dt_min
                         call integ (t, y, der, dt_adap, dydt, ynew)
@@ -372,7 +372,7 @@ module integrators
                     iter = 0
                 else
                     dt_adap = dt_adap * min (beta * ratio**C1_2, MAX_DT_FAC)
-                    if ((dt_adap .ne. dt_adap) .or. (dt_adap .le. dt_min) .or. (iter .eq. MAX_N_ITER)) then
+                    if ((dt_adap /= dt_adap) .or. (dt_adap .le. dt_min) .or. (iter == MAX_N_ITER)) then
                         dt_used = dt_min
                         dt_adap = dt_min
                         call leapfrog (t, y, der, dt_adap, dydt, ynew)
@@ -1294,7 +1294,7 @@ module integrators
                     yscal = abs (y) + abs (h * der) + SAFE_LOW
                     xest = (h / nseq(k))**2 ! Squared, since error series is even.
                     call pzextr (k, xest, yseq, y, yerr, sizey, qcolpz, xpz) ! Perform extrapolation.
-                    if (k .ne. 1) then ! Compute normalized error estimate eps(k).
+                    if (k /= 1) then ! Compute normalized error estimate eps(k).
                         errmax = tini
                         do i = 1, sizey
                             errmax = max (errmax, abs(yerr(i)/yscal(i))) ! FALTA SCALADO? !! Ya no?
@@ -1303,17 +1303,17 @@ module integrators
                         km = k - 1
                         err(km) = (errmax / safe1)**(ONE / (TWO * km + 1))
                     end if
-                    if (k .ne. 1 .and. (k .ge. kopt - 1 .or. first)) then ! In order window.
+                    if (k /= 1 .and. (k .ge. kopt - 1 .or. first)) then ! In order window.
                         if (errmax < ONE) exit main_loop ! Converged.
-                        if (k .eq. kmax .or. k .eq. kopt + 1) then ! Check for possible stepsize reduction.
+                        if (k == kmax .or. k == kopt + 1) then ! Check for possible stepsize reduction.
                             red = safe2 / err(km)
                             exit
-                        else if (k .eq. kopt) then
+                        else if (k == kopt) then
                             if (alf(kopt - 1, kopt) < err(km)) then
                                 red = ONE / err(km)
                                 exit
                             end if
-                        else if (kopt .eq. kmax) then
+                        else if (kopt == kmax) then
                             if (alf(km, kmax - 1) < err(km)) then
                                 red = alf(km, kmax - 1) * safe2 / err(km)
                                 exit
@@ -1343,7 +1343,7 @@ module integrators
             end do
             hnext = h / scala
             ! Check for possible order increase, but not if stepsize was just reduced.
-            if (kopt .ge. k .and. kopt .ne. kmax .and. .not. reduct) then
+            if (kopt .ge. k .and. kopt /= kmax .and. .not. reduct) then
                 fact = max (scala / alf(kopt - 1, kopt), scalmx)
                 if (arr(kopt + 1) * fact .le. wrkmin) then
                     hnext = h / fact
@@ -1395,7 +1395,7 @@ module integrators
             x(iest) = xest  ! Save current independent variable.
             dy = yest
             yz = yest
-            if (iest .eq. 1) then  ! Store ﬁrst estimate in ﬁrst column.
+            if (iest == 1) then  ! Store ﬁrst estimate in ﬁrst column.
                 qcol(:, 1) = yest(:)
             else
                 d = yest

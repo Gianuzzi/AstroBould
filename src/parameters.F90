@@ -469,16 +469,16 @@ module parameters
                     case ("-merge")
                         call get_command_argument(i+1, aux_character20)
                         read (aux_character20,*) merge_type
-                        if (merge_type .eq. 0) then ! No merge
+                        if (merge_type == 0) then ! No merge
                             params%use_merge_part_mass = .False.
                             params%use_merge_massive = .False.
-                        else if (merge_type .eq. 1) then ! Only particle-massive
+                        else if (merge_type == 1) then ! Only particle-massive
                             params%use_merge_part_mass = .True.
                             params%use_merge_massive = .False.
-                        else if (merge_type .eq. 2) then ! Only massive-massive
+                        else if (merge_type == 2) then ! Only massive-massive
                             params%use_merge_part_mass = .False.
                             params%use_merge_massive = .True.
-                        else if (merge_type .eq. 3) then ! All merges
+                        else if (merge_type == 3) then ! All merges
                             params%use_merge_part_mass = .True.
                             params%use_merge_massive = .True.
                         else
@@ -489,16 +489,16 @@ module parameters
                     case ("-stopif")
                         call get_command_argument(i+1, aux_character20)
                         read (aux_character20,*) stop_type
-                        if (stop_type .eq. 0) then ! No stop
+                        if (stop_type == 0) then ! No stop
                             params%use_stop_no_moon_left = .False.
                             params%use_stop_no_part_left = .False.
-                        else if (stop_type .eq. 1) then ! Only if no more moons
+                        else if (stop_type == 1) then ! Only if no more moons
                             params%use_stop_no_moon_left = .True.
                             params%use_stop_no_part_left = .False.
-                        else if (stop_type .eq. 2) then ! Only if no more particles
+                        else if (stop_type == 2) then ! Only if no more particles
                             params%use_stop_no_moon_left = .False.
                             params%use_stop_no_part_left = .True.
-                        else if (stop_type .eq. 3) then ! Stop if any deactivation
+                        else if (stop_type == 3) then ! Stop if any deactivation
                             params%use_stop_no_moon_left = .True.
                             params%use_stop_no_part_left = .True.
                         else
@@ -635,7 +635,7 @@ module parameters
             aux_integer = command_argument_count()
             do j = 1, aux_integer
                 call get_command_argument(j, auxch30)
-                if (trim(auxch30) .eq. "--noconfig") then
+                if (trim(auxch30) == "--noconfig") then
                     use_configfile = .False.
                     return
                 end if
@@ -975,7 +975,7 @@ module parameters
                     end select
                 else  ! Read boulders, moons or particles
                     param_str = trim(adjustl(line)) 
-                    if (param_str(1:7) .eq. "mass_m0") then  ! Leeemos boulders
+                    if (param_str(1:7) == "mass_m0") then  ! Leeemos boulders
                         aux_integer = nlines  ! Save the nlines where to read from (later)
                         Nboulders = 0 ! This will be the boulder count
                         io = 0  ! This is be the reading status
@@ -1011,7 +1011,7 @@ module parameters
                             j = j + 1
                         end do
                     end if
-                    if (param_str(1:9) .eq. "mass_mAst") then  ! Leeemos las lunas
+                    if (param_str(1:9) == "mass_mAst") then  ! Leeemos las lunas
                         aux_integer = nlines  ! Save the nlines where to read from (later)
                         Nmoons = 0 ! This will be the moon count
                         io = 0  ! This is be the reading status
@@ -1055,7 +1055,7 @@ module parameters
                             end do
                         end if
                     end if
-                    if (param_str(1:5) .eq. "a(km)") then  ! Leeemos las partículas
+                    if (param_str(1:5) == "a(km)") then  ! Leeemos las partículas
                         aux_integer = nlines  ! Save the nlines where to read from (later)
                         Nparticles = 0 ! This will be the particles count
                         io = 0  ! This is be the reading status
@@ -1159,8 +1159,8 @@ module parameters
                     stop 1
                 end if
                 ! Set values of not defined
-                if (derived%triax_b_primary .eq. cero) derived%triax_b_primary = derived%triax_a_primary
-                if (derived%triax_c_primary .eq. cero) derived%triax_c_primary = derived%triax_b_primary
+                if (derived%triax_b_primary == cero) derived%triax_b_primary = derived%triax_a_primary
+                if (derived%triax_c_primary == cero) derived%triax_c_primary = derived%triax_b_primary
                 ! Check NO BOULDERS
                 if (derived%use_boulders) then
                     write(*,*) "ERROR: Can not set tri-axial model with boulders."
@@ -1248,7 +1248,7 @@ module parameters
 
             ! Filter (fast check)
             if (derived%use_filter) then
-                if (derived%filter_dt .eq. 0) then
+                if (derived%filter_dt == 0) then
                     write(*,*) "ERROR: Filter dt must be different than 0."
                     stop 1
                 end if
@@ -1287,16 +1287,16 @@ module parameters
             ! end if
             
             ! Moons gravity
-            if (derived%Nmoons .eq. 0) derived%use_moon_gravity = .False.  ! Deactivate it
+            if (derived%Nmoons == 0) derived%use_moon_gravity = .False.  ! Deactivate it
 
             ! Merges
-            if (derived%Nparticles .eq. 0) derived%use_merge_part_mass = .False.  ! Deactivate it
-            if (derived%Nmoons .eq. 0) derived%use_merge_massive = .False.  ! Deactivate it
+            if (derived%Nparticles == 0) derived%use_merge_part_mass = .False.  ! Deactivate it
+            if (derived%Nmoons == 0) derived%use_merge_massive = .False.  ! Deactivate it
             derived%use_any_merge = derived%use_merge_part_mass .or. derived%use_merge_massive
 
             ! Stops
-            if (derived%Nparticles .eq. 0) derived%use_stop_no_part_left = .False.  ! Deactivate it
-            if (derived%Nmoons .eq. 0) derived%use_stop_no_moon_left = .False.  ! Deactivate it
+            if (derived%Nparticles == 0) derived%use_stop_no_part_left = .False.  ! Deactivate it
+            if (derived%Nmoons == 0) derived%use_stop_no_moon_left = .False.  ! Deactivate it
             derived%use_any_stop = derived%use_stop_no_part_left .or. derived%use_stop_no_moon_left
 
             ! Eta and f collitions values
@@ -1334,7 +1334,7 @@ module parameters
                     stop 1
                 end if
                 !$ available_threads = OMP_GET_MAX_THREADS()
-                !$ if (derived%requested_threads .eq. -1) derived%requested_threads = available_threads
+                !$ if (derived%requested_threads == -1) derived%requested_threads = available_threads
                 !$ my_threads = min(available_threads, max(derived%requested_threads,1))
                 !$ call OMP_SET_NUM_THREADS(my_threads)
             else
@@ -1369,7 +1369,7 @@ module parameters
                 derived%use_geomchaosfile = .True.  ! Need to output geometric chaos values
                 aux_ch1 = trim(adjustl(derived%geometricfile))
                 i = index(aux_ch1, ".", back=.True.)
-                if (i .eq. 0) i = len_trim(aux_ch1) + 1 ! No "." in geometricfile
+                if (i == 0) i = len_trim(aux_ch1) + 1 ! No "." in geometricfile
                 aux_ch2 = aux_ch1(1:i-1)
                 if (len_trim(derived%chaosfile) > 0) then 
                     derived%geomchaosfile = trim(aux_ch2) // "_" // trim(adjustl(derived%chaosfile))
@@ -1541,7 +1541,7 @@ module parameters
             real(kind=8), dimension(:), intent(in) :: y
             logical :: keep_going
             ! ! Here, we use the global hexit_arr  (Old Code)
-            ! keep_going = all(hexit_arr .eq. 0)
+            ! keep_going = all(hexit_arr == 0)
             ! if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
             keep_going = .not. hard_exit
         end function check_func
@@ -1638,14 +1638,14 @@ module parameters
             type(sim_params_st), intent(in) :: simu
             logical, intent(inout) :: keep
             
-            if (simu%use_stop_no_part_left .and. sistema%Nparticles_active .eq. 0 .and. simu%Nparticles > 0) then
+            if (simu%use_stop_no_part_left .and. sistema%Nparticles_active == 0 .and. simu%Nparticles > 0) then
                 if (simu%use_screen) then
                     write(*,*) ACHAR(10)
                     write(*,*) "No more particles left."
                 end if
                 keep = .False.
             end if
-            if (simu%use_stop_no_moon_left .and. sistema%Nmoons_active .eq. 0 .and. simu%Nmoons > 0) then
+            if (simu%use_stop_no_moon_left .and. sistema%Nmoons_active == 0 .and. simu%Nmoons > 0) then
                 if (simu%use_screen) then
                     write(*,*) ACHAR(10)
                     write(*,*) "No more moons left."
@@ -1838,7 +1838,7 @@ module parameters
             !$OMP SECTION
             if (sim%use_diagnostics) then
                 call write_diagnostics(initial_system, syst, 6)
-            else if (pout .eq. 0) then
+            else if (pout == 0) then
                 call write_to_screen(syst, 6)
                 flush(6)
             end if
@@ -1849,7 +1849,7 @@ module parameters
             call write_to_chaos(syst, initial_system, 22 + pout)
             call flush_chaos(22 + pout) ! Update chaos
             !$OMP SECTION
-            if (pout .eq. 0) then
+            if (pout == 0) then
                 call write_to_geometric(syst, 23)
                 call flush_geometric(23)
                 call write_to_geomchaos(syst, initial_system, 24)

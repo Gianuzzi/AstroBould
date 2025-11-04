@@ -45,9 +45,9 @@ module tomodule
             do i = 1,3   ! The very maximum that the string can contain: 3
                 io = 0
                 read (auxstr, *, iostat=io) (t_aux, j=1,i)
-                if (io .ne. 0) exit
+                if (io /= 0) exit
             end do
-            if (io .eq. 0) then 
+            if (io == 0) then 
                 ncols = i
             else
                 ncols = i - 1

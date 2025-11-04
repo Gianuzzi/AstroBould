@@ -46,7 +46,7 @@ contains
 
         self%n_samples = oversample
         self%n_windows = window_factor
-        if (mod(window_factor, 2) .eq. 1) self%n_windows = window_factor + 1  ! even
+        if (mod(window_factor, 2) == 1) self%n_windows = window_factor + 1  ! even
 
         self%size = self%n_samples * self%n_windows + 1  ! +1 for the first condition  ! odd
         self%half_size = int((self%size - 1) / 2, 4)

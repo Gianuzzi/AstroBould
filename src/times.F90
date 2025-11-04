@@ -46,7 +46,7 @@ module times
             t_out(n_out) = tf
 
             ! Sanity check 2
-            if (n_out .eq. 2) return
+            if (n_out == 2) return
 
             ! Create dist
             select case (case_dist)
@@ -74,7 +74,7 @@ module times
                     t_out(i) = t0 + t_aux * (i - 1)
                 end do
                 ! Luego logarítmico
-                if (mod(n_out, 2) .ne. 0) npointsr = npointsr - uno
+                if (mod(n_out, 2) /= 0) npointsr = npointsr - uno
                 t_aux = exp(log(tf - t0 + uno) / npointsr)
                 t_add = t_aux
                 do i = n_out - floor(npointsr + tini) + 2, n_out - 1 ! + tini para evitar errores de redondeo

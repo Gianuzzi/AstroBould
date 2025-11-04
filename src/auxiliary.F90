@@ -352,9 +352,9 @@ module auxiliary
             do i = 1,MAX_COLS
                 io = 0
                 read (auxstr, *, iostat=io) (aux_real, j=1,i)
-                if (io .ne. 0) exit
+                if (io /= 0) exit
             end do
-            if (io .eq. 0) then 
+            if (io == 0) then 
                 ncols = i
             else
                 ncols = i - 1
@@ -362,7 +362,7 @@ module auxiliary
             
             rewind (11) ! Go to the beginning of the file
             
-            if (my_method .eq. 0) then
+            if (my_method == 0) then
 
                 !! Count number of rows
                 do ! Count number of (valid) lines 
