@@ -1,6 +1,10 @@
 !> Module with different integrators.
 module integrators
     implicit none
+
+    private
+    public :: integ_caller, embedded_caller, solve_rk_half_step_caller, BStoer_caller, BStoer_caller2, leapfrog_caller
+
     !! Changes WILL be made, following:
     !!! - https://github.com/jacobwilliams/rklib.git
     !!! - https://github.com/jacobwilliams/Fortran-Astrodynamics-Toolkit.git
@@ -44,6 +48,18 @@ module integrators
     real(kind=8), parameter :: SQ3_6  = SQ3 * C1_6, SQ3_2 = SQ3_6 * TWO
     real(kind=8), parameter :: SQ15_5 = SQ15 * C1_5, SQ15_10 = SQ15_5 * TWO, SQ15_24 = SQ15/24.d0
     real(kind=8), parameter :: SQ15_30 = SQ15/3.d1, SQ15_15 = SQ15_30 * TWO
+
+    ! Workspace allocation control
+    logical :: workspace_initialized = .False.
+    integer :: max_size_y = 0
+
+    ! Workspace arrays (large arrays moved from stack → heap)
+
+    ! BS arrays
+    real(kind=8), allocatable :: ysav(:), yseq(:), yerr(:), der(:), yscal(:)
+    real(kind=8), allocatable :: qcolpz(:,:)
+    real(kind=8), allocatable :: mmid_ym(:), mmid_yn(:)
+    real(kind=8), allocatable :: pz_d(:)
 
     abstract interface
     
@@ -125,6 +141,27 @@ module integrators
     end interface
 
     contains
+
+        ! HANDLERS
+
+        subroutine init_workspace(sizey, integrator)
+            integer(kind=4), intent(in) :: sizey
+            character(len=*), intent(in) :: integrator
+            character(1) :: opt
+
+            if (.not. workspace_initialized) then
+                max_size_y = sizey
+                opt = trim(adjustl(integrator))
+                select case (opt)
+                case ("b")
+                    allocate(ysav(sizey), yseq(sizey), yerr(sizey), der(sizey), yscal(sizey))
+                    allocate(qcolpz(sizey,16))
+                    allocate(mmid_ym(sizey), mmid_yn(sizey))
+                    allocate(pz_d(sizey))
+                end select
+                workspace_initialized = .True.
+            end if
+        end subroutine init_workspace
     
         !---------------------------------------------------------------------------------------------
         ! ND -> ND
@@ -1217,64 +1254,61 @@ module integrators
             sizey = size (y)
             time  = t
             dtry  = dt_adap
-            call bstep (ynew, dydt, sizey, time, dtry, e_tol, dt_used, dt_adap)
+            call bstep (sizey, ynew, dydt, time, dtry, e_tol, dt_used, dt_adap)
         end subroutine Bulirsch_Stoer
 
         !!!! Auxiliar subroutines for Bulirsch_Stoer
 
-        subroutine bstep (y, dydt, sizey, x, htry, eps, hdid, hnext)
+        subroutine bstep (sizey, y, dydt, x, htry, eps, hdid, hnext)
             implicit none
             integer(kind=4), intent(in) :: sizey
             real(kind=8), dimension(sizey), intent(inout) :: y
+            procedure(dydt_tem) :: dydt
             real(kind=8), intent(inout) :: x
-            real(kind=8), intent(in)    :: htry, eps
-            real(kind=8), intent(out)   :: hdid, hnext
-            procedure(dydt_tem)         :: dydt
-            integer(kind=4), parameter :: imax = 9, kmaxx = imax - 1
-            real(kind=8), parameter    :: safe1 = .25d0, safe2 = .7d0
-            real(kind=8), parameter    :: redmax = 1.d-5, redmin = .7d0
-            real(kind=8), parameter    :: tini = 1.d-30, scalmx = .1d0
-            integer(kind=4), parameter, dimension(imax) :: nseq = (/2, 4, 6, 8, 10, 12, 14, 16, 18/)
-            integer(kind=4), save                       :: kmax, kopt
-            real(kind=8), dimension(kmaxx, kmaxx), save :: alf
-            real(kind=8), dimension(kmaxx)              :: err
-            real(kind=8), dimension(imax), save         :: arr ! a in NR F90
-            real(kind=8), save                          :: xnew, epsold = -1.d0
-            real(kind=8)                   :: eps1, errmax, fact, h, red, scala, wrkmin, xest
-            real(kind=8), dimension(sizey) :: yerr, ysav, yseq, der, yscal
-            logical       :: reduct
-            logical, save :: first = .True.
+            real(kind=8), intent(in) :: htry, eps
+            real(kind=8), intent(out) :: hdid, hnext
 
-            real(kind=8), dimension(kmaxx * 2)        :: xpz
-            real(kind=8), dimension(sizey, kmaxx * 2) :: qcolpz
-            real(kind=8)    :: work
+            real(kind=8), parameter :: safe1 = .25d0, safe2 = .7d0
+            real(kind=8), parameter :: redmax = 1.d-5, redmin = .7d0
+            real(kind=8), parameter :: tini = 1.d-30, scalmx = .1d0
+            integer(kind=4), parameter, dimension(9) :: nseq = (/2, 4, 6, 8, 10, 12, 14, 16, 18/)
+            integer(kind=4), save :: kmax, kopt
+            real(kind=8), dimension(8, 8), save :: alf
+            real(kind=8), dimension(8) :: err
+            real(kind=8), dimension(9), save :: arr ! a in NR F90
+            real(kind=8), save :: xnew, epsold = -1.d0
+            real(kind=8) :: eps1, errmax, fact, h, red, scala, wrkmin, xest
+            logical :: reduct
+            logical, save :: first = .True.
+            real(kind=8), dimension(16) :: xpz
+            real(kind=8) :: work
             integer(kind=4) :: k, iq, i ,km, kk
 
-            der = dydt (x, y)
-            yscal = abs (y) + abs (htry * der) + SAFE_LOW
+            der(:sizey) = dydt (x, y)
+            yscal(:sizey) = abs (y) + abs (htry * der(:sizey)) + SAFE_LOW
             
             if (abs(eps - epsold) > SAFE_LOW) then !E_TOL? ! A new tolerance, so reinitialize.
                 hnext = -1.0d29 ! “Impossible” values.
                 xnew  = -1.0d29
                 eps1  = safe1 * eps
                 arr(1) = nseq(1) + 1
-                do k = 1, kmaxx
+                do k = 1, 8
                     arr(k + 1) = arr(k) + nseq(k + 1)
                 end do
                 ! Compute α(k, q):
-                do iq = 2, kmaxx
+                do iq = 2, 8
                     do k = 1, iq - 1
                         alf(k, iq) = eps1**((arr(k + 1) - arr(iq + 1)) / ((arr(iq + 1) - arr(1) + ONE) * (TWO * k + 1)))
                     end do
                 end do
                 epsold = eps
-                do kopt = 2, kmaxx - 1 ! Determine optimal row number for convergence.
+                do kopt = 2, 7 ! Determine optimal row number for convergence.
                     if (arr(kopt + 1) > arr(kopt) * alf(kopt - 1, kopt)) exit
                 end do
                 kmax = kopt
             end if
             h = htry
-            ysav = y
+            ysav(:sizey) = y
             if ((abs(h - hnext) > SAFE_LOW) .or. (abs(x - xnew) > SAFE_LOW)) then !E_TOL?
                 ! A new stepsize or a new integration: Reestablish the order window.
                 first = .True.
@@ -1290,10 +1324,10 @@ module integrators
                         ! stop 2
                         ! return
                     end if
-                    call mmid (ysav, der, sizey, x, h, nseq(k), yseq, dydt)
-                    yscal = abs (y) + abs (h * der) + SAFE_LOW
+                    call mmid (sizey, ysav(:sizey), der(:sizey), x, h, nseq(k), yseq(:sizey), dydt)
+                    yscal(:sizey) = abs (y) + abs (h * der(:sizey)) + SAFE_LOW
                     xest = (h / nseq(k))**2 ! Squared, since error series is even.
-                    call pzextr (k, xest, yseq, y, yerr, sizey, qcolpz, xpz) ! Perform extrapolation.
+                    call pzextr (sizey, k, xest, yseq(:sizey), y, yerr(:sizey), qcolpz(:sizey, :), xpz) ! Perform extrapolation.
                     if (k /= 1) then ! Compute normalized error estimate eps(k).
                         errmax = tini
                         do i = 1, sizey
@@ -1352,43 +1386,45 @@ module integrators
             end if
         end subroutine bstep
 
-        subroutine mmid (y, dydx, sizey, xs, htot, nstep, yout, dydt)
-            integer(kind=4), intent(in) :: sizey, nstep
-            procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: xs, htot
-            real(kind=8), dimension(sizey) :: ym, yn
+        subroutine mmid (sizey, y, dydx, xs, htot, nstep, yout, dydt)
+            integer(kind=4), intent(in) :: sizey
             real(kind=8), dimension(sizey), intent(in) :: y, dydx
-            real(kind=8), dimension(sizey), intent(out) :: yout
+            real(kind=8), intent(in) :: xs, htot
+            integer(kind=4), intent(in) :: nstep
+            real(kind=8), dimension(sizey), intent(out) :: yout            
+            procedure(dydt_tem) :: dydt
+
             real(kind=8) :: x, h, h2, swap
             integer(kind=4) :: i, n 
 
-            h  = htot / (nstep * ONE) ! Stepsize this trip.
-            ym = y
-            yn = y + h * dydx ! First step.
-            x  = xs + h
-            yout = dydt(x, yn) ! Will use yout for temporary storage of derivatives.
+            h = htot / (nstep * ONE) ! Stepsize this trip.
+            mmid_ym(1:sizey) = y
+            mmid_yn(1:sizey) = y + h * dydx ! First step.
+            x = xs + h
+            yout = dydt(x, mmid_yn) ! Will use yout for temporary storage of derivatives.
             h2 = TWO * h
             do n = 2, nstep ! General step.
                 do i = 1, sizey
-                    swap = ym(i) + h2 * yout(i)
-                    ym(i) = yn(i)
-                    yn(i) = swap
+                    swap = mmid_ym(i) + h2 * yout(i)
+                    mmid_ym(i) = mmid_yn(i)
+                    mmid_yn(i) = swap
                 end do
                 x = x + h
-                yout = dydt(x, yn)
+                yout = dydt(x, mmid_yn(1:sizey))
             end do
-            yout = C1_2 * (ym + yn + h * yout) ! Last step.
+            yout = C1_2 * (mmid_ym(1:sizey) + mmid_yn(1:sizey) + h * yout) ! Last step.
         end subroutine mmid
 
-        subroutine pzextr (iest, xest, yest, yz, dy, sizey, qcol, x)
-            integer(kind=4), intent(in) :: iest, sizey
-            real(kind=8), intent(in)    :: xest
-            real(kind=8), dimension(sizey)              :: d
-            real(kind=8), dimension(sizey), intent(in)  :: yest
-            real(kind=8), dimension(sizey), intent(out) :: dy, yz
-            integer(kind=4), parameter                  :: IEST_MAX=16
-            real(kind=8), dimension(IEST_MAX), intent(inout)        :: x
-            real(kind=8), dimension(sizey, IEST_MAX), intent(inout) :: qcol
+        subroutine pzextr (sizey, iest, xest, yest, yz, dy, qcol, x)
+            implicit none
+            integer(kind=4), intent(in) :: sizey
+            integer(kind=4), intent(in) :: iest
+            real(kind=8), intent(in) :: xest
+            real(kind=8), dimension(sizey), intent(in) :: yest
+            real(kind=8), dimension(sizey), intent(out) :: yz, dy
+            real(kind=8), dimension(sizey,16), intent(inout) :: qcol
+            real(kind=8), dimension(16), intent(inout) :: x
+            
             integer(kind=4) :: j, k1
             real(kind=8)    :: delta, f1, f2, q
 
@@ -1398,7 +1434,7 @@ module integrators
             if (iest == 1) then  ! Store ﬁrst estimate in ﬁrst column.
                 qcol(:, 1) = yest(:)
             else
-                d = yest
+                pz_d = yest
                 do k1 = 1, iest - 1
                     delta = ONE / (x(iest - k1) - xest)
                     f1 = xest * delta
@@ -1406,9 +1442,9 @@ module integrators
                     do j = 1, sizey ! Propagate tableau 1 diagonal more.
                         q = qcol(j, k1)
                         qcol(j, k1) = dy(j)
-                        delta = d(j) - q
+                        delta = pz_d(j) - q
                         dy(j) = f1 * delta
-                        d(j)  = f2 * delta
+                        pz_d(j)  = f2 * delta
                         yz(j) = yz(j) + dy(j)
                     end do  
                 end do
