@@ -1038,7 +1038,7 @@ program main
             write(*,s1r1) "  width :", filter%dt * filter%size / system%asteroid%omega, "[Prot] = ", &
                           & filter%dt * filter%size / unit_time, "[day]"
             write(*,s1r1) "  cut_off freq:", filter%omega_pass * radian / unit_time, "[day⁻¹] =>", &
-                          & one / (filter%omega_pass * radian / unit_time), "[day]"
+                          & uno / (filter%omega_pass * radian / unit_time), "[day]"
             write(*,*) ACHAR(5)
         end if
     
@@ -1160,6 +1160,8 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    call init_workspace(size(y_arr), "bs")
 
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

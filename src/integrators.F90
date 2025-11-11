@@ -3,6 +3,7 @@ module integrators
     implicit none
 
     private
+    public :: init_workspace
     public :: integ_caller, embedded_caller, solve_rk_half_step_caller, BStoer_caller, BStoer_caller2, leapfrog_caller
 
     !! Changes WILL be made, following:
