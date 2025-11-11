@@ -1778,13 +1778,15 @@ module integrators
             real(kind=8), dimension(size (y)) :: yaux, der
             real(kind=8) :: time, t_end, dt_used
             logical :: keep = .True.
+            logical, save :: has_check = .False.
 
-            ynew    = y
-            time    = t
-            t_end   = time + dt
-            dt_used = min (dt_min, dt)
+            has_check = present(check_fun)
+
+            ynew  = y
+            time  = t
+            t_end = time + dt
             do while (time < t_end)
-                if (present(check_fun)) then ! If Check Continue function present
+                if (has_check) then ! If Check Continue function present
                     keep = check_fun(ynew)
                     if (.not. keep) return ! Exit subroutine
                 end if
@@ -1811,13 +1813,16 @@ module integrators
             real(kind=8), dimension(size (y)) :: yaux, der
             real(kind=8) :: time, t_end, dtmin, dtused
             logical :: keep = .True.
+            logical, save :: has_check = .False.
+
+            has_check = present(check_fun)
 
             ynew  = y
             time  = t
             t_end = time + dt
             dtmin = min (dt_min, dt)
             do while (time < t_end)
-                if (present(check_fun)) then ! If Check Continue function present
+                if (has_check) then ! If Check Continue function present
                     keep = check_fun(ynew)
                     if (.not. keep) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
@@ -1849,13 +1854,16 @@ module integrators
             real(kind=8), dimension(size (y)) :: yaux, der
             real(kind=8) :: time, t_end, dtmin, dtused
             logical :: keep = .True.
+            logical, save :: has_check = .False.
+
+            has_check = present(check_fun)
 
             ynew  = y
             time  = t
             t_end = time + dt
-            dtmin = dt_min
+            dtmin = min (dt_min, dt)
             do while (time < t_end)
-                if (present(check_fun)) then ! If Check Continue function present
+                if (has_check) then ! If Check Continue function present
                     keep = check_fun(ynew)
                     if (.not. keep) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
@@ -1885,12 +1893,15 @@ module integrators
             real(kind=8), dimension(size (y)) :: yaux
             real(kind=8) :: time, t_end, dtused! , dtmin
             logical :: keep = .True.
+            logical, save :: has_check = .False.
+
+            has_check = present(check_fun)
 
             ynew  = y
             time  = t
             t_end = time + dt
             do while (time < t_end)
-                if (present(check_fun)) then ! If Check Continue function present
+                if (has_check) then ! If Check Continue function present
                     keep = check_fun(ynew)
                     if (.not. keep) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
@@ -1919,13 +1930,15 @@ module integrators
             real(kind=8), dimension(size (y)) :: yaux
             real(kind=8) :: time, t_end, dtused!, dtmin
             logical :: keep = .True.
+            logical, save :: has_check = .False.
+
+            has_check = present(check_fun)
 
             ynew  = y
             time  = t
             t_end = time + dt
-            ! dtmin = min (dt_min, dt)
             do while (time < t_end)
-                if (present(check_fun)) then ! If Check Continue function present
+                if (has_check) then ! If Check Continue function present
                     keep = check_fun(ynew)
                     if (.not. keep) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
@@ -1956,13 +1969,16 @@ module integrators
             real(kind=8), dimension(size (y)) :: yaux, der
             real(kind=8) :: time, t_end, dtmin, dtused
             logical :: keep = .True.
+            logical, save :: has_check = .False.
+
+            has_check = present(check_fun)
 
             ynew  = y
             time  = t
             t_end = time + dt
-            dtmin = dt_min
+            dtmin = min (dt_min, dt)
             do while (time < t_end)
-                if (present(check_fun)) then ! If Check Continue function present
+                if (has_check) then ! If Check Continue function present
                     keep = check_fun(ynew)
                     if (.not. keep) then ! If Hard Exit is True
                         dt_adap = time - t ! Replace dt_adap with actual dt used
