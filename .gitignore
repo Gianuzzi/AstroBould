@@ -10,3 +10,4 @@ simulation
 */*/*/dpy*
 */*/*/*/dpy*
 *src/*.mod
+*src/*/*.mod
