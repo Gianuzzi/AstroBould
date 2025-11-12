@@ -896,10 +896,13 @@ program main
     !! <<<< Extra checkpoint times >>>>
     if (sim%extra_checkpoints > 0) then
 
-        ! Get expected new amount of checkpoints
-        aux_int = sim%checkpoint_number + sim%extra_checkpoints
+        !! Ensure extra_checkpoints is not the same as output_number
+        aux_int = sim%extra_checkpoints + 2   ! (+2 to account fo initial and final times, and +1 for ???)
+        if (sim%output_number - aux_int == 1) aux_int = aux_int + 2  ! Add 2 just to make a different array
+        if (MOD(aux_int, sim%output_number) == 0) aux_int = aux_int + 1  ! Add 1 just to make a different array
+        if (aux_int - sim%output_number == 1) aux_int = aux_int + 1  ! Add 1 just to make a different array
 
-        !! More checkpoint times than only the output+tom ones
+        !! Create more checkpoint times than only the output+tom ones
         call set_output_times(cero, sim%final_time, aux_int, aux_real, sim%case_output_type, aux_1D)
 
         !! Ahora debemos combinar los checkpoints previos con los nuevos, y crear un nuevo vector de tiempos Checkpoints
