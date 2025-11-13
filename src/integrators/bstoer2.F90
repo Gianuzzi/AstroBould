@@ -3,6 +3,7 @@ module bstoer2
     use shared
     implicit none
     private
+    public :: init_BS2, free_BS2, BStoer2_caller
 
     ! Workspace arrays
     real(kind=8), allocatable :: y0(:), der0(:)
@@ -22,6 +23,7 @@ module bstoer2
             implicit none
             integer(kind=4), intent(in) :: sizey
             integer(kind=4) :: n_x2
+
             if (MOD(sizey, 2) > 0) then
                 print*, "ERROR: Can not use BStoer2 with uneven array."
                 stop 1
@@ -46,6 +48,16 @@ module bstoer2
             allocate(dy(sizey,8))
 
         end subroutine init_BS2
+
+        subroutine free_BS2()
+            implicit none
+            if (allocated(y0)) deallocate(y0)
+            if (allocated(der0)) deallocate(der0)
+            if (allocated(arr_scal)) deallocate(arr_scal)
+            if (allocated(yaux)) deallocate(yaux)
+            if (allocated(yend)) deallocate(yend)
+            if (allocated(dy)) deallocate(dy)
+        end subroutine free_BS2
 
 
         !!!! Auxiliar subroutines for Bulirsch_Stoer 2        
@@ -104,8 +116,8 @@ module bstoer2
 
                 ! For each value of NS, do a modified-midpoint integration with 2N substeps
                 do ns = 1, 8
-                    h = dt * C12 / dble(ns)
-                    h2(ns) = C14 / (ns * dble(ns))
+                    h = dt * C1_2 / dble(ns)
+                    h2(ns) = C1_4 / (ns * dble(ns))
                     hx2 = h * TWO
                     do i = 1, sizey, 2
                         yaux(i) = y0(i) + h * y0(i+1)
@@ -138,8 +150,8 @@ module bstoer2
                     
                     deraux(:sizey) = dydt(tt, yend(:sizey))
                     do i = 1, sizey, 2
-                        dy(i,ns) = C12 * (yend(i) + yaux(i) + h * yend(i+1))
-                        dy(i+1,ns) = C12 * (yend(i+1) + yaux(i+1) + h * deraux(i+1))
+                        dy(i,ns) = C1_2 * (yend(i) + yaux(i) + h * yend(i+1))
+                        dy(i+1,ns) = C1_2 * (yend(i+1) + yaux(i+1) + h * deraux(i+1))
                     end do
             
                     ! Update the DX and DV arrays used for polynomial extrapolation
@@ -148,7 +160,7 @@ module bstoer2
                         tmp0 = ONE / (h2(j) - h2(ns))
                         tmp1 = tmp0 * h2(j1)
                         tmp2 = tmp0 * h2(ns)
-                        dy(:sizey,j) = tmp1 * dy(:sizey,j1) - tmp2 * dy(:sizey,j)
+                        dy(1:sizey,j) = tmp1 * dy(1:sizey,j1) - tmp2 * dy(1:sizey,j)
                     end do
             
                     ! After several integrations, test the relative error on extrapolated values
@@ -177,7 +189,7 @@ module bstoer2
                             y0(:sizey) = ZERO
 
                             do j = 1, ns
-                                y0(:sizey) = y0(:sizey) + dy(:sizey,j)
+                                y0(:sizey) = y0(:sizey) + dy(1:sizey,j)
                             end do
 
                             ! Recommend a stepsize for the next call to this subroutine
@@ -196,7 +208,7 @@ module bstoer2
 
                 end do
                 ! If errors were too large, redo the step with half the previous step size.
-                dt = dt * C12
+                dt = dt * C1_2
 
             end do
 

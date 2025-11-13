@@ -3,11 +3,13 @@ module leapfrog
     use shared
     implicit none
     private
+    public :: init_leapfrog, free_leapfrog, leapfrog_caller, leapfrog_fixed_caller
 
     ! Workspace arrays
-    real(kind=8), allocatable :: yscal(:)
-    real(kind=8), allocatable :: y05(:), der05(:)
-    real(kind=8), allocatable :: yaux(:), deraux(:)
+    real(kind=8), allocatable :: y05(:), der05(:)  ! integrator
+    real(kind=8), allocatable :: yscal(:)  ! solver
+    real(kind=8), allocatable :: yaux(:)  ! solver
+    real(kind=8), allocatable :: ycaller(:)  ! caller
 
     ! Constants
     integer(kind=4), parameter :: MAX_N_ITER = 350
@@ -41,9 +43,20 @@ module leapfrog
             integer(kind=4), intent(in) :: sizey
             integer(kind=4), intent(in) :: which
 
-            allocate(yscal(sizey))
+            if (MOD(sizey, 2) > 0) then
+                print*, "ERROR: Can not use LeapFrog with uneven array."
+                stop 1
+            end if
+            
+            ! integrator
             allocate(y05(sizey), der05(sizey))
-            allocate(yaux(sizey), deraux(sizey))
+
+            ! solver
+            allocate(yscal(sizey))
+            allocate(yaux(sizey))
+
+            ! caller
+            allocate(ycaller(sizey))
 
             if (which > 0) then
                 leapfrog_ptr => leapfrog_KDK
@@ -51,6 +64,16 @@ module leapfrog
                 leapfrog_ptr => leapfrog_DKD
             end if
         end subroutine init_leapfrog
+
+        subroutine free_leapfrog()
+            implicit none
+            if (allocated(y05)) deallocate(y05)
+            if (allocated(der05)) deallocate(der05)
+            if (allocated(yscal)) deallocate(yscal)
+            if (allocated(yaux)) deallocate(yaux)
+            if (allocated(ycaller)) deallocate(ycaller)
+            nullify(leapfrog_ptr)
+        end subroutine free_leapfrog
 
         
         !!!! Main subroutines for LeapFrog        
@@ -69,7 +92,7 @@ module leapfrog
             ! Initial set
             do i = 1, sizey, 2
                 ! Calculate v05
-                ynew(i+1) = y(i+1) + deri(i+1) * dt * C12
+                ynew(i+1) = y(i+1) + deri(i+1) * dt * C1_2
                 ! Calculate x1 (y05) using v05
                 ynew(i) = y(i) + ynew(i+1) * dt
             end do
@@ -79,7 +102,7 @@ module leapfrog
 
             ! Update v1 using a_aux
             do i = 2, sizey, 2
-                ynew(i) = ynew(i) + der05(i) * dt * C12
+                ynew(i) = ynew(i) + der05(i) * dt * C1_2
             end do
         end subroutine leapfrog_KDK
 
@@ -101,7 +124,7 @@ module leapfrog
             
             ! Calculate x05 at the start of the step
             do i = 1, sizey, 2
-                ynew(i) = ynew(i) + ynew(i+1) * dt * C12
+                ynew(i) = ynew(i) + ynew(i+1) * dt * C1_2
             end do
             
             ! Calculate a_aux using accelerations at x05 and v0
@@ -110,7 +133,7 @@ module leapfrog
             ! Update v1 and x1 (with x05 and v1)
             do i = 1, sizey, 2
                 ynew(i+1) = ynew(i+1) + der05(i+1) * dt
-                ynew(i) = ynew(i) + ynew(i+1) * dt * C12
+                ynew(i) = ynew(i) + ynew(i+1) * dt * C1_2
             end do
         end subroutine leapfrog_DKD
         
@@ -136,7 +159,7 @@ module leapfrog
 
             iter = iter + 1
             dt_adap = max (dt_adap, DT_MIN)
-            dt_half = C12 * dt_adap
+            dt_half = C1_2 * dt_adap
 
             ! y(t, dt) -> ynew
             call leapfrog (sizey, y, dydt, t, dt_adap, deri, ynew)
@@ -159,7 +182,7 @@ module leapfrog
 
             if (ratio > ONE) then
                 dt_used = dt_adap
-                dt_adap = dt_adap * min (BETA * ratio**C13, MAX_DT_FACTOR) ! 1/3 porque es 1/(O(2) + 1)
+                dt_adap = dt_adap * min (BETA * ratio**C1_3, MAX_DT_FACTOR) ! 1/3 porque es 1/(O(2) + 1)
                 iter = 0
 
             else
@@ -169,13 +192,12 @@ module leapfrog
                     iter = 0
 
                 else
-                    dt_adap = dt_adap * min (BETA * ratio**C12, MAX_DT_FACTOR)
+                    dt_adap = dt_adap * min (BETA * ratio**C1_2, MAX_DT_FACTOR)
 
                     if ((dt_adap /= dt_adap) .or. (dt_adap .le. DT_MIN) .or. (iter == MAX_N_ITER)) then
                         dt_used = DT_MIN
                         dt_adap = DT_MIN
 
-                        ! ynew; with new dt_adap
                         call leapfrog (sizey, y, dydt, t, dt_adap, deri, ynew)
                         iter = 0
 
@@ -227,11 +249,11 @@ module leapfrog
                     end if
                 end if
 
-                yaux(:sizey) = ynew
+                ycaller(:sizey) = ynew
                 dt_adap = min (dt_adap, t_end - time)
-                der(:sizey) = dydt (time, yaux(:sizey))
+                der(:sizey) = dydt (time, ycaller(:sizey))
                                     
-                call solve_leapfrog (sizey, yaux(:sizey), dydt, time, dt_adap, dt_used, &
+                call solve_leapfrog (sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, &
                                     & der(:sizey), leapfrog_ptr, ynew)
 
                 time = time + dt_used
@@ -276,10 +298,11 @@ module leapfrog
                     end if
                 end if
 
-                yaux(:sizey) = ynew
+                ycaller(:sizey) = ynew
                 dt_adap = min (dt_adap, t_end - time)
-                der(:sizey) = dydt (time, yaux(:sizey))
-                call leapfrog_ptr (sizey, yaux, dydt, time, dt_adap, der(:sizey), ynew)
+                der(:sizey) = dydt (time, ycaller(:sizey))
+
+                call leapfrog_ptr (sizey, ycaller(:sizey), dydt, time, dt_adap, der(:sizey), ynew)
 
                 time = time + dt_adap
             end do

@@ -6,22 +6,45 @@ module shared
     real(kind=8), parameter :: ZERO = 0.0
     real(kind=8), parameter :: ONE = 1.d0
     real(kind=8), parameter :: TWO = 2.d0
-    real(kind=8), parameter :: C12 = 0.5d0
-    real(kind=8), parameter :: C13 = ONE/3.d0
-    real(kind=8), parameter :: C14 = 0.25d0
+    real(kind=8), parameter :: THREE = 3.d0
+    real(kind=8), parameter :: FOUR = 4.d0
+    real(kind=8), parameter :: FIVE = 5.d0
+    real(kind=8), parameter :: C1_2 = 0.5d0
+    real(kind=8), parameter :: C1_3 = ONE/3.d0
+    real(kind=8), parameter :: C1_4 = 0.25d0
+    real(kind=8), parameter :: C1_5 = 0.2d0
+    real(kind=8), parameter :: C1_6 = ONE/6.d0
+    real(kind=8), parameter :: C1_8 = 0.125d0
+    real(kind=8), parameter :: C1_9 = ONE/9.d0
+    real(kind=8), parameter :: C1_12 = ONE/12.d0
+    real(kind=8), parameter :: C1_15 = ONE/15.d0
+    real(kind=8), parameter :: C1_18 = ONE/18.d0
+    real(kind=8), parameter :: C1_48 = ONE/48.d0
+    real(kind=8), parameter :: C1_840 = ONE/840.d0
+    real(kind=8), parameter :: C2_3 = TWO/3.d0
+    real(kind=8), parameter :: C2_27 = TWO/27.d0
+    real(kind=8), parameter :: C2_45 = TWO/45.d0
+    real(kind=8), parameter :: C3_4 = 0.75d0
+    real(kind=8), parameter :: C3_8 = 0.375d0
+    real(kind=8), parameter :: C4_15 = FOUR/15.d0
+    real(kind=8), parameter :: C5_6 = FIVE/6.d0
+    real(kind=8), parameter :: C5_12 = FIVE/12.d0
+    real(kind=8), parameter :: C8_9 = 8.d0/9.d0
+
     real(kind=8), parameter :: SAFE_LOW = 1d-30
 
-    ! BASIC CONFIGURATION
+    ! BASIC CONFIGURATION INPUT
     integer(kind=4) :: NDIM = 1  ! Number of dimensions
+    real(kind=8) :: E_TOL = 1.d-14 ! Error tolerance
+    real(kind=8) :: BETA = 0.15d0  ! Learning rate
+    real(kind=8) :: DT_MIN = 1.d-6  ! Minimum dt
+    integer(kind=4) :: EXTRA = 0  ! Amount of extra variables (without der) that are not POS
+    !! derived
     integer(kind=4) :: NDIM2
+    integer(kind=4) :: EXTRA2
 
     ! Global
-    real(kind=8), allocatable :: der(:)
-    real(kind=8) :: E_TOL = 1.d-14
-    real(kind=8) :: BETA = 0.15d0
-    real(kind=8) :: DT_MIN = 1.d-6
-    integer(kind=4) :: EXTRA = 0  ! Amount of extra variables (without der) that are not POS
-    integer(kind=4) :: EXTRA2
+    real(kind=8), allocatable :: der(:) ! Used in callers
 
     abstract interface
 
@@ -46,27 +69,12 @@ module shared
     
     contains
 
-            subroutine init_global (sizey, ndimensions, n_extra)
-                implicit none
-                integer(kind=4), intent(in) :: sizey, ndimensions
-                integer(kind=4), intent(in), optional :: n_extra
-
-                NDIM = ndimensions
-                NDIM2 = NDIM * 2
-
-                allocate(der(sizey))
-
-                if (present(n_extra)) EXTRA = n_extra
-                EXTRA2 = EXTRA * 2
-
-            end subroutine init_global
-
-            pure function get_index(i) result(idx)
-                implicit none
-                integer(kind=4), intent(in) :: i
-                integer(kind=4) :: idx
-                idx = EXTRA2 + NDIM2 * (i - 1) + 1
-            end function get_index
+        pure function get_index(i) result(idx)
+            implicit none
+            integer(kind=4), intent(in) :: i
+            integer(kind=4) :: idx
+            idx = EXTRA2 + NDIM2 * (i - 1) + 1
+        end function get_index
 
     
 end module shared

@@ -3,28 +3,50 @@ module bstoer
     use shared
     implicit none
     private
-    public :: init_BS, BStoer_caller
+    public :: init_BS, free_BS, BStoer_caller
 
     ! Workspace arrays
-    real(kind=8), allocatable :: ysav(:), yseq(:), yerr(:), yscal(:)
-    real(kind=8), allocatable :: qcolpz(:,:)
-    real(kind=8), allocatable :: mmid_ym(:), mmid_yn(:)
-    real(kind=8), allocatable :: pz_d(:)
+    real(kind=8), allocatable :: ysav(:), yseq(:), yerr(:), yscal(:) ! bstep
+    real(kind=8), allocatable :: qcolpz(:,:)  ! bstep
+    real(kind=8), allocatable :: mmid_ym(:), mmid_yn(:)  ! mmid
+    real(kind=8), allocatable :: pz_d(:)  ! pzextr
     
     contains
     
-        !!!! HANDLER
+        !!!! HANDLERS
 
         subroutine init_BS(sizey)
             implicit none
             integer(kind=4), intent(in) :: sizey
-
+            
+            ! bstep
             allocate(ysav(sizey), yseq(sizey), yerr(sizey), yscal(sizey))
             allocate(qcolpz(sizey,16))
-            allocate(mmid_ym(sizey), mmid_yn(sizey))
-            allocate(pz_d(sizey))
 
+            ! mmid
+            allocate(mmid_ym(sizey), mmid_yn(sizey))
+
+            ! pzextr
+            allocate(pz_d(sizey))
         end subroutine init_BS
+
+        subroutine free_BS()
+            implicit none
+            
+            ! bstep
+            if (allocated(ysav)) deallocate(ysav)
+            if (allocated(yseq)) deallocate(yseq)
+            if (allocated(yerr)) deallocate(yerr)
+            if (allocated(yscal)) deallocate(yscal)
+            if (allocated(qcolpz)) deallocate(qcolpz)
+
+            ! mmid
+            if (allocated(mmid_ym)) deallocate(mmid_ym)
+            if (allocated(mmid_yn)) deallocate(mmid_yn)
+
+            ! pzextr
+            if (allocated(pz_d)) deallocate(pz_d)
+        end subroutine free_BS
 
 
         !!!! Auxiliar subroutines for Bulirsch_Stoer
@@ -97,7 +119,7 @@ module bstoer
                     call mmid (sizey, ysav(:sizey), der(:sizey), x, h, nseq(k), yseq(:sizey), dydt)
                     yscal(:sizey) = abs (y) + abs (h * der(:sizey)) + SAFE_LOW
                     xest = (h / nseq(k))**2 ! Squared, since error series is even.
-                    call pzextr (sizey, k, xest, yseq(:sizey), y, yerr(:sizey), qcolpz(:sizey, :), xpz) ! Perform extrapolation.
+                    call pzextr (sizey, k, xest, yseq(:sizey), y, yerr(:sizey), qcolpz(1:sizey, :), xpz) ! Perform extrapolation.
                     if (k /= 1) then ! Compute normalized error estimate eps(k).
                         errmax = tini
                         do i = 1, sizey
@@ -182,7 +204,7 @@ module bstoer
                 x = x + h
                 yout = dydt(x, mmid_yn(1:sizey))
             end do
-            yout = C12 * (mmid_ym(1:sizey) + mmid_yn(1:sizey) + h * yout) ! Last step.
+            yout = C1_2 * (mmid_ym(1:sizey) + mmid_yn(1:sizey) + h * yout) ! Last step.
         end subroutine mmid
 
         subroutine pzextr (sizey, iest, xest, yest, yz, dy, qcol, x)
