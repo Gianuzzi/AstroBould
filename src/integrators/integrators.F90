@@ -65,7 +65,7 @@ module integrators
                 
                 ! Set the integrator
                 if (integrator < -3) then
-                    call init_runge_kutta(sizey, abs(integrator + 2))
+                    call init_runge_kutta(sizey, abs(integrator + 3))
                     if (is_fix_dt) then
                         integrate => runge_kutta_fixed_caller
                     else

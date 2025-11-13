@@ -7,7 +7,7 @@ module runge_kutta
 
     ! Workspace arrays
     real(kind=8), allocatable :: rk(:,:)  ! integrator
-    real(kind=8), allocatable :: rk_imp(:,:)  ! implicit integrators
+    real(kind=8), allocatable :: rk_imp1(:)  ! implicit 1k integrators
     real(kind=8), allocatable :: rk_imp_solv(:,:)  ! implicit solver
     real(kind=8), allocatable :: yscal(:)  ! solver
     real(kind=8), allocatable :: yaux(:)  ! solver
@@ -20,6 +20,8 @@ module runge_kutta
 
     ! Variables to set
     integer(kind=4) :: OSOL
+    integer(kind=4) :: N_STAGES
+    integer(kind=4) :: N_IMPLICIT
 
     ! Derived
     real(kind=8) :: ONE_OSOL
@@ -41,6 +43,18 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
         end subroutine runge_kutta_tem
+
+        subroutine implicit_funK_tem (sizey, y, dydt, t, dt, sizerk, kin, kout)
+            import :: dydt_tem
+            implicit none
+            integer(kind=4), intent(in) :: sizey
+            real(kind=8), dimension(sizey), intent(in) :: y
+            procedure(dydt_tem) :: dydt
+            real(kind=8), intent(in) :: t, dt
+            integer(kind=4), intent(in) :: sizerk
+            real(kind=8), dimension(sizey, sizerk), intent(in) :: kin
+            real(kind=8), dimension(sizey, sizerk), intent(out) :: kout
+        end subroutine implicit_funK_tem
     
     end interface
     
@@ -52,150 +66,150 @@ module runge_kutta
             implicit none
             integer(kind=4), intent(in) :: sizey
             integer(kind=4), intent(in) :: which
-            integer(kind=4) :: n_stages, nd_implicit
             
-            nd_implicit = 0
+            N_IMPLICIT = 0
+
             if (which == 1) then
                 runge_kutta_ptr => Euler1
                 OSOL = 1
-                n_stages = 1
+                N_STAGES = 1
 
             else if (which == 2) then
                 runge_kutta_ptr => Euler_back1 ! Implicit
                 OSOL = 1
-                n_stages = 1
-                nd_implicit = 1
+                N_STAGES = 1
+                N_IMPLICIT = 1
 
             else if (which == 3) then
                 runge_kutta_ptr => Euler_center2 ! Implicit
                 OSOL = 2
-                n_stages = 1
-                nd_implicit = 1
+                N_STAGES = 1
+                N_IMPLICIT = 1
 
             else if (which == 4) then
                 runge_kutta_ptr => Crank_Nicolson2 ! Implicit
                 OSOL = 2
-                n_stages = 2
-                nd_implicit = 1
+                N_STAGES = 2
+                N_IMPLICIT = 1
 
             else if (which == 5) then
                 runge_kutta_ptr => Heun2
                 OSOL = 2
-                n_stages = 2
+                N_STAGES = 2
 
             else if (which == 6) then
                 runge_kutta_ptr => midpoint2
                 OSOL = 2
-                n_stages = 2
+                N_STAGES = 2
 
             else if (which == 7) then
                 runge_kutta_ptr => strange2
                 OSOL = 2
-                n_stages = 2
+                N_STAGES = 2
 
             else if (which == 8) then
                 runge_kutta_ptr => Ralston2
                 OSOL = 2
-                n_stages = 2
+                N_STAGES = 2
 
             else if (which == 9) then
                 runge_kutta_ptr => Hammer_Hollingsworth2 ! Implicit
                 OSOL = 2
-                n_stages = 2
-                nd_implicit = 1
+                N_STAGES = 2
+                N_IMPLICIT = 1
 
             else if (which == 10) then
                 runge_kutta_ptr => Kraaijevanger_Spijker2 ! Implicit
                 OSOL = 2
-                n_stages = 2
-                nd_implicit = 1
+                N_STAGES = 2
+                N_IMPLICIT = 1
 
             else if (which == 11) then
                 runge_kutta_ptr => Qin_Zhang2 ! Implicit
                 OSOL = 2
-                n_stages = 2
-                nd_implicit = 1
+                N_STAGES = 2
+                N_IMPLICIT = 1
 
             else if (which == 12) then
                 runge_kutta_ptr => Runge_Kutta3
                 OSOL = 3
-                n_stages = 3
+                N_STAGES = 3
 
             else if (which == 13) then
                 runge_kutta_ptr => Heun3
                 OSOL = 3
-                n_stages = 3
+                N_STAGES = 3
 
             else if (which == 14) then
                 runge_kutta_ptr => Ralston3
                 OSOL = 3
-                n_stages = 3
+                N_STAGES = 3
 
             else if (which == 15) then
                 runge_kutta_ptr => SSPRrk3
                 OSOL = 3
-                n_stages = 3
+                N_STAGES = 3
 
             else if (which == 16) then
                 runge_kutta_ptr => Crouzeix3 ! Implicit
                 OSOL = 3
-                n_stages = 2
-                nd_implicit = 1
+                N_STAGES = 2
+                N_IMPLICIT = 1
 
             else if (which == 17) then
                 runge_kutta_ptr => Runge_Kutta_implicit3 ! Implicit
                 OSOL = 3
-                n_stages = 4
-                nd_implicit = 1
+                N_STAGES = 4
+                N_IMPLICIT = 1
 
             else if (which == 18) then
                 runge_kutta_ptr => Ralston4 ! Implicit
                 OSOL = 4
-                n_stages = 4
-                nd_implicit = 1
+                N_STAGES = 4
+                N_IMPLICIT = 1
 
             else if (which == 19) then
                 runge_kutta_ptr => Lobatto4 ! Implicit
                 OSOL = 4
-                n_stages = 3
-                nd_implicit = 1
+                N_STAGES = 3
+                N_IMPLICIT = 1
 
             else if (which == 20) then
                 runge_kutta_ptr => Runge_Kutta4
                 OSOL = 4
-                n_stages = 4
+                N_STAGES = 4
 
-            ! else if (which == 21) then
-            !     runge_kutta_ptr => Gauss_Legendre4 ! Implicit
-            !     OSOL = 4
-            !     n_stages = 2
-            !     nd_implicit = 2
+            else if (which == 21) then
+                runge_kutta_ptr => Gauss_Legendre4 ! Implicit
+                OSOL = 4
+                N_STAGES = 2
+                N_IMPLICIT = 2
 
             else if (which == 22) then
                 runge_kutta_ptr => Runge_Kutta_four_oct4
                 OSOL = 4
-                n_stages = 4
+                N_STAGES = 4
 
             else if (which == 23) then
                 runge_kutta_ptr => Runge_Kutta5
                 OSOL = 5
-                n_stages = 6
+                N_STAGES = 6
 
-            ! else if (which == 24) then
-            !     runge_kutta_ptr => Gauss_Legendre6 ! Implicit
-            !     OSOL = 6
-            !     n_stages = 3
-            !     nd_implicit = 3
+            else if (which == 24) then
+                runge_kutta_ptr => Gauss_Legendre6 ! Implicit
+                OSOL = 6
+                N_STAGES = 3
+                N_IMPLICIT = 3
 
             else if (which == 25) then
                 runge_kutta_ptr => Runge_Kutta6
                 OSOL = 6
-                n_stages = 7
+                N_STAGES = 7
 
             else if (which == 26) then
                 runge_kutta_ptr => Abbas6
                 OSOL = 6
-                n_stages = 7
+                N_STAGES = 7
             
             else
                 print*, "Method not available:", which
@@ -208,13 +222,11 @@ module runge_kutta
             ONE__MINUS_ONE_PLUS_TWO_TO_ORD = ONE / (TWO**OSOL - ONE)
 
             ! integrator
-            allocate(rk(sizey, n_stages))
+            allocate(rk(sizey, N_STAGES))
 
-            ! implicit integrator
-            allocate(rk_imp(sizey, nd_implicit))
-
-            ! implicit solver
-            allocate(rk_imp_solv(sizey, nd_implicit))
+            ! implicit integrators
+            if (N_IMPLICIT == 1) allocate(rk_imp1(sizey))
+            if (N_IMPLICIT > 0) allocate(rk_imp_solv(sizey, N_IMPLICIT))
 
             ! solver
             allocate(yscal(sizey))
@@ -228,7 +240,7 @@ module runge_kutta
         subroutine free_runge_kutta()
             implicit none
             if (allocated(rk)) deallocate(rk)
-            if (allocated(rk_imp)) deallocate(rk_imp)
+            if (allocated(rk_imp1)) deallocate(rk_imp1)
             if (allocated(rk_imp_solv)) deallocate(rk_imp_solv)
             if (allocated(yscal)) deallocate(yscal)
             if (allocated(yaux)) deallocate(yaux)
@@ -263,8 +275,8 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
 
-            rk_imp(1:sizey,1) = ZERO
-            call solve_1k_implicit (sizey, y, dydt, t + dt, dt, rk_imp(1:sizey,1), ONE, rk(1:sizey,1))
+            rk_imp1(1:sizey) = ZERO
+            call solve_1k_implicit (sizey, y, dydt, t + dt, dt, rk_imp1(1:sizey), ONE, rk(1:sizey,1))
 
             ynew = y + dt * rk(1:sizey,1)
 
@@ -279,8 +291,8 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
             
-            rk_imp(1:sizey,1) = ZERO
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp(1:sizey,1), C1_2, rk(1:sizey,1))
+            rk_imp1(1:sizey) = ZERO
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey,1))
 
             ynew = y + dt * rk(1:sizey,1)
 
@@ -295,8 +307,8 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
 
-            rk_imp(1:sizey,1) = deri * C1_2
-            call solve_1k_implicit (sizey, y, dydt, t + dt, dt, rk_imp(1:sizey,1), C1_2, rk(1:sizey,2))
+            rk_imp1(1:sizey) = deri * C1_2
+            call solve_1k_implicit (sizey, y, dydt, t + dt, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey,2))
 
             ynew = y + dt * (deri + rk(1:sizey,2)) * C1_2
 
@@ -371,8 +383,8 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
             
-            rk_imp(1:sizey,1) = deri * C1_3
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C2_3, dt, rk_imp(1:sizey,1), C1_3, rk(1:sizey,2))
+            rk_imp1(1:sizey) = deri * C1_3
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C2_3, dt, rk_imp1(1:sizey), C1_3, rk(1:sizey,2))
 
             ynew = y + dt * (deri + rk(1:sizey,2) * THREE) * C1_4
 
@@ -387,11 +399,11 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
 
-            rk_imp(1:sizey,1) = ZERO
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp(1:sizey,1), C1_2, rk(1:sizey,1))
+            rk_imp1(1:sizey) = ZERO
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey,1))
 
-            rk_imp(1:sizey,1) = - rk(1:sizey,1) * C1_2
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C3_2, dt, rk_imp(1:sizey,1), TWO, rk(1:sizey,2))
+            rk_imp1(1:sizey) = - rk(1:sizey,1) * C1_2
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C3_2, dt, rk_imp1(1:sizey), TWO, rk(1:sizey,2))
 
             ynew = y + dt * (- rk(1:sizey,1) + rk(1:sizey,2) * THREE) * C1_2
 
@@ -406,11 +418,11 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
 
-            rk_imp(1:sizey,1) = ZERO
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_4, dt, rk_imp(1:sizey,1), C1_4, rk(1:sizey,1))
+            rk_imp1(1:sizey) = ZERO
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_4, dt, rk_imp1(1:sizey), C1_4, rk(1:sizey,1))
 
-            rk_imp(1:sizey,1) = rk(1:sizey,1) * C1_2
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C3_4, dt, rk_imp(1:sizey,1), C1_4, rk(1:sizey,2))
+            rk_imp1(1:sizey) = rk(1:sizey,1) * C1_2
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C3_4, dt, rk_imp1(1:sizey), C1_4, rk(1:sizey,2))
 
             ynew = y + dt * (rk(1:sizey,1) + rk(1:sizey,2)) * C1_2
 
@@ -490,11 +502,11 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(out) :: ynew
             real(kind=8), parameter :: aux = C1_2 + SQ3_6
 
-            rk_imp(1:sizey,1) = ZERO
-            call solve_1k_implicit (sizey, y, dydt, t + dt * aux, dt, rk_imp(1:sizey,1), aux, rk(1:sizey,1))
+            rk_imp1(1:sizey) = ZERO
+            call solve_1k_implicit (sizey, y, dydt, t + dt * aux, dt, rk_imp1(1:sizey), aux, rk(1:sizey,1))
 
-            rk_imp(1:sizey,1) = - rk(1:sizey,1) * SQ3_6 * 2
-            call solve_1k_implicit (sizey, y, dydt, t + dt * (C1_2 - SQ3_6), dt, rk_imp(1:sizey,1), aux, rk(1:sizey,2))
+            rk_imp1(1:sizey) = - rk(1:sizey,1) * SQ3_6 * 2
+            call solve_1k_implicit (sizey, y, dydt, t + dt * (C1_2 - SQ3_6), dt, rk_imp1(1:sizey), aux, rk(1:sizey,2))
 
             ynew = y + dt * (rk(1:sizey,1) + rk(1:sizey,2)) * C1_2
         end subroutine Crouzeix3
@@ -508,19 +520,19 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
 
-            rk_imp(1:sizey,1) = ZERO
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp(1:sizey,1), C1_2, rk(1:sizey,1))
+            rk_imp1(1:sizey) = ZERO
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey,1))
 
-            rk_imp(1:sizey,1) = rk(1:sizey,1) * C1_6
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C2_3, dt, rk_imp(1:sizey,1), C1_2, rk(1:sizey,2))
+            rk_imp1(1:sizey) = rk(1:sizey,1) * C1_6
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C2_3, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey,2))
 
-            rk_imp(1:sizey,1) = (- rk(1:sizey,1) + rk(1:sizey,2)) * C1_2
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp(1:sizey,1), C1_2, rk(1:sizey,3))
+            rk_imp1(1:sizey) = (- rk(1:sizey,1) + rk(1:sizey,2)) * C1_2
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey,3))
 
-            rk_imp(1:sizey,1) = ((rk(1:sizey,1) - rk(1:sizey,2)) * 3 + rk(1:sizey,3)) * C1_2
-            call solve_1k_implicit (sizey, y, dydt, t + dt, dt, rk_imp(1:sizey,1), C1_2, rk(1:sizey,4))
+            rk_imp1(1:sizey) = ((rk(1:sizey,1) - rk(1:sizey,2)) * 3 + rk(1:sizey,3)) * C1_2
+            call solve_1k_implicit (sizey, y, dydt, t + dt, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey,4))
 
-            ynew = y + dt * (rk_imp(1:sizey,1) + rk(1:sizey,4) * C1_2)
+            ynew = y + dt * (rk_imp1(1:sizey) + rk(1:sizey,4) * C1_2)
         end subroutine Runge_Kutta_implicit3
 
         subroutine Ralston4 (sizey, y, dydt, t, dt, deri, ynew)
@@ -551,8 +563,8 @@ module runge_kutta
            real(kind=8), dimension(sizey), intent(in) :: deri
            real(kind=8), dimension(sizey), intent(out) :: ynew
         
-            rk_imp(1:sizey,1) = deri * C1_4
-            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp(1:sizey,1), C1_4, rk(1:sizey,2))
+            rk_imp1(1:sizey) = deri * C1_4
+            call solve_1k_implicit (sizey, y, dydt, t + dt * C1_2, dt, rk_imp1(1:sizey), C1_4, rk(1:sizey,2))
 
             rk(1:sizey,3) = dydt (t + dt, y + dt * rk(1:sizey,2))
 
@@ -577,37 +589,40 @@ module runge_kutta
 
         end subroutine Runge_Kutta4
 
-        ! subroutine Gauss_Legendre4 (sizey, y, dydt, t, dt, deri, ynew) ! Implicit
-        !     implicit none
-        !     integer(kind=4), intent(in) :: sizey
-        !     real(kind=8), dimension(sizey),  intent(in) :: y
-        !     procedure(dydt_tem) :: dydt
-        !     real(kind=8), intent(in) :: t, dt
-        !     real(kind=8), dimension(sizey), intent(in) :: deri
-        !     real(kind=8), dimension(sizey), intent(out) :: ynew
+        subroutine Gauss_Legendre4 (sizey, y, dydt, t, dt, deri, ynew) ! Implicit
+            implicit none
+            integer(kind=4), intent(in) :: sizey
+            real(kind=8), dimension(sizey),  intent(in) :: y
+            procedure(dydt_tem) :: dydt
+            real(kind=8), intent(in) :: t, dt
+            real(kind=8), dimension(sizey), intent(in) :: deri
+            real(kind=8), dimension(sizey), intent(out) :: ynew
 
-        !     rk = ZERO
-        !     call solve_rk_implicit (t, y, dt, dydt, FunK_GL4, rk)
+            rk(1:sizey,:) = ZERO
+            call solve_rk_implicit (sizey, y, dydt, t, dt, FunK_GL4, rk(1:sizey,:))
 
-        !     ynew = y + dt * (rk(:,1) + rk(:,2)) * C1_2
+            ynew = y + dt * (rk(1:sizey,1) + rk(1:sizey,2)) * C1_2
 
-        !     contains
-        !         subroutine FunK_GL4 (t, y, dt, dydt, kin, kout) !! Funk for Gauss_Legendre4
-        !             implicit none
-        !             real(kind=8), intent(in)                                          :: t, dt
-        !             procedure(dydt_tem)                                               :: dydt
-        !             real(kind=8), dimension(:, :), intent(in)                         :: kin
-        !             real(kind=8), dimension(size (kin, 1)), intent(in)                :: y
-        !             real(kind=8), dimension(size (kin, 1), size (kin,2)), intent(out) :: kout
+            contains
+                subroutine FunK_GL4 (sizey, y, dydt, t, dt, sizerk, kin, kout) !! Funk for Gauss_Legendre4
+                    implicit none
+                    integer(kind=4), intent(in) :: sizey
+                    real(kind=8), dimension(sizey), intent(in) :: y
+                    procedure(dydt_tem) :: dydt
+                    real(kind=8), intent(in) :: t, dt
+                    integer(kind=4), intent(in) :: sizerk
+                    real(kind=8), dimension(sizey, sizerk), intent(in) :: kin
+                    real(kind=8), dimension(sizey, sizerk), intent(out) :: kout
         
-        !             kout(:,1) = dydt (t + dt * (C1_2 - SQ3_6), y + dt * ( &
-        !                 & kin(:,1) * C1_4 + &
-        !                 & kin(:,2) * (C1_4 - SQ3_6)))
-        !             kout(:,2) = dydt (t + dt * (C1_2 + SQ3_6), y + dt * ( &
-        !                 & kin(:,1) * (C1_4 + SQ3_6) + &
-        !                 & kin(:,2) * C1_4))
-        !         end subroutine FunK_GL4
-        ! end subroutine Gauss_Legendre4 
+                    kout(:,1) = dydt (t + dt * (C1_2 - SQ3_6), y + dt * ( &
+                        & kin(:,1) * C1_4 + &
+                        & kin(:,2) * (C1_4 - SQ3_6)))
+                    kout(:,2) = dydt (t + dt * (C1_2 + SQ3_6), y + dt * ( &
+                        & kin(:,1) * (C1_4 + SQ3_6) + &
+                        & kin(:,2) * C1_4))
+                end subroutine FunK_GL4
+
+        end subroutine Gauss_Legendre4 
 
         subroutine Runge_Kutta_four_oct4 (sizey, y, dydt, t, dt, deri, ynew)
             implicit none
@@ -647,43 +662,46 @@ module runge_kutta
 
         end subroutine Runge_Kutta5
 
-        ! subroutine Gauss_Legendre6 (t, y, der, dt, dydt, ynew) ! Implicit
-        !     implicit none
-        !     real(kind=8), intent(in)                       :: t, dt
-        !     real(kind=8), dimension(:), intent(in)         :: y
-        !     real(kind=8), dimension(size (y)), intent(in)  :: deri ! Unused as it is implicit
-        !     procedure(dydt_tem)                            :: dydt
-        !     real(kind=8), dimension(size (y)), intent(out) :: ynew
-        !     real(kind=8), dimension(size (y), 3)           :: rk
+        subroutine Gauss_Legendre6 (sizey, y, dydt, t, dt, deri, ynew) ! Implicit
+            implicit none
+            integer(kind=4), intent(in) :: sizey
+            real(kind=8), dimension(sizey),  intent(in) :: y
+            procedure(dydt_tem) :: dydt
+            real(kind=8), intent(in) :: t, dt
+            real(kind=8), dimension(sizey), intent(in) :: deri
+            real(kind=8), dimension(sizey), intent(out) :: ynew
 
-        !     rk = ZERO
-        !     call solve_rk_implicit (t, y, dt, dydt, FunK_GL6, rk)
+            rk(1:sizey,:) = ZERO
+            call solve_rk_implicit (sizey, y, dydt, t, dt, FunK_GL6, rk(1:sizey,:))
 
-        !     ynew = y + dt * ((rk(:,1) + rk(:,3)) * FIVE + rk(:,2) * 8.d0) * C1_18
+            ynew = y + dt * ((rk(1:sizey,1) + rk(1:sizey,3)) * FIVE + rk(1:sizey,2) * 8.d0) * C1_18
 
-        !     contains
-        !         subroutine FunK_GL6 (t, y, dt, dydt, kin, kout)  !!! Funk for Gauss_Legendre6
-        !             implicit none
-        !             real(kind=8), intent(in)                                          :: t, dt
-        !             procedure(dydt_tem)                                               :: dydt
-        !             real(kind=8), dimension(:, :), intent(in)                         :: kin
-        !             real(kind=8), dimension(size (kin, 1)), intent(in)                :: y
-        !             real(kind=8), dimension(size (kin, 1), size (kin,2)), intent(out) :: kout
+            contains
+                subroutine FunK_GL6 (sizey, y, dydt, t, dt, sizerk, kin, kout) !! Funk for Gauss_Legendre6
+                    implicit none
+                    integer(kind=4), intent(in) :: sizey
+                    real(kind=8), dimension(sizey), intent(in) :: y
+                    procedure(dydt_tem) :: dydt
+                    real(kind=8), intent(in) :: t, dt
+                    integer(kind=4), intent(in) :: sizerk
+                    real(kind=8), dimension(sizey, sizerk), intent(in) :: kin
+                    real(kind=8), dimension(sizey, sizerk), intent(out) :: kout
         
-        !             kout(:,1) = dydt (t + dt * (ONE - SQ15_5) * C1_2,  y + dt * (&
-        !                     & kin(:,1) * C5_36 + &
-        !                     & kin(:,2) * (C2_3 - SQ15_5) * C1_3 + &
-        !                     & kin(:,3) * (C5_36 - SQ15_30)))
-        !             kout(:,2) = dydt (t + dt * C1_2, y + dt * (&
-        !                     & kin(:,1) * (C5_36 + SQ15_24)+ &
-        !                     & kin(:,2) * C2_9 + &
-        !                     & kin(:,3) * (C5_36 - SQ15_24)))
-        !             kout(:,3) = dydt (t + dt * (ONE + SQ15_5) * C1_2, y + dt * (&
-        !                     & kin(:,1) * (C5_36 + SQ15_30) + &
-        !                     & kin(:,2) * (C2_9 + SQ15_15) + &
-        !                     & kin(:,3) * C5_36))
-        !         end subroutine FunK_GL6
-        ! end subroutine Gauss_Legendre6 
+                    kout(:,1) = dydt (t + dt * (ONE - SQ15_5) * C1_2,  y + dt * (&
+                            & kin(:,1) * C5_36 + &
+                            & kin(:,2) * (C2_3 - SQ15_5) * C1_3 + &
+                            & kin(:,3) * (C5_36 - SQ15_30)))
+                    kout(:,2) = dydt (t + dt * C1_2, y + dt * (&
+                            & kin(:,1) * (C5_36 + SQ15_24)+ &
+                            & kin(:,2) * C2_9 + &
+                            & kin(:,3) * (C5_36 - SQ15_24)))
+                    kout(:,3) = dydt (t + dt * (ONE + SQ15_5) * C1_2, y + dt * (&
+                            & kin(:,1) * (C5_36 + SQ15_30) + &
+                            & kin(:,2) * (C2_9 + SQ15_15) + &
+                            & kin(:,3) * C5_36))
+                end subroutine FunK_GL6
+
+        end subroutine Gauss_Legendre6 
 
         subroutine Runge_Kutta6 (sizey, y, dydt, t, dt, deri, ynew)
             implicit none
@@ -694,14 +712,18 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
             
-            rk(1:sizey,2) = dydt(t + dt * C1_3, y + dt * C1_3 * der)
-            rk(1:sizey,3) = dydt(t + dt * C1_3, y + dt * C1_3 * rk(1:sizey,2))
-            rk(1:sizey,4) = dydt(t + dt * C1_2, y + dt * C1_2 * rk(1:sizey,3))
-            rk(1:sizey,5) = dydt(t + dt * C2_3, y + dt * C2_3 * rk(1:sizey,4))
-            rk(1:sizey,6) = dydt(t + dt, y + dt * rk(1:sizey,5))
-            rk(1:sizey,7) = dydt(t + dt, y + dt * rk(1:sizey,6))
+            rk(1:sizey,2) = dydt(t + dt * C1_3, y + dt * C1_3 * deri)
+            rk(1:sizey,3) = dydt(t + dt * C1_3, y + dt * (deri + rk(1:sizey,2)) * C1_6)
+            rk(1:sizey,4) = dydt(t + dt * C1_2, y + dt * (deri * C1_8 + rk(1:sizey,3) * C3_8))
+            rk(1:sizey,5) = dydt(t + dt, y + dt * (deri * C1_2 - rk(1:sizey,3) * C3_2 + rk(1:sizey,4) * TWO))
+            rk(1:sizey,6) = dydt(t + dt * C2_3, y + dt * (- deri * C3_7 + rk(1:sizey,3) * C8_7 + rk(1:sizey,4) * C6_7 - &
+                                                        & rk(1:sizey,5) * C12_7))
+            rk(1:sizey,7) = dydt(t + dt, y + dt * (deri * C7_90 + rk(1:sizey,3) * C16_45 + rk(1:sizey,4) * C2_15 + &
+                                                        & rk(1:sizey,5) * (C16_45) + rk(1:sizey,6) * (C7_90)))
 
-            ynew = y + dt * (C1_12 * deri + C1_3 * rk(1:sizey,4) + C1_3 * rk(1:sizey,5) + C1_12 * rk(1:sizey,7))
+            ynew = y + dt * (deri * C7_90 + rk(1:sizey,3) * C16_45 + rk(1:sizey,4) * C2_15 + &
+                                                        & rk(1:sizey,5) * C16_45 + rk(1:sizey,6) * C7_90)
+                            
         end subroutine Runge_Kutta6
 
         subroutine Abbas6 (sizey, y, dydt, t, dt, deri, ynew)
@@ -757,25 +779,25 @@ module runge_kutta
         end subroutine solve_1k_implicit
 
         !!!! Implicit: ND SOLVER
-        ! subroutine solve_rk_implicit (sizey, y, dydt, t, dt, sizerk, solver, rkout)
-        !     implicit none
-        !     integer(kind=4), intent(in) :: sizey
-        !     real(kind=8), dimension(sizey),  intent(in) :: y
-        !     procedure(dydt_tem) :: dydt
-        !     real(kind=8), intent(in) :: t, dt
-        !     integer(kind=4), intent(in) :: sizerk
-        !     procedure(calc_rk) :: solver
-        !     real(kind=8), dimension(sizey, sizerk), intent(inout) :: rkout
-        !     integer(kind=4) :: i
+        subroutine solve_rk_implicit (sizey, y, dydt, t, dt, impl_funK, rkout)
+            implicit none
+            integer(kind=4), intent(in) :: sizey
+            real(kind=8), dimension(sizey),  intent(in) :: y
+            procedure(dydt_tem) :: dydt
+            real(kind=8), intent(in) :: t, dt
+            procedure(implicit_funK_tem) :: impl_funK
+            real(kind=8), dimension(sizey, N_STAGES), intent(inout) :: rkout
+            integer(kind=4) :: i
 
-        !     do i = 1, MAX_N_ITER
-        !         rkold = rkout
-        !         call solver (t, y, dt, dydt, rkold, rkout)
-        !         if (maxval( abs ((rkold - rkout) / (rkold + SAFE_LOW))) .le. E_TOL) then
-        !             exit
-        !         end if
-        !     end do
-        ! end subroutine solve_rk_implicit                           
+            do i = 1, MAX_N_ITER
+                rk_imp_solv(1:sizey, 1:N_STAGES) = rkout
+                call impl_funK (sizey, y, dydt, t, dt, N_STAGES, rk_imp_solv(1:sizey, 1:N_STAGES), rkout)
+                if (maxval(abs((rk_imp_solv(1:sizey, 1:N_STAGES) - rkout) / &
+                             & (rk_imp_solv(1:sizey, 1:N_STAGES) + SAFE_LOW))) .le. E_TOL) then
+                    exit
+                end if
+            end do
+        end subroutine solve_rk_implicit                           
         
         !!!! Adaptive Timestep: Half step
         recursive subroutine solve_rk_half_step (sizey, y, dydt, t, dt_adap, dt_used, deri, runge_kutta, ynew)
@@ -938,7 +960,9 @@ module runge_kutta
                 der(:sizey) = dydt (time, ycaller(:sizey))
                 call runge_kutta_ptr (sizey, ycaller(:sizey), dydt, time, dt_adap, der(:sizey), ynew)
 
+                ! print*, time, dt_adap, t_end, t_end - time
                 time = time + dt_adap
+                ! pause
             end do
 
         end subroutine runge_kutta_fixed_caller
