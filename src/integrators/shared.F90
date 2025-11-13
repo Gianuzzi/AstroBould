@@ -14,6 +14,7 @@ module shared
     real(kind=8), parameter :: C1_4 = 0.25d0
     real(kind=8), parameter :: C1_5 = 0.2d0
     real(kind=8), parameter :: C1_6 = ONE/6.d0
+    real(kind=8), parameter :: C1_7 = ONE/7.d0
     real(kind=8), parameter :: C1_8 = 0.125d0
     real(kind=8), parameter :: C1_9 = ONE/9.d0
     real(kind=8), parameter :: C1_12 = ONE/12.d0
@@ -22,14 +23,18 @@ module shared
     real(kind=8), parameter :: C1_48 = ONE/48.d0
     real(kind=8), parameter :: C1_840 = ONE/840.d0
     real(kind=8), parameter :: C2_3 = TWO/3.d0
+    real(kind=8), parameter :: C2_5 = TWO/5.d0
     real(kind=8), parameter :: C2_27 = TWO/27.d0
     real(kind=8), parameter :: C2_45 = TWO/45.d0
+    real(kind=8), parameter :: C3_2 = 1.5d0
     real(kind=8), parameter :: C3_4 = 0.75d0
     real(kind=8), parameter :: C3_8 = 0.375d0
+    real(kind=8), parameter :: C3_16 = THREE/16.d0
     real(kind=8), parameter :: C4_15 = FOUR/15.d0
     real(kind=8), parameter :: C5_6 = FIVE/6.d0
     real(kind=8), parameter :: C5_12 = FIVE/12.d0
     real(kind=8), parameter :: C8_9 = 8.d0/9.d0
+    real(kind=8), parameter :: SQ3_6 = sqrt(3.d0)/6.d0
 
     real(kind=8), parameter :: SAFE_LOW = 1d-30
 

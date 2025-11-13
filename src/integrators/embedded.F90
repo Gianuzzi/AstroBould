@@ -55,61 +55,73 @@ module embedded
                 OSOL = 2
                 OAUX = 1
                 n_stages = 2
+            
             else if (which == 2) then
                 embedded_ptr => Heun_Euler2_1
                 OSOL = 1
                 OAUX = 2
                 n_stages = 2
+            
             else if (which == 3) then
                 embedded_ptr => Fehlberg2_1
                 OSOL = 2
                 OAUX = 1
                 n_stages = 2
+            
             else if (which == 4) then
                 embedded_ptr => Bogacki_Shampine3_2
                 OSOL = 3
                 OAUX = 2
                 n_stages = 4
+            
             else if (which == 5) then
                 embedded_ptr => Zonneveld4_3
                 OSOL = 4
                 OAUX = 3
                 n_stages = 5
+            
             else if (which == 6) then
                 embedded_ptr => Merson4_3
                 OSOL = 4
                 OAUX = 3
                 n_stages = 5
+            
             else if (which == 7) then
                 embedded_ptr => Fehlberg4_5
                 OSOL = 4
                 OAUX = 5
                 n_stages = 6
+            
             else if (which == 8) then
                 embedded_ptr => Cash_Karp5_4
                 OSOL = 5
                 OAUX = 4
                 n_stages = 6
+            
             else if (which == 9) then
                 embedded_ptr => Dormand_Prince5_4
                 OSOL = 5
                 OAUX = 4
                 n_stages = 7
+            
             else if (which == 10) then
                 embedded_ptr => Verner6_5
                 OSOL = 6
                 OAUX = 5
                 n_stages = 8
+            
             else if (which == 11) then
                 embedded_ptr => Fehlberg7_8
                 OSOL = 7
                 OAUX = 8
                 n_stages = 13
+            
             else if (which >= 12) then
                 embedded_ptr => Dormand_Prince8_7
                 OSOL = 8
                 OAUX = 7
                 n_stages = 13
+            
             end if
 
             ! Constants
@@ -505,32 +517,31 @@ module embedded
 
         recursive subroutine solve_embedded (sizey, y, dydt, t, dt_adap, dt_used, deri, embedded, ynew)
             implicit none
-            integer(kind=4), intent(in)                         :: sizey
-            real(kind=8), dimension(sizey), intent(in)          :: y
-            procedure(dydt_tem)                                 :: dydt
-            real(kind=8), intent(in)                            :: t
-            real(kind=8), intent(inout)                         :: dt_adap
-            real(kind=8), intent(out)                           :: dt_used
-            real(kind=8), dimension(sizey), intent(in)          :: deri
-            procedure (embedded_tem), pointer                   :: embedded
-            real(kind=8), dimension(sizey), intent(out)         :: ynew
+            integer(kind=4), intent(in) :: sizey
+            real(kind=8), dimension(sizey), intent(in) :: y
+            procedure(dydt_tem) :: dydt
+            real(kind=8), intent(in) :: t
+            real(kind=8), intent(inout) :: dt_adap
+            real(kind=8), intent(out) :: dt_used
+            real(kind=8), dimension(sizey), intent(in) :: deri
+            procedure (embedded_tem), pointer :: embedded
+            real(kind=8), dimension(sizey), intent(out) :: ynew
             
-            integer(kind=4), save                               :: iter = 0
-            real(kind=8)                                        :: e_calc, ratio
+            integer(kind=4), save :: iter = 0
+            real(kind=8) :: e_calc, ratio
 
             iter = iter + 1
-            dt_adap = max (dt_adap, dt_min)            
+            dt_adap = max (dt_adap, dt_min)  
+
+            ! yscal
+            yscal(:sizey) = abs (y) + abs (dt_adap * deri(:sizey)) + SAFE_LOW          
             
             ! y(t, dt) -> yaux | ynew
             call embedded (sizey, y, dydt, t, dt_adap, deri, yaux(:sizey), ynew)
-            ! print*, "aca", iter, dt_adap
-
-            ! yscal
-            yscal(:sizey) = abs (y) + abs (dt_adap * deri(:sizey)) + SAFE_LOW
             
             ! Error
             e_calc = max (maxval (abs ((ynew - yaux(:sizey)) / yscal(:sizey))), SAFE_LOW)
-            ratio  = E_TOL / e_calc
+            ratio = E_TOL / e_calc
 
             if (ratio > ONE) then
                 dt_used = dt_adap

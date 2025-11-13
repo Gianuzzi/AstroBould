@@ -144,28 +144,28 @@ module leapfrog
 
         recursive subroutine solve_leapfrog (sizey, y, dydt, t, dt_adap, dt_used, deri, leapfrog, ynew)
             implicit none
-            integer(kind=4), intent(in)                         :: sizey
-            real(kind=8), dimension(sizey), intent(in)          :: y
-            procedure(dydt_tem)                                 :: dydt
-            real(kind=8), intent(in)                            :: t
-            real(kind=8), intent(inout)                         :: dt_adap
-            real(kind=8), intent(out)                           :: dt_used
-            real(kind=8), dimension(sizey), intent(in)          :: deri
-            procedure (leapfrog_tem), pointer                   :: leapfrog
-            real(kind=8), dimension(sizey), intent(out)         :: ynew
+            integer(kind=4), intent(in) :: sizey
+            real(kind=8), dimension(sizey), intent(in) :: y
+            procedure(dydt_tem) :: dydt
+            real(kind=8), intent(in) :: t
+            real(kind=8), intent(inout) :: dt_adap
+            real(kind=8), intent(out) :: dt_used
+            real(kind=8), dimension(sizey), intent(in) :: deri
+            procedure (leapfrog_tem), pointer :: leapfrog
+            real(kind=8), dimension(sizey), intent(out) :: ynew
             
-            integer(kind=4), save                               :: iter = 0
-            real(kind=8)                                        :: e_calc, ratio, dt_half
+            integer(kind=4), save :: iter = 0
+            real(kind=8) :: e_calc, ratio, dt_half
 
             iter = iter + 1
             dt_adap = max (dt_adap, DT_MIN)
             dt_half = C1_2 * dt_adap
 
-            ! y(t, dt) -> ynew
-            call leapfrog (sizey, y, dydt, t, dt_adap, deri, ynew)
-
             ! yscal
             yscal(:sizey) = abs (y) + abs (dt_adap * deri) + SAFE_LOW
+
+            ! y(t, dt) -> ynew
+            call leapfrog (sizey, y, dydt, t, dt_adap, deri, ynew)
             
             ! y(t, dt/2) -> y05
             call leapfrog (sizey, y, dydt, t, dt_half, deri, y05(:sizey))
@@ -177,8 +177,8 @@ module leapfrog
             call leapfrog (sizey, y05(:sizey), dydt, t + dt_half, dt_half, der05(:sizey), yaux(:sizey))
 
             ! Error
-            e_calc = max (maxval (abs ((ynew(:sizey) - yaux(:sizey)) / yscal(:sizey))), SAFE_LOW)
-            ratio  = E_TOL / e_calc
+            e_calc = max (maxval (abs ((ynew - yaux(:sizey)) / yscal(:sizey))), SAFE_LOW)
+            ratio = E_TOL / e_calc
 
             if (ratio > ONE) then
                 dt_used = dt_adap
@@ -186,7 +186,6 @@ module leapfrog
                 iter = 0
 
             else
-
                 if (abs (dt_adap - DT_MIN) .le. E_TOL) then !E_TOL?
                     dt_used = DT_MIN
                     iter = 0

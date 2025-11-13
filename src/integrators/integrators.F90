@@ -5,6 +5,7 @@ module integrators
     use bstoer2
     use leapfrog
     use embedded
+    use runge_kutta
     implicit none
     private
     public :: init_integrator, free_integrator, integrate
@@ -32,50 +33,18 @@ module integrators
     
     contains
 
-            subroutine init_integrator (integrator, sizey, ndimensions, n_extra, min_dt, err_tol, learning_beta, fix_dt)
+            subroutine init_integrator (integrator, sizey, n_dimensions, n_extra, min_dt, err_tol, learning_beta, fix_dt)
                 implicit none
-                integer(kind=4), intent(in) :: integrator, sizey, ndimensions, n_extra
+                integer(kind=4), intent(in) :: integrator, sizey, n_dimensions, n_extra
                 real(kind=8), intent(in) :: min_dt, err_tol, learning_beta
                 logical, intent(in), optional :: fix_dt
                 logical :: is_fix_dt = .False.
-
-                if (present(fix_dt)) is_fix_dt = fix_dt
-                
-                ! Set the integrator
-                if (integrator == -3) then
-                    call init_BS2(sizey)
-                    integrate => BStoer2_caller
-                else if (integrator == -2) then
-                    call init_leapfrog(sizey,0)
-                    if (is_fix_dt) then
-                        integrate => leapfrog_fixed_caller
-                    else
-                        integrate => leapfrog_caller
-                    end if
-                else if (integrator == -1) then
-                    call init_leapfrog(sizey,1)
-                    if (is_fix_dt) then
-                        integrate => leapfrog_fixed_caller
-                    else
-                        integrate => leapfrog_caller
-                    end if
-                else if (integrator == 0) then
-                    call init_BS(sizey)
-                    integrate => BStoer_caller
-                else if (integrator >= 1) then
-                    call init_embedded(sizey,integrator)
-                    if (is_fix_dt) then
-                        integrate => embedded_fixed_caller
-                    else
-                        integrate => embedded_caller
-                    end if
-                end if
 
                 ! Allocate der, used in callers
                 allocate(der(sizey))
 
                 ! NDimensions
-                NDIM = ndimensions
+                NDIM = n_dimensions
                 NDIM2 = NDIM * 2
 
                 ! Extra parameters
@@ -90,6 +59,52 @@ module integrators
 
                 ! Learning rate
                 BETA = learning_beta
+
+                ! Set fixed of not
+                if (present(fix_dt)) is_fix_dt = fix_dt
+                
+                ! Set the integrator
+                if (integrator < -3) then
+                    call init_runge_kutta(sizey, abs(integrator + 2))
+                    if (is_fix_dt) then
+                        integrate => runge_kutta_fixed_caller
+                    else
+                        integrate => runge_kutta_caller
+                    end if
+
+                else if (integrator == -3) then
+                    call init_BS2(sizey)
+                    integrate => BStoer2_caller
+
+                else if (integrator == -2) then
+                    call init_leapfrog(sizey,0)
+                    if (is_fix_dt) then
+                        integrate => leapfrog_fixed_caller
+                    else
+                        integrate => leapfrog_caller
+                    end if
+
+                else if (integrator == -1) then
+                    call init_leapfrog(sizey,1)
+                    if (is_fix_dt) then
+                        integrate => leapfrog_fixed_caller
+                    else
+                        integrate => leapfrog_caller
+                    end if
+
+                else if (integrator == 0) then
+                    call init_BS(sizey)
+                    integrate => BStoer_caller
+
+                else if (integrator >= 1) then
+                    call init_embedded(sizey,integrator)
+                    if (is_fix_dt) then
+                        integrate => embedded_fixed_caller
+                    else
+                        integrate => embedded_caller
+                    end if
+
+                end if
             end subroutine init_integrator
 
             subroutine free_integrator()
@@ -98,6 +113,7 @@ module integrators
                 call free_leapfrog()
                 call free_BS()
                 call free_embedded()
+                call free_runge_kutta()
             end subroutine free_integrator
     
 end module integrators

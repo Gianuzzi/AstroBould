@@ -41,6 +41,10 @@ module bstoer2
 
             ! arr_scal layout: EXTRA2 entries + 2*n_x (X and V scalings per body)
             n_x2 = int((sizey - EXTRA2) / NDIM2, 4) * 2
+            if (n_x2 .le. 0) then
+                print*, "ERROR: Bad n_x2:", n_x2, "Check NEXTRA and NDIM."
+                stop 1
+            end if
             allocate(arr_scal(EXTRA2 + n_x2))  ! |x0|, |v0|, |x1|, |v1|,..., |xA|, |vA|, |xB|, |vB|
 
             allocate(yaux(sizey), deraux(sizey))
@@ -224,7 +228,6 @@ module bstoer2
             y = y0(:sizey)
 
         end subroutine bstep
-
 
 
         !---------------------------------
