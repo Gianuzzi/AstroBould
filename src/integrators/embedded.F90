@@ -50,7 +50,7 @@ module embedded
             integer(kind=4), intent(in) :: which
             integer(kind=4) :: n_stages
 
-            if (which <= 1) then
+            if (which == 1) then
                 embedded_ptr => Fehlberg1_2
                 OSOL = 2
                 OAUX = 1
@@ -116,12 +116,15 @@ module embedded
                 OAUX = 8
                 n_stages = 13
             
-            else if (which >= 12) then
+            else if (which == 12) then
                 embedded_ptr => Dormand_Prince8_7
                 OSOL = 8
                 OAUX = 7
                 n_stages = 13
             
+            else
+                print*, "Method not available:", which
+                stop 1
             end if
 
             ! Constants
@@ -531,7 +534,7 @@ module embedded
             real(kind=8) :: e_calc, ratio
 
             iter = iter + 1
-            dt_adap = max (dt_adap, dt_min)  
+            dt_adap = max (dt_adap, DT_MIN_NOW)  
 
             ! yscal
             yscal(:sizey) = abs (y) + abs (dt_adap * deri(:sizey)) + SAFE_LOW          
@@ -549,16 +552,16 @@ module embedded
                 iter = 0
 
             else
-                if (abs(dt_adap - dt_min) .le. E_TOL) then !E_TOL?
-                    dt_used = dt_min
+                if (abs(dt_adap - DT_MIN_NOW) .le. E_TOL) then !E_TOL?
+                    dt_used = DT_MIN_NOW
                     iter = 0
 
                 else
                     dt_adap = dt_adap * min (BETA * ratio**ONE_OAUX, MAX_DT_FACTOR)
 
-                    if ((dt_adap /= dt_adap) .or. (dt_adap < dt_min) .or. (iter == MAX_N_ITER)) then
-                        dt_adap = dt_min
-                        dt_used = dt_min
+                    if ((dt_adap /= dt_adap) .or. (dt_adap < DT_MIN_NOW) .or. (iter == MAX_N_ITER)) then
+                        dt_adap = DT_MIN_NOW
+                        dt_used = DT_MIN_NOW
                         
                         call embedded (sizey, y, dydt, t, dt_adap, deri, yaux(:sizey), ynew)
                         iter = 0
@@ -612,7 +615,10 @@ module embedded
                 end if
 
                 ycaller(:sizey) = ynew
+
                 dt_adap = min (dt_adap, t_end - time)
+                DT_MIN_NOW = min (DT_MIN, dt_adap)
+
                 der(:sizey) = dydt (time, ycaller(:sizey))
                                     
                 call solve_embedded (sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, &
@@ -661,8 +667,12 @@ module embedded
                 end if
 
                 ycaller(:sizey) = ynew
+
                 dt_adap = min (dt_adap, t_end - time)
+                DT_MIN_NOW = min (DT_MIN, dt_adap)
+
                 der(:sizey) = dydt (time, ycaller(:sizey))
+
                 call embedded_ptr (sizey, ycaller(:sizey), dydt, time, dt_adap, der(:sizey), yaux(:sizey), ynew)  ! yaux is dummy
 
                 time = time + dt_adap

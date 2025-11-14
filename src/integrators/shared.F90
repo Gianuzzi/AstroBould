@@ -60,6 +60,7 @@ module shared
     !! derived
     integer(kind=4) :: NDIM2
     integer(kind=4) :: EXTRA2
+    real(kind=8) :: DT_MIN_NOW  ! Minimum dt can be lower if dt is low
 
     ! Global
     real(kind=8), allocatable :: der(:) ! Used in callers

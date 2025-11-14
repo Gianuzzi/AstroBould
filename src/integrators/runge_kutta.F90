@@ -816,7 +816,7 @@ module runge_kutta
             integer(kind=4)                                :: iter = 0
             
             iter = iter + 1
-            dt_adap = max (dt_adap, dt_min)
+            dt_adap = max (dt_adap, DT_MIN_NOW)
             hdt_adap = C1_2 * dt_adap
 
             ! yscal
@@ -844,16 +844,16 @@ module runge_kutta
                 iter = 0
 
             else
-                if (abs(dt_adap - dt_min) .le. E_TOL) then !E_TOL?
-                    dt_used = dt_min
+                if (abs(dt_adap - DT_MIN_NOW) .le. E_TOL) then !E_TOL?
+                    dt_used = DT_MIN_NOW
                     iter = 0
 
                 else
                     dt_adap = dt_adap * min (BETA * ratio**ONE_OSOL, MAX_DT_FACTOR)
 
-                    if ((dt_adap /= dt_adap) .or. (dt_adap .le. dt_min) .or. (iter == MAX_N_ITER)) then
-                        dt_used = dt_min
-                        dt_adap = dt_min
+                    if ((dt_adap /= dt_adap) .or. (dt_adap .le. DT_MIN_NOW) .or. (iter == MAX_N_ITER)) then
+                        dt_used = DT_MIN_NOW
+                        dt_adap = DT_MIN_NOW
 
                         call runge_kutta (sizey, y, dydt, t, dt_adap, deri, ynew)
                         iter = 0
@@ -907,7 +907,10 @@ module runge_kutta
                 end if
 
                 ycaller(:sizey) = ynew
+
                 dt_adap = min (dt_adap, t_end - time)
+                DT_MIN_NOW = min (DT_MIN, dt_adap)
+
                 der(:sizey) = dydt (time, ycaller(:sizey))
                                     
                 call solve_rk_half_step (sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, &
@@ -956,8 +959,12 @@ module runge_kutta
                 end if
 
                 ycaller(:sizey) = ynew
+
                 dt_adap = min (dt_adap, t_end - time)
+                DT_MIN_NOW = min (DT_MIN, dt_adap)
+
                 der(:sizey) = dydt (time, ycaller(:sizey))
+
                 call runge_kutta_ptr (sizey, ycaller(:sizey), dydt, time, dt_adap, der(:sizey), ynew)
 
                 ! print*, time, dt_adap, t_end, t_end - time

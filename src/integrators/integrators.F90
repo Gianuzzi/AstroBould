@@ -53,6 +53,7 @@ module integrators
 
                 ! Minimum dt
                 DT_MIN = min_dt
+                DT_MIN_NOW = DT_MIN
 
                 ! Total error
                 E_TOL = err_tol

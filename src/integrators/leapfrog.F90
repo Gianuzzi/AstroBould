@@ -158,7 +158,7 @@ module leapfrog
             real(kind=8) :: e_calc, ratio, dt_half
 
             iter = iter + 1
-            dt_adap = max (dt_adap, DT_MIN)
+            dt_adap = max (dt_adap, DT_MIN_NOW)
             dt_half = C1_2 * dt_adap
 
             ! yscal
@@ -186,16 +186,16 @@ module leapfrog
                 iter = 0
 
             else
-                if (abs (dt_adap - DT_MIN) .le. E_TOL) then !E_TOL?
-                    dt_used = DT_MIN
+                if (abs (dt_adap - DT_MIN_NOW) .le. E_TOL) then !E_TOL?
+                    dt_used = DT_MIN_NOW
                     iter = 0
 
                 else
                     dt_adap = dt_adap * min (BETA * ratio**C1_2, MAX_DT_FACTOR)
 
-                    if ((dt_adap /= dt_adap) .or. (dt_adap .le. DT_MIN) .or. (iter == MAX_N_ITER)) then
-                        dt_used = DT_MIN
-                        dt_adap = DT_MIN
+                    if ((dt_adap /= dt_adap) .or. (dt_adap .le. DT_MIN_NOW) .or. (iter == MAX_N_ITER)) then
+                        dt_used = DT_MIN_NOW
+                        dt_adap = DT_MIN_NOW
 
                         call leapfrog (sizey, y, dydt, t, dt_adap, deri, ynew)
                         iter = 0
@@ -249,7 +249,10 @@ module leapfrog
                 end if
 
                 ycaller(:sizey) = ynew
+
                 dt_adap = min (dt_adap, t_end - time)
+                DT_MIN_NOW = min (DT_MIN, dt_adap)
+
                 der(:sizey) = dydt (time, ycaller(:sizey))
                                     
                 call solve_leapfrog (sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, &
@@ -298,7 +301,10 @@ module leapfrog
                 end if
 
                 ycaller(:sizey) = ynew
+
                 dt_adap = min (dt_adap, t_end - time)
+                DT_MIN_NOW = min (DT_MIN, dt_adap)
+
                 der(:sizey) = dydt (time, ycaller(:sizey))
 
                 call leapfrog_ptr (sizey, ycaller(:sizey), dydt, time, dt_adap, der(:sizey), ynew)
