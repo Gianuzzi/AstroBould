@@ -11,10 +11,10 @@ EXE_FILE  = ASTROBOULD
 # Compiler selection
 
 # Defaults
-FC       = gfortran
-INTEL    ?= 0
-AMD      ?= 0
-OPT      ?= 2   # default optimization level if not specified
+FC    = gfortran
+INTEL ?= 0
+AMD   ?= 0
+OPT   ?= 2   # default optimization level if not specified
 
 # Intel compiler
 ifeq ($(INTEL),1)
@@ -34,8 +34,8 @@ ifeq ($(INTEL),1)
   STD  = -stand f08
   ARCH = -xHost
 else
-  STD = -std=f2008
-  ARCH       = -march=native
+  STD  = -std=f2008
+  ARCH = -march=native
 endif
 WARN_GCC   = -Wall -Wextra -Wshadow
 WARN_INTEL = -warn all -nogen-interfaces
@@ -77,27 +77,30 @@ endif
 #--------------------------------------------------------------------------
 # Final flags per compiler
 ifeq ($(INTEL),1)
-  FFLAGS  = $(WARN_INTEL) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
+  FFLAGS = $(WARN_INTEL) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
 else ifeq ($(AMD),1)
-  FFLAGS  = $(WARN_AMD) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
+  FFLAGS = $(WARN_AMD) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
 else
-  FFLAGS  = $(WARN_GCC) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
+  FFLAGS = $(WARN_GCC) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
 endif
+
+# Add module directory
+FFLAGS += -J$(OBJ_DIR) -I$(OBJ_DIR)
 
 LDFLAGS = $(MYCFLAGS) $(MYFFLAGS)
 
 #--------------------------------------------------------------------------
 # Sources, objects, modules
 
-FIXED_SOURCES  = $(wildcard $(SRC_DIR)/*.f)
-FREE_SOURCES   = $(wildcard $(SRC_DIR)/*.F90)
-SRCS           = $(FIXED_SOURCES) $(FREE_SOURCES)
+FIXED_SOURCES = $(shell find $(SRC_DIR) -name '*.f')
+FREE_SOURCES  = $(shell find $(SRC_DIR) -name '*.F90')
+SRCS          = $(FIXED_SOURCES) $(FREE_SOURCES)
 
-FIXED_OBJECTS  = $(addprefix $(OBJ_DIR)/,$(notdir $(FIXED_SOURCES:.f=.o)))
-FREE_OBJECTS   = $(addprefix $(OBJ_DIR)/,$(notdir $(FREE_SOURCES:.F90=.o)))
-OBJECTS        = $(FIXED_OBJECTS) $(FREE_OBJECTS)
+FIXED_OBJECTS = $(FIXED_SOURCES:$(SRC_DIR)/%.f=$(OBJ_DIR)/%.o)
+FREE_OBJECTS  = $(FREE_SOURCES:$(SRC_DIR)/%.F90=$(OBJ_DIR)/%.o)
+OBJECTS       = $(FIXED_OBJECTS) $(FREE_OBJECTS)
 
-MODULES        = $(filter-out main.mod,$(notdir $(OBJECTS:.o=.mod)))
+MODULES       = $(filter-out main.mod,$(notdir $(OBJECTS:.o=.mod)))
 
 #--------------------------------------------------------------------------
 # Rules
@@ -123,10 +126,12 @@ $(OBJ_DIR):
 	@mkdir -p $@
 	@echo "Compiler: $(FC)"
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.f | $(OBJ_DIR)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.F90 | $(OBJ_DIR)
+	@mkdir -p $(dir $@)
 	$(FC) $(FFLAGS) -c $< -o $@
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.F90 | $(OBJ_DIR)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.f | $(OBJ_DIR)
+	@mkdir -p $(dir $@)
 	$(FC) $(FFLAGS) -c $< -o $@
 
 main: $(OBJECTS)
@@ -137,18 +142,21 @@ main: $(OBJECTS)
 	@if [ -n "$(PARALLEL)" ]; then echo " (Using OpenMP)"; fi
 
 deps:
-	@if [ ! -f $(DEP_FILE) ]; then \
-	  echo "Creating dependencies file: $(DEP_FILE)"; \
-	  if command -v fortdepend >/dev/null 2>&1; then \
-	    fortdepend -w -o $(DEP_FILE) -f $(FREE_SOURCES) -b $(OBJ_DIR) -i omp_lib; \
-	  else \
-	    echo "Error: fortdepend is not installed."; \
-	    exit 1; \
-	  fi; \
-	else \
-	  echo "Dependencies file already exists: $(DEP_FILE)"; \
-	  echo "Remove it and run 'make deps' to recreate."; \
+	@echo "Creating dependencies file: $(DEP_FILE)"
+	@if ! command -v fortdepend >/dev/null 2>&1; then \
+	  echo "Error: fortdepend is not installed."; exit 1; \
 	fi
+	@fortdepend -w -o $(DEP_FILE) -f $(FREE_SOURCES) -b $(OBJ_DIR) -i omp_lib
+	@# Post-process: for each source under src/... replace build/basename.o -> build/subdir/basename.o
+	@for f in $(FREE_SOURCES); do \
+	  rel=$${f#$(SRC_DIR)/}; \
+	  dir=$$(dirname $$rel); \
+	  base=$$(basename $$rel .F90); \
+	  if [ "$$dir" != "." ]; then \
+	    sed -i "s|$(OBJ_DIR)/$$base.o|$(OBJ_DIR)/$$dir/$$base.o|g" $(DEP_FILE); \
+	  fi; \
+	done
+	@echo "Fixed dependency paths in $(DEP_FILE)"
 
 install:
 	@if ! command -v fortdepend >/dev/null 2>&1; then \
@@ -161,7 +169,7 @@ install:
 
 clean:
 	@echo "Cleaning up..."
-	@rm -rf *.o *.mod $(OBJ_DIR)/*.o $(OBJ_DIR)/*.optrpt $(MOD_DIR)/*.mod $(EXE_FILE)
+	@rm -rf $(OBJ_DIR)
 	@[ -d $(OBJ_DIR) ] && rmdir --ignore-fail-on-non-empty $(OBJ_DIR) || true
 	@[ -d $(MOD_DIR) ] && rmdir --ignore-fail-on-non-empty $(MOD_DIR) || true
 

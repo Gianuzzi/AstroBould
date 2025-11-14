@@ -45,12 +45,15 @@ module parameters
         integer(kind=4) :: output_number = 0
         integer(kind=4) :: case_output_type = 2
         integer(kind=4) :: extra_checkpoints = 0
-        ! Parameters for the Integration - 
+        ! Extra parameters for the Integration - 
         logical :: use_parallel = .False.
         integer(kind=4) :: requested_threads = 1
-        ! Adaptive step integrations - 
+        ! Integrator configuration - 
+        integer(kind=4) :: integrator_ID = 0
+        logical :: use_adaptive = .True.
         integer(kind=4) :: error_digits = 12
         real(kind=8) :: learning_rate = uno
+        real(kind=8) :: dt_min = cero
         ! Primary mass -
         real(kind=8) :: mass_primary = cero
         ! Primary shape -
@@ -145,6 +148,7 @@ module parameters
     type, extends(input_params_st) :: sim_params_st  !! Extra DERIVED parameters
         ! Times
         integer(kind=4) :: checkpoint_number = 0
+        real(kind=8) :: min_period = infinity  ! This helps to create minimum timestep
         ! Bodies
         integer(kind=4) :: Ntotal = 0  ! Amount of all bodies (asteroid is just 1)
         integer(kind=4) :: Npart_active = 0 ! Active particles
@@ -204,7 +208,6 @@ module parameters
     real(kind=8) :: time  ! Actual time of the integration
     real(kind=8) :: timestep  ! This timestep 
     real(kind=8) :: adaptive_timestep  ! This adaptive timestep
-    real(kind=8) :: min_timestep = cero  ! Minimum timestep
     
 
     ! ----  <<<<<    TOM     >>>>>   -----
@@ -696,10 +699,20 @@ module parameters
                             else
                                 params%use_parallel = .True.
                             end if
+                        case("integrator ID t")
+                            read (value_str, *) params%integrator_ID
+                        case("use adaptive ti")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%use_adaptive = .True.
+                            else
+                                params%use_adaptive = .False.
+                            end if
                         case("precision (digi")
                             read (value_str, *) params%error_digits
                         case("learning rate")
                             read (value_str, *) params%learning_rate
+                        case("minimum timeste")
+                            read (value_str, *) params%dt_min
                         case("mass of primary")
                             read (value_str, *) params%mass_primary
                         case("radius of prima")

@@ -136,6 +136,8 @@ program main
 
         !!! Parámetros corrida
 
+        input%integrator_ID = 0        ! Integrator to use. (0 = BS; see src/integrators/README.md)
+
         !!!! Tiempos
         input%final_time = 2.d3        ! Final time [day]
         input%case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
@@ -143,7 +145,9 @@ program main
         input%output_number = 100      ! Number of outputs (if output_timestep = 0)
         input%extra_checkpoints = 2000 ! Number of extra checkpoints for chaos calculations
 
-        !!!! Error
+        !!!! Error and Tiemstepping
+        input%use_adaptive = .True.    ! Whether to use an adaptive timestepping method
+        input%dt_min = -1.d-2          ! Minimum dt to use. (if negative, |dt| * min_period)
         input%learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
         input%error_digits = 12        ! [For adaptive step integrators] Digits for relative error
 
@@ -846,7 +850,6 @@ program main
 
     !! <<<< Timesteps >>>>
     sim%output_timestep = sim%output_timestep * unit_time
-    min_timestep = min_timestep * unit_time ! Global
 
 
     !! <<<< Output times >>>>
@@ -917,23 +920,29 @@ program main
     ! <<<<  Variables temporales (para integración) >>>>
     time = cero ! Tiempo actual
     timestep = checkpoint_times(1) ! Paso de tiempo inicial
-    min_timestep = max(min(min_timestep, min(timestep, sim%output_timestep)), tini) ! Paso de tiempo mínimo
-    if (system%asteroid%rotational_period > tini) then
-        adaptive_timestep = system%asteroid%rotational_period * 0.01d0 ! dt0: 1% del periodo de rotación
+
+    ! Get minimum period
+    sim%min_period = infinity
+    if (system%asteroid%rotational_period > tini) sim%min_period = system%asteroid%rotational_period
+    do i = 1, system%Nmoons_active
+        sim%min_period = min(sim%min_period, get_Period(system%asteroid%mass + system%moons(i)%mass, system%moons(i)%elements(1)))
+    end do
+    do i = 1, system%Nparticles_active
+        sim%min_period = min(sim%min_period, get_Period(system%asteroid%mass, system%particles(i)%elements(1)))
+    end do
+    adaptive_timestep = adaptive_timestep * unit_time
+
+    ! Set minumum timestep
+    if (sim%dt_min < cero) then
+        sim%dt_min = sim%min_period * abs(sim%dt_min)
+    else if (sim%dt_min > cero) then
+        sim%dt_min = sim%dt_min * unit_time
     else
-        ! Set adaptive to minimum between periods
-        adaptive_timestep = infinity
-        do i = 1, system%Nmoons_active
-            adaptive_timestep = min(adaptive_timestep, &
-                                  & get_Period(system%asteroid%mass + system%moons(i)%mass, system%moons(i)%elements(1)))
-        end do
-        do i = 1, system%Nparticles_active
-            adaptive_timestep = min(adaptive_timestep, &
-                                  & get_Period(system%asteroid%mass, system%particles(i)%elements(1)))
-        end do
-        adaptive_timestep = adaptive_timestep * unit_time
+        sim%dt_min = tini  ! Heuristic
     end if
 
+    ! Set initial adaptive timestep
+    adaptive_timestep = min(sim%dt_min, sim%min_period * 1d-5)  ! Heuristic
 
     !! Mensaje
     if (sim%use_screen) then
@@ -943,16 +952,23 @@ program main
             & sim%final_time / unit_time, "[day]"
             write(*,s1r1) "  dt_out: ", sim%output_timestep / system%asteroid%rotational_period, "[Prot] = ", &
             & sim%output_timestep / unit_time, "[day]"
-            write(*,s1r1) "  dt_min: ", min_timestep / system%asteroid%rotational_period, "[Prot] = ", &
-            & min_timestep / unit_time, "[day]"
+            write(*,s1r1) "  dt_min: ", sim%dt_min / system%asteroid%rotational_period, "[Prot] = ", &
+            & sim%dt_min / unit_time, "[day]"
         else 
             write(*,s1r1) "  tf    : ", sim%final_time / unit_time, "[day]"
             write(*,s1r1) "  dt_out: ", sim%output_timestep / unit_time, "[day]"
-            write(*,s1r1) "  dt_min: ", min_timestep / unit_time, "[day]"
+            write(*,s1r1) "  dt_min: ", sim%dt_min / unit_time, "[day]"
         end if
         write(*,*) ACHAR(5)
         write(*,s1i1) "  n_out         : ", sim%output_number
         write(*,s1i1) "  n_checkpoints : ", sim%checkpoint_number
+        write(*,*) ACHAR(5)
+    end if
+
+    !! Possible Warning
+    if (sim%dt_min > sim%output_timestep) then
+        write(*,*) ACHAR(5)
+        write(*,*) " WARNING: Min dt is greater than output dt."
         write(*,*) ACHAR(5)
     end if
 
@@ -1041,7 +1057,7 @@ program main
             write(*,s1r1) "  width :", filter%dt * filter%size / system%asteroid%omega, "[Prot] = ", &
                           & filter%dt * filter%size / unit_time, "[day]"
             write(*,s1r1) "  cut_off freq:", filter%omega_pass * radian / unit_time, "[day⁻¹] =>", &
-                          & one / (filter%omega_pass * radian / unit_time), "[day]"
+                          & uno / (filter%omega_pass * radian / unit_time), "[day]"
             write(*,*) ACHAR(5)
         end if
     
@@ -1163,6 +1179,8 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    call init_integrator(0, size(y_arr), 2, 1, sim%dt_min, sim%error_tolerance, sim%learning_rate, .not. sim%use_adaptive)
 
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1358,9 +1376,8 @@ program main
             ! Update dt
             timestep = checkpoint_times(j) - time
 
-            ! Integrate
-            call BStoer_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
-                & sim%error_tolerance, timestep, y_arr_new(:y_nvalues), check_func)
+            ! INTEGRATE
+            call integrate (time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
         
             ! Check if it might be hard_exit
             if (hard_exit) then
@@ -1440,9 +1457,8 @@ program main
             ! Update dt
             timestep = aux_real - time
 
-            ! Integrate
-            call BStoer_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
-                & sim%error_tolerance, timestep, y_arr_new(:y_nvalues), check_func)        
+            ! INTEGRATE
+            call integrate (time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)      
         
             ! Check if it might be hard_exit
             if (hard_exit) then
@@ -1503,9 +1519,8 @@ program main
         ! Integrate and store filtered values
         do i = 2, filter%size
 
-            !! Integrate
-            call BStoer_caller (time, y_pre_filter(:y_nvalues), adaptive_timestep, dydt, &
-                & sim%error_tolerance, filter%dt, y_arr_new(:y_nvalues))
+            ! INTEGRATE
+            call integrate (time, y_pre_filter(:y_nvalues), adaptive_timestep, dydt, filter%dt, y_arr_new(:y_nvalues), check_func)
 
             !! Update time
             time = time + filter%dt
@@ -1638,9 +1653,8 @@ program main
             ! Get timestep up to first filtering value
             timestep = (checkpoint_times(j) - filter%half_width) - time
 
-            !! Integrate
-            call BStoer_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
-                & sim%error_tolerance, timestep, y_arr_new(:y_nvalues), check_func)
+            ! INTEGRATE
+            call integrate (time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
             
             ! Check if it might be hard_exit
             if (hard_exit) then
@@ -1672,9 +1686,8 @@ program main
                 ! Integrate and store filtered values
                 do i = 2, filter%size
 
-                    !! Integrate
-                    call BStoer_caller (time, y_pre_filter(:y_nvalues), adaptive_timestep, dydt, &
-                        & sim%error_tolerance, filter%dt, y_arr_new(:y_nvalues))  ! No checks here
+                    !! INTEGRATE
+                    call integrate (time, y_pre_filter(:y_nvalues), adaptive_timestep, dydt, filter%dt, y_arr_new(:y_nvalues))  ! No checks here
 
                     !! Update time
                     time = time + filter%dt
@@ -1824,21 +1837,9 @@ program main
             
             ! Update dt
             timestep = checkpoint_times(j) - time
-
-
-            !!! Execute an integration method (uncomment/edit one of these)
-            ! call integ_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
-            !     & Ralston4, timestep, y_arr_new(:y_nvalues), check_func)
-            ! call rk_half_step_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
-            !     & Runge_Kutta5, 5, sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:y_nvalues), check_func)
-            ! call embedded_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, Dormand_Prince8_7, &
-            !    & sim%error_tolerance, learning_rate, min_timestep, timestep, y_arr_new(:y_nvalues), check_func)
-            call BStoer_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
-                & sim%error_tolerance, timestep, y_arr_new(:y_nvalues), check_func)
-            ! call BStoer_caller2 (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
-            !     & sim%error_tolerance, timestep, y_arr_new(:y_nvalues), check_func)
-            ! call leapfrog_caller (time, y_arr(:y_nvalues), adaptive_timestep, dydt, &
-            !     & leapfrof_KDK, sim%error_tolerance, y_nvalues, min_timestep, timestep, y_arr_new(:y_nvalues), check_func)
+            
+            ! INTEGRATE
+            call integrate (time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
         
         
             ! Check if it might be hard_exit
@@ -2092,6 +2093,9 @@ program main
     !!!!!!!!! FILTER !!!!!!!!
     call free_filter(filter)
     call free_system(system_filtered)
+
+    !!!!!!!!! INTEGRATORS !!!!!!!!
+    call free_integrator()
 
     if (sim%use_screen) then 
         write(*,*) ACHAR(5)

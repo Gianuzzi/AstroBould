@@ -8,7 +8,13 @@ build/main :  \
 	build/constants.o \
 	build/derivates.o \
 	build/filtering.o \
-	build/integrators.o \
+	build/integrators/bstoer.o \
+	build/integrators/bstoer2.o \
+	build/integrators/embedded.o \
+	build/integrators/integrators.o \
+	build/integrators/leapfrog.o \
+	build/integrators/runge_kutta.o \
+	build/integrators/shared.o \
 	build/main.o \
 	build/parameters.o \
 	build/times.o \
@@ -42,14 +48,37 @@ build/derivates.o :  \
 build/filtering.o :  \
 	build/constants.o
 
-build/integrators.o : 
+build/integrators/bstoer.o :  \
+	build/integrators/shared.o
+
+build/integrators/bstoer2.o :  \
+	build/integrators/shared.o
+
+build/integrators/embedded.o :  \
+	build/integrators/shared.o
+
+build/integrators/integrators.o :  \
+	build/integrators/bstoer.o \
+	build/integrators/bstoer2.o \
+	build/integrators/embedded.o \
+	build/integrators/leapfrog.o \
+	build/integrators/runge_kutta.o \
+	build/integrators/shared.o
+
+build/integrators/leapfrog.o :  \
+	build/integrators/shared.o
+
+build/integrators/runge_kutta.o :  \
+	build/integrators/shared.o
+
+build/integrators/shared.o : 
 
 build/main.o :  \
 	build/bodies.o \
 	build/celestial.o \
 	build/derivates.o \
 	build/filtering.o \
-	build/integrators.o \
+	build/integrators/integrators.o \
 	build/parameters.o \
 	build/times.o
 

@@ -4,7 +4,7 @@
 
 The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
 
-If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [36 and 178](./src/main.F90#L36-L178).
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [36 and 182](./src/main.F90#L36-182).
 
 ---
 
@@ -153,9 +153,13 @@ $ python launcher.py
 💡 Make sure to run inside a Python virtual environment. 🐍
 
 
+## 🔗 Integrators avaiable
+
+The directory [integrators](./src/integrators/) includes the integrators modules. A brief [README](./src/integrators/README.md) can be found with minimal explanation of available integrators and properties.
+
 ## 🛠️ Additional tools
 
-THe directory [tools](./tools/) includes some extra scrips that could be useful for the user, such as:
+The directory [tools](./tools/) includes some extra scrips that could be useful for the user, such as:
 
 - [get_omega_damp.py](./tools/get_omega_damp.py): Calculate $\tau_\Omega$ for $\Omega$ damping.
 - [make_particles.py](./tools/make_particles.py)
