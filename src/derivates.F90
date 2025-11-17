@@ -306,7 +306,6 @@ module derivates
                             der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_radial * dr_ver * drag_f
 
                         end if
-
                         ! ---> Stokes <---
                         if (use_stokes) then
                             vel_circ = mean_movement * (/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)

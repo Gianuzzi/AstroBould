@@ -126,7 +126,7 @@ module accelerations
             implicit none
             real(kind=8), intent(in) :: tau_a, tau_e, active_timescale
 
-            if (stokes_time > cero .and. abs(tau_a) > cero .and. abs(tau_e) > cero) then
+            if (active_timescale > cero .and. abs(tau_a) > cero .and. abs(tau_e) > cero) then
                 use_stokes = .True.
                 stokes_time = active_timescale
                 stokes_C = uno / (dos * tau_a) + uno / tau_e
