@@ -2,7 +2,7 @@
 
 module accelerations
     use auxiliary, only: cross2D_z
-    use constants, only: cero, uno, uno2, dos, G, tini
+    use constants, only: cero, uno, uno2, uno3, dos, G, tini
 
     implicit none
     
@@ -72,7 +72,7 @@ module accelerations
             
             if ((axis_a > cero) .and. (axis_c > cero)) then
                 use_ellipsoid = .True.
-                Re_coef = (axis_a * axis_b * axis_c)**(1.d0/3.d0)
+                Re_coef = (axis_a * axis_b * axis_c)**uno3
                 C20_coef = (dos * axis_c**2 - axis_a**2 - axis_b**2) / (10.d0 * Re_coef**2)
                 C22_coef = (axis_a**2 - axis_b**2) / (20.d0 * Re_coef**2)
                 K_coef = 1.5d0 * Re_coef**2 * C20_coef
@@ -131,7 +131,7 @@ module accelerations
             
             if ((J2 > cero) .and. (radius > cero)) then
                 use_manual_J2 = .True.
-                J2K_coef = 1.5d0 * radius**2 * J2
+                J2K_coef = - 1.5d0 * radius**2 * J2  ! Minus, bc C20 = -J2
             else 
                 use_manual_J2 = .False.
             end if

@@ -1,6 +1,6 @@
 !> Module with main derivate function.
 module derivates
-    use constants, only: G, cero, uno, uno2, dos, tini
+    use constants, only: G, cero, uno, uno2, uno3, dos, tini
     use auxiliary, only: cross2D_z, rotate2D
     use parameters, only: sim, &
                           & system, &  ! asteroid inertia
@@ -68,7 +68,8 @@ module derivates
             real(kind=8) :: Gmast, Gmcomb  ! For extra/COM forces
             real(kind=8) :: dr_ver(2), dv_vec(2)  ! For extra forces
             real(kind=8) :: vel_circ(2), v2  ! For extra forces
-            real(kind=8) :: aux_real  ! For extra forces
+            real(kind=8) :: two_ener  ! For extra forces
+            real(kind=8) :: aux_J2K  ! For extra forces
             real(kind=8) :: mean_movement  ! For extra forces
             real(kind=8) :: vel_radial(2), acc_radial(2)  ! For extra forces
             real(kind=8) :: damp_f, drag_f, stokes_f  ! For extra forces
@@ -196,10 +197,12 @@ module derivates
                     dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
                     v2 = dot_product(dv_vec, dv_vec)
                     
-                    aux_real = dos * Gmcomb * inv_dr - v2  ! Check if unbound
+                    ! Get energy
+                    two_ener = dos * Gmcomb * inv_dr - v2
 
-                    if (aux_real > cero) then ! Can calculate only in this case
-                        mean_movement = aux_real**(1.5d0) / Gmcomb ! n
+                    ! Check if unbound
+                    if (two_ener > cero) then ! Can calculate only in this case
+                        mean_movement = abs(two_ener)**(1.5d0) / Gmcomb ! n
 
                         ! ---> Drag <---
                         if (use_drag) then
@@ -292,10 +295,17 @@ module derivates
                     dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
                     v2 = dot_product(dv_vec, dv_vec)
                     
-                    aux_real = dos * Gmast * inv_dr - v2  ! Check if unbound
+                    ! Get energy
+                    if (use_manual_J2) then
+                        two_ener = dos * Gmast * inv_dr - v2  ! Check if unbound
+                        mean_movement = abs(two_ener)**(1.5d0) / Gmast ! n
+                    else
+                        aux_J2K = J2K_coef / dr2  ! J2K_coef is negative
+                        two_ener = dos * Gmast * inv_dr * (uno - aux_J2K) - v2  ! Check if unbound
+                        mean_movement = sqrt(Gmast * inv_dr3) * (uno - aux_J2K * uno3)
+                    end if
 
-                    if (aux_real > cero) then ! Can calculate only in this case
-                        mean_movement = aux_real**(1.5d0) / Gmast ! n
+                    if (two_ener > cero) then ! Can calculate only in this case
 
                         ! ---> Drag <---
                         if (use_drag) then
@@ -354,7 +364,7 @@ module derivates
 
                     ! Moon acceleration per unit mass (WITHOUT MASSES)
                     if (use_manual_J2) then  ! Possible extra J2
-                        acc_grav_m = - G * dr_vec / (dr2 * dr) * (uno + J2K_coef / dr2)  !! G (x, y) (1 + K) / r³
+                        acc_grav_m = - G * dr_vec / (dr2 * dr) * (uno - J2K_coef / dr2)  !! G (x, y) (1 - K) / r³
                     else
                         acc_grav_m = - G * dr_vec / (dr2 * dr)  !! G (x, y) / r³
                     end if
@@ -389,7 +399,7 @@ module derivates
 
                     ! Particle acceleration
                     if (use_manual_J2) then  ! Possible extra J2
-                        der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - G * boulders_data(0,1) * dr_vec / (dr2 * dr) * (uno + J2K_coef / dr2)  ! G m0 (x, y) (1 + K) / r³
+                        der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - G * boulders_data(0,1) * dr_vec / (dr2 * dr) * (uno - J2K_coef / dr2)  ! G m0 (x, y) (1 - K) / r³
                     else
                         der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - G * boulders_data(0,1) * dr_vec / (dr2 * dr)  ! G m0 (x, y) / r³
                     end if                   

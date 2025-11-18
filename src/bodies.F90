@@ -1,6 +1,6 @@
 !> Module with System, Asteroid, Moons, and Particles structures and routines
 module bodies
-    use constants, only: cero, uno, uno2, dos, G, pi, twopi, epsilon, sqepsilon, tini, infinity, &
+    use constants, only: cero, uno, uno2, uno3, dos, G, pi, twopi, epsilon, sqepsilon, tini, infinity, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, radian
     use celestial, only: get_a_corot, get_acc_and_pot_single, elem, coord, coord2geom
     use auxiliary, only: quickargsort_int, rotate2D
@@ -196,7 +196,7 @@ module bodies
                 write(*,*) "ERROR: Primary can not have zero or negative radius."
                 stop 1
             end if
-            radius_primary = (aux_radius)**(1.d0/3.d0)
+            radius_primary = (aux_radius)**uno3
 
             self%primary%is_sphere = abs(radius_primary - semi_c_primary) < tini  ! c == radius => Sphere
 
@@ -1065,7 +1065,7 @@ module bodies
             ! Initial collisional eta and f. Set eta_col and f_col
             self%eta_col = eta_collision
             self%f_col = f_collision
-            self%asteroid%primary%C20 = manual_J2
+            if (abs(manual_J2) > cero) self%asteroid%primary%C20 = - manual_J2  ! C20 = -J2
         end subroutine set_system_extra
 
         !  ----------------------   OBJECT SWAP  ------------------------------
