@@ -1053,11 +1053,11 @@ module bodies
         end subroutine init_system
 
         ! Set extra system parameters
-        pure subroutine set_system_extra(self, time, eta_collision, f_collision)
+        pure subroutine set_system_extra(self, time, eta_collision, f_collision, manual_J2)
             implicit none
             type(system_st), intent(inout) :: self
             real(kind=8), intent(in) :: time
-            real(kind=8), intent(in) ::  eta_collision, f_collision
+            real(kind=8), intent(in) :: eta_collision, f_collision, manual_J2
 
             ! Initial time. Set TIME
             self%time = time
@@ -1065,6 +1065,7 @@ module bodies
             ! Initial collisional eta and f. Set eta_col and f_col
             self%eta_col = eta_collision
             self%f_col = f_collision
+            self%asteroid%primary%C20 = manual_J2
         end subroutine set_system_extra
 
         !  ----------------------   OBJECT SWAP  ------------------------------

@@ -10,7 +10,8 @@ module derivates
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
                             & use_drag, drag_coef, drag_time, &
                             & use_stokes, stokes_C, stokes_alpha, stokes_time, &
-                            & use_ellipsoid, K_coef, L_coef
+                            & use_ellipsoid, K_coef, L_coef, &
+                            & use_manual_J2, J2K_coef
 
 
     implicit none
@@ -326,7 +327,77 @@ module derivates
 
             ! First, Asteroid to all
             if (.not. use_ellipsoid) then  ! Only if NOT triaxial
-                do i = 0, sim%Nboulders  ! arrays have data of primary at 0
+                ! First we do only boulder 0 (primary) for possible J2
+
+                !! Get boulder coords
+                boulders_coords(0,1) = boulders_data(0,4) * cos(theta + boulders_data(0,3))  ! y
+                boulders_coords(0,2) = boulders_data(0,4) * sin(theta + boulders_data(0,3))  ! x
+                boulders_coords(0,3) = -omega * boulders_coords(0,2)  ! vx
+                boulders_coords(0,4) = omega * boulders_coords(0,1)  ! vy
+
+                boulders_coords(0,:) = boulders_coords(0,:) + coords_A  ! Move to Asteroid
+
+                !! Moons (massive)
+                do j = 2, last_moon ! +1 porque j=1 es asteroid
+                    jdx = get_index(j)
+                    coords_M = y(jdx:jdx+3)  ! Moon
+
+                    !! BOULDER AND MOON
+                    dr_vec = coords_M(1:2) - boulders_coords(0,1:2)  ! From Boulder to Moon
+                    dr2 = dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2)
+                    dr = sqrt(dr2)
+
+                    if (dr < tini) cycle  ! Skip to avoid NaNs
+
+                    ! Check if collision
+                    if (dr < boulders_data(0,2) + R_arr(j)) hard_exit = .True.
+
+                    ! Moon acceleration per unit mass (WITHOUT MASSES)
+                    if (use_manual_J2) then  ! Possible extra J2
+                        acc_grav_m = - G * dr_vec / (dr2 * dr) * (uno + J2K_coef / dr2)  !! G (x, y) (1 + K) / r³
+                    else
+                        acc_grav_m = - G * dr_vec / (dr2 * dr)  !! G (x, y) / r³
+                    end if
+
+                    ! Moon acceleration
+                    der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + acc_grav_m * boulders_data(0,1)  ! a_m * mass
+
+                    !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
+                    ! Asteroid acceleration
+                    der(5:6) = der(5:6) - acc_grav_m * boulders_data(0,1) * m_arr(j) / m_arr(1)  ! Force moved to Asteroid CM
+
+                    ! Torque to Asteroid
+                    torque = torque - cross2D_z(boulders_coords(0,1:2) - coords_A(1:2), &
+                                                & acc_grav_m * m_arr(j) * boulders_data(0,1))  !! r x F
+
+                end do
+
+                !! Particles (massless)
+                do j = last_moon + 1, N_total
+                    jdx = get_index(j)
+                    coords_P = y(jdx:jdx+3)  ! Particle
+
+                    !! BOULDER AND PARTICLE
+                    dr_vec = coords_P(1:2) - boulders_coords(0,1:2)  ! From Boulder to Particle
+                    dr2 = dr_vec(1) * dr_vec(1) + dr_vec(2) * dr_vec(2)
+                    dr = sqrt(dr2)
+
+                    if (dr < tini) cycle  ! Skip to avoid NaNs
+
+                    ! Check if collision
+                    if (dr < boulders_data(0,2)) hard_exit = .True.
+
+                    ! Particle acceleration
+                    if (use_manual_J2) then  ! Possible extra J2
+                        der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - G * boulders_data(0,1) * dr_vec / (dr2 * dr) * (uno + J2K_coef / dr2)  ! G m0 (x, y) (1 + K) / r³
+                    else
+                        der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - G * boulders_data(0,1) * dr_vec / (dr2 * dr)  ! G m0 (x, y) / r³
+                    end if                   
+
+                end do
+
+                ! Now the rest of the boulders
+                do i = 1, sim%Nboulders  
 
                     !! Get boulder coords
                     boulders_coords(i,1) = boulders_data(i,4) * cos(theta + boulders_data(i,3))  ! y
@@ -386,6 +457,7 @@ module derivates
                         der(jdx+2:jdx+3) = der(jdx+2:jdx+3) - G * boulders_data(i,1) * dr_vec / (dr2 * dr)  ! G mBoul (x, y) / r³
 
                     end do
+
                 end do
 
             end if

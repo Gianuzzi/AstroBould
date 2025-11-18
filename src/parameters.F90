@@ -3,7 +3,7 @@ module parameters
     use constants
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
-    use accelerations, only: init_damping, init_drag, init_ellipsoid, init_stokes
+    use accelerations, only: init_ellipsoid, init_manual_J2, init_stokes, init_drag, init_damping 
     use filtering
     use omp_lib
     use tomodule
@@ -73,6 +73,8 @@ module parameters
         character(30) :: particlesfile = ""
         ! Extra forces/effects - 
         logical :: use_moon_gravity = .True.
+        logical :: use_manual_J2 = .False.
+        real(kind=8) :: manual_J2 = cero
         logical :: use_stokes = .False.
         real(kind=8) :: stokes_a_damping_time = infinity
         real(kind=8) :: stokes_e_damping_time = infinity
@@ -729,6 +731,14 @@ module parameters
                             read (value_str, *) params%triax_b_primary
                         case("semi-axis c (km")
                             read (value_str, *) params%triax_c_primary
+                        case("use manual J2 (")
+                            if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                                params%use_manual_J2 = .True.
+                            else
+                                params%use_manual_J2 = .False.
+                            end if
+                        case("manual J2 value")
+                            read (value_str, *) params%manual_J2
                         case("ratio of spin t")
                             read (value_str, *) params%lambda_kep
                         case("rotational peri")
@@ -1139,11 +1149,13 @@ module parameters
                 stop 1
             end if
 
+
             !! Expand checkpoints
             if (derived%extra_checkpoints < 0) then
                 write(*,*) "ERROR: Extra checkpoint number can not be lower than 0."
                 stop 1
             end if
+
 
             !! Boulders
             if (derived%Nboulders < 0) then
@@ -1151,6 +1163,7 @@ module parameters
                 stop 1
             end if
             derived%use_boulders = derived%Nboulders > 0
+
 
             ! Primary Shape
             if (derived%use_triaxial) then
@@ -1194,12 +1207,14 @@ module parameters
                 derived%triax_c_primary = derived%radius_primary
             end if
 
+
             !! NMoons
             if (derived%Nmoons < 0) then
                 write(*,*) "ERROR: Nmoons can not be negative."
                 stop 1
             end if
             derived%use_moons = derived%Nmoons > 0
+
 
             !! NParticles
             if (derived%Nparticles < 0) then
@@ -1255,9 +1270,26 @@ module parameters
                 write(*,*) "ERROR: Can not use multiple omega dampings."
                 stop 1
             end if
+
+            !!! manual J2
+            if (derived%use_manual_J2) then
+                if (abs(derived%manual_J2) < tini) then
+                    derived%manual_J2 = cero
+                    derived%use_manual_J2 = .False.
+                end if
+            else
+                derived%manual_J2 = cero
+            end if
+            !!! Check no J2 and triaxial
+            if (derived%use_manual_J2 .and. derived%use_triaxial) then
+                write(*,*) "ERROR: Can not use both manual J2 and triaxial object at the same time."
+                stop 1
+            end if
             
+
             ! ! Mass Damping [UNAVAILABLE YET]
             ! if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinity
+
 
             ! Filter (fast check)
             if (derived%use_filter) then
@@ -1280,6 +1312,7 @@ module parameters
                 end if
             end if
             
+
             ! ! [BINS]
             ! !! Self-Gravity or Viscosity
             ! if (derived%use_self_gravity .or. derived%use_viscosity) then
@@ -1299,18 +1332,22 @@ module parameters
             !     derived%update_bins = derived%update_rmin_bins .or. derived%update_rmax_bins .or. derived%binning_method == 3
             ! end if
             
+
             ! Moons gravity
             if (derived%Nmoons == 0) derived%use_moon_gravity = .False.  ! Deactivate it
+
 
             ! Merges
             if (derived%Nparticles == 0) derived%use_merge_part_mass = .False.  ! Deactivate it
             if (derived%Nmoons == 0) derived%use_merge_massive = .False.  ! Deactivate it
             derived%use_any_merge = derived%use_merge_part_mass .or. derived%use_merge_massive
 
+
             ! Stops
             if (derived%Nparticles == 0) derived%use_stop_no_part_left = .False.  ! Deactivate it
             if (derived%Nmoons == 0) derived%use_stop_no_moon_left = .False.  ! Deactivate it
             derived%use_any_stop = derived%use_stop_no_part_left .or. derived%use_stop_no_moon_left
+
 
             ! Eta and f collitions values
             if ((derived%eta_col < cero) .or. (derived%eta_col > uno)) then
@@ -1322,6 +1359,7 @@ module parameters
                 stop 1
             end if
 
+
             ! Error
             if (derived%error_digits < 1) then
                 write(*,*) "ERROR: Number of presition digits must be greater than 0."
@@ -1329,11 +1367,13 @@ module parameters
             end if
             derived%error_tolerance = 10.d0**(-derived%error_digits)
             
+
             ! Primary Radius
             if (derived%radius_primary <= 0) then
                 write(*,*) "ERROR: Primary radius must be positive."
                 stop 1
             end if
+
 
             ! Parallel  (Many here are GLOBAL)
             !$ compiled_with_openmp = .True. !! Parece comentado, pero es asi
@@ -1395,6 +1435,7 @@ module parameters
                 derived%use_geomchaosfile = .False.  ! Do not output geometric chaos values
             end if
 
+        
             !! Names
             if ((trim(derived%datafile) /= "") .and. (trim(derived%datafile) /= "no")) then
                 derived%use_datafile = .True.
@@ -1433,11 +1474,13 @@ module parameters
                 derived%use_particlesfile = .False.
             end if
 
+
             ! Check no TOM and Filter
             if (derived%use_tomfile .and. derived%use_filter) then
                 write(*,*) "ERROR: Can not use both filtering and TOM at the same time."
                 stop 1
             end if
+
 
             ! Check no Extra checkpoints and Filter
             if (derived%use_tomfile .and. (derived%extra_checkpoints > 0)) then

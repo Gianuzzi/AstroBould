@@ -34,32 +34,34 @@ program main
 
     if (.not. use_configfile) then ! Usaremos parámetros por defecto
 
-        ! Solo imprimir? O integrar
+        ! Just print? (True) Or integrate? (False)
         input%only_print = .False.
         
-        ! Asteroide central
-        !! Primary mass
+        ! Bodies
+
+        !! Central Asteroid
+        !!! Primary mass
         input%mass_primary = 6.3d18 ! Masa del cuerpo 0 [kg] ! -x =>  mAst = x
 
-        !! Primary shape
+        !!! Primary shape
 
-        !!! Tri_Axial
+        !!!! Tri_Axial
         input%use_triaxial = .False.  ! Logical para determinar si se usa triax, o Boulders
         input%triax_a_primary = cero  ! Semieje a
         input%triax_b_primary = cero  ! Semieje b
         input%triax_c_primary = cero  ! Semieje c
 
-        !!! Explicit primary radius
+        !!!! Explicit primary radius
         input%radius_primary = 129.d0 ! Radio del cuerpo 0 [km]
 
-        !! ROTACIÓN
+        !!! Rotation
         input%asteroid_rotational_period = 7.004d0/24.d0  ! Periodo de rotación [day]
         !lambda_kep = 0.471d0      ! Cociente omega/wk
 
         !! Boulders        
         input%Nboulders = 1 ! Número de boulders
 
-        if (input%Nboulders > 0) then
+        if (input%Nboulders > 0) then  ! Specify boulders properties
             call allocate_params_asteroid(input%Nboulders)!! Alocatamos (No tocar)
 
             boulders_in(1,1) = 1.d-1   ! Cociente de masas entre boulder 1 y primary
@@ -71,7 +73,7 @@ program main
         !! Moons
         input%Nmoons = 0 ! Número de boulders
 
-        if (input%Nmoons > 0) then
+        if (input%Nmoons > 0) then  ! Specify moons properties
             call allocate_params_moons(input%Nmoons)!! Alocatamos (No tocar)
 
             moons_in(1,1) = 1.d-6   ! Cociente de masas entre luna 1 y asteroide
@@ -87,7 +89,7 @@ program main
         !! Particles
         input%Nparticles = 0 ! Número de boulders
 
-        if (input%Nparticles > 0) then
+        if (input%Nparticles > 0) then ! Specify particles properties
             call allocate_params_particles(input%Nparticles)!! Alocatamos (No tocar)
 
             particles_in(1,1) = cero   ! Semieje [km]
@@ -98,35 +100,43 @@ program main
             
         end if
 
-        !!!! Collision y escapes
+        ! Interactions
+
+        !! Collision y escapes
         input%min_distance = -1.5d0    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
         input%max_distance = -1.d2     ! Max distance before escape [km] ! -x => R0 * x
 
-        !!!!! Merges
+        !! Merges
         input%use_merge_part_mass = .True. ! Merge particles into asteroid
         input%use_merge_massive = .True. ! Merge massive bodies
 
-        !!!!! Collisions factors
+        !!! Collisions factors
         input%eta_col = uno  ! 0: Elastic, 1: Plastic
         input%f_col = uno  ! Bounded: Etot < -f |Epot|
 
-        !!!!! Stops
+        !! Stops
         input%use_stop_no_moon_left = .True. ! Stop if no more moons left
         input%use_stop_no_part_left = .True. ! Stop if no more particles left
+
+        ! Additional forces
+
+        !! Manual J2 (for primary)
+        input%use_manual_J2 = .False.
+        input%manual_J2 = cero
         
-        !!!! Stokes
+        !! Stokes
         input%use_stokes = .False.
         input%stokes_a_damping_time = infinity                           ! [day]
         input%stokes_e_damping_time = input%stokes_a_damping_time / 1.d2 ! [day]
         input%stokes_active_time = cero                                  ! [day] Tiempo que actúa stokes
 
-        !!!! Naive-Stokes (drag)
+        !! Naive-Stokes (drag)
         input%use_drag = .False.
         input%drag_coefficient = cero  ! Eta
         input%drag_active_time = cero  ! [day] Tiempo que actúa drag
 
 
-        !!!! Filter
+        ! Filter
         input%use_filter = .False.
         input%filter_dt = cero     ! dt to cutoff
         input%filter_nsamples = 0  ! Amount of integration steps of dt ~ df_fitered, per window
@@ -134,24 +144,25 @@ program main
         input%filter_prefix = ""   ! empty => filt
 
 
-        !!! Parámetros corrida
+        ! Simulation parameters
 
+        !! Integrator
         input%integrator_ID = 0        ! Integrator to use. (0 = BS; see src/integrators/README.md)
 
-        !!!! Tiempos
+        !! Times
         input%final_time = 2.d3        ! Final time [day]
         input%case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
         input%output_timestep = cero   ! Output timestep [day] (used if case_output_type != 1)
         input%output_number = 100      ! Number of outputs (if output_timestep = 0)
         input%extra_checkpoints = 2000 ! Number of extra checkpoints for chaos calculations
 
-        !!!! Error and Tiemstepping
+        !! Error and Tiemstepping
         input%use_adaptive = .True.    ! Whether to use an adaptive timestepping method
         input%dt_min = -1.d-2          ! Minimum dt to use. (if negative, |dt| * min_period)
         input%learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
         input%error_digits = 12        ! [For adaptive step integrators] Digits for relative error
 
-        !!! Map
+        ! Map
         input%use_potential_map = .False.
         input%mapfile = ""
         input%map_grid_size_x = 500
@@ -161,22 +172,22 @@ program main
         input%map_min_y = -500.d0
         input%map_max_y = 500.d0
 
-        !!! Output: "" or "no", if not used
+        ! Output: "" or "no", if not used
         input%datafile = ""
         input%chaosfile = ""
         input%multfile = ""
         input%geometricfile = ""
 
-        !!!!! Screeen
+        !! Screen
         input%use_screen = .True. ! Print info in screen
         input%use_datascreen = .True. ! Print data in screen
 
-        !!! Input: "" or "no", if not used
+        ! Input: "" or "no", if not used
         input%tomfile = ""
         input%moonsfile = ""
         input%particlesfile = ""
 
-        !!! Parallel
+        ! Parallel
         input%use_parallel = .False.
         input%requested_threads = 1 ! Number of threads to use !! -1 => all available
 
@@ -455,7 +466,7 @@ program main
                     & sim%lambda_kep, &                           ! keplerian omega
                     & sim%asteroid_rotational_period * unit_time) ! asteroid period
 
-    call set_system_extra(system, cero, sim%eta_col, sim%f_col)  ! Extra parameters
+    call set_system_extra(system, cero, sim%eta_col, sim%f_col, sim%manual_J2)  ! Extra parameters
 
 
     ! <<<< Save initial data >>>>
@@ -596,7 +607,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXTRA EFFECTS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
+    !! Initial message
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         write(*,*) ("---------- External / Internal forces ----------")
@@ -607,6 +618,17 @@ program main
     !! <<<< Tri-axial gravity >>>>
     if (sim%use_triaxial) then
         call init_ellipsoid(sim%triax_a_primary * unit_dist, sim%triax_b_primary * unit_dist, sim%triax_c_primary * unit_dist)
+    end if
+
+    !! <<<< Manual J2 >>>>
+    if (sim%use_manual_J2) then
+        call init_manual_J2(sim%manual_J2, system%asteroid%primary%radius)
+        if (sim%use_screen) then
+            write(*,*) "Manual J2"
+            write(*,s1r1) "  J2 : ", sim%manual_J2
+            write(*,*) ACHAR(5)
+        end if
+        any_extra_effect = .True. 
     end if
 
 
@@ -708,6 +730,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!! ESCAPES /COLLISIONS !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    !! Initial message
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         write(*,*) ("---------- Escapes / Collisions parameters ----------")
@@ -791,7 +814,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! MAPS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
+    !! Initial message and configuration
     if (sim%use_potential_map .and. .not. sim%only_print) then
         if (sim%use_screen) then
             write(*,*) ACHAR(5)
@@ -806,6 +829,7 @@ program main
         end if
     end if
 
+    !! Global configuration
     if (only_potential_map .and. .not. sim%only_print) then  ! Global
         if (sim%use_screen) then
             write(*,*) "END: Only the Map was requested."
@@ -819,8 +843,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRACIÓN !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
-    ! Mensaje
+    ! Initial message
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         write(*,*) "---------- Times ----------"
@@ -830,7 +853,7 @@ program main
 
     !!!!!!!! TIEMPOS !!!!!!!
 
-    ! <<<< Tiempos de integración >>>>
+    ! <<<< Integration times >>>>
     if (sim%final_time < cero) then
         if (abs(system%asteroid%rotational_period) < tini) then
             write(*,*) "WARNING: Setting total integration time with non-rotating asteroid."
@@ -841,6 +864,7 @@ program main
         sim%final_time = sim%final_time * unit_time
     end if
 
+    ! Check final time
     if (sim%final_time .le. cero) then
         write(*,*) ACHAR(10)
         write(*,*) "ERROR: tf < 0"
@@ -1004,8 +1028,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! FILTER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
-    ! Mensaje
+    ! Initial message
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         write(*,*) "---------- Filter settings ----------"
@@ -1071,7 +1094,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! OUTPUT  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
+    ! Initial message
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         write(*,*) "---------- OUTPUT ----------"
@@ -1109,7 +1132,7 @@ program main
     end if
 
 
-    !!! Mensaje
+    !!! Final message
     if (sim%use_screen) then
         if (sim%use_datafile) write(*,*) "General output file: ", trim(sim%datafile)
         if (sim%use_multiple_outputs) write(*,*) "Individuals output files: ", trim(sim%multfile) // "_*"
@@ -1128,7 +1151,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! FINAL CHECKS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
+    ! Initial message
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         write(*,*) "---------- FINAL CHECKS ----------"
@@ -1146,7 +1169,7 @@ program main
     end if
 
 
-    !!!! Mensaje
+    !!!! Final message
     if (sim%use_screen) then
         if (sim%error_tolerance <= 1.d-16) write(*,*) " WARNING: e_tol might be too low (<= 10⁻¹⁶)"
         write(*,*) ACHAR(5)
@@ -1180,6 +1203,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    ! SET INTEGRATOR
     call init_integrator(0, size(y_arr), 2, 1, sim%dt_min, sim%error_tolerance, sim%learning_rate, .not. sim%use_adaptive)
 
 
@@ -1187,8 +1211,7 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Integration  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-
-    !!!! Mensaje de inicio
+    !!!! Initial message
     if (sim%use_screen) then
         write(*,*) ACHAR(5)
         write(*,*) "---------- INTEGRATING ----------"
@@ -1285,7 +1308,6 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 
 
     !!!!!! MAIN LOOP INTEGRATION !!!!!!!

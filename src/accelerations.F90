@@ -13,6 +13,8 @@ module accelerations
     logical :: use_ellipsoid = .False.
     real(kind=8) :: C20_coef = cero, C22_coef = cero, Re_coef = cero ! Ellipsoid basics
     real(kind=8) :: K_coef = cero, L_coef = cero ! Ellipsoid deep
+    logical :: use_manual_J2 = .False.
+    real(kind=8) :: J2K_coef = cero ! Manual J2 basics
     logical :: use_damp = .False.
     real(kind=8) :: damp_coef_1 = cero, damp_coef_2 = cero, damp_time = cero ! Omega Damping
     integer(kind=4) :: damp_model = -1 ! Omega Damping
@@ -73,7 +75,7 @@ module accelerations
                 Re_coef = (axis_a * axis_b * axis_c)**(1.d0/3.d0)
                 C20_coef = (dos * axis_c**2 - axis_a**2 - axis_b**2) / (10.d0 * Re_coef**2)
                 C22_coef = (axis_a**2 - axis_b**2) / (20.d0 * Re_coef**2)
-                K_coef = 3.d0 * uno2 * Re_coef**2 * C20_coef
+                K_coef = 1.5d0 * Re_coef**2 * C20_coef
                 L_coef = 3.d0 * Re_coef**2 * C22_coef
             else 
                 use_ellipsoid = .False.
@@ -116,6 +118,44 @@ module accelerations
                         &  - K_coef * dr_vec(2) * inv_dr2 &
                         &  - L_coef * (dQdy * inv_dr2 - dr_vec(2) * Q_param_eff))
         end subroutine ellipsoid_acceleration
+
+
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !!!!!!!!!!!!!!!!!!!!!! MANUAL J2 !!!!!!!!!!!!!!!!!!!!!!!
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        !!! Init Parameters
+        subroutine init_manual_J2(J2, radius)
+            implicit none
+            real(kind=8), intent(in) :: J2, radius
+            
+            if ((J2 > cero) .and. (radius > cero)) then
+                use_manual_J2 = .True.
+                J2K_coef = 1.5d0 * radius**2 * J2
+            else 
+                use_manual_J2 = .False.
+            end if
+        end subroutine init_manual_J2
+
+        !!! Acceleration Example
+        subroutine manual_J2_acceleration(mass, dr_vec, dr, acc)
+            implicit none
+            real(kind=8), intent(in) :: mass, dr_vec(2), dr
+            real(kind=8), intent(inout) :: acc(2)
+            real(kind=8) :: inv_dr2, inv_dr3
+
+            inv_dr3 = uno / (dr * dr * dr)
+            inv_dr2 = dr * inv_dr3
+
+            ! a_unit_massx = G / r³ (x - K x / r²) 
+            ! a_unit_massy = G / r³ (y - K y / r²) 
+            acc(1) = acc(1) - (G * mass * inv_dr3) * &
+                        & (dr_vec(1) &
+                        &  - K_coef * dr_vec(1) * inv_dr2)
+            acc(2) = acc(2) - (G * mass * inv_dr3) * &
+                        & (dr_vec(2) &
+                        &  - K_coef * dr_vec(2) * inv_dr2)
+        end subroutine manual_J2_acceleration
         
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !!!!!!!!!!!!!!!!!!!!!!! STOKES !!!!!!!!!!!!!!!!!!!!!!!!!
