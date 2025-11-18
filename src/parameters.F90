@@ -1197,7 +1197,7 @@ module parameters
                     write(*,*) "         Switching to single central sphere."
                     derived%radius_primary = (derived%triax_a_primary * &
                                             & derived%triax_b_primary * &
-                                            & derived%triax_c_primary)**(1.d0/3.d0)
+                                            & derived%triax_c_primary)**uno3
                     derived%use_triaxial = .False.
                 end if
             else 

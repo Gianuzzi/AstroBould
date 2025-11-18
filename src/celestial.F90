@@ -1,6 +1,6 @@
 !> Module with coordinates/elements, and some extra cel-mech routines.
 module celestial
-    use constants, only: cero, uno, uno2, dos, G, pi, twopi, tini, epsilon, sqepsilon
+    use constants, only: cero, uno, uno2, uno3, dos, G, pi, twopi, tini, epsilon, sqepsilon
     
     implicit none
     
@@ -288,7 +288,7 @@ module celestial
                     w = twopi - w
                 end if
                 tmpf = tan(uno2 * w)
-                capm = tmpf * (uno + tmpf * tmpf / 3.d0)
+                capm = tmpf * (uno + tmpf * tmpf * uno3)
                 omega = u - w
                 if (omega < cero) then 
                     omega = omega + twopi
@@ -542,7 +542,7 @@ module celestial
                     chi2 = nKep * nKep * (uno + 7.5d0 * J2 * R2_a2)
                     chi = sqrt(chi2)
 
-                    alpha_1 = (dos * nu + kappa) / 3.0d0
+                    alpha_1 = (dos * nu + kappa) * uno3
                     alpha_2 = (dos * nu - kappa)
                     alpha2 = alpha_1 * alpha_2
 
