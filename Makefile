@@ -169,7 +169,7 @@ install:
 
 clean:
 	@echo "Cleaning up..."
-	@rm -rf $(OBJ_DIR) $(EXE_FILE) $(SRC_DIR)/*.mod $(SRC_DIR)/*/*.mod
+	@rm -rf $(OBJ_DIR) $(EXE_FILE) *.mod $(SRC_DIR)/*.mod $(SRC_DIR)/*/*.mod
 	@[ -d $(OBJ_DIR) ] && rmdir --ignore-fail-on-non-empty $(OBJ_DIR) || true
 	@[ -d $(MOD_DIR) ] && rmdir --ignore-fail-on-non-empty $(MOD_DIR) || true
 
