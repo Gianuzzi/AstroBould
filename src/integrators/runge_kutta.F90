@@ -599,7 +599,7 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(out) :: ynew
 
             rk(1:sizey,:) = ZERO
-            call solve_rk_implicit (sizey, y, dydt, t, dt, FunK_GL4, rk(1:sizey,:))
+            call solve_rk_implicit (sizey, N_STAGES, y, dydt, t, dt, FunK_GL4, rk(1:sizey,:))
 
             ynew = y + dt * (rk(1:sizey,1) + rk(1:sizey,2)) * C1_2
 
@@ -672,7 +672,7 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(out) :: ynew
 
             rk(1:sizey,:) = ZERO
-            call solve_rk_implicit (sizey, y, dydt, t, dt, FunK_GL6, rk(1:sizey,:))
+            call solve_rk_implicit (sizey, N_STAGES, y, dydt, t, dt, FunK_GL6, rk(1:sizey,:))
 
             ynew = y + dt * ((rk(1:sizey,1) + rk(1:sizey,3)) * FIVE + rk(1:sizey,2) * 8.d0) * C1_18
 
@@ -779,25 +779,25 @@ module runge_kutta
         end subroutine solve_1k_implicit
 
         !!!! Implicit: ND SOLVER
-        subroutine solve_rk_implicit (sizey, y, dydt, t, dt, impl_funK, rkout)
+        subroutine solve_rk_implicit (sizey, nstages, y, dydt, t, dt, impl_funK, rkout)
             implicit none
-            integer(kind=4), intent(in) :: sizey
+            integer(kind=4), intent(in) :: sizey, nstages
             real(kind=8), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
             real(kind=8), intent(in) :: t, dt
             procedure(implicit_funK_tem) :: impl_funK
-            real(kind=8), dimension(sizey, N_STAGES), intent(inout) :: rkout
+            real(kind=8), dimension(sizey, nstages), intent(inout) :: rkout
             integer(kind=4) :: i
 
             do i = 1, MAX_N_ITER
-                rk_imp_solv(1:sizey, 1:N_STAGES) = rkout
-                call impl_funK (sizey, y, dydt, t, dt, N_STAGES, rk_imp_solv(1:sizey, 1:N_STAGES), rkout)
-                if (maxval(abs((rk_imp_solv(1:sizey, 1:N_STAGES) - rkout) / &
-                             & (rk_imp_solv(1:sizey, 1:N_STAGES) + SAFE_LOW))) .le. E_TOL) then
+                rk_imp_solv(1:sizey, 1:nstages) = rkout
+                call impl_funK (sizey, y, dydt, t, dt, nstages, rk_imp_solv(1:sizey, 1:nstages), rkout)
+                if (maxval(abs((rk_imp_solv(1:sizey, 1:nstages) - rkout) / &
+                             & (rk_imp_solv(1:sizey, 1:nstages) + SAFE_LOW))) .le. E_TOL) then
                     exit
                 end if
             end do
-        end subroutine solve_rk_implicit                           
+        end subroutine solve_rk_implicit
         
         !!!! Adaptive Timestep: Half step
         recursive subroutine solve_rk_half_step (sizey, y, dydt, t, dt_adap, dt_used, deri, runge_kutta, ynew)
