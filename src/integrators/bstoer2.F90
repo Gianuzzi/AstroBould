@@ -108,7 +108,6 @@ module bstoer2
 
             integer(kind=4) :: n_x
             integer(kind=4) :: auxi
-            integer(kind=4) :: idim2
             integer(kind=4) :: i, j, j1, k, ns, ndo, dim_idx
             real(kind=8) :: tmp0, tmp1, tmp2
             real(kind=8) :: errmax
