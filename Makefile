@@ -77,15 +77,15 @@ endif
 #--------------------------------------------------------------------------
 # Final flags per compiler
 ifeq ($(INTEL),1)
-  FFLAGS = $(WARN_INTEL) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
+  FFLAGS = $(WARN_INTEL) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS) -module $(OBJ_DIR)
 else ifeq ($(AMD),1)
-  FFLAGS = $(WARN_AMD) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
+  FFLAGS = $(WARN_AMD) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS) -J$(OBJ_DIR) 
 else
-  FFLAGS = $(WARN_GCC) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS)
+  FFLAGS = $(WARN_GCC) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS) -J$(OBJ_DIR)
 endif
 
 # Add module directory
-FFLAGS += -J$(OBJ_DIR) -I$(OBJ_DIR)
+FFLAGS += -I$(OBJ_DIR)
 
 LDFLAGS = $(MYCFLAGS) $(MYFFLAGS)
 
@@ -100,7 +100,8 @@ FIXED_OBJECTS = $(FIXED_SOURCES:$(SRC_DIR)/%.f=$(OBJ_DIR)/%.o)
 FREE_OBJECTS  = $(FREE_SOURCES:$(SRC_DIR)/%.F90=$(OBJ_DIR)/%.o)
 OBJECTS       = $(FIXED_OBJECTS) $(FREE_OBJECTS)
 
-MODULES       = $(filter-out main.mod,$(notdir $(OBJECTS:.o=.mod)))
+MODULES       = $(filter-out main.mod,$(notdir $(OBJECTS:.o=.mod))) \
+                $(filter-out main.smod,$(notdir $(OBJECTS:.o=.smod)))
 
 #--------------------------------------------------------------------------
 # Rules
