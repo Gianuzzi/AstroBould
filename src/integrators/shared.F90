@@ -58,9 +58,9 @@ module shared
     real(kind=8) :: DT_MIN = 1.d-6  ! Minimum dt
     integer(kind=4) :: EXTRA = 0  ! Amount of extra variables (without der) that are not POS
     !! derived
-    integer(kind=4) :: NDIM2
-    integer(kind=4) :: EXTRA2
-    real(kind=8) :: DT_MIN_NOW  ! Minimum dt can be lower if dt is low
+    integer(kind=4) :: NDIM2 = 2
+    integer(kind=4) :: EXTRA2 = 0
+    real(kind=8) :: DT_MIN_NOW = 1.d-6  ! Minimum dt can be lower if dt is low
 
     ! Global
     real(kind=8), allocatable :: der(:) ! Used in callers

@@ -967,9 +967,7 @@ module runge_kutta
 
                 call runge_kutta_ptr (sizey, ycaller(:sizey), dydt, time, dt_adap, der(:sizey), ynew)
 
-                ! print*, time, dt_adap, t_end, t_end - time
                 time = time + dt_adap
-                ! pause
             end do
 
         end subroutine runge_kutta_fixed_caller

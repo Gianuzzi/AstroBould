@@ -1,4 +1,4 @@
-!> Module with LeapFrog integrators (only useful for [X, V] systems)
+!> Module with LeapFrog integrators (standard only useful for [X, V] systems)
 module leapfrog
     use shared
     implicit none
@@ -38,10 +38,14 @@ module leapfrog
     
         !!!! HANDLER
 
-        subroutine init_leapfrog(sizey, which)
+        subroutine init_leapfrog(sizey, which, standard)
             implicit none
             integer(kind=4), intent(in) :: sizey
             integer(kind=4), intent(in) :: which
+            logical, intent(in), optional :: standard
+            logical :: is_std  = .False.
+
+            if (present(standard)) is_std = standard
 
             if (MOD(sizey, 2) > 0) then
                 print*, "ERROR: Can not use LeapFrog with uneven array."
@@ -59,9 +63,17 @@ module leapfrog
             allocate(ycaller(sizey))
 
             if (which > 0) then
-                leapfrog_ptr => leapfrog_KDK
+                if (is_std) then
+                    leapfrog_ptr => leapfrog_KDK_std
+                else
+                    leapfrog_ptr => leapfrog_KDK
+                end if
             else
-                leapfrog_ptr => leapfrog_DKD
+                if (is_std) then
+                    leapfrog_ptr => leapfrog_DKD_std
+                else
+                    leapfrog_ptr => leapfrog_DKD
+                end if
             end if
         end subroutine init_leapfrog
 
@@ -76,9 +88,136 @@ module leapfrog
         end subroutine free_leapfrog
 
         
-        !!!! Main subroutines for LeapFrog        
+        !!!! Main subroutines for LeapFrog
+
+        !!! Leap Frog (KDK)
 
         subroutine leapfrog_KDK (sizey, y, dydt, t, dt, deri, ynew)
+            implicit none
+            integer(kind=4), intent(in) :: sizey
+            real(kind=8), dimension(sizey), intent(in) :: y
+            procedure(dydt_tem) :: dydt
+            real(kind=8), intent(in) :: t, dt
+            real(kind=8), dimension(sizey), intent(in) :: deri
+            real(kind=8), dimension(sizey), intent(out) :: ynew
+            
+            integer(kind=4) :: i, j
+            real(kind=8) :: dt_half
+
+            dt_half = dt * C1_2
+    
+            ! Initial copy
+            ynew = y
+            
+            ! KICK 1: Update velocities half step
+            ! 1D variables (EXTRA pairs)
+            do i = 1, EXTRA2, 2
+                ynew(i+1) = y(i+1) + deri(i+1) * dt_half  ! v0 -> v0.5
+            end do
+            
+            ! NDIM variables (each has NDIM positions + NDIM velocities)
+            do i = EXTRA2 + 1, sizey, NDIM2
+                do j = 0, NDIM-1
+                    ynew(i + NDIM + j) = y(i + NDIM + j) + deri(i + NDIM + j) * dt_half  ! v0 -> v0.5
+                end do
+            end do
+            
+            ! DRIFT: Update positions full step using half-step velocities
+            ! 1D variables
+            do i = 1, EXTRA2, 2
+                ynew(i) = y(i) + ynew(i+1) * dt  ! x0 -> x1 using v0.5
+            end do
+            
+            ! NDIM variables
+            do i = EXTRA2 + 1, sizey, NDIM2
+                do j = 0, NDIM-1
+                    ynew(i + j) = y(i + j) + ynew(i + NDIM + j) * dt  ! x0 -> x1 using v0.5
+                end do
+            end do
+            
+            ! KICK 2: Calculate new accelerations and update velocities half step
+            der05 = dydt(t + dt_half, ynew)
+            
+            ! 1D variables
+            do i = 1, EXTRA2, 2
+                ynew(i+1) = ynew(i+1) + der05(i+1) * dt_half  ! v0.5 -> v1
+            end do
+            
+            ! NDIM variables
+            do i = EXTRA2 + 1, sizey, NDIM2
+                do j = 0, NDIM-1
+                    ynew(i + NDIM + j) = ynew(i + NDIM + j) + der05(i + NDIM + j) * dt_half  ! v0.5 -> v1
+                end do
+            end do
+        end subroutine leapfrog_KDK
+
+        !!! Leap Frog (DKD)
+
+        subroutine leapfrog_DKD (sizey, y, dydt, t, dt, deri, ynew)
+            implicit none
+            integer(kind=4), intent(in) :: sizey
+            real(kind=8), dimension(sizey), intent(in) :: y
+            procedure(dydt_tem) :: dydt
+            real(kind=8), intent(in) :: t, dt
+            real(kind=8), dimension(sizey), intent(in) :: deri
+            real(kind=8), dimension(sizey), intent(out) :: ynew
+            
+            integer(kind=4) :: i, j
+            real(kind=8) :: dt_half
+
+            dt_half = dt * C1_2
+    
+            ! Initial copy
+            ynew = y
+            
+            ! DRIFT 1: Update positions half step
+            ! 1D variables
+            do i = 1, EXTRA2, 2
+                ynew(i) = ynew(i) + ynew(i+1) * dt_half  ! x0 -> x0.5 using v0
+            end do
+            
+            ! NDIM variables
+            do i = EXTRA2 + 1, sizey, NDIM2
+                do j = 0, NDIM-1
+                    ynew(i + j) = ynew(i + j) + ynew(i + NDIM + j) * dt_half  ! x0 -> x0.5 using v0
+                end do
+            end do
+            
+            ! KICK: Calculate accelerations and update velocities full step
+            der05 = dydt(t + dt_half, ynew)
+            
+            ! 1D variables
+            do i = 1, EXTRA2, 2
+                ynew(i+1) = ynew(i+1) + der05(i+1) * dt  ! v0 -> v1
+            end do
+            
+            ! NDIM variables
+            do i = EXTRA2 + 1, sizey, NDIM2
+                do j = 0, NDIM-1
+                    ynew(i + NDIM + j) = ynew(i + NDIM + j) + der05(i + NDIM + j) * dt  ! v0 -> v1
+                end do
+            end do
+            
+            ! DRIFT 2: Update positions half step using new velocities
+            ! 1D variables
+            do i = 1, EXTRA2, 2
+                ynew(i) = ynew(i) + ynew(i+1) * dt_half  ! x0.5 -> x1 using v1
+            end do
+            
+            ! NDIM variables
+            do i = EXTRA2 + 1, sizey, NDIM2
+                do j = 0, NDIM-1
+                    ynew(i + j) = ynew(i + j) + ynew(i + NDIM + j) * dt_half  ! x0.5 -> x1 using v1
+                end do
+            end do
+        end subroutine leapfrog_DKD
+
+
+        !!!! STANDARD subroutines for LeapFrog. Apply when arr = /x0, v0, x1, v1,.../
+
+        !!! Leap Frog (KDK)
+
+        subroutine leapfrog_KDK_std (sizey, y, dydt, t, dt, deri, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
             real(kind=8), dimension(sizey), intent(in) :: y
@@ -104,11 +243,11 @@ module leapfrog
             do i = 2, sizey, 2
                 ynew(i) = ynew(i) + der05(i) * dt * C1_2
             end do
-        end subroutine leapfrog_KDK
+        end subroutine leapfrog_KDK_std
 
         !!! Leap Frog (DKD)
 
-        subroutine leapfrog_DKD (sizey, y, dydt, t, dt, deri, ynew)
+        subroutine leapfrog_DKD_std (sizey, y, dydt, t, dt, deri, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
             real(kind=8), dimension(sizey), intent(in) :: y
@@ -135,7 +274,7 @@ module leapfrog
                 ynew(i+1) = ynew(i+1) + der05(i+1) * dt
                 ynew(i) = ynew(i) + ynew(i+1) * dt * C1_2
             end do
-        end subroutine leapfrog_DKD
+        end subroutine leapfrog_DKD_std
         
 
         !------------------------------------------------
