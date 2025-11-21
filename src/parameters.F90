@@ -238,6 +238,16 @@ module parameters
     integer(kind=4) :: first_idx_yes_filter = 0   ! First checkpoint with no filtering
     real(kind=8), dimension(:), allocatable :: elem_filtered  ! Filtered_data
     real(kind=8), dimension(:), allocatable :: y_pre_filter   ! Data pre-filtering
+    ! ==========    EXTRA FILTER    ==========
+    real(kind=8) :: next_time  ! Next time
+    real(kind=8) :: next_t_check  ! Next checkpoint time
+    real(kind=8) :: next_t_filt  ! Next filter time
+    real(kind=8) :: time_filt  ! Actual time of the filtering integration
+    integer(kind=4) :: next_checkpoint  ! Next checkpoint
+    real(kind=8) :: tmp_time  ! The time used to sync the filter
+    type(system_st) :: tmp_system  ! The system used to sync the filter
+    real(kind=8), dimension(:), allocatable :: tmp_y_arr  ! Coordinates array used to sync
+    
     
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
@@ -1631,6 +1641,7 @@ module parameters
             if (allocated(checkpoint_is_output)) deallocate(checkpoint_is_output)
             if (allocated(y_pre_filter)) deallocate(y_pre_filter)
             if (allocated(elem_filtered)) deallocate(elem_filtered)
+            if (allocated(tmp_y_arr)) deallocate(tmp_y_arr)
         end subroutine free_parameters_arays
 
 
@@ -1760,17 +1771,21 @@ module parameters
         end subroutine do_not_write_ch
 
         ! FILTERING
-        subroutine apply_filter(y_nvalues, el_filtered)
-            use bodies, only: get_Nactive, copy_objects, update_system_from_array, update_elements
+        subroutine apply_filter(y_nvalues, syst_pre_filter, syst_filtered, el_filtered)
+            use bodies, only: get_Nactive, copy_objects, update_system_from_array, update_elements, moon_st, particle_st
             implicit none
             integer(kind=4), intent(in) :: y_nvalues
-            real(kind=8), dimension(:), intent(inout) :: el_filtered
+            type(system_st), intent(in) :: syst_pre_filter
+            type(system_st), intent(inout) :: syst_filtered
+            real(kind=8), dimension(y_nvalues), intent(inout) :: el_filtered
+            type(moon_st) :: moon
+            type(particle_st):: particle
             real(kind=8) :: cos_th, sin_th
             real(kind=8) :: weigth, e_times_fil
             real(kind=8), dimension(:,:), allocatable :: cos_an, sin_an
             integer(kind=4) :: nbodies, i, j, aux_i, idx
 
-            call get_Nactive(system, nbodies)
+            call get_Nactive(syst_pre_filter, nbodies)
             allocate(cos_an(nbodies, 2))
             allocate(sin_an(nbodies, 2))
 
@@ -1779,63 +1794,63 @@ module parameters
             cos_an = cero
             sin_an = cero
             
-            el_filtered(1:y_nvalues) = cero
-            call copy_objects(system, system_filtered)
+            el_filtered = cero
+            call copy_objects(syst_pre_filter, syst_filtered)
             do i = 1, filter%size
                 weigth = filter%kernel(i)
-                call update_system_from_array(system_filtered, filter%tmp_times(i), filter%tmp_values(:y_nvalues, i))
-                call update_elements(system_filtered, sim%use_baryc_output)
+                call update_system_from_array(syst_filtered, filter%tmp_times(i), filter%tmp_values(:y_nvalues, i))
+                call update_elements(syst_filtered, sim%use_baryc_output)
 
                 ! Theta
-                cos_th = cos_th + cos(system_filtered%asteroid%theta) * weigth
-                sin_th = sin_th + sin(system_filtered%asteroid%theta) * weigth
+                cos_th = cos_th + cos(syst_filtered%asteroid%theta) * weigth
+                sin_th = sin_th + sin(syst_filtered%asteroid%theta) * weigth
                 ! Omega
-                el_filtered(2) = el_filtered(2) + system_filtered%asteroid%omega * weigth
+                el_filtered(2) = el_filtered(2) + syst_filtered%asteroid%omega * weigth
                 ! a
-                el_filtered(3) = el_filtered(3) + system_filtered%asteroid%elements(1) * weigth
+                el_filtered(3) = el_filtered(3) + syst_filtered%asteroid%elements(1) * weigth
                 ! e
-                e_times_fil = system_filtered%asteroid%elements(2) * weigth
+                e_times_fil = syst_filtered%asteroid%elements(2) * weigth
                 el_filtered(4) = el_filtered(4) + e_times_fil
                 ! M
-                cos_an(1,1) = cos_an(1,1) + cos(system_filtered%asteroid%elements(3)) * weigth
-                sin_an(1,1) = sin_an(1,1) + sin(system_filtered%asteroid%elements(3)) * weigth
+                cos_an(1,1) = cos_an(1,1) + cos(syst_filtered%asteroid%elements(3)) * weigth
+                sin_an(1,1) = sin_an(1,1) + sin(syst_filtered%asteroid%elements(3)) * weigth
                 ! w -> K & H
-                cos_an(1,2) = cos_an(1,2) + cos(system_filtered%asteroid%elements(4)) * e_times_fil
-                sin_an(1,2) = sin_an(1,2) + sin(system_filtered%asteroid%elements(4)) * e_times_fil
+                cos_an(1,2) = cos_an(1,2) + cos(syst_filtered%asteroid%elements(4)) * e_times_fil
+                sin_an(1,2) = sin_an(1,2) + sin(syst_filtered%asteroid%elements(4)) * e_times_fil
 
-                do j = 2, system_filtered%Nmoons_active + 1
+                do j = 2, syst_filtered%Nmoons_active + 1
                     aux_i = j - 1
                     idx =  4 * j - 1  ! From derivates
 
                     ! a
-                    el_filtered(idx) = el_filtered(idx) + system_filtered%moons(aux_i)%elements(1) * weigth
+                    el_filtered(idx) = el_filtered(idx) + syst_filtered%moons(aux_i)%elements(1) * weigth
                     ! e
-                    e_times_fil = system_filtered%moons(aux_i)%elements(2) * weigth
+                    e_times_fil = syst_filtered%moons(aux_i)%elements(2) * weigth
                     el_filtered(idx+1) = el_filtered(idx+1) + e_times_fil
                     ! M
-                    cos_an(j,1) = cos_an(j,1) + cos(system_filtered%moons(aux_i)%elements(3)) * weigth
-                    sin_an(j,1) = sin_an(j,1) + sin(system_filtered%moons(aux_i)%elements(3)) * weigth
+                    cos_an(j,1) = cos_an(j,1) + cos(syst_filtered%moons(aux_i)%elements(3)) * weigth
+                    sin_an(j,1) = sin_an(j,1) + sin(syst_filtered%moons(aux_i)%elements(3)) * weigth
                     ! w -> K & H
-                    cos_an(j,2) = cos_an(j,2) + cos(system_filtered%moons(aux_i)%elements(4)) * e_times_fil
-                    sin_an(j,2) = sin_an(j,2) + sin(system_filtered%moons(aux_i)%elements(4)) * e_times_fil
+                    cos_an(j,2) = cos_an(j,2) + cos(syst_filtered%moons(aux_i)%elements(4)) * e_times_fil
+                    sin_an(j,2) = sin_an(j,2) + sin(syst_filtered%moons(aux_i)%elements(4)) * e_times_fil
 
                 end do
 
-                do j = system_filtered%Nmoons_active + 2, nbodies
-                    aux_i = j - system_filtered%Nmoons_active - 1
+                do j = syst_filtered%Nmoons_active + 2, nbodies
+                    aux_i = j - syst_filtered%Nmoons_active - 1
                     idx =  4 * j - 1  ! From derivates
 
                     ! a
-                    el_filtered(idx) = el_filtered(idx) + system_filtered%particles(aux_i)%elements(1) * weigth
+                    el_filtered(idx) = el_filtered(idx) + syst_filtered%particles(aux_i)%elements(1) * weigth
                     ! e
-                    e_times_fil = system_filtered%particles(aux_i)%elements(2) * weigth
+                    e_times_fil = syst_filtered%particles(aux_i)%elements(2) * weigth
                     el_filtered(idx+1) = el_filtered(idx+1) + e_times_fil
                     ! M
-                    cos_an(j,1) = cos_an(j,1) + cos(system_filtered%particles(aux_i)%elements(3)) * weigth
-                    sin_an(j,1) = sin_an(j,1) + sin(system_filtered%particles(aux_i)%elements(3)) * weigth
+                    cos_an(j,1) = cos_an(j,1) + cos(syst_filtered%particles(aux_i)%elements(3)) * weigth
+                    sin_an(j,1) = sin_an(j,1) + sin(syst_filtered%particles(aux_i)%elements(3)) * weigth
                     ! w -> K & H
-                    cos_an(j,2) = cos_an(j,2) + cos(system_filtered%particles(aux_i)%elements(4)) * e_times_fil
-                    sin_an(j,2) = sin_an(j,2) + sin(system_filtered%particles(aux_i)%elements(4)) * e_times_fil
+                    cos_an(j,2) = cos_an(j,2) + cos(syst_filtered%particles(aux_i)%elements(4)) * e_times_fil
+                    sin_an(j,2) = sin_an(j,2) + sin(syst_filtered%particles(aux_i)%elements(4)) * e_times_fil
                 end do
 
             end do
