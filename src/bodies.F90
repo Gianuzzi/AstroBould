@@ -837,6 +837,46 @@ module bodies
             Nactive = 1 + self%Nmoons_active + self%Nparticles_active  ! Includes asteroid
         end subroutine get_Nactive
 
+        ! Get amount of active bodies, including asteroid
+        pure subroutine get_nvalues(self, nvalues)
+            implicit none
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(inout) :: nvalues
+            nvalues = 2 + 4 * (1 + self%Nmoons_active + self%Nparticles_active)
+        end subroutine get_nvalues
+
+        ! Get moon by ID
+        pure subroutine get_moon_by_ID(self, id, moon)
+            implicit none
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(in) :: id
+            type(moon_st), intent(out) :: moon
+            integer(kind=4) :: i
+            
+            do i = 1, self%Nmoons
+                if (self%moons(i)%id == id) then
+                    moon = self%moons(i)
+                    exit
+                end if
+            end do
+        end subroutine get_moon_by_ID
+
+        ! Get particle by ID
+        pure subroutine get_particle_by_ID(self, id, particle)
+            implicit none
+            type(system_st), intent(in) :: self
+            integer(kind=4), intent(in) :: id
+            type(particle_st), intent(out) :: particle
+            integer(kind=4) :: i
+            
+            do i = 1, self%Nparticles
+                if (self%particles(i)%id == id) then
+                    particle = self%particles(i)
+                    exit
+                end if
+            end do
+        end subroutine get_particle_by_ID
+
         !  -----------------   UPDATE INTERNAL PARAMETERS    ------------------
 
         ! Recalculate elements
@@ -1328,7 +1368,7 @@ module bodies
             call shift_asteroid(self%asteroid, aux_coordinates)
 
             ! Update Moons Position and derived parameters
-            idx = 7  ! First 4 were the asteroid
+            idx = 7  ! First 2 + 4 were the asteroid
             do i = 1, self%Nmoons_active
                 aux_coordinates = array(idx:idx+3)
                 call shift_single_moon(self%moons(i), aux_coordinates)
