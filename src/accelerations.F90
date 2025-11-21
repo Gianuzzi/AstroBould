@@ -149,12 +149,8 @@ module accelerations
 
             ! a_unit_massx = G / r³ (x - K x / r²) 
             ! a_unit_massy = G / r³ (y - K y / r²) 
-            acc(1) = acc(1) - (G * mass * inv_dr3) * &
-                        & (dr_vec(1) &
-                        &  - K_coef * dr_vec(1) * inv_dr2)
-            acc(2) = acc(2) - (G * mass * inv_dr3) * &
-                        & (dr_vec(2) &
-                        &  - K_coef * dr_vec(2) * inv_dr2)
+            acc(1) = acc(1) - (G * mass * inv_dr3) * dr_vec(1) * (uno - J2K_coef * inv_dr2)
+            acc(2) = acc(2) - (G * mass * inv_dr3) * dr_vec(2) * (uno - J2K_coef * inv_dr2)
         end subroutine manual_J2_acceleration
         
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
