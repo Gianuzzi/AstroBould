@@ -210,6 +210,7 @@ module parameters
     real(kind=8) :: time  ! Actual time of the integration
     real(kind=8) :: timestep  ! This timestep 
     real(kind=8) :: adaptive_timestep  ! This adaptive timestep
+    real(kind=8) :: fixed_timestep  ! This fixed timestep
     
 
     ! ----  <<<<<    TOM     >>>>>   -----
@@ -240,13 +241,19 @@ module parameters
     real(kind=8), dimension(:), allocatable :: y_pre_filter   ! Data pre-filtering
     ! ==========    EXTRA FILTER    ==========
     real(kind=8) :: next_time  ! Next time
-    real(kind=8) :: next_t_check  ! Next checkpoint time
     real(kind=8) :: next_t_filt  ! Next filter time
     real(kind=8) :: time_filt  ! Actual time of the filtering integration
-    integer(kind=4) :: next_checkpoint  ! Next checkpoint
-    real(kind=8) :: tmp_time  ! The time used to sync the filter
-    type(system_st) :: tmp_system  ! The system used to sync the filter
-    real(kind=8), dimension(:), allocatable :: tmp_y_arr  ! Coordinates array used to sync
+    real(kind=8) :: adaptive_timestep_filt  ! Adaptive timestep of the filtering integration
+    integer(kind=4) :: last_output  ! Last output checkpoint
+    integer(kind=4) :: next_output  ! Next output checkpoint
+    integer(kind=4) :: next_checkpoint  ! Next pure checkpoint
+    integer(kind=4) :: tmp_j  ! Temporal j checkpoint
+    type(sim_params_st) :: tmp_sim  ! Temporal simulation state
+    real(kind=8) :: tmp_time  ! Temporal time
+    real(kind=8) :: tmp_adaptive_timestep  ! Temporal time
+    type(system_st) :: tmp_system  ! Temporal system
+    integer(kind=4) :: tmp_y_nvalues  ! Temporal y nvalues
+    real(kind=8), dimension(:), allocatable :: tmp_y_arr  ! Temporal coordinates array
     
     
 
@@ -1778,8 +1785,6 @@ module parameters
             type(system_st), intent(in) :: syst_pre_filter
             type(system_st), intent(inout) :: syst_filtered
             real(kind=8), dimension(y_nvalues), intent(inout) :: el_filtered
-            type(moon_st) :: moon
-            type(particle_st):: particle
             real(kind=8) :: cos_th, sin_th
             real(kind=8) :: weigth, e_times_fil
             real(kind=8), dimension(:,:), allocatable :: cos_an, sin_an

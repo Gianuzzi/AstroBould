@@ -945,7 +945,7 @@ program main
     time = cero ! Tiempo actual
     timestep = checkpoint_times(1) ! Paso de tiempo inicial
 
-    ! Get minimum period
+    ! Get minimum period (already has units)
     sim%min_period = infinity
     if (system%asteroid%rotational_period > tini) sim%min_period = system%asteroid%rotational_period
     do i = 1, system%Nmoons_active
@@ -954,19 +954,18 @@ program main
     do i = 1, system%Nparticles_active
         sim%min_period = min(sim%min_period, get_Period(system%asteroid%mass, system%particles(i)%elements(1)))
     end do
-    adaptive_timestep = adaptive_timestep * unit_time
 
-    ! Set minumum timestep
+    ! Set minumum timestep  (already has units)
     if (sim%dt_min < cero) then
         sim%dt_min = sim%min_period * abs(sim%dt_min)
     else if (sim%dt_min > cero) then
         sim%dt_min = sim%dt_min * unit_time
-    else
-        sim%dt_min = tini  ! Heuristic
     end if
+    if (sim%dt_min < tini) sim%dt_min = sim%min_period * 1d-5  ! Heuristic
 
-    ! Set initial adaptive timestep
-    adaptive_timestep = min(sim%dt_min, sim%min_period * 1d-5)  ! Heuristic
+    ! Set initial adaptive and fixed timestep  (already has units)
+    adaptive_timestep = sim%dt_min
+    fixed_timestep = sim%dt_min
 
     !! Mensaje
     if (sim%use_screen) then
@@ -1205,7 +1204,8 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     ! SET INTEGRATOR
-    call init_integrator(0, size(y_arr), 2, 1, sim%dt_min, sim%error_tolerance, sim%learning_rate, .not. sim%use_adaptive)
+    call init_integrator(sim%integrator_ID, size(y_arr), 2, 1, sim%dt_min, sim%error_tolerance, sim%learning_rate, &
+                        & .not. sim%use_adaptive)
 
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1376,6 +1376,9 @@ program main
              & (checkpoint_times(last_idx_no_filter) .le. next_t_filt)) exit
         end do
 
+        ! Define last output done
+        last_output = 1  ! The initial condition
+
         ! -----------------------------------------------------------------------------
         ! --------> LOOP WITH NO FILTER, up to last checkpoint without filter <--------
         loop_pre_filter: do while (j .le. last_idx_no_filter)
@@ -1449,9 +1452,15 @@ program main
             
             ! Output and Update j; only if not premature
             if (.not. is_premature_exit) then
-                if (checkpoint_is_output(j)) call generate_output(system)
+                if (checkpoint_is_output(j) .and. (j > last_output)) then
+                    call generate_output(system)
+                    last_output = j
+                end if
                 j = j + 1
             end if
+
+            ! Reset adaptive if needed
+            if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
 
             ! Percentage output
             if (sim%use_percentage) call percentage(time, sim%final_time)
@@ -1533,6 +1542,9 @@ program main
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)
 
+            ! Reset adaptive if needed
+            if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
+
             ! Percentage output
             if (sim%use_percentage) call percentage(time, sim%final_time)            
 
@@ -1540,8 +1552,12 @@ program main
         ! -----------------------------------------------------------------------------
 
         ! SET TMP
+        tmp_j = j
+        tmp_sim = sim
         tmp_time = time
-        tmp_system = system
+        tmp_system = system        
+        tmp_y_nvalues = y_nvalues
+        tmp_adaptive_timestep = adaptive_timestep
         tmp_y_arr(:y_nvalues) = y_arr(:y_nvalues)
 
         ! -----------------------------------------------------------------------------
@@ -1554,10 +1570,11 @@ program main
         !  Third: Set the array and time to next filter first time.
 
         ! =======> FISRT STEP <==========
-        time_filt = tmp_time
+        time_filt = time
+        adaptive_timestep_filt = adaptive_timestep
 
         ! Get system and y_arr filtering
-        call copy_objects(tmp_system, system_filtered)  ! From system to filtered; but no chaos (only objects)
+        call copy_objects(system, system_filtered)  ! From system to filtered; but no chaos (only objects)
         y_pre_filter(:y_nvalues) = y_arr(:y_nvalues)
 
         !! Store it
@@ -1566,11 +1583,16 @@ program main
         ! Integrate and store filtered values
         do i = 2, filter%size
 
+            !! Reset adaptive timestep if needed
+            if (.not. sim%use_adaptive) adaptive_timestep_filt = fixed_timestep
+
             ! INTEGRATE (without check)
-            call integrate (time_filt, y_pre_filter(:y_nvalues), adaptive_timestep, dydt, filter%dt, y_arr_new(:y_nvalues))
+            call integrate (time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt, y_arr_new(:y_nvalues))
 
             !! Update time
             time_filt = time_filt + filter%dt
+
+            y_arr_new(1) = modulo(y_arr_new(1), twopi)  ! Modulate theta
 
             !! Store
             call store_to_filter(filter, time_filt, y_arr_new, y_nvalues, i)
@@ -1581,7 +1603,7 @@ program main
         end do
 
         ! Create filtered and do post-processing
-        call apply_filter(y_nvalues, tmp_system, system_filtered, elem_filtered(:y_nvalues))
+        call apply_filter(y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
         call update_system_from_elements(system_filtered, &
                                         & checkpoint_times(first_idx_yes_filter), &
                                         & elem_filtered, &
@@ -1665,9 +1687,15 @@ program main
             
             ! Output and Update j; only if not premature
             if (.not. is_premature_exit) then
-                if (checkpoint_is_output(j)) call generate_output(system)
+                if (checkpoint_is_output(j) .and. (j > last_output)) then
+                    call generate_output(system)
+                    last_output = j
+                end if
                 j = j + 1
             end if
+
+            ! Reset adaptive if needed
+            if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
 
             ! Percentage output
             if (sim%use_percentage) call percentage(time, sim%final_time)
@@ -1681,11 +1709,23 @@ program main
         ! If not needed, skip
         if (keep_integrating) then
 
-            ! Get next filter time and checkpoint
+            ! -- Find the next output checkpoint index --
+            next_output = j
             do i = j, sim%checkpoint_number
                 if (checkpoint_is_output(i)) then
+                    next_output = i
+                    exit
+                end if
+            end do
+
+            ! -- Compute the time at which filtering should start --
+            next_t_filt = checkpoint_times(next_output) - filter%half_width
+
+            ! -- Find the next checkpoint after that filtering time --
+            aux_int = next_checkpoint
+            do i = aux_int, next_output
+                if (checkpoint_times(i) > next_t_filt) then
                     next_checkpoint = i
-                    next_t_filt = checkpoint_times(i) - filter%half_width
                     exit
                 end if
             end do
@@ -1694,8 +1734,12 @@ program main
             if (time > next_t_filt) then
 
                 ! We reset the system up to the tmp values
-                system = tmp_system
+                j = tmp_j
+                sim = tmp_sim
                 time = tmp_time
+                system = tmp_system
+                y_nvalues = tmp_y_nvalues
+                adaptive_timestep = tmp_adaptive_timestep
                 y_arr(:y_nvalues)  = tmp_y_arr(:y_nvalues)
                 aux_int = unit_file  ! For coll/escp writing
             
@@ -1706,7 +1750,7 @@ program main
             
             !! Now we just need to integrate the normal system up to next filter time
 
-            !!! First, we go until next checkpoint - 1
+            !!! First, we go until last checkpoint before the filter time
             !!! No output here. At most, only extra checkpoints
             loop_until_next_checkpoint_minus_1: do while ((j < next_checkpoint) .and. keep_integrating)
             
@@ -1777,9 +1821,13 @@ program main
                 ! Update j; only if not premature
                 if (.not. is_premature_exit) j = j + 1
 
+                ! Reset adaptive if needed
+                if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
+
             end do loop_until_next_checkpoint_minus_1
 
             !!! Now, we integrate up to next_filter
+            next_time = next_t_filt
             loop_until_second_filter: do while (keep_integrating)
             
                 hard_exit = .False. ! Resetear HardExit 
@@ -1803,7 +1851,7 @@ program main
                 end if
                 
                 ! Update dt
-                timestep = next_t_filt - time
+                timestep = next_time - time
                 if (abs(timestep) < tini) exit loop_until_second_filter !! Manual CHECK
 
                 ! INTEGRATE
@@ -1851,6 +1899,9 @@ program main
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
 
+                ! Reset adaptive if needed
+                if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
+
                 ! Percentage output
                 if (sim%use_percentage) call percentage(time, sim%final_time)            
 
@@ -1864,8 +1915,12 @@ program main
         ! -----------------------------------------------------------------------------
 
         ! SET TMP
+        tmp_j = j
+        tmp_sim = sim
         tmp_time = time
         tmp_system = system
+        tmp_y_nvalues = y_nvalues
+        tmp_adaptive_timestep = adaptive_timestep
         tmp_y_arr(:y_nvalues) = y_arr(:y_nvalues)
 
         ! From now on, all following filtering methods are the same
@@ -1905,13 +1960,25 @@ program main
             end if
 
             ! =============> Integrate and store filtered values <=============
-            time_filt = tmp_time
-            y_pre_filter(:y_nvalues) = tmp_y_arr(:y_nvalues)
+            time_filt = time
+            adaptive_timestep_filt = adaptive_timestep
+
+            ! Get system and y_arr filtering
+            call copy_objects(system, system_filtered)  ! From system to filtered; but no chaos (only objects)
+            y_pre_filter(:y_nvalues) = y_arr(:y_nvalues)
+
+            !! Store it
             call store_to_filter(filter, time_filt, y_pre_filter, y_nvalues, 1)
+
+            ! Integrate and store filtered values
             do i = 2, filter%size  ! i = 2 bc i = 1 is where y_pre_filter already is
 
+                !! Reset adaptive timestep if needed
+                if (.not. sim%use_adaptive) adaptive_timestep_filt = fixed_timestep
+
                 !! INTEGRATE
-                call integrate (time_filt, y_pre_filter(:y_nvalues), adaptive_timestep, dydt, filter%dt, y_arr_new(:y_nvalues))  ! No checks here
+                call integrate (time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt,&
+                                &  y_arr_new(:y_nvalues))  ! No checks here
 
                 !! Update time
                 time_filt = time_filt + filter%dt
@@ -1925,9 +1992,9 @@ program main
             end do
 
             ! Create filtered
-            call apply_filter(y_nvalues, tmp_system, system_filtered, elem_filtered(:y_nvalues))
+            call apply_filter(y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
             call update_system_from_elements(system_filtered, &
-                                        & checkpoint_times(j), &
+                                        & checkpoint_times(next_output), &
                                         & elem_filtered, &
                                         & sim%use_baryc_output)
             ! Update Chaos (triggers update elements)
@@ -1935,11 +2002,10 @@ program main
             ! Filtered output
             call generate_output(system_filtered, .True.)
 
-
             ! =============> Get to Checkpoint j (with output) and process <=============
-
+            
             ! LOOP WITH NO FILTER
-            loop_until_checkp: do while ((j .le. next_checkpoint) .and. keep_integrating)
+            loop_until_checkp: do while ((j .le. next_output) .and. keep_integrating)
             
                 hard_exit = .False. ! Resetear HardExit 
                 is_premature_exit = .False. ! Resetear premature
@@ -2005,9 +2071,15 @@ program main
 
                 ! Update j and Output
                 if (.not. is_premature_exit) then
-                    if (checkpoint_is_output(j)) call generate_output(system)
+                    if (checkpoint_is_output(j) .and. (j > last_output)) then
+                        call generate_output(system)
+                        last_output = j
+                    end if
                     j = j + 1
                 end if
+
+                ! Reset adaptive if needed
+                if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
 
                 ! Percentage output
                 if (sim%use_percentage) call percentage(time, sim%final_time)
@@ -2020,21 +2092,36 @@ program main
             ! Check if next checkpoint exits
             if (j > sim%checkpoint_number) cycle  ! Will exit above
 
-            ! Get next filter time and checkpoint
+            ! -- Find the next output checkpoint index --
+            next_output = j
             do i = j, sim%checkpoint_number
                 if (checkpoint_is_output(i)) then
+                    next_output = i
+                    exit
+                end if
+            end do
+
+            ! -- Compute the time at which filtering should start --
+            next_t_filt = checkpoint_times(next_output) - filter%half_width
+
+            ! -- Find the next checkpoint after that filtering time --
+            aux_int = next_checkpoint
+            do i = aux_int, next_output
+                if (checkpoint_times(i) > next_t_filt) then
                     next_checkpoint = i
-                    next_t_filt = checkpoint_times(i) - filter%half_width
                     exit
                 end if
             end do
 
             !! In this case, then next filter time has already passed
             if (time > next_t_filt) then
-
                 ! We reset the system up to the tmp values
-                system = tmp_system
+                j = tmp_j
+                sim = tmp_sim
                 time = tmp_time
+                system = tmp_system
+                y_nvalues = tmp_y_nvalues
+                adaptive_timestep = tmp_adaptive_timestep
                 y_arr(:y_nvalues)  = tmp_y_arr(:y_nvalues)
                 aux_int = unit_file  ! For coll/escp writing
             
@@ -2109,9 +2196,13 @@ program main
                 ! Update j; only if not premature
                 if (.not. is_premature_exit) j = j + 1
 
+                ! Reset adaptive if needed
+                if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
+
             end do loop2_until_next_checkpoint_minus_1
 
             !!! Now, we integrate up to next_filter
+            next_time = next_t_filt
             loop2_until_second_filter: do while (keep_integrating)
             
                 hard_exit = .False. ! Resetear HardExit 
@@ -2127,7 +2218,7 @@ program main
                 end if
                 
                 ! Update dt
-                timestep = next_t_filt - time
+                timestep = next_time - time
                 if (abs(timestep) < tini) exit loop2_until_second_filter !! Manual EXIT
 
                 ! INTEGRATE
@@ -2175,6 +2266,9 @@ program main
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
 
+                ! Reset adaptive if needed
+                if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
+
                 ! Percentage output
                 if (sim%use_percentage) call percentage(time, sim%final_time)            
 
@@ -2184,8 +2278,12 @@ program main
             if (keep_integrating .and. sim%use_percentage) call percentage(time, sim%final_time)
 
             ! Update TMP
+            tmp_j = j
+            tmp_sim = sim
             tmp_time = time
             tmp_system = system
+            tmp_y_nvalues = y_nvalues
+            tmp_adaptive_timestep = adaptive_timestep
             tmp_y_arr(:y_nvalues) = y_arr(:y_nvalues)
         
         end do loop_filter
@@ -2237,7 +2335,7 @@ program main
             ! Check if it might be hard_exit
             if (hard_exit) then
                 !! If so, the dt used is in dt_adap
-                timestep = adaptive_timestep
+                timestep = adaptive_timestep                
 
                 !! Check if premature_exit: If exit at less than 1% of finishing timestep
                 if (timestep > cero) then
@@ -2305,6 +2403,8 @@ program main
                 call generate_arrays(system, m_arr, R_arr, y_arr)  ! Mandatory bc of new asteroid
             end if
 
+            ! Reset adaptive if needed
+            if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
 
             ! Update j; only if not premature
             if (.not. is_premature_exit) j = j + 1
