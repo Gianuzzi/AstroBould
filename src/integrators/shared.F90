@@ -24,6 +24,7 @@ module shared
     real(kind=8), parameter :: C1_840 = ONE/840.d0
     real(kind=8), parameter :: C2_3 = TWO/3.d0
     real(kind=8), parameter :: C2_5 = TWO/5.d0
+    real(kind=8), parameter :: C2_7 = TWO/7.d0
     real(kind=8), parameter :: C2_9 = TWO/9.d0
     real(kind=8), parameter :: C2_15 = TWO/15.d0
     real(kind=8), parameter :: C2_27 = TWO/27.d0
@@ -33,6 +34,8 @@ module shared
     real(kind=8), parameter :: C3_7 = THREE/7.d0
     real(kind=8), parameter :: C3_8 = 0.375d0
     real(kind=8), parameter :: C3_16 = THREE/16.d0
+    real(kind=8), parameter :: C4_3 = FOUR/THREE
+    real(kind=8), parameter :: C4_7 = FOUR/7.d0
     real(kind=8), parameter :: C4_15 = FOUR/15.d0
     real(kind=8), parameter :: C5_6 = FIVE/6.d0
     real(kind=8), parameter :: C5_12 = FIVE/12.d0
@@ -42,7 +45,10 @@ module shared
     real(kind=8), parameter :: C8_7 = 8.d0/7.d0
     real(kind=8), parameter :: C8_9 = 8.d0/9.d0
     real(kind=8), parameter :: C12_7 = 12.d0/7.d0
+    real(kind=8), parameter :: C12_90 = 12.d0/90.d0
     real(kind=8), parameter :: C16_45 = 16.d0/45.d0
+    real(kind=8), parameter :: C16_90 = 16.d0/90.d0
+    real(kind=8), parameter :: C32_90 = 32.d0/90.d0
     real(kind=8), parameter :: SQ3_6 = sqrt(3.d0)/6.d0
     real(kind=8), parameter :: SQ15_5 = sqrt(15.d0)/5.d0
     real(kind=8), parameter :: SQ15_15 = sqrt(15.d0)/15.d0

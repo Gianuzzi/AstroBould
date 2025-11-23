@@ -286,7 +286,7 @@ module runge_kutta
             implicit none
             integer(kind=4), intent(in) :: sizey
             real(kind=8), dimension(sizey),  intent(in) :: y
-            procedure(dydt_tem) :: dydt
+            procedure(dydt_tem) :: dydt 
             real(kind=8), intent(in) :: t, dt
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
@@ -712,17 +712,16 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
             
-            rk(1:sizey,2) = dydt(t + dt * C1_3, y + dt * C1_3 * deri)
-            rk(1:sizey,3) = dydt(t + dt * C1_3, y + dt * (deri + rk(1:sizey,2)) * C1_6)
-            rk(1:sizey,4) = dydt(t + dt * C1_2, y + dt * (deri * C1_8 + rk(1:sizey,3) * C3_8))
-            rk(1:sizey,5) = dydt(t + dt, y + dt * (deri * C1_2 - rk(1:sizey,3) * C3_2 + rk(1:sizey,4) * TWO))
-            rk(1:sizey,6) = dydt(t + dt * C2_3, y + dt * (- deri * C3_7 + rk(1:sizey,3) * C8_7 + rk(1:sizey,4) * C6_7 - &
-                                                        & rk(1:sizey,5) * C12_7))
-            rk(1:sizey,7) = dydt(t + dt, y + dt * (deri * C7_90 + rk(1:sizey,3) * C16_45 + rk(1:sizey,4) * C2_15 + &
-                                                        & rk(1:sizey,5) * (C16_45) + rk(1:sizey,6) * (C7_90)))
+            rk(1:sizey,2) = dydt(t + dt * C1_4, y + dt * C1_4 * deri)
+            rk(1:sizey,3) = dydt(t + dt * C1_4, y + dt * C1_8 * (deri + rk(1:sizey,2)))
+            rk(1:sizey,4) = dydt(t + dt * C1_2, y + dt * (- C5_6 * rk(1:sizey,2) + C4_3 * rk(1:sizey,3)))
+            rk(1:sizey,5) = dydt(t + dt * C3_4, y + dt * (C1_8 * (deri + rk(1:sizey,2)) + C1_2 * rk(1:sizey,4)))
+            rk(1:sizey,6) = dydt(t + dt * C3_4, y + dt * (C3_8 * rk(1:sizey,2) + C1_4 * (rk(1:sizey,3) + rk(1:sizey,5)) - &
+                                                    & C1_8 * rk(1:sizey,4)))
+            rk(1:sizey,7) = dydt(t + dt, y + dt * (C1_7 * deri - C2_7 * rk(1:sizey,2) + C4_7 * (rk(1:sizey,3) + rk(1:sizey,6))))
 
-            ynew = y + dt * (deri * C7_90 + rk(1:sizey,3) * C16_45 + rk(1:sizey,4) * C2_15 + &
-                                                        & rk(1:sizey,5) * C16_45 + rk(1:sizey,6) * C7_90)
+            ynew = y + dt * (C7_90 * (deri + rk(1:sizey,7)) + C32_90 * rk(1:sizey,3) + C12_90 * rk(1:sizey,4) + &
+                                                    & C16_90 * (rk(1:sizey,5) + rk(1:sizey,6)))
                             
         end subroutine Runge_Kutta6
 
