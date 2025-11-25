@@ -67,7 +67,7 @@ module bstoer
             integer(kind=4), save :: kmax, kopt
             real(kind=8), dimension(8, 8), save :: alf
             real(kind=8), dimension(8) :: err
-            real(kind=8), dimension(9), save :: arr ! a in NR F90
+            integer(kind=4), dimension(9), save :: arr ! a in NR F90
             real(kind=8), save :: xnew, epsold = -1.d0
             real(kind=8) :: eps1, errmax, fact, h, red, scala, wrkmin, xest
             logical :: reduct
@@ -118,7 +118,7 @@ module bstoer
                     end if
                     call mmid (sizey, ysav(:sizey), der(:sizey), x, h, nseq(k), yseq(:sizey), dydt)
                     yscal(:sizey) = abs (y) + abs (h * der(:sizey)) + SAFE_LOW
-                    xest = (h / nseq(k))**2 ! Squared, since error series is even.
+                    xest = (h / dble(nseq(k)))**2 ! Squared, since error series is even.
                     call pzextr (sizey, k, xest, yseq(:sizey), y, yerr(:sizey), qcolpz(1:sizey, :), xpz) ! Perform extrapolation.
                     if (k /= 1) then ! Compute normalized error estimate eps(k).
                         errmax = tini
@@ -259,10 +259,10 @@ module bstoer
             real(kind=8), dimension(size (y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun
             
-            integer(kind=4), save :: sizey
+            integer(kind=4) :: sizey
             real(kind=8) :: time, t_end, dt_try, dt_used
             logical :: keep = .True.
-            logical, save :: has_check = .False.
+            logical :: has_check = .False.
 
             sizey = size (y)
             has_check = present(check_fun)

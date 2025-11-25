@@ -340,8 +340,8 @@ module derivates
                 ! First we do only boulder 0 (primary) for possible J2
 
                 !! Get boulder coords
-                boulders_coords(0,1) = boulders_data(0,4) * cos(theta + boulders_data(0,3))  ! y
-                boulders_coords(0,2) = boulders_data(0,4) * sin(theta + boulders_data(0,3))  ! x
+                boulders_coords(0,1) = boulders_data(0,4) * cos(theta + boulders_data(0,3))  ! x
+                boulders_coords(0,2) = boulders_data(0,4) * sin(theta + boulders_data(0,3))  ! y
                 boulders_coords(0,3) = -omega * boulders_coords(0,2)  ! vx
                 boulders_coords(0,4) = omega * boulders_coords(0,1)  ! vy
 
@@ -410,8 +410,8 @@ module derivates
                 do i = 1, sim%Nboulders  
 
                     !! Get boulder coords
-                    boulders_coords(i,1) = boulders_data(i,4) * cos(theta + boulders_data(i,3))  ! y
-                    boulders_coords(i,2) = boulders_data(i,4) * sin(theta + boulders_data(i,3))  ! x
+                    boulders_coords(i,1) = boulders_data(i,4) * cos(theta + boulders_data(i,3))  ! x
+                    boulders_coords(i,2) = boulders_data(i,4) * sin(theta + boulders_data(i,3))  ! y
                     boulders_coords(i,3) = -omega * boulders_coords(i,2)  ! vx
                     boulders_coords(i,4) = omega * boulders_coords(i,1)  ! vy
 
