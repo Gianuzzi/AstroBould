@@ -449,24 +449,6 @@ module bodies
                 self%radius = self%primary%semi_axis(1)  ! a
             end if
 
-            ! Set Rotations
-            self%theta = cero  ! Initial angle with X axis
-            self%omega_kep = sqrt(G * self%mass / self%primary%radius**3) ! Keplerian mean motion boulders would have
-            if (abs(lambda_kep) > tini) then    
-                self%lambda_kep = lambda_kep
-                self%omega = self%omega_kep * self%lambda_kep  ! Angular velocity of primary
-                self%rotational_period = twopi / abs(self%omega) ! Rotational period of primary
-            else if (abs(rotational_period) > tini) then
-                self%rotational_period = abs(rotational_period)
-                self%omega = (twopi / rotational_period) ! Angular velocity of primary
-                self%lambda_kep = self%omega / self%omega_kep ! Ratio of omegas
-            else  ! No rotation at all
-                self%rotational_period = cero
-                self%omega = cero ! Angular velocity of primary
-                self%lambda_kep = cero ! Ratio of omegas
-            end if
-            self%a_corotation = get_a_corot(self%mass, self%omega)
-
             ! Set Inertia
             !! Iz of Ellipsoid, or sphere if equal
             self%inertia = 0.2d0 * self%primary%mass * (self%primary%semi_axis(1)**2 + self%primary%semi_axis(2)**2)  
@@ -1892,7 +1874,6 @@ module bodies
 
             ! Check if merge
             !! Merge if bounded or eta = 1
-            ! print*, Ekin, Epot, Ekin + Epot, dv2, vesc2, dv2 - vesc2
             if (((Ekin + Epot < - self%f_col * abs(Epot)) .and. (dv2 < vesc2 * (uno - self%f_col))) .or. &
                 & (self%eta_col .ge. uno)) then
                 
