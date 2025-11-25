@@ -58,7 +58,7 @@ Symplecticity applies only for constant timestep.
 | -29    | Abbas6                             | 6                               |
 | -28    | RK6                                | 6                               |
 | -27    | Gauss–Legendre6 (Implicit)         | 6                               |
-| -26    | RK5                                | 5                               |
+| -26    | Nyström5                           | 5                               |
 | -25    | RK_four_oct4                       | 4                               |
 | -24    | Gauss–Legendre4 (Implicit)         | 4                               |
 | -23    | RK4                                | 4                               |

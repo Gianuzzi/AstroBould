@@ -191,7 +191,7 @@ module runge_kutta
                 N_STAGES = 4
 
             else if (which == 23) then
-                runge_kutta_ptr => Runge_Kutta5
+                runge_kutta_ptr => Nystrom5
                 OSOL = 5
                 N_STAGES = 6
 
@@ -642,7 +642,7 @@ module runge_kutta
 
         end subroutine Runge_Kutta_four_oct4
 
-        subroutine Runge_Kutta5 (sizey, y, dydt, t, dt, deri, ynew)
+        subroutine Nystrom5 (sizey, y, dydt, t, dt, deri, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
             real(kind=8), dimension(sizey),  intent(in) :: y
@@ -651,16 +651,17 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
             
-            rk(1:sizey,2) = dydt (t + dt * C1_4, y + dt * deri * C1_4)
-            rk(1:sizey,3) = dydt (t + dt * C1_4, y + dt * (deri + rk(1:sizey,2)) * C1_8)
-            rk(1:sizey,4) = dydt (t + dt * C1_2, y + dt * (- rk(1:sizey,2) * C1_2 + rk(1:sizey,3)))
-            rk(1:sizey,5) = dydt (t + dt * C3_4, y + dt * (deri + rk(1:sizey,4) * THREE) * C3_16)
-            rk(1:sizey,6) = dydt (t + dt, y + dt * (- deri * THREE + rk(1:sizey,2) * TWO + (rk(1:sizey,3) - &
-                                                    & rk(1:sizey,4)) * 12.d0 + rk(1:sizey,5) * 8.d0) * C1_7)
+            rk(1:sizey,2) = dydt (t + dt * C1_3, y + dt * C1_3 * deri)
+            rk(1:sizey,3) = dydt (t + dt * C2_5, y + dt * C1_25 * (FOUR * deri + 6.d0 * rk(1:sizey,2)))
+            rk(1:sizey,4) = dydt (t + dt, y + dt * (C1_4 * deri - THREE * rk(1:sizey,2) + C15_4 * rk(1:sizey,3)))
+            rk(1:sizey,5) = dydt (t + dt * C2_3, y + dt * C1_9 * (C2_3 * deri + 10.d0 * rk(1:sizey,2) + &
+                                                & C1_9 * (-50.d0 * rk(1:sizey,3) + 8.d0 * rk(1:sizey,4))))
+            rk(1:sizey,6) = dydt (t + dt * C4_5, y + dt * (C1_25 * (TWO * deri + 12.d0 * rk(1:sizey,2)) + C2_15 * rk(1:sizey,3) + &
+                                                & C8_75 * rk(1:sizey,4)))
         
-            ynew = y + dt * ((deri + rk(1:sizey,6)) * 7.d0 + (rk(1:sizey,3) + rk(1:sizey,5)) * 32.d0 + rk(1:sizey,4) * 12.d0)/90.d0
+            ynew = y + dt * C1_192 * (23.d0 * deri + 125.d0 * (rk(1:sizey,3) + rk(1:sizey,6)) - 81.d0 * rk(1:sizey,5))
 
-        end subroutine Runge_Kutta5
+        end subroutine Nystrom5
 
         subroutine Gauss_Legendre6 (sizey, y, dydt, t, dt, deri, ynew) ! Implicit
             implicit none
