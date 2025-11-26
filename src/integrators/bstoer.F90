@@ -56,10 +56,10 @@ module bstoer
             integer(kind=4), intent(in) :: sizey
             real(kind=8), dimension(sizey), intent(inout) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(inout) :: x
+            real(kind=8), intent(in) :: x
             real(kind=8), intent(in) :: htry
             real(kind=8), intent(out) :: hdid, hnext
-
+            
             real(kind=8), parameter :: safe1 = .25d0, safe2 = .7d0
             real(kind=8), parameter :: redmax = 1.d-5, redmin = .7d0
             real(kind=8), parameter :: tini = 1.d-30, scalmx = .1d0
@@ -154,7 +154,7 @@ module bstoer
                 h = h * red
                 reduct = .True.
             end do main_loop
-            x = xnew
+            ! x = xnew  !! x now is intent(in)
             hdid = h
             first = .False.
             wrkmin = 1.d35
