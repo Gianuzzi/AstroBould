@@ -17,9 +17,9 @@ program main
     character(1) :: aux_character1
     character(20) :: aux_character20
     logical :: aux_logical
-    real(kind=8) :: aux_real
-    real(kind=8), dimension(:), allocatable :: aux_1D
-    real(kind=8), dimension(:,:), allocatable :: aux_2D  ! To read files
+    real(wp) :: aux_real
+    real(wp), dimension(:), allocatable :: aux_1D
+    real(wp), dimension(:,:), allocatable :: aux_2D  ! To read files
 
     integer(kind=4) :: i, j  ! Loops
     integer(kind=4) :: new_Nactive = 0  ! When escapes/collisions occur
@@ -41,7 +41,7 @@ program main
 
         !! Central Asteroid
         !!! Primary mass
-        input%mass_primary = 6.3d18 ! Masa del cuerpo 0 [kg] ! -x =>  mAst = x
+        input%mass_primary = 6.3e18_wp ! Masa del cuerpo 0 [kg] ! -x =>  mAst = x
 
         !!! Primary shape
 
@@ -52,11 +52,11 @@ program main
         input%triax_c_primary = cero  ! Semieje c
 
         !!!! Explicit primary radius
-        input%radius_primary = 129.d0 ! Radio del cuerpo 0 [km]
+        input%radius_primary = 129.e0_wp ! Radio del cuerpo 0 [km]
 
         !!! Rotation
-        input%asteroid_rotational_period = 7.004d0/24.d0  ! Periodo de rotación [day]
-        !lambda_kep = 0.471d0      ! Cociente omega/wk
+        input%asteroid_rotational_period = 7.004e0_wp/24.e0_wp  ! Periodo de rotación [day]
+        !lambda_kep = 0.471e0_wp      ! Cociente omega/wk
 
         !! Boulders        
         input%Nboulders = 1 ! Número de boulders
@@ -64,9 +64,9 @@ program main
         if (input%Nboulders > 0) then  ! Specify boulders properties
             call allocate_params_asteroid(input%Nboulders)!! Alocatamos (No tocar)
 
-            boulders_in(1,1) = 1.d-1   ! Cociente de masas entre boulder 1 y primary
+            boulders_in(1,1) = 1.e-1_wp   ! Cociente de masas entre boulder 1 y primary
             boulders_in(1,2) = cero    ! Ángulo de fase del boulder 1 [deg]
-            boulders_in(1,3) = 2.5d0   ! Radio del boulder 1 [km]       
+            boulders_in(1,3) = 2.5e0_wp   ! Radio del boulder 1 [km]       
 
         end if
 
@@ -76,12 +76,12 @@ program main
         if (input%Nmoons > 0) then  ! Specify moons properties
             call allocate_params_moons(input%Nmoons)!! Alocatamos (No tocar)
 
-            moons_in(1,1) = 1.d-6   ! Cociente de masas entre luna 1 y asteroide
+            moons_in(1,1) = 1.e-6_wp   ! Cociente de masas entre luna 1 y asteroide
             moons_in(1,2) = cero    ! Semieje [km]
             moons_in(1,3) = cero    ! Eccentricidad
             moons_in(1,4) = cero    ! M [deg]
             moons_in(1,5) = cero    ! w [deg]
-            moons_in(1,6) = 11.1d0  ! MMR
+            moons_in(1,6) = 11.1e0_wp  ! MMR
             moons_in(1,7) = cero    ! radius [km]
 
         end if
@@ -96,15 +96,15 @@ program main
             particles_in(1,2) = cero   ! Eccentricidad
             particles_in(1,3) = cero   ! M [deg]
             particles_in(1,4) = cero   ! w [deg]
-            particles_in(1,5) = 8.1d0  ! MMR
+            particles_in(1,5) = 8.1e0_wp  ! MMR
             
         end if
 
         ! Interactions
 
         !! Collision y escapes
-        input%min_distance = -1.5d0    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
-        input%max_distance = -1.d2     ! Max distance before escape [km] ! -x => R0 * x
+        input%min_distance = -1.5e0_wp    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
+        input%max_distance = -1.e2_wp     ! Max distance before escape [km] ! -x => R0 * x
 
         !! Merges
         input%use_merge_part_mass = .True. ! Merge particles into asteroid
@@ -127,7 +127,7 @@ program main
         !! Stokes
         input%use_stokes = .False.
         input%stokes_a_damping_time = infinity                           ! [day]
-        input%stokes_e_damping_time = input%stokes_a_damping_time / 1.d2 ! [day]
+        input%stokes_e_damping_time = input%stokes_a_damping_time / 1.e2_wp ! [day]
         input%stokes_active_time = cero                                  ! [day] Tiempo que actúa stokes
 
         !! Naive-Stokes (drag)
@@ -150,7 +150,7 @@ program main
         input%integrator_ID = 0        ! Integrator to use. (0 = BS; see src/integrators/README.md)
 
         !! Times
-        input%final_time = 2.d3        ! Final time [day]
+        input%final_time = 2.e3_wp        ! Final time [day]
         input%case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
         input%output_timestep = cero   ! Output timestep [day] (used if case_output_type != 1)
         input%output_number = 100      ! Number of outputs (if output_timestep = 0)
@@ -158,8 +158,8 @@ program main
 
         !! Error and Tiemstepping
         input%use_adaptive = .True.    ! Whether to use an adaptive timestepping method
-        input%dt_min = -1.d-2          ! Minimum dt to use. (if negative, |dt| * min_period)
-        input%learning_rate = 0.85d0   ! [For adaptive step integrators] Learning rate
+        input%dt_min = -1.e-2_wp          ! Minimum dt to use. (if negative, |dt| * min_period)
+        input%learning_rate = 0.85e0_wp   ! [For adaptive step integrators] Learning rate
         input%error_digits = 12        ! [For adaptive step integrators] Digits for relative error
 
         ! Map
@@ -167,10 +167,10 @@ program main
         input%mapfile = ""
         input%map_grid_size_x = 500
         input%map_grid_size_y = 500
-        input%map_min_x = -500.d0
-        input%map_max_x = 500.d0
-        input%map_min_y = -500.d0
-        input%map_max_y = 500.d0
+        input%map_min_x = -500.e0_wp
+        input%map_max_x = 500.e0_wp
+        input%map_min_y = -500.e0_wp
+        input%map_max_y = 500.e0_wp
 
         ! Output: "" or "no", if not used
         input%datafile = ""
@@ -961,7 +961,7 @@ program main
     else if (sim%dt_min > cero) then
         sim%dt_min = sim%dt_min * unit_time
     end if
-    if (sim%dt_min < tini) sim%dt_min = sim%min_period * 1d-5  ! Heuristic
+    if (sim%dt_min < tini) sim%dt_min = sim%min_period * 1e-5_wp  ! Heuristic
 
     ! Set initial adaptive and fixed timestep  (already has units)
     adaptive_timestep = sim%dt_min
@@ -1171,7 +1171,7 @@ program main
 
     !!!! Final message
     if (sim%use_screen) then
-        if (sim%error_tolerance <= 1.d-16) write(*,*) " WARNING: e_tol might be too low (<= 10⁻¹⁶)"
+        if (sim%error_tolerance <= 1.e-16_wp) write(*,*) " WARNING: e_tol might be too low (<= 10⁻¹⁶)"
         write(*,*) ACHAR(5)
         write(*,*) "FINAL CKECHS OK"
         write(*,*) ACHAR(5)
@@ -1418,7 +1418,7 @@ program main
 
                 !! Check if premature_exit: If exit at less than 1% of finishing timestep
                 if (timestep > cero) then
-                    is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01d0
+                    is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01e0_wp
                 else  ! Weird case of timestep 0
                     is_premature_exit = next_time - time < tini
                 end if
@@ -1507,7 +1507,7 @@ program main
 
                 !! Check if premature_exit: If exit at less than 1% of finishing timestep
                 if (timestep > cero) then
-                    is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01d0
+                    is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01e0_wp
                 else  ! Weird case of timestep 0
                     is_premature_exit = next_time - time < tini
                 end if
@@ -1653,7 +1653,7 @@ program main
 
                 !! Check if premature_exit: If exit at less than 1% of finishing timestep
                 if (timestep > cero) then
-                    is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01d0
+                    is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01e0_wp
                 else  ! Weird case of timestep 0
                     is_premature_exit = next_time - time < tini
                 end if
@@ -1787,7 +1787,7 @@ program main
 
                     !! Check if premature_exit: If exit at less than 1% of finishing timestep
                     if (timestep > cero) then
-                        is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01d0
+                        is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01e0_wp
                     else
                         is_premature_exit = checkpoint_times(j) - time < tini
                     end if
@@ -1864,7 +1864,7 @@ program main
 
                     !! Check if premature_exit: If exit at less than 1% of finishing timestep
                     if (timestep > cero) then
-                        is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01d0
+                        is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
                         is_premature_exit = next_time - time < tini
                     end if
@@ -2037,7 +2037,7 @@ program main
 
                     !! Check if premature_exit: If exit at less than 1% of finishing timestep
                     if (timestep > cero) then
-                        is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01d0
+                        is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01e0_wp
                     else
                         is_premature_exit = checkpoint_times(j) - time < tini
                     end if
@@ -2162,7 +2162,7 @@ program main
 
                     !! Check if premature_exit: If exit at less than 1% of finishing timestep
                     if (timestep > cero) then
-                        is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01d0
+                        is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01e0_wp
                     else
                         is_premature_exit = checkpoint_times(j) - time < tini
                     end if
@@ -2231,7 +2231,7 @@ program main
 
                     !! Check if premature_exit: If exit at less than 1% of finishing timestep
                     if (timestep > cero) then
-                        is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01d0
+                        is_premature_exit = (next_time - (time + timestep)) / timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
                         is_premature_exit = next_time - time < tini
                     end if
@@ -2339,7 +2339,7 @@ program main
 
                 !! Check if premature_exit: If exit at less than 1% of finishing timestep
                 if (timestep > cero) then
-                    is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01d0
+                    is_premature_exit = (checkpoint_times(j) - (time + timestep)) / timestep > 0.01e0_wp
                 else
                     is_premature_exit = checkpoint_times(j) - time < tini
                 end if
@@ -2598,15 +2598,15 @@ program main
 end program main
 
 subroutine create_map(sim, system)
-    use constants, only: cero
+    use constants, only: wp, cero
     use bodies, only: system_st, get_acc_and_pot_xy
     use parameters, only: sim_params_st
     implicit none
     type(sim_params_st), intent(in) :: sim
     type(system_st), intent(in) :: system
-    real(kind=8), dimension(:,:), allocatable :: pot
-    real(kind=8), dimension(:,:,:), allocatable :: acc
-    real(kind=8) :: dx_nx, dy_ny, rb(2)
+    real(wp), dimension(:,:), allocatable :: pot
+    real(wp), dimension(:,:,:), allocatable :: acc
+    real(wp) :: dx_nx, dy_ny, rb(2)
     integer(kind=4) :: i, j
 
     !!! Check

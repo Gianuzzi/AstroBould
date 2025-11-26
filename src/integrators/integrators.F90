@@ -16,15 +16,16 @@ module integrators
     abstract interface
 
         subroutine integrator_caller (t, y, dt_adap, dydt, dt, ynew, check_fun)
+            import :: wp
             import :: dydt_tem
             import :: function_check_keep_tem
             implicit none
-            real(kind=8), intent(in) :: t
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), intent(inout) :: dt_adap  ! This is each sub-step
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), intent(inout) :: dt_adap  ! This is each sub-step
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: dt ! This is full step
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(wp), intent(in) :: dt ! This is full step
+            real(wp), dimension(size (y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun
         end subroutine integrator_caller
 
@@ -36,7 +37,7 @@ module integrators
             subroutine init_integrator (integrator, sizey, n_dimensions, n_extra, min_dt, err_tol, learning_beta, fix_dt, standard)
                 implicit none
                 integer(kind=4), intent(in) :: integrator, sizey, n_dimensions, n_extra
-                real(kind=8), intent(in) :: min_dt, err_tol, learning_beta
+                real(wp), intent(in) :: min_dt, err_tol, learning_beta
                 logical, intent(in) :: fix_dt
                 logical, intent(in), optional :: standard
                 logical :: is_std = .False.

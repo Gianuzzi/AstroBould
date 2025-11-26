@@ -6,11 +6,11 @@ module bstoer2
     public :: init_BS2, free_BS2, BStoer2_caller
 
     ! Workspace arrays
-    real(kind=8), allocatable :: y0(:), der0(:)
-    real(kind=8), allocatable :: arr_scal(:) 
-    real(kind=8), allocatable :: yaux(:), deraux(:)
-    real(kind=8), allocatable :: yend(:)
-    real(kind=8), allocatable :: dy(:,:)
+    real(wp), allocatable :: y0(:), der0(:)
+    real(wp), allocatable :: arr_scal(:) 
+    real(wp), allocatable :: yaux(:), deraux(:)
+    real(wp), allocatable :: yend(:)
+    real(wp), allocatable :: dy(:,:)
 
     ! Constants
     integer(kind=4), parameter :: MAX_N_ITER = 350
@@ -22,13 +22,14 @@ module bstoer2
     abstract interface
 
         subroutine bstep_tem (sizey, y, dydt, t, htry, hdid, hnext)
+            import :: wp
             import :: dydt_tem
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(inout) :: y
+            real(wp), dimension(sizey), intent(inout) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, htry
-            real(kind=8), intent(out) :: hdid, hnext
+            real(wp), intent(in) :: t, htry
+            real(wp), intent(out) :: hdid, hnext
         end subroutine bstep_tem
     
     end interface
@@ -98,21 +99,21 @@ module bstoer2
         subroutine bstep(sizey, y, dydt, t, htry, hdid, hnext)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(inout) :: y
+            real(wp), dimension(sizey), intent(inout) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, htry
-            real(kind=8), intent(out) :: hdid, hnext
+            real(wp), intent(in) :: t, htry
+            real(wp), intent(out) :: hdid, hnext
 
-            real(kind=8), parameter :: SHRINK = 0.55d0
-            real(kind=8), parameter :: GROW   = 1.3d0
+            real(wp), parameter :: SHRINK = 0.55e0_wp
+            real(wp), parameter :: GROW   = 1.3e0_wp
 
             integer(kind=4) :: n_x
             integer(kind=4) :: auxi
             integer(kind=4) :: i, j, j1, k, ns, ndo, dim_idx
-            real(kind=8) :: tmp0, tmp1, tmp2
-            real(kind=8) :: errmax
-            real(kind=8) :: h, hx2, h2(8)
-            real(kind=8) :: dt, tt
+            real(wp) :: tmp0, tmp1, tmp2
+            real(wp) :: errmax
+            real(wp) :: h, hx2, h2(8)
+            real(wp) :: dt, tt
 
             ! NX2 - number of NDIM objects
             n_x = int((sizey - EXTRA2) / NDIM2, 4)
@@ -155,8 +156,8 @@ module bstoer2
 
                 ! For each value of NS, do a modified-midpoint integration with 2N substeps
                 do ns = 1, 8
-                    h = dt * C1_2 / dble(ns)
-                    h2(ns) = C1_4 / (ns * dble(ns))
+                    h = dt * C1_2 / real(ns, kind=wp)
+                    h2(ns) = C1_4 / (ns * real(ns, kind=wp))
                     hx2 = h * TWO
                     
                     ! Initialize yaux for modified midpoint method
@@ -347,22 +348,22 @@ module bstoer2
         subroutine bstep_std (sizey, y, dydt, t, htry, hdid, hnext)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(inout) :: y
+            real(wp), dimension(sizey), intent(inout) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, htry
-            real(kind=8), intent(out) :: hdid, hnext
+            real(wp), intent(in) :: t, htry
+            real(wp), intent(out) :: hdid, hnext
 
-            real(kind=8), parameter :: SHRINK = 0.55d0
-            real(kind=8), parameter :: GROW   = 1.3d0
+            real(wp), parameter :: SHRINK = 0.55e0_wp
+            real(wp), parameter :: GROW   = 1.3e0_wp
 
             integer(kind=4) :: n_x
             integer(kind=4) :: auxi
             integer(kind=4) :: idim2
             integer(kind=4) :: i, j, j1, k, ns, ndo
-            real(kind=8) :: tmp0, tmp1, tmp2
-            real(kind=8) :: errmax
-            real(kind=8) :: h, hx2, h2(8)
-            real(kind=8) :: dt, tt
+            real(wp) :: tmp0, tmp1, tmp2
+            real(wp) :: errmax
+            real(wp) :: h, hx2, h2(8)
+            real(wp) :: dt, tt
 
             ! NX2
             n_x = int((sizey - EXTRA2) / NDIM2, 4)
@@ -398,8 +399,8 @@ module bstoer2
 
                 ! For each value of NS, do a modified-midpoint integration with 2N substeps
                 do ns = 1, 8
-                    h = dt * C1_2 / dble(ns)
-                    h2(ns) = C1_4 / (ns * dble(ns))
+                    h = dt * C1_2 / real(ns, kind=wp)
+                    h2(ns) = C1_4 / (ns * real(ns, kind=wp))
                     hx2 = h * TWO
                     do i = 1, sizey, 2
                         yaux(i) = y0(i) + h * y0(i+1)
@@ -514,16 +515,16 @@ module bstoer2
         
         subroutine BStoer2_caller (t, y, dt_adap, dydt, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in) :: t
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), intent(inout) :: dt_adap  ! This try and also next try
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), intent(inout) :: dt_adap  ! This try and also next try
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: dt
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(wp), intent(in) :: dt
+            real(wp), dimension(size (y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun
             
             integer(kind=4) :: sizey
-            real(kind=8) :: time, t_end, dt_try, dt_used
+            real(wp) :: time, t_end, dt_try, dt_used
             logical :: keep = .True.
             logical :: has_check = .False.
 

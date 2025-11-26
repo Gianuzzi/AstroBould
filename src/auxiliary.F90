@@ -1,5 +1,6 @@
 !> Module with array, string, ordering, ... routines.
 module auxiliary
+    use constants, only: wp
     
     implicit none
     
@@ -44,14 +45,14 @@ module auxiliary
         ! Get indices to order a real array
         pure recursive subroutine quickargsort(a, b, first, last)
             implicit none
-            real(kind=8), intent(in) :: a(:)          ! Input array (not modified)
+            real(wp), intent(in) :: a(:)          ! Input array (not modified)
             integer(kind=4), intent(inout) :: b(size(a))    ! Indices array to be sorted
             integer(kind=4), intent(in) :: first, last
-            real(kind=8) :: pivot
+            real(wp) :: pivot
             integer(kind=4) :: i, j, temp
 
             ! Pivot selection
-            pivot = a(b(floor((first + last) * 0.5d0)))
+            pivot = a(b(floor((first + last) * 0.5e0_wp)))
             i = first
             j = last
             do
@@ -87,7 +88,7 @@ module auxiliary
             integer(kind=4) :: i, j, temp
 
             ! Pivot selection
-            pivot = a(b(floor((first + last) * 0.5d0)))
+            pivot = a(b(floor((first + last) * 0.5e0_wp)))
             i = first
             j = last
             do
@@ -116,10 +117,10 @@ module auxiliary
         ! Order a real array
         pure subroutine quicksort(a, first, last)
             implicit none
-            real(kind=8), intent(inout) :: a(:)          ! Input array
+            real(wp), intent(inout) :: a(:)          ! Input array
             integer(kind=4), intent(in) :: first, last   ! First and last indices
             integer(kind=4), allocatable :: b(:)         ! Indices of array to be sorted
-            real(kind=8), allocatable :: a_copy(:)       ! Temporary copy of the array
+            real(wp), allocatable :: a_copy(:)       ! Temporary copy of the array
             integer(kind=4) :: n_sort, i
             
             ! Total amount of values to sort
@@ -179,10 +180,10 @@ module auxiliary
         
         ! Reorder a real array from given order
         pure subroutine reorder(array, order, n)
-            real(kind=8), dimension(:), intent(inout) :: array
+            real(wp), dimension(:), intent(inout) :: array
             integer(kind=4), dimension(:), intent(in) :: order
             integer(kind=4), intent(in) :: n
-            real(kind=8), dimension(n) :: tmp
+            real(wp), dimension(n) :: tmp
             integer(kind=4) :: i
 
             ! Loop and reorder
@@ -209,10 +210,10 @@ module auxiliary
 
         ! Reorder a 2D real array from given order, along 1st axis
         pure subroutine reorder2D(array, order, n)
-            real(kind=8), dimension(:,:), intent(inout) :: array
+            real(wp), dimension(:,:), intent(inout) :: array
             integer(kind=4), dimension(:), intent(in) :: order
             integer(kind=4), intent(in) :: n
-            real(kind=8), dimension(n, size(array, 2)) :: tmp
+            real(wp), dimension(n, size(array, 2)) :: tmp
             integer(kind=4) :: i
         
             ! Loop and reorder the first axis based on the order array
@@ -227,18 +228,18 @@ module auxiliary
         ! Combine, order, and remove duplicated values between 2 real arrays
         pure subroutine merge_sort_and_unique(a, b, ina, inb, c, kfin)
             implicit none
-            real(kind=8), dimension(:), intent(in) :: a, b ! Arreglos de reales
+            real(wp), dimension(:), intent(in) :: a, b ! Arreglos de reales
             logical, dimension(:), allocatable, intent(out) :: ina, inb ! Booleanos de elementos en a y b
-            real(kind=8), dimension(:), allocatable, intent(out) :: c ! Arreglo combinado
+            real(wp), dimension(:), allocatable, intent(out) :: c ! Arreglo combinado
             integer(kind=4), intent(out) :: kfin ! Número de elementos en c
             logical, dimension(:), allocatable :: ina0, inb0
-            real(kind=8), dimension(:), allocatable :: c0
+            real(wp), dimension(:), allocatable :: c0
             integer(kind=4) :: i, j, k
 
             allocate (c0(size(a)+size(b)))
             allocate (ina0(size(c0)))
             allocate (inb0(size(c0)))
-            c0 = 0.d0
+            c0 = 0.e0_wp
             ina0 = .False.
             inb0 = .False.
             i = 1
@@ -289,8 +290,8 @@ module auxiliary
         ! Calculate z component of 2D cross product
         pure function cross2D_z(a, b) result(res)
             implicit none
-            real(kind=8), dimension(2), intent(in) :: a, b
-            real(kind=8) :: res
+            real(wp), dimension(2), intent(in) :: a, b
+            real(wp) :: res
 
             res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
         end function cross2D_z
@@ -298,8 +299,8 @@ module auxiliary
         ! Calculate z component of 3D cross product
         pure function cross3D_z(a, b) result(res)
             implicit none
-            real(kind=8), dimension(3), intent(in) :: a, b
-            real(kind=8) :: res
+            real(wp), dimension(3), intent(in) :: a, b
+            real(wp) :: res
 
             res = a(1) * b(2) - a(2) * b(1) ! Solo la componente z
         end function cross3D_z
@@ -307,9 +308,9 @@ module auxiliary
         ! Rotate a 2D vector an angle theta counter-clockwise
         pure function rotate2D(a, theta) result(res)
             implicit none
-            real(kind=8), dimension(2), intent(in) :: a
-            real(kind=8), intent(in) :: theta
-            real(kind=8), dimension(2) :: res
+            real(wp), dimension(2), intent(in) :: a
+            real(wp), intent(in) :: theta
+            real(wp), dimension(2) :: res
 
             res = (/a(1) * cos(theta) - a(2) * sin(theta), & ! x cos(th) - y sin(th),
                     a(1) * sin(theta) + a(2) * cos(theta)/)  ! x sin(th) + y cos(th)
@@ -319,13 +320,13 @@ module auxiliary
         subroutine read_columns_file(file_name, values_arr, method)
             implicit none
             character(LEN=*), intent(in) :: file_name
-            real(kind=8), dimension(:,:), allocatable, intent(out) :: values_arr
+            real(wp), dimension(:,:), allocatable, intent(out) :: values_arr
             integer(kind=4), optional :: method
             integer(kind=4), parameter :: MAX_COLS = 8, MAX_ROWS = 10000
-            real(kind=8), dimension(:,:), allocatable :: aux_real_arr
+            real(wp), dimension(:,:), allocatable :: aux_real_arr
             integer(kind=4) :: ncols, nrows
             integer(kind=4) :: i, j, io, my_method
-            real(kind=8) :: aux_real
+            real(wp) :: aux_real
             character(260) :: auxstr
             logical :: existe
 
@@ -397,7 +398,7 @@ module auxiliary
         ! Write percentage to file unit or std out
         subroutine percentage(tout, tstop, file_unit)
             implicit none
-            real(kind=8), intent(in) :: tout, tstop
+            real(wp), intent(in) :: tout, tstop
             integer(kind=4), intent(in), optional :: file_unit
             integer(kind=4) :: funit = 6  ! 6 is STD_OUTPUT
             integer(kind=4) :: iper
@@ -406,7 +407,7 @@ module auxiliary
 
             if (present(file_unit)) funit = file_unit
         
-            iper = int(100.0d0 * tout / tstop)
+            iper = int(100.0e0_wp * tout / tstop)
             guiones = repeat('.', iper)
         
             if (iper < 100) then

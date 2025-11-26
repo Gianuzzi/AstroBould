@@ -6,14 +6,14 @@ module leapfrog
     public :: init_leapfrog, free_leapfrog, leapfrog_caller, leapfrog_fixed_caller
 
     ! Workspace arrays
-    real(kind=8), allocatable :: y05(:), der05(:)  ! integrator
-    real(kind=8), allocatable :: yscal(:)  ! solver
-    real(kind=8), allocatable :: yaux(:)  ! solver
-    real(kind=8), allocatable :: ycaller(:)  ! caller
+    real(wp), allocatable :: y05(:), der05(:)  ! integrator
+    real(wp), allocatable :: yscal(:)  ! solver
+    real(wp), allocatable :: yaux(:)  ! solver
+    real(wp), allocatable :: ycaller(:)  ! caller
 
     ! Constants
     integer(kind=4), parameter :: MAX_N_ITER = 350
-    real(kind=8), parameter :: MAX_DT_FACTOR = 5.0d0
+    real(wp), parameter :: MAX_DT_FACTOR = 5.0e0_wp
 
 
     ! Pointer to leapfrog used
@@ -22,14 +22,15 @@ module leapfrog
     abstract interface
 
         subroutine leapfrog_tem (sizey, y, dydt, t, dt, deri, ynew)
+            import :: wp
             import :: dydt_tem
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(in) :: y
+            real(wp), dimension(sizey), intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: ynew
         end subroutine leapfrog_tem
     
     end interface
@@ -95,14 +96,14 @@ module leapfrog
         subroutine leapfrog_KDK (sizey, y, dydt, t, dt, deri, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(in) :: y
+            real(wp), dimension(sizey), intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             integer(kind=4) :: i, j
-            real(kind=8) :: dt_half
+            real(wp) :: dt_half
 
             dt_half = dt * C1_2
     
@@ -156,14 +157,14 @@ module leapfrog
         subroutine leapfrog_DKD (sizey, y, dydt, t, dt, deri, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(in) :: y
+            real(wp), dimension(sizey), intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             integer(kind=4) :: i, j
-            real(kind=8) :: dt_half
+            real(wp) :: dt_half
 
             dt_half = dt * C1_2
     
@@ -220,11 +221,11 @@ module leapfrog
         subroutine leapfrog_KDK_std (sizey, y, dydt, t, dt, deri, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(in) :: y
+            real(wp), dimension(sizey), intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: ynew
 
             integer(kind=4) :: i
             
@@ -250,11 +251,11 @@ module leapfrog
         subroutine leapfrog_DKD_std (sizey, y, dydt, t, dt, deri, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(in) :: y
+            real(wp), dimension(sizey), intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: ynew
 
             integer(kind=4) :: i
             
@@ -284,17 +285,17 @@ module leapfrog
         recursive subroutine solve_leapfrog (sizey, y, dydt, t, dt_adap, dt_used, deri, leapfrog, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(in) :: y
+            real(wp), dimension(sizey), intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t
-            real(kind=8), intent(inout) :: dt_adap
-            real(kind=8), intent(out) :: dt_used
-            real(kind=8), dimension(sizey), intent(in) :: deri
+            real(wp), intent(in) :: t
+            real(wp), intent(inout) :: dt_adap
+            real(wp), intent(out) :: dt_used
+            real(wp), dimension(sizey), intent(in) :: deri
             procedure (leapfrog_tem), pointer :: leapfrog
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             integer(kind=4), save :: iter = 0
-            real(kind=8) :: e_calc, ratio, dt_half
+            real(wp) :: e_calc, ratio, dt_half
 
             iter = iter + 1
             dt_adap = max (dt_adap, DT_MIN_NOW)
@@ -357,16 +358,16 @@ module leapfrog
 
         subroutine leapfrog_caller (t, y, dt_adap, dydt, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in) :: t
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), intent(inout) :: dt_adap  ! This try and also next try
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), intent(inout) :: dt_adap  ! This try and also next try
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: dt
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(wp), intent(in) :: dt
+            real(wp), dimension(size (y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun
             
             integer(kind=4) :: sizey
-            real(kind=8) :: time, t_end, dt_used
+            real(wp) :: time, t_end, dt_used
             logical :: keep = .True.
             logical :: has_check = .False.
 
@@ -394,8 +395,7 @@ module leapfrog
 
                 der(:sizey) = dydt (time, ycaller(:sizey))
                                     
-                call solve_leapfrog (sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, &
-                                    & der(:sizey), leapfrog_ptr, ynew)
+                call solve_leapfrog (sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, der(:sizey), leapfrog_ptr, ynew)
 
                 time = time + dt_used
             end do
@@ -409,16 +409,16 @@ module leapfrog
 
         subroutine leapfrog_fixed_caller (t, y, dt_adap, dydt, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in) :: t
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), intent(inout) :: dt_adap  ! This is each sub-step
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), intent(inout) :: dt_adap  ! This is each sub-step
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: dt ! This is full step
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(wp), intent(in) :: dt ! This is full step
+            real(wp), dimension(size (y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun
             
             integer(kind=4) :: sizey
-            real(kind=8) :: time, t_end
+            real(wp) :: time, t_end
             logical :: keep = .True.
             logical :: has_check = .False.
 

@@ -1,6 +1,6 @@
 !> Module with time and checkpoint calculation routines.
 module times
-    use constants, only: cero, uno, uno2, tini
+    use constants, only: wp, cero, uno, uno2, tini
     use auxiliary, only: quicksort, merge_sort_and_unique
     implicit none
     
@@ -9,14 +9,14 @@ module times
         ! Set the output times
         subroutine set_output_times(t0, tf, n_out, dt_out, case_dist, t_out)
             implicit none
-            real(kind=8), intent(in) :: t0, tf
+            real(wp), intent(in) :: t0, tf
             integer(kind=4), intent(inout) :: n_out
-            real(kind=8), intent(inout) :: dt_out
+            real(wp), intent(inout) :: dt_out
             integer(kind=4), intent(in) :: case_dist
-            real(kind=8), dimension(:), allocatable, intent(out) :: t_out
-            real(kind=8) :: t_aux, t_add
+            real(wp), dimension(:), allocatable, intent(out) :: t_out
+            real(wp) :: t_aux, t_add
             integer(kind=4) :: i
-            real(kind=8) :: npointsr
+            real(wp) :: npointsr
 
             ! Define n_out
             if (dt_out > cero) then
@@ -25,9 +25,9 @@ module times
                     stop 1
                 end if
                 n_out = int((tf - t0) / dt_out) + 1
-                npointsr = dble(n_out)
+                npointsr = real(n_out, kind=wp)
             else
-                npointsr = dble(n_out)
+                npointsr = real(n_out, kind=wp)
                 dt_out = (tf - t0) / (npointsr - uno)
             end if
 
@@ -91,14 +91,14 @@ module times
         subroutine expand_checkpoints(extra_checkp_times, checkp_times, checkp_is_a, checkp_is_b, new_checkp_num)
             implicit none
             ! --- Arguments ---
-            real(kind=8), intent(in)  :: extra_checkp_times(:)
-            real(kind=8), allocatable, intent(inout) :: checkp_times(:)
+            real(wp), intent(in)  :: extra_checkp_times(:)
+            real(wp), allocatable, intent(inout) :: checkp_times(:)
             logical, allocatable, intent(inout) :: checkp_is_a(:)
             logical, allocatable, intent(inout) :: checkp_is_b(:)
             integer(kind=4), intent(inout) :: new_checkp_num
 
             ! --- Locals ---
-            real(kind=8), allocatable :: merged_times(:)
+            real(wp), allocatable :: merged_times(:)
             logical, allocatable :: ina(:), inb(:)
             logical, allocatable :: merged_a(:), merged_b(:)
             integer(kind=4) :: kfin, i, i_a

@@ -24,7 +24,8 @@ build/accelerations.o :  \
 	build/auxiliary.o \
 	build/constants.o
 
-build/auxiliary.o : 
+build/auxiliary.o :  \
+	build/constants.o
 
 build/bins.o :  \
 	build/constants.o

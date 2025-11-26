@@ -40,8 +40,8 @@ module parameters
         ! Something to do?
         logical :: only_print = .False.    
         ! Times for the integration - 
-        real(kind=8) :: final_time = cero
-        real(kind=8) :: output_timestep = cero
+        real(wp) :: final_time = cero
+        real(wp) :: output_timestep = cero
         integer(kind=4) :: output_number = 0
         integer(kind=4) :: case_output_type = 2
         integer(kind=4) :: extra_checkpoints = 0
@@ -52,19 +52,19 @@ module parameters
         integer(kind=4) :: integrator_ID = 0
         logical :: use_adaptive = .True.
         integer(kind=4) :: error_digits = 12
-        real(kind=8) :: learning_rate = uno
-        real(kind=8) :: dt_min = cero
+        real(wp) :: learning_rate = uno
+        real(wp) :: dt_min = cero
         ! Primary mass -
-        real(kind=8) :: mass_primary = cero
+        real(wp) :: mass_primary = cero
         ! Primary shape -
-        real(kind=8) :: radius_primary = cero
+        real(wp) :: radius_primary = cero
         logical :: use_triaxial = .False.
-        real(kind=8) :: triax_a_primary = cero
-        real(kind=8) :: triax_b_primary = cero
-        real(kind=8) :: triax_c_primary = cero
+        real(wp) :: triax_a_primary = cero
+        real(wp) :: triax_b_primary = cero
+        real(wp) :: triax_c_primary = cero
         ! Primary rotation -
-        real(kind=8) :: lambda_kep = cero
-        real(kind=8) :: asteroid_rotational_period = cero
+        real(wp) :: lambda_kep = cero
+        real(wp) :: asteroid_rotational_period = cero
         ! Moons - 
         logical :: use_moonsfile = .False.
         character(30) :: moonsfile = ""
@@ -74,24 +74,24 @@ module parameters
         ! Extra forces/effects - 
         logical :: use_moon_gravity = .True.
         logical :: use_manual_J2 = .False.
-        real(kind=8) :: manual_J2 = cero
+        real(wp) :: manual_J2 = cero
         logical :: use_stokes = .False.
-        real(kind=8) :: stokes_a_damping_time = infinity
-        real(kind=8) :: stokes_e_damping_time = infinity
-        real(kind=8) :: stokes_active_time = cero
+        real(wp) :: stokes_a_damping_time = infinity
+        real(wp) :: stokes_e_damping_time = infinity
+        real(wp) :: stokes_active_time = cero
         logical :: use_drag = .False.
-        real(kind=8) :: drag_coefficient = cero
-        real(kind=8) :: drag_active_time = cero
+        real(wp) :: drag_coefficient = cero
+        real(wp) :: drag_active_time = cero
         logical :: use_omega_damping = .False.
-        real(kind=8) :: omega_lin_damping_time = infinity
-        real(kind=8) :: omega_exp_damping_time = infinity
-        real(kind=8) :: omega_exp_damp_poly_A = cero
-        real(kind=8) :: omega_exp_damp_poly_B = cero
-        real(kind=8) :: omega_damp_active_time = cero
-        real(kind=8) :: mass_exp_damping_time = infinity
+        real(wp) :: omega_lin_damping_time = infinity
+        real(wp) :: omega_exp_damping_time = infinity
+        real(wp) :: omega_exp_damp_poly_A = cero
+        real(wp) :: omega_exp_damp_poly_B = cero
+        real(wp) :: omega_damp_active_time = cero
+        real(wp) :: mass_exp_damping_time = infinity
         ! Filter
         logical :: use_filter = .False.
-        real(kind=8) :: filter_dt = cero
+        real(wp) :: filter_dt = cero
         integer(kind=4) :: filter_nsamples = 0
         integer(kind=4) :: filter_nwindows = 0
         logical :: filter_use_KH = .False.
@@ -102,17 +102,17 @@ module parameters
         integer(kind=4) :: Norder_self_gravity = 3
         integer(kind=4) :: Nbins = 0
         integer(kind=4) :: binning_method = 1
-        real(kind=8) :: rmin_bins = - uno ! -1 means first particle (initial)
-        real(kind=8) :: rmax_bins = - uno ! -1 means last particle (initial)
+        real(wp) :: rmin_bins = - uno ! -1 means first particle (initial)
+        real(wp) :: rmax_bins = - uno ! -1 means last particle (initial)
         ! Conditions for Collision/Escape - 
-        real(kind=8) :: min_distance = cero
-        real(kind=8) :: max_distance = cero  ! Means no check
+        real(wp) :: min_distance = cero
+        real(wp) :: max_distance = cero  ! Means no check
         logical :: use_merge_part_mass = .True.
         logical :: use_merge_massive = .True.
         logical :: use_stop_no_part_left = .True.
         logical :: use_stop_no_moon_left = .True.
-        real(kind=8) :: eta_col = uno  ! 0: Elastic, 1: Plastic
-        real(kind=8) :: f_col = cero  ! Bounded: Etot < -f |Epot|
+        real(wp) :: eta_col = uno  ! 0: Elastic, 1: Plastic
+        real(wp) :: f_col = cero  ! Bounded: Etot < -f |Epot|
         ! Manual |(t)imes omega(t) mass_add(t)| file -
         logical :: use_tomfile = .False.
         character(30) :: tomfile = ""
@@ -135,10 +135,10 @@ module parameters
         character(30) :: mapfile = ""
         integer(kind=4) :: map_grid_size_x = 500
         integer(kind=4) :: map_grid_size_y = 500
-        real(kind=8) :: map_min_x = -500.d0
-        real(kind=8) :: map_max_x = 500.d0
-        real(kind=8) :: map_min_y = -500.d0
-        real(kind=8) :: map_max_y = 500.d0
+        real(wp) :: map_min_x = -500.e0_wp
+        real(wp) :: map_max_x = 500.e0_wp
+        real(wp) :: map_min_y = -500.e0_wp
+        real(wp) :: map_max_y = 500.e0_wp
         ! < Number of bodies >
         integer(kind=4) :: Nboulders = 0
         integer(kind=4) :: Nmoons = 0
@@ -150,7 +150,7 @@ module parameters
     type, extends(input_params_st) :: sim_params_st  !! Extra DERIVED parameters
         ! Times
         integer(kind=4) :: checkpoint_number = 0
-        real(kind=8) :: min_period = infinity  ! This helps to create minimum timestep
+        real(wp) :: min_period = infinity  ! This helps to create minimum timestep
         ! Bodies
         integer(kind=4) :: Ntotal = 0  ! Amount of all bodies (asteroid is just 1)
         integer(kind=4) :: Npart_active = 0 ! Active particles
@@ -166,12 +166,12 @@ module parameters
         logical :: use_poly_omega_damp = .False.
         !! Filter
         integer(kind=4) :: filter_size = 0
-        real(kind=8) :: filter_half_width = cero
+        real(wp) :: filter_half_width = cero
         !! [BINS] ( Not available yet )
         logical :: use_bins = .False.
         !!! Viscosity [Not available yet]
         logical :: use_viscosity = .False.
-        real(kind=8) :: viscosity = - uno
+        real(wp) :: viscosity = - uno
         !!! Self-Gravity
         logical :: update_rmin_bins = .False.
         logical :: update_rmax_bins = .False.
@@ -185,7 +185,7 @@ module parameters
         character(30) :: geomchaosfile = ""
         logical :: use_geomchaosfile = .False.  ! Need to output geometric chaos values
         ! Error
-        real(kind=8) :: error_tolerance = cero
+        real(wp) :: error_tolerance = cero
         !!! Command line body
         logical :: cl_body_is_moon = .False. ! Wether a moon was given through command line
     end type sim_params_st
@@ -195,30 +195,30 @@ module parameters
 
 
     ! ----  <<<<<    INITIAL BODIES     >>>>>   -----
-    real(kind=8), dimension(:,:), allocatable :: boulders_in !! mu, radius, theta  | (Nb, 3)
-    real(kind=8), dimension(:,:), allocatable :: moons_in !! mass, a, e, M, w, MMR, radius  | (Nm, 7)
-    real(kind=8), dimension(:,:), allocatable :: particles_in !! a, e, M, w, MMR  | (Np, 5)
-    real(kind=8) :: cl_body_in(7) = cero  !! mass, a, e, M, w, MMR, radius  | (7)  | COMMAND LINE Input
+    real(wp), dimension(:,:), allocatable :: boulders_in !! mu, radius, theta  | (Nb, 3)
+    real(wp), dimension(:,:), allocatable :: moons_in !! mass, a, e, M, w, MMR, radius  | (Nm, 7)
+    real(wp), dimension(:,:), allocatable :: particles_in !! a, e, M, w, MMR  | (Np, 5)
+    real(wp) :: cl_body_in(7) = cero  !! mass, a, e, M, w, MMR, radius  | (7)  | COMMAND LINE Input
 
 
     ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
-    real(kind=8), dimension(:,:), allocatable :: boulders_coords !! (Nb, 4) |x,y,vx,vy|
-    real(kind=8), dimension(:,:), allocatable :: boulders_data !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
+    real(wp), dimension(:,:), allocatable :: boulders_coords !! (Nb, 4) |x,y,vx,vy|
+    real(wp), dimension(:,:), allocatable :: boulders_data !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
 
 
     ! ----  <<<<<    TIME     >>>>>   -----
-    real(kind=8) :: time  ! Actual time of the integration
-    real(kind=8) :: timestep  ! This timestep 
-    real(kind=8) :: adaptive_timestep  ! This adaptive timestep
-    real(kind=8) :: fixed_timestep  ! This fixed timestep
+    real(wp) :: time  ! Actual time of the integration
+    real(wp) :: timestep  ! This timestep 
+    real(wp) :: adaptive_timestep  ! This adaptive timestep
+    real(wp) :: fixed_timestep  ! This fixed timestep
     
 
     ! ----  <<<<<    TOM     >>>>>   -----
     type(tom_st) :: tom  ! This is the structure with TOM data
 
     ! ----  <<<<<    CHECKPOINTS     >>>>>   -----
-    real(kind=8), dimension(:), allocatable :: output_times  ! Vector con tiempos de salida
-    real(kind=8), dimension(:), allocatable :: checkpoint_times  ! Vector con checkpoints
+    real(wp), dimension(:), allocatable :: output_times  ! Vector con tiempos de salida
+    real(wp), dimension(:), allocatable :: checkpoint_times  ! Vector con checkpoints
     logical, dimension(:), allocatable :: checkpoint_is_tom  ! Array with whether each checkpoint is TOM
     logical, dimension(:), allocatable :: checkpoint_is_output ! Array with whether each checkpoint is output
         
@@ -226,34 +226,34 @@ module parameters
     ! ----  <<<<<    PARAMETERS ARRAYS     >>>>>   -----
     integer, parameter :: equation_size = 4
     integer(kind=4) :: y_nvalues = 0  ! Will change dynamically
-    real(kind=8), dimension(:), allocatable :: m_arr         ! Mass array
-    real(kind=8), dimension(:), allocatable :: R_arr         ! Radius array
-    real(kind=8), dimension(:), allocatable :: y_arr         ! Coordinates array
-    real(kind=8), dimension(:), allocatable :: y_arr_new     ! Coordinates array (2.0)
-    real(kind=8), dimension(:), allocatable :: y_der         ! Derivate of coordinates array
+    real(wp), dimension(:), allocatable :: m_arr         ! Mass array
+    real(wp), dimension(:), allocatable :: R_arr         ! Radius array
+    real(wp), dimension(:), allocatable :: y_arr         ! Coordinates array
+    real(wp), dimension(:), allocatable :: y_arr_new     ! Coordinates array (2.0)
+    real(wp), dimension(:), allocatable :: y_der         ! Derivate of coordinates array
 
 
     ! ----  <<<<<    FILTERING     >>>>>   -----
     type(filter_st) :: filter
     integer(kind=4) :: last_idx_no_filter = -1  ! Last checkpoint with no filtering
     integer(kind=4) :: first_idx_yes_filter = 0   ! First checkpoint with no filtering
-    real(kind=8), dimension(:), allocatable :: elem_filtered  ! Filtered_data
-    real(kind=8), dimension(:), allocatable :: y_pre_filter   ! Data pre-filtering
+    real(wp), dimension(:), allocatable :: elem_filtered  ! Filtered_data
+    real(wp), dimension(:), allocatable :: y_pre_filter   ! Data pre-filtering
     ! ==========    EXTRA FILTER    ==========
-    real(kind=8) :: next_time  ! Next time
-    real(kind=8) :: next_t_filt  ! Next filter time
-    real(kind=8) :: time_filt  ! Actual time of the filtering integration
-    real(kind=8) :: adaptive_timestep_filt  ! Adaptive timestep of the filtering integration
+    real(wp) :: next_time  ! Next time
+    real(wp) :: next_t_filt  ! Next filter time
+    real(wp) :: time_filt  ! Actual time of the filtering integration
+    real(wp) :: adaptive_timestep_filt  ! Adaptive timestep of the filtering integration
     integer(kind=4) :: last_output  ! Last output checkpoint
     integer(kind=4) :: next_output  ! Next output checkpoint
     integer(kind=4) :: next_checkpoint  ! Next pure checkpoint
     integer(kind=4) :: tmp_j  ! Temporal j checkpoint
     type(sim_params_st) :: tmp_sim  ! Temporal simulation state
-    real(kind=8) :: tmp_time  ! Temporal time
-    real(kind=8) :: tmp_adaptive_timestep  ! Temporal time
+    real(wp) :: tmp_time  ! Temporal time
+    real(wp) :: tmp_adaptive_timestep  ! Temporal time
     type(system_st) :: tmp_system  ! Temporal system
     integer(kind=4) :: tmp_y_nvalues  ! Temporal y nvalues
-    real(kind=8), dimension(:), allocatable :: tmp_y_arr  ! Temporal coordinates array
+    real(wp), dimension(:), allocatable :: tmp_y_arr  ! Temporal coordinates array
     
     
 
@@ -1382,7 +1382,7 @@ module parameters
                 write(*,*) "ERROR: Number of presition digits must be greater than 0."
                 stop 1
             end if
-            derived%error_tolerance = 10.d0**(-derived%error_digits)
+            derived%error_tolerance = 10.e0_wp**(-derived%error_digits)
             
 
             ! Primary Radius
@@ -1611,7 +1611,7 @@ module parameters
         ! Check if continue function. This will be passed to the integ caller    
         function check_func (y) result(keep_going)
             implicit none
-            real(kind=8), dimension(:), intent(in) :: y
+            real(wp), dimension(:), intent(in) :: y
             logical :: keep_going
             ! ! Here, we use the global hexit_arr  (Old Code)
             ! keep_going = all(hexit_arr == 0)
@@ -1784,10 +1784,10 @@ module parameters
             integer(kind=4), intent(in) :: y_nvalues
             type(system_st), intent(in) :: syst_pre_filter
             type(system_st), intent(inout) :: syst_filtered
-            real(kind=8), dimension(y_nvalues), intent(inout) :: el_filtered
-            real(kind=8) :: cos_th, sin_th
-            real(kind=8) :: weigth, e_times_fil
-            real(kind=8), dimension(:,:), allocatable :: cos_an, sin_an
+            real(wp), dimension(y_nvalues), intent(inout) :: el_filtered
+            real(wp) :: cos_th, sin_th
+            real(wp) :: weigth, e_times_fil
+            real(wp), dimension(:,:), allocatable :: cos_an, sin_an
             integer(kind=4) :: nbodies, i, j, aux_i, idx
 
             call get_Nactive(syst_pre_filter, nbodies)

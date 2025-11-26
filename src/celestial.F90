@@ -1,6 +1,6 @@
 !> Module with coordinates/elements, and some extra cel-mech routines.
 module celestial
-    use constants, only: cero, uno, uno2, uno3, dos, G, pi, twopi, tini, epsilon, sqepsilon
+    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, tini, epsilon, sqepsilon
     
     implicit none
     
@@ -9,8 +9,8 @@ module celestial
         ! Get period
         pure function get_Period(mass, a) result(per)
             implicit none
-            real(kind=8), intent(in) :: mass, a
-            real(kind=8) :: per
+            real(wp), intent(in) :: mass, a
+            real(wp) :: per
 
             per = cero
             if (mass > cero) per = twopi * sqrt(a * a * a / (G * mass))
@@ -19,8 +19,8 @@ module celestial
         ! Get corotation a from rotating body
         pure function get_a_corot(mass, omega) result(acorot)
             implicit none
-            real(kind=8), intent(in) :: mass, omega
-            real(kind=8) :: acorot
+            real(wp), intent(in) :: mass, omega
+            real(wp) :: acorot
 
             if (omega < tini) then
                 acorot = cero
@@ -32,8 +32,8 @@ module celestial
         ! Get center of mass from masses, positions and velocities
         pure subroutine get_center_of_mass(mass, rib, vib, mcm, rcm, vcm)
             implicit none
-            real(kind=8), intent(in) :: mass(:), rib(:,:), vib(:,:)
-            real(kind=8), intent(out) :: mcm, rcm(2), vcm(2)
+            real(wp), intent(in) :: mass(:), rib(:,:), vib(:,:)
+            real(wp), intent(out) :: mcm, rcm(2), vcm(2)
             integer(kind=4) :: i
 
             rcm = cero
@@ -51,10 +51,10 @@ module celestial
         ! Get acceleration and potential energy from single mass
         pure subroutine get_acc_and_pot_single(mass, rib, xy_target, dr_max, acc, pot, inside)
             implicit none
-            real(kind=8), intent(in) :: mass, rib(2), xy_target(2), dr_max
-            real(kind=8), intent(inout) :: acc(2), pot
+            real(wp), intent(in) :: mass, rib(2), xy_target(2), dr_max
+            real(wp), intent(inout) :: acc(2), pot
             logical, intent(inout), optional :: inside
-            real(kind=8) :: dx, dy, dr, dr2
+            real(wp) :: dx, dy, dr, dr2
 
             dx = xy_target(1) - rib(1)
             dy = xy_target(2) - rib(2)
@@ -73,12 +73,12 @@ module celestial
         ! Get coordinates from a body
         subroutine coord(msum, a, e, inc, capm, omega, capom, xc)
             implicit none
-            real(kind=8), intent(in)  :: msum, a, e, inc, capm, omega, capom
-            real(kind=8), intent(out) :: xc(6)
-            real(kind=8) :: sp, cp, so, co, si, ci
-            real(kind=8) :: d11, d12, d13, d21, d22, d23
-            real(kind=8) :: cape, dummy, scap, ccap, sqe, sqgma
-            real(kind=8) :: ri, xfac1, xfac2, vfac1, vfac2
+            real(wp), intent(in)  :: msum, a, e, inc, capm, omega, capom
+            real(wp), intent(out) :: xc(6)
+            real(wp) :: sp, cp, so, co, si, ci
+            real(wp) :: d11, d12, d13, d21, d22, d23
+            real(wp) :: cape, dummy, scap, ccap, sqe, sqgma
+            real(wp) :: ri, xfac1, xfac2, vfac1, vfac2
             
             ! Generate rotation matrices (on p. 42 of Fitzpatrick)
             sp = sin(omega)
@@ -117,9 +117,9 @@ module celestial
         ! Get true f and g from a body
         subroutine aver(dm, e, u, f)
             implicit none
-            real(kind=8), intent(in)  :: dm, e
-            real(kind=8), intent(out) :: u, f
-            real(kind=8) :: u0, dif, seno, cose
+            real(wp), intent(in)  :: dm, e
+            real(wp), intent(out) :: u, f
+            real(wp) :: u0, dif, seno, cose
             integer(kind=4), parameter :: MAX_ITER = 100
             integer(kind=4) :: i
             
@@ -144,13 +144,13 @@ module celestial
         ! Get elements from a body
         pure subroutine elem(msum, xc, a, e, inc, capm, omega, capom)
             implicit none
-            real(kind=8), intent(in)  :: msum, xc(6)
-            real(kind=8), intent(out) :: a, e, inc, capm, omega, capom
-            real(kind=8) :: gmsum
-            real(kind=8) :: x, y, z, vx, vy, vz
-            real(kind=8) :: hx, hy, hz, h2, h, fac, u
-            real(kind=8) :: r, v, v2, vdotr, energy
-            real(kind=8) :: cape, cw, sw, w, face, capf, tmpf
+            real(wp), intent(in)  :: msum, xc(6)
+            real(wp), intent(out) :: a, e, inc, capm, omega, capom
+            real(wp) :: gmsum
+            real(wp) :: x, y, z, vx, vy, vz
+            real(wp) :: hx, hy, hz, h2, h, fac, u
+            real(wp) :: r, v, v2, vdotr, energy
+            real(wp) :: cape, cw, sw, w, face, capf, tmpf
             integer(kind=4) :: ialpha
                 
             gmsum = G * msum
@@ -172,7 +172,7 @@ module celestial
             if (fac < epsilon) then
                 capom = cero
                 u = atan2(y, x)
-                if (abs(inc - pi) < 10.d0 * epsilon) then
+                if (abs(inc - pi) < 10.e0_wp * epsilon) then
                     u = -u
                 end if
             else
@@ -300,10 +300,10 @@ module celestial
         ! Get astrocentric from jacobi coordinates
         pure subroutine jacobi_to_astroc (mass_array, coords_j, coords_a)
             implicit none
-            real(kind=8), dimension(:), intent(in) :: mass_array
-            real(kind=8), dimension(:,:), intent(in) :: coords_j
-            real(kind=8), dimension(:,:), intent(out) :: coords_a
-            real(kind=8) :: mass_acum, mass_acum_prev
+            real(wp), dimension(:), intent(in) :: mass_array
+            real(wp), dimension(:,:), intent(in) :: coords_j
+            real(wp), dimension(:,:), intent(out) :: coords_a
+            real(wp) :: mass_acum, mass_acum_prev
             integer(kind=4) :: i
 
             coords_a = coords_j
@@ -320,10 +320,10 @@ module celestial
         ! Get jacobi from astrocentric coordinates
         pure subroutine astroc_to_jacob (mass_array, coords_a, coords_j)
             implicit none
-            real(kind=8), dimension(:), intent(in) :: mass_array
-            real(kind=8), dimension(:,:), intent(in) :: coords_a
-            real(kind=8), dimension(:,:), intent(out) :: coords_j
-            real(kind=8) :: mass_acum, mass_acum_prev
+            real(wp), dimension(:), intent(in) :: mass_array
+            real(wp), dimension(:,:), intent(in) :: coords_a
+            real(wp), dimension(:,:), intent(out) :: coords_j
+            real(wp) :: mass_acum, mass_acum_prev
             integer(kind=4) :: i
 
             coords_j = coords_a
@@ -340,11 +340,11 @@ module celestial
         ! Get barycentric from astrocentric coordinates
         pure subroutine baric_to_astroc (mass_array, coords_b, coords_a)
             implicit none
-            real(kind=8), dimension(:), intent(in) :: mass_array
-            real(kind=8), dimension(:,:), intent(in) :: coords_b
-            real(kind=8), dimension(:,:), intent(out) :: coords_a
+            real(wp), dimension(:), intent(in) :: mass_array
+            real(wp), dimension(:,:), intent(in) :: coords_b
+            real(wp), dimension(:,:), intent(out) :: coords_a
             integer(kind=4) :: i
-            real(kind=8), dimension(4) :: xyvxvy
+            real(wp), dimension(4) :: xyvxvy
 
             xyvxvy = cero
             
@@ -360,12 +360,12 @@ module celestial
         ! Get astrocentric from barycentric coordinates
         pure subroutine astroc_to_baric (mass_array, coords_a, coords_b)
             implicit none
-            real(kind=8), dimension(:), intent(in) :: mass_array
-            real(kind=8), dimension(:,:), intent(in) :: coords_a
-            real(kind=8), dimension(:,:), intent(out) :: coords_b
+            real(wp), dimension(:), intent(in) :: mass_array
+            real(wp), dimension(:,:), intent(in) :: coords_a
+            real(wp), dimension(:,:), intent(out) :: coords_b
             integer(kind=4) :: i
-            real(kind=8) :: mass_tot
-            real(kind=8), dimension(4) :: xyvxvy
+            real(wp) :: mass_tot
+            real(wp), dimension(4) :: xyvxvy
 
             mass_tot = mass_array(1)
             xyvxvy = cero
@@ -383,33 +383,33 @@ module celestial
         ! Osculating to geometrical
         pure subroutine coord2geom(mass, radius, J2, xc, a, e, inc, capm, omega, capom, n)
             implicit none
-            real(kind=8), intent(in) :: mass, radius, J2
-            real(kind=8), dimension(6), intent(in) :: xc
-            real(kind=8), intent(out) :: a, e, inc, capm, omega, capom
-            real(kind=8), intent(out) :: n
+            real(wp), intent(in) :: mass, radius, J2
+            real(wp), dimension(6), intent(in) :: xc
+            real(wp), intent(out) :: a, e, inc, capm, omega, capom
+            real(wp), intent(out) :: n
             ! Coordinates
-            real(kind=8):: x, y, z
-            real(kind=8):: vx, vy, vz
+            real(wp):: x, y, z
+            real(wp):: vx, vy, vz
             !! Polar
-            real(kind=8) :: r, L
-            real(kind=8) :: vr, vL
+            real(wp) :: r, L
+            real(wp) :: vr, vL
             logical :: coplanar
             ! Corrections
-            real(kind=8) :: rc, Lc
-            real(kind=8) :: vrc, vLc
-            real(kind=8) :: zc, vzc
+            real(wp) :: rc, Lc
+            real(wp) :: vrc, vLc
+            real(wp) :: zc, vzc
             ! Extra Geometric elements
-            real(kind=8) :: lambda, varpi
+            real(wp) :: lambda, varpi
             ! For extra a corrections
             logical, parameter :: extra_cor = .True.
-            real(kind=8) :: aux, det, aux_a, aux_b, aux_c
-            real(kind=8) :: Hz
-            real(kind=8) :: r0
+            real(wp) :: aux, det, aux_a, aux_b, aux_c
+            real(wp) :: Hz
+            real(wp) :: r0
             ! Iterations
             integer(kind=4) :: i
             integer(kind=4), parameter :: MAX_ITER = 100
-            real(kind=8), parameter :: err_rel = 1.d-9
-            real(kind=8) :: a_prev
+            real(wp), parameter :: err_rel = 1.e-9_wp
+            real(wp) :: a_prev
 
             ! Check
             if (abs(J2) < tini) then
@@ -437,8 +437,8 @@ module celestial
             ! Parameters or extra 'a' corrections
             aux_a = uno
             aux_b = - Hz * Hz / (G * mass)  ! Negative
-            aux_c = 1.5d0 * radius * radius * J2
-            det = aux_b**2 - 4.d0 * aux_a * aux_c
+            aux_c = 1.5e0_wp * radius * radius * J2
+            det = aux_b**2 - 4.e0_wp * aux_a * aux_c
             if (det < cero) then
                 r0 = r
             else 
@@ -482,34 +482,34 @@ module celestial
 
                 pure subroutine get_geom(a, e, inc, lambda, varpi, capom, rc, Lc, zc, vrc, vLc, vzc, n)
                     implicit none
-                    real(kind=8), intent(inout) :: a, e, inc, lambda, varpi, capom
-                    real(kind=8), intent(inout) :: rc, Lc, zc, vrc, vLc, vzc
-                    real(kind=8), intent(out) :: n  ! The only important
+                    real(wp), intent(inout) :: a, e, inc, lambda, varpi, capom
+                    real(wp), intent(inout) :: rc, Lc, zc, vrc, vLc, vzc
+                    real(wp), intent(out) :: n  ! The only important
 
-                    real(kind=8) :: kappa, nu, eta, chi
-                    real(kind=8) :: n2, kappa2, nu2, eta2, chi2
-                    real(kind=8) :: alpha_1, alpha_2, alpha2
+                    real(wp) :: kappa, nu, eta, chi
+                    real(wp) :: n2, kappa2, nu2, eta2, chi2
+                    real(wp) :: alpha_1, alpha_2, alpha2
 
-                    real(kind=8), parameter :: cn1 = 3.d0/4.d0
-                    real(kind=8), parameter :: cn2 = -9.d0/32.d0
-                    real(kind=8), parameter :: cn3 = 27.d0/128.d0
-                    real(kind=8), parameter :: cn4 = 3.d0
-                    real(kind=8), parameter :: cn5 = -12.d0
+                    real(wp), parameter :: cn1 = 3.e0_wp/4.e0_wp
+                    real(wp), parameter :: cn2 = -9.e0_wp/32.e0_wp
+                    real(wp), parameter :: cn3 = 27.e0_wp/128.e0_wp
+                    real(wp), parameter :: cn4 = 3.e0_wp
+                    real(wp), parameter :: cn5 = -12.e0_wp
 
-                    real(kind=8), parameter :: ck1 = -cn1
-                    real(kind=8), parameter :: ck2 = cn2
-                    real(kind=8), parameter :: ck3 = -cn3
-                    real(kind=8), parameter :: ck4 = -9.d0
+                    real(wp), parameter :: ck1 = -cn1
+                    real(wp), parameter :: ck2 = cn2
+                    real(wp), parameter :: ck3 = -cn3
+                    real(wp), parameter :: ck4 = -9.e0_wp
 
-                    real(kind=8), parameter :: cnu1 = 9.d0/4.d0
-                    real(kind=8), parameter :: cnu2 = -81.d0/32.d0
-                    real(kind=8), parameter :: cnu3 = 729.d0/128.d0
-                    real(kind=8), parameter :: cnu4 = 6.d0
-                    real(kind=8), parameter :: cnu5 = -51.d0/4.d0
+                    real(wp), parameter :: cnu1 = 9.e0_wp/4.e0_wp
+                    real(wp), parameter :: cnu2 = -81.e0_wp/32.e0_wp
+                    real(wp), parameter :: cnu3 = 729.e0_wp/128.e0_wp
+                    real(wp), parameter :: cnu4 = 6.e0_wp
+                    real(wp), parameter :: cnu5 = -51.e0_wp/4.e0_wp
 
-                    real(kind=8) :: nKep, R2_a2
+                    real(wp) :: nKep, R2_a2
 
-                    real(kind=8) :: aux_x, aux_y
+                    real(wp) :: aux_x, aux_y
 
                     ! Compute frequencies
                     
@@ -539,7 +539,7 @@ module celestial
                     eta2 = nKep * nKep * (uno - dos * J2 * R2_a2)
                     eta = sqrt(eta2)
 
-                    chi2 = nKep * nKep * (uno + 7.5d0 * J2 * R2_a2)
+                    chi2 = nKep * nKep * (uno + 7.5e0_wp * J2 * R2_a2)
                     chi = sqrt(chi2)
 
                     alpha_1 = (dos * nu + kappa) * uno3
@@ -571,37 +571,37 @@ module celestial
 
                     ! Compute corrections
 
-                    rc = a * (e**2 * (1.5d0 * (eta2 / kappa2) &
+                    rc = a * (e**2 * (1.5e0_wp * (eta2 / kappa2) &
                                     & - uno &
                                     & - uno2 * eta2 / kappa2 * cos(dos * (lambda - varpi))) &
-                    & + inc**2 * (0.75d0 * chi2 / kappa2 &
+                    & + inc**2 * (0.75e0_wp * chi2 / kappa2 &
                                 & - uno &
-                                & + 0.25d0 * chi2 / alpha2 * cos(dos * (lambda - capom))) &
+                                & + 0.25e0_wp * chi2 / alpha2 * cos(dos * (lambda - capom))) &
                     &)
                     
-                    Lc = n * (e**2 * (0.75d0 + uno2 * eta2 / kappa2) / kappa * sin(dos * (lambda - varpi)) &
-                            & - inc**2 * 0.25d0 * chi2 / (alpha2 * nu) * sin(dos * (lambda - capom)) &
+                    Lc = n * (e**2 * (0.75e0_wp + uno2 * eta2 / kappa2) / kappa * sin(dos * (lambda - varpi)) &
+                            & - inc**2 * 0.25e0_wp * chi2 / (alpha2 * nu) * sin(dos * (lambda - capom)) &
                         &)
 
                     zc = a * inc * e * chi2 / kappa * (uno2 / alpha_1 * sin(dos * lambda - varpi - capom) &
-                                                    & - 1.5d0 / alpha_2 * sin(varpi - capom))
+                                                    & - 1.5e0_wp / alpha_2 * sin(varpi - capom))
                     
                     vrc = a * (e**2 * eta2 / kappa * sin(dos * (lambda - varpi)) &
                             & - inc**2 * uno2 * chi2 / alpha2 * nu * sin(dos * (lambda - capom)))
                     
-                    vLc = n * (e**2 * (3.5d0 &
-                                    & - 3.d0 * eta2 / kappa2 &
+                    vLc = n * (e**2 * (3.5e0_wp &
+                                    & - 3.e0_wp * eta2 / kappa2 &
                                     & - uno2 * kappa2 / n**2 &
-                                    & + (1.5d0 + eta2 / kappa2) * cos(dos * (lambda - varpi))) &
-                            & + inc**2 * uno2 * (4.d0 &
+                                    & + (1.5e0_wp + eta2 / kappa2) * cos(dos * (lambda - varpi))) &
+                            & + inc**2 * uno2 * (4.e0_wp &
                                                 & - kappa2 / n2 &
-                                                & - 3.d0 * chi2 / kappa2 &
+                                                & - 3.e0_wp * chi2 / kappa2 &
                                                 & - chi2 / alpha2 * cos(dos * (lambda - capom))) &
                             &)
                     
                     vzc = a * e * inc * uno2 * chi2 / kappa * (&
                                     & (kappa + nu) / alpha_1 * cos(dos * lambda - varpi - capom) &
-                                    & + 3.d0 * (kappa - nu) / alpha_2 * cos(varpi - capom) &
+                                    & + 3.e0_wp * (kappa - nu) / alpha_2 * cos(varpi - capom) &
                                                             &)
 
                     ! Extra a corrections

@@ -6,18 +6,18 @@ module bstoer
     public :: init_BS, free_BS, BStoer_caller
 
     ! Workspace arrays
-    real(kind=8), allocatable :: ysav(:), yseq(:), yerr(:), yscal(:) ! bstep
-    real(kind=8), allocatable :: qcolpz(:,:)  ! bstep
-    real(kind=8), allocatable :: mmid_ym(:), mmid_yn(:)  ! mmid
-    real(kind=8), allocatable :: pz_d(:)  ! pzextr
+    real(wp), allocatable :: ysav(:), yseq(:), yerr(:), yscal(:) ! bstep
+    real(wp), allocatable :: qcolpz(:,:)  ! bstep
+    real(wp), allocatable :: mmid_ym(:), mmid_yn(:)  ! mmid
+    real(wp), allocatable :: pz_d(:)  ! pzextr
 
     ! Workspace variables
     integer(kind=4) :: kmax = 0
     integer(kind=4) :: kopt = 0
-    real(kind=8), dimension(8, 8) :: alf = ZERO
+    real(wp), dimension(8, 8) :: alf = ZERO
     integer(kind=4), dimension(9) :: arr = 0! a in NR F90
-    real(kind=8) :: xnew = -1d29
-    real(kind=8) :: epsold = -ONE
+    real(wp) :: xnew = -1e29_wp
+    real(wp) :: epsold = -ONE
     logical :: first = .True.
     
     contains
@@ -66,37 +66,37 @@ module bstoer
             kopt = 0
             alf = ZERO
             arr = 0
-            xnew = -1d29
-            epsold = -1d0
+            xnew = -1e29_wp
+            epsold = -1e0_wp
             first = .True.
         end subroutine reset_bstep
 
         subroutine bstep (sizey, y, dydt, x, htry, hdid, hnext)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(inout) :: y
+            real(wp), dimension(sizey), intent(inout) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: x
-            real(kind=8), intent(in) :: htry
-            real(kind=8), intent(out) :: hdid, hnext
+            real(wp), intent(in) :: x
+            real(wp), intent(in) :: htry
+            real(wp), intent(out) :: hdid, hnext
             
-            real(kind=8), parameter :: safe1 = .25d0, safe2 = .7d0
-            real(kind=8), parameter :: redmax = 1.d-5, redmin = .7d0
-            real(kind=8), parameter :: tini = 1.d-30, scalmx = .1d0
+            real(wp), parameter :: safe1 = .25e0_wp, safe2 = .7e0_wp
+            real(wp), parameter :: redmax = 1.e-5_wp, redmin = .7e0_wp
+            real(wp), parameter :: tini = 1.e-30_wp, scalmx = .1e0_wp
             integer(kind=4), parameter, dimension(9) :: nseq = (/2, 4, 6, 8, 10, 12, 14, 16, 18/)
-            real(kind=8), dimension(8) :: err
-            real(kind=8) :: eps1, errmax, fact, h, red, scala, wrkmin, xest
+            real(wp), dimension(8) :: err
+            real(wp) :: eps1, errmax, fact, h, red, scala, wrkmin, xest
             logical :: reduct
-            real(kind=8), dimension(16) :: xpz
-            real(kind=8) :: work
+            real(wp), dimension(16) :: xpz
+            real(wp) :: work
             integer(kind=4) :: k, iq, i ,km, kk
 
             der(:sizey) = dydt (x, y)
             yscal(:sizey) = abs (y) + abs (htry * der(:sizey)) + SAFE_LOW
             
             if (abs(E_TOL - epsold) > SAFE_LOW) then !E_TOL? ! A new tolerance, so reinitialize.
-                hnext = -1.0d29 ! “Impossible” values.
-                xnew  = -1.0d29
+                hnext = -1.0e29_wp ! “Impossible” values.
+                xnew  = -1.0e29_wp
                 eps1  = safe1 * E_TOL
                 arr(1) = nseq(1) + 1
                 do k = 1, 8
@@ -133,7 +133,7 @@ module bstoer
                     end if
                     call mmid (sizey, ysav(:sizey), der(:sizey), x, h, nseq(k), yseq(:sizey), dydt)
                     yscal(:sizey) = abs (y) + abs (h * der(:sizey)) + SAFE_LOW
-                    xest = (h / dble(nseq(k)))**2 ! Squared, since error series is even.
+                    xest = (h / real(nseq(k), kind=wp))**2 ! Squared, since error series is even.
                     call pzextr (sizey, k, xest, yseq(:sizey), y, yerr(:sizey), qcolpz(1:sizey, :), xpz) ! Perform extrapolation.
                     if (k /= 1) then ! Compute normalized error estimate eps(k).
                         errmax = tini
@@ -172,7 +172,7 @@ module bstoer
             ! x = xnew  !! x now is intent(in)
             hdid = h
             first = .False.
-            wrkmin = 1.d35
+            wrkmin = 1.e35_wp
             do kk = 1, km
                 fact = max (err(kk), scalmx)
                 work = fact * arr(kk + 1)
@@ -196,13 +196,13 @@ module bstoer
         subroutine mmid (sizey, y, dydx, xs, htot, nstep, yout, dydt)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(in) :: y, dydx
-            real(kind=8), intent(in) :: xs, htot
+            real(wp), dimension(sizey), intent(in) :: y, dydx
+            real(wp), intent(in) :: xs, htot
             integer(kind=4), intent(in) :: nstep
-            real(kind=8), dimension(sizey), intent(out) :: yout            
+            real(wp), dimension(sizey), intent(out) :: yout            
             procedure(dydt_tem) :: dydt
 
-            real(kind=8) :: x, h, h2, swap
+            real(wp) :: x, h, h2, swap
             integer(kind=4) :: i, n 
 
             h = htot / (nstep * ONE) ! Stepsize this trip.
@@ -227,14 +227,14 @@ module bstoer
             implicit none
             integer(kind=4), intent(in) :: sizey
             integer(kind=4), intent(in) :: iest
-            real(kind=8), intent(in) :: xest
-            real(kind=8), dimension(sizey), intent(in) :: yest
-            real(kind=8), dimension(sizey), intent(out) :: yz, dy
-            real(kind=8), dimension(sizey,16), intent(inout) :: qcol
-            real(kind=8), dimension(16), intent(inout) :: x
+            real(wp), intent(in) :: xest
+            real(wp), dimension(sizey), intent(in) :: yest
+            real(wp), dimension(sizey), intent(out) :: yz, dy
+            real(wp), dimension(sizey,16), intent(inout) :: qcol
+            real(wp), dimension(16), intent(inout) :: x
             
             integer(kind=4) :: j, k1
-            real(kind=8)    :: delta, f1, f2, q
+            real(wp)    :: delta, f1, f2, q
 
             x(iest) = xest  ! Save current independent variable.
             dy = yest
@@ -267,16 +267,16 @@ module bstoer
         
         subroutine BStoer_caller (t, y, dt_adap, dydt, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in) :: t
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), intent(inout) :: dt_adap  ! This try and also next try
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), intent(inout) :: dt_adap  ! This try and also next try
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: dt
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(wp), intent(in) :: dt
+            real(wp), dimension(size (y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun
             
             integer(kind=4) :: sizey
-            real(kind=8) :: time, t_end, dt_try, dt_used
+            real(wp) :: time, t_end, dt_try, dt_used
             logical :: keep = .True.
             logical :: has_check = .False.
 

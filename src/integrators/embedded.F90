@@ -6,20 +6,20 @@ module embedded
     public :: init_embedded, free_embedded, embedded_caller, embedded_fixed_caller
 
     ! Workspace arrays
-    real(kind=8), allocatable :: rk(:,:)  ! integrator
-    real(kind=8), allocatable :: yscal(:)  ! solver
-    real(kind=8), allocatable :: yaux(:)  ! solver
-    real(kind=8), allocatable :: ycaller(:)  ! caller
+    real(wp), allocatable :: rk(:,:)  ! integrator
+    real(wp), allocatable :: yscal(:)  ! solver
+    real(wp), allocatable :: yaux(:)  ! solver
+    real(wp), allocatable :: ycaller(:)  ! caller
 
     ! Constants
     integer(kind=4), parameter :: MAX_N_ITER = 350
-    real(kind=8), parameter :: MAX_DT_FACTOR = 5.0d0
+    real(wp), parameter :: MAX_DT_FACTOR = 5.0e0_wp
 
     ! Variables to set
     integer(kind=4) :: OSOL
-    real(kind=8) :: ONE_OSOL
+    real(wp) :: ONE_OSOL
     integer(kind=4) :: OAUX
-    real(kind=8) :: ONE_OAUX
+    real(wp) :: ONE_OAUX
 
     ! Pointer to embedded used
     procedure (embedded_tem), pointer :: embedded_ptr => null ()
@@ -27,15 +27,16 @@ module embedded
     abstract interface
 
         subroutine embedded_tem (sizey, y, dydt, t, dt, deri, yauxi, ynew)
+            import :: wp
             import :: dydt_tem
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
         end subroutine embedded_tem
     
     end interface
@@ -128,8 +129,8 @@ module embedded
             end if
 
             ! Constants
-            ONE_OSOL = ONE / dble(OSOL)
-            ONE_OAUX = ONE / dble(OAUX)
+            ONE_OSOL = ONE / real(OSOL, kind=wp)
+            ONE_OAUX = ONE / real(OAUX, kind=wp)
 
             ! integrator
             allocate(rk(sizey, n_stages))
@@ -157,12 +158,12 @@ module embedded
         subroutine Fehlberg1_2 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2) = dydt (t + dt * C1_2, y + dt * deri * C1_2)
 
@@ -175,12 +176,12 @@ module embedded
         subroutine Heun_Euler2_1 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2) = dydt (t + dt, y + dt * deri)
             
@@ -192,12 +193,12 @@ module embedded
         subroutine Fehlberg2_1 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2) = dydt (t + dt * C3_4, y + dt * deri * C3_4)
 
@@ -210,12 +211,12 @@ module embedded
         subroutine Bogacki_Shampine3_2 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
 
             rk(1:sizey,2) = dydt (t + dt * C1_2, y + dt * deri * C1_2)
             rk(1:sizey,3) = dydt (t + dt * C3_4, y + dt * rk(1:sizey,2) * C3_4)
@@ -224,20 +225,20 @@ module embedded
 
             rk(1:sizey,4) = dydt (t + dt, ynew)           
             
-            yauxi = y + dt * (deri * 7.d0/24.d0 + rk(1:sizey,2) * C1_4 + rk(1:sizey,3) * C1_3 + rk(1:sizey,4) * C1_8)
+            yauxi = y + dt * (deri * 7.e0_wp/24.e0_wp + rk(1:sizey,2) * C1_4 + rk(1:sizey,3) * C1_3 + rk(1:sizey,4) * C1_8)
 
         end subroutine Bogacki_Shampine3_2
 
         subroutine Zonneveld4_3 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
-            real(kind=8) :: dt_2
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
+            real(wp) :: dt_2
 
             dt_2 = dt * C1_2
             
@@ -245,24 +246,25 @@ module embedded
             rk(1:sizey,3) = dydt (t + dt_2, y + dt * rk(1:sizey,2) * C1_2)
             rk(1:sizey,4) = dydt (t + dt, y + dt * rk(1:sizey,3))
             rk(1:sizey,5) = dydt (t + dt * C3_4, y + dt * ( &
-                & deri * FIVE + rk(1:sizey,2) * 7.d0 + rk(1:sizey,3) * 13.d0 - rk(1:sizey,4)) * 0.03125d0)
+                & deri * FIVE + rk(1:sizey,2) * 7.e0_wp + rk(1:sizey,3) * 13.e0_wp - rk(1:sizey,4)) * 0.03125e0_wp)
             
             rk(1:sizey,1) = rk(1:sizey,2) + rk(1:sizey,3)  ! Used as kaux
 
             ynew = y + dt * (deri + rk(1:sizey,1) * TWO + rk(1:sizey,4)) * C1_6
-            yauxi = y + dt * (- deri * THREE + rk(1:sizey,1) * 14.d0 + rk(1:sizey,4) * 13.d0 - rk(1:sizey,5) * 32.d0) * C1_6
+            yauxi = y + dt * (- deri * THREE + rk(1:sizey,1) * 14.e0_wp + rk(1:sizey,4) * 13.e0_wp - &
+                                            & rk(1:sizey,5) * 32.e0_wp) * C1_6
 
         end subroutine Zonneveld4_3
 
         subroutine Merson4_3 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2) = dydt (t + dt * C1_3, y + dt * deri * C1_3)
             rk(1:sizey,3) = dydt (t + dt * C1_3, y + dt * (deri + rk(1:sizey,2)) * C1_6)
@@ -270,246 +272,261 @@ module embedded
             rk(1:sizey,5) = dydt (t + dt, y + dt * (deri - rk(1:sizey,3) * THREE + rk(1:sizey,4) * FOUR) * C1_2)
             
             ynew = y + dt * (deri + rk(1:sizey,4) * FOUR + rk(1:sizey,5)) * C1_6
-            yauxi = y + dt * (deri + rk(1:sizey,3) * THREE + rk(1:sizey,4) * FOUR + rk(1:sizey,5) * TWO) * 0.1d0
+            yauxi = y + dt * (deri + rk(1:sizey,3) * THREE + rk(1:sizey,4) * FOUR + rk(1:sizey,5) * TWO) * 0.1e0_wp
 
         end subroutine Merson4_3
 
         subroutine Fehlberg4_5 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2) = dydt (t + dt * C1_4, y + dt * deri * C1_4)
-            rk(1:sizey,3) = dydt (t + dt * C3_8, y + dt * (deri * THREE + rk(1:sizey,2) * 9.d0) * 0.03125d0)
-            rk(1:sizey,4) = dydt (t + dt * 12.d0/13.d0, y + dt * (deri * 1932.d0 - rk(1:sizey,2) * 7200.d0 + &
-                                                & rk(1:sizey,3) * 7296.d0)/2197.d0)
-            rk(1:sizey,5) = dydt (t + dt, y + dt * ((deri * 8341.d0 + rk(1:sizey,3) * 29440.d0 - &
-                                                & rk(1:sizey,4) * 845.d0)/4104.d0 - rk(1:sizey,2) * 8.d0))
-            rk(1:sizey,6) = dydt (t + dt * C1_2, y + dt * ((- deri * 1216.d0 + rk(1:sizey,4) * 1859.d0)/4104.d0 + &
-                                                & rk(1:sizey,2) * TWO - rk(1:sizey,3) * 3544.d0/2565.d0 - rk(1:sizey,5) * 0.275d0))
+            rk(1:sizey,3) = dydt (t + dt * C3_8, y + dt * (deri * THREE + rk(1:sizey,2) * 9.e0_wp) * 0.03125e0_wp)
+            rk(1:sizey,4) = dydt (t + dt * 12.e0_wp/13.e0_wp, y + dt * (deri * 1932.e0_wp - rk(1:sizey,2) * 7200.e0_wp + &
+                                                & rk(1:sizey,3) * 7296.e0_wp)/2197.e0_wp)
+            rk(1:sizey,5) = dydt (t + dt, y + dt * ((deri * 8341.e0_wp + rk(1:sizey,3) * 29440.e0_wp - &
+                                                & rk(1:sizey,4) * 845.e0_wp)/4104.e0_wp - rk(1:sizey,2) * 8.e0_wp))
+            rk(1:sizey,6) = dydt (t + dt * C1_2, y + dt * ((- deri * 1216.e0_wp + rk(1:sizey,4) * 1859.e0_wp)/4104.e0_wp + &
+                                                & rk(1:sizey,2) * TWO - rk(1:sizey,3) * 3544.e0_wp/2565.e0_wp - &
+                                                & rk(1:sizey,5) * 0.275e0_wp))
             
-            ynew = y + dt * ((deri * 475.d0 + rk(1:sizey,4) * 2197.d0)/4104.d0 + rk(1:sizey,3) * 1408.d0/2565.d0 - &
+            ynew = y + dt * ((deri * 475.e0_wp + rk(1:sizey,4) * 2197.e0_wp)/4104.e0_wp + rk(1:sizey,3) * 1408.e0_wp/2565.e0_wp - &
                                                 & rk(1:sizey,5) * C1_5)
-            yauxi = y + dt * ((deri * 6688.d0 + rk(1:sizey,4) * 28561.d0 + rk(1:sizey,6) * 2052.d0)/56430.d0 + & 
-                                                & rk(1:sizey,3) * 6656.d0/12825.d0 - rk(1:sizey,5) * 0.18d0)
+            yauxi = y + dt * ((deri * 6688.e0_wp + rk(1:sizey,4) * 28561.e0_wp + rk(1:sizey,6) * 2052.e0_wp)/56430.e0_wp + & 
+                                                & rk(1:sizey,3) * 6656.e0_wp/12825.e0_wp - rk(1:sizey,5) * 0.18e0_wp)
 
         end subroutine Fehlberg4_5
 
         subroutine Cash_Karp5_4 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2) = dydt (t + dt * C1_5, y + dt * deri * C1_5)
-            rk(1:sizey,3) = dydt (t + dt * 0.3d0, y + dt * (deri * THREE + rk(1:sizey,2) * 9.d0) * 0.025d0)
-            rk(1:sizey,4) = dydt (t + dt * 0.6d0, y + dt * (deri * THREE - rk(1:sizey,2) * 9.d0 + rk(1:sizey,3) * 12.d0) * 0.1d0)
-            rk(1:sizey,5) = dydt (t + dt, y + dt * (- deri * 11.d0 + rk(1:sizey,2) * 135.d0 - rk(1:sizey,3) * 140.d0 + &
-                                                & rk(1:sizey,4) * 70.d0)/54.d0)
-            rk(1:sizey,6) = dydt (t + dt * 0.875d0, y + dt * (deri * 3262.d0 + rk(1:sizey,2) * 37800.d0 + &
-                                                & rk(1:sizey,3) * 4600.d0 + rk(1:sizey,4) * 44275.d0 + &
-                                                & rk(1:sizey,5) * 6831.d0)/110592.d0)
+            rk(1:sizey,3) = dydt (t + dt * 0.3e0_wp, y + dt * (deri * THREE + rk(1:sizey,2) * 9.e0_wp) * 0.025e0_wp)
+            rk(1:sizey,4) = dydt (t + dt * 0.6e0_wp, y + dt * (deri * THREE - rk(1:sizey,2) * 9.e0_wp + &
+                                                & rk(1:sizey,3) * 12.e0_wp) * 0.1e0_wp)
+            rk(1:sizey,5) = dydt (t + dt, y + dt * (- deri * 11.e0_wp + rk(1:sizey,2) * 135.e0_wp - rk(1:sizey,3) * 140.e0_wp + &
+                                                & rk(1:sizey,4) * 70.e0_wp)/54.e0_wp)
+            rk(1:sizey,6) = dydt (t + dt * 0.875e0_wp, y + dt * (deri * 3262.e0_wp + rk(1:sizey,2) * 37800.e0_wp + &
+                                                & rk(1:sizey,3) * 4600.e0_wp + rk(1:sizey,4) * 44275.e0_wp + &
+                                                & rk(1:sizey,5) * 6831.e0_wp)/110592.e0_wp)
             
-            ynew = y + dt * (deri * 37.d0/378.d0 + rk(1:sizey,3) * 250.d0/621.d0 + rk(1:sizey,4) * 125.d0/594.d0 + &
-                                                & rk(1:sizey,6) * 512.d0/1771.d0)
-            yauxi = y + dt * ((deri * 5650.d0 + rk(1:sizey,4) * 13525.d0)/55296.d0 + rk(1:sizey,3) * 18575.d0/48384.d0 + &
-                                                & rk(1:sizey,5) * 277.d0/14336.d0 + rk(1:sizey,6) * C1_4)
+            ynew = y + dt * (deri * 37.e0_wp/378.e0_wp + rk(1:sizey,3) * 250.e0_wp/621.e0_wp + &
+                                                & rk(1:sizey,4) * 125.e0_wp/594.e0_wp + rk(1:sizey,6) * 512.e0_wp/1771.e0_wp)
+            yauxi = y + dt * ((deri * 5650.e0_wp + rk(1:sizey,4) * 13525.e0_wp)/55296.e0_wp + &
+                                                & rk(1:sizey,3) * 18575.e0_wp/48384.e0_wp + &
+                                                & rk(1:sizey,5) * 277.e0_wp/14336.e0_wp + rk(1:sizey,6) * C1_4)
 
         end subroutine Cash_Karp5_4
 
         subroutine Dormand_Prince5_4 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2) = dydt (t + dt * C1_5, y + dt * deri * C1_5)
-            rk(1:sizey,3) = dydt (t + dt * 0.3d0, y + dt * (deri * 0.075d0 + rk(1:sizey,2) * 0.225d0))
-            rk(1:sizey,4) = dydt (t + dt * 0.8d0, y + dt * (deri * 44.d0 - rk(1:sizey,2) * 168.d0 + rk(1:sizey,3) * 160.d0)/45.d0)
-            rk(1:sizey,5) = dydt (t + dt * C8_9, y + dt * (deri * 19372.d0 - rk(1:sizey,2) * 76080.d0 + &
-                                                & rk(1:sizey,3) * 64448.d0 - rk(1:sizey,4) * 1908.d0)/6561.d0)
-            rk(1:sizey,6) = dydt (t + dt, y + dt * ((deri * 9017.d0 - rk(1:sizey,2) * 34080.d0 + &
-                                                & rk(1:sizey,4) * 882.d0)/3168.d0 + rk(1:sizey,3) * 46732.d0/5247.d0 - &
-                                                & rk(1:sizey,5) * 5103.d0/18656.d0))
+            rk(1:sizey,3) = dydt (t + dt * 0.3e0_wp, y + dt * (deri * 0.075e0_wp + rk(1:sizey,2) * 0.225e0_wp))
+            rk(1:sizey,4) = dydt (t + dt * 0.8e0_wp, y + dt * (deri * 44.e0_wp - rk(1:sizey,2) * 168.e0_wp + &
+                                                & rk(1:sizey,3) * 160.e0_wp)/45.e0_wp)
+            rk(1:sizey,5) = dydt (t + dt * C8_9, y + dt * (deri * 19372.e0_wp - rk(1:sizey,2) * 76080.e0_wp + &
+                                                & rk(1:sizey,3) * 64448.e0_wp - rk(1:sizey,4) * 1908.e0_wp)/6561.e0_wp)
+            rk(1:sizey,6) = dydt (t + dt, y + dt * ((deri * 9017.e0_wp - rk(1:sizey,2) * 34080.e0_wp + &
+                                                & rk(1:sizey,4) * 882.e0_wp)/3168.e0_wp + &
+                                                & rk(1:sizey,3) * 46732.e0_wp/5247.e0_wp - rk(1:sizey,5) * 5103.e0_wp/18656.e0_wp))
             
-            ynew = y + dt * ((deri * 35.d0 + rk(1:sizey,4) * 250.d0)/384.d0 + rk(1:sizey,3) * 500.d0/1113.d0 - &
-                                                & rk(1:sizey,5) * 2187.d0/6784.d0 + rk(1:sizey,6) * 11.d0/84.d0)
+            ynew = y + dt * ((deri * 35.e0_wp + rk(1:sizey,4) * 250.e0_wp)/384.e0_wp + rk(1:sizey,3) * 500.e0_wp/1113.e0_wp - &
+                                                & rk(1:sizey,5) * 2187.e0_wp/6784.e0_wp + rk(1:sizey,6) * 11.e0_wp/84.e0_wp)
             
             rk(1:sizey,7) = dydt (t + dt, ynew)
 
-            yauxi = y + dt * ((deri * 5179.d0 + rk(1:sizey,4) * 35370.d0)/57600.d0 + rk(1:sizey,3) * 7571.d0/16695.d0 - &
-                                                & rk(1:sizey,5) * 92097.d0/339200.d0 + rk(1:sizey,6) * 187.d0/2100.d0 + &
-                                                & rk(1:sizey,7) * 0.025d0)
+            yauxi = y + dt * ((deri * 5179.e0_wp + rk(1:sizey,4) * 35370.e0_wp)/57600.e0_wp + &
+                                                & rk(1:sizey,3) * 7571.e0_wp/16695.e0_wp - &
+                                                & rk(1:sizey,5) * 92097.e0_wp/339200.e0_wp + &
+                                                & rk(1:sizey,6) * 187.e0_wp/2100.e0_wp + rk(1:sizey,7) * 0.025e0_wp)
 
         end subroutine Dormand_Prince5_4
 
         subroutine Verner6_5 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2) = dydt (t + dt * C1_6, y + dt * deri * C1_6)
-            rk(1:sizey,3) = dydt (t + dt * C4_15, y + dt * (deri * FOUR + rk(1:sizey,2) * 16.d0)/75.d0)
-            rk(1:sizey,4) = dydt (t + dt * C2_3, y + dt * (deri * FIVE - rk(1:sizey,2) * 16.d0 + rk(1:sizey,3) * 15.d0) * C1_6)
-            rk(1:sizey,5) = dydt (t + dt * C5_6, y + dt * ((- deri * 165.d0 - rk(1:sizey,3) * 425.d0)/64.d0 + &
-                                                & (rk(1:sizey,2) * 880.d0 + rk(1:sizey,4) * 85.d0)/96.d0))
-            rk(1:sizey,6) = dydt (t + dt, y + dt * ((deri * 612.d0 + rk(1:sizey,5) * 88.d0)/255.d0 - rk(1:sizey,2) * 8.d0 + &
-                                                &  (rk(1:sizey,3) * 4015.d0 - rk(1:sizey,4) * 187.d0)/612.d0))
-            rk(1:sizey,7) = dydt (t + dt * C1_15, y + dt * ((- deri * 8263.d0 + rk(1:sizey,2) * 24800.d0)/15000.d0 - &
-                                                & rk(1:sizey,3) * 643.d0/680.d0 - rk(1:sizey,4) * 0.324d0 + &
-                                                & rk(1:sizey,5) * 2484.d0/10625.d0))
-            rk(1:sizey,8) = dydt (t + dt, y + dt * (deri * 3501.d0/1720.d0 + (297275.d0 * rk(1:sizey,3) - &
-                                                & 367200 * rk(1:sizey,2))/52632.d0 - rk(1:sizey,4) * 319.d0/2322.d0 + &
-                                                & rk(1:sizey,5) * 24068.d0/84065.d0 + rk(1:sizey,7) * 3850.d0/26703.d0))
+            rk(1:sizey,3) = dydt (t + dt * C4_15, y + dt * (deri * FOUR + rk(1:sizey,2) * 16.e0_wp)/75.e0_wp)
+            rk(1:sizey,4) = dydt (t + dt * C2_3, y + dt * (deri * FIVE - rk(1:sizey,2) * 16.e0_wp + &
+                                                & rk(1:sizey,3) * 15.e0_wp) * C1_6)
+            rk(1:sizey,5) = dydt (t + dt * C5_6, y + dt * ((- deri * 165.e0_wp - rk(1:sizey,3) * 425.e0_wp)/64.e0_wp + &
+                                                & (rk(1:sizey,2) * 880.e0_wp + rk(1:sizey,4) * 85.e0_wp)/96.e0_wp))
+            rk(1:sizey,6) = dydt (t + dt, y + dt * ((deri * 612.e0_wp + rk(1:sizey,5) * 88.e0_wp)/255.e0_wp - &
+                                                & rk(1:sizey,2) * 8.e0_wp + &
+                                                &  (rk(1:sizey,3) * 4015.e0_wp - rk(1:sizey,4) * 187.e0_wp)/612.e0_wp))
+            rk(1:sizey,7) = dydt (t + dt * C1_15, y + dt * ((- deri * 8263.e0_wp + rk(1:sizey,2) * 24800.e0_wp)/15000.e0_wp - &
+                                                & rk(1:sizey,3) * 643.e0_wp/680.e0_wp - rk(1:sizey,4) * 0.324e0_wp + &
+                                                & rk(1:sizey,5) * 2484.e0_wp/10625.e0_wp))
+            rk(1:sizey,8) = dydt (t + dt, y + dt * (deri * 3501.e0_wp/1720.e0_wp + (297275.e0_wp * rk(1:sizey,3) - &
+                                                & 367200 * rk(1:sizey,2))/52632.e0_wp - rk(1:sizey,4) * 319.e0_wp/2322.e0_wp + &
+                                                & rk(1:sizey,5) * 24068.e0_wp/84065.e0_wp + &
+                                                & rk(1:sizey,7) * 3850.e0_wp/26703.e0_wp))
             
-            ynew = y + dt * (deri * 0.075d0 + rk(1:sizey,3) * 875.d0/2244.d0 + (rk(1:sizey,4) * 3703.d0 + &
-                                                & rk(1:sizey,7) * 125.d0)/11592.d0 + rk(1:sizey,5) * 264.d0/1955.d0 + &
-                                                & rk(1:sizey,8) * 43.d0/616.d0)
-            yauxi = y + dt * ((deri * 13.d0 + rk(1:sizey,4) * 50.d0)/160.d0 + (rk(1:sizey,3) * 2375.d0 + &
-                                                & rk(1:sizey,6) * 408.d0)/5984.d0 + rk(1:sizey,5) * 12.d0/85.d0)
+            ynew = y + dt * (deri * 0.075e0_wp + rk(1:sizey,3) * 875.e0_wp/2244.e0_wp + (rk(1:sizey,4) * 3703.e0_wp + &
+                                                & rk(1:sizey,7) * 125.e0_wp)/11592.e0_wp + rk(1:sizey,5) * 264.e0_wp/1955.e0_wp + &
+                                                & rk(1:sizey,8) * 43.e0_wp/616.e0_wp)
+            yauxi = y + dt * ((deri * 13.e0_wp + rk(1:sizey,4) * 50.e0_wp)/160.e0_wp + (rk(1:sizey,3) * 2375.e0_wp + &
+                                                & rk(1:sizey,6) * 408.e0_wp)/5984.e0_wp + rk(1:sizey,5) * 12.e0_wp/85.e0_wp)
 
         end subroutine Verner6_5
 
         subroutine Fehlberg7_8 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2)   = dydt (t + dt * C2_27, y + dt * deri * C2_27)
-            rk(1:sizey,3)   = dydt (t + dt * C1_9, y + dt * (deri + rk(1:sizey,2) * THREE)/36.d0)
-            rk(1:sizey,4)   = dydt (t + dt * C1_6, y + dt * (deri + rk(1:sizey,3) * THREE)/24.d0)
-            rk(1:sizey,5)   = dydt (t + dt * C5_12, y + dt * (deri * C5_12 + (rk(1:sizey,4) - rk(1:sizey,3)) * 1.5625d0))
-            rk(1:sizey,6)   = dydt (t + dt * C1_2, y + dt * (deri + rk(1:sizey,4) * FIVE + rk(1:sizey,5) * FOUR) * 0.05d0)
-            rk(1:sizey,7)   = dydt (t + dt * C5_6, y + dt * (- deri * 25.d0 + rk(1:sizey,4) * 125.d0 - rk(1:sizey,5) * 260.d0 + &
-                                                & rk(1:sizey,6) * 250.d0)/108.d0)
-            rk(1:sizey,8)   = dydt (t + dt * C1_6, y + dt * (deri * 93.d0 + rk(1:sizey,5) * 244.d0 - rk(1:sizey,6) * 200.d0 + &
-                                                & rk(1:sizey,7) * 13.d0)/900.d0)
-            rk(1:sizey,9)   = dydt (t + dt * C2_3, y + dt * (deri * TWO + (- rk(1:sizey,4) * 795.d0 + rk(1:sizey,5) * 1408.d0 - &
-                                                & rk(1:sizey,6) * 1070.d0 + rk(1:sizey,7) * 67.d0)/90.d0 + rk(1:sizey,8) * THREE))
-            rk(1:sizey,10)  = dydt (t + dt * C1_3,  y + dt * ((- deri * 91.d0 + rk(1:sizey,4) * 23.d0  + &
-                                                & rk(1:sizey,6) * 622.d0)/108.d0 - rk(1:sizey,5) * 976.d0/135.d0 + &
-                                                & (- rk(1:sizey,7) * 19.d0 + rk(1:sizey,8) * 170.d0 - rk(1:sizey,9) * 5.d0)/60.d0))
+            rk(1:sizey,3)   = dydt (t + dt * C1_9, y + dt * (deri + rk(1:sizey,2) * THREE)/36.e0_wp)
+            rk(1:sizey,4)   = dydt (t + dt * C1_6, y + dt * (deri + rk(1:sizey,3) * THREE)/24.e0_wp)
+            rk(1:sizey,5)   = dydt (t + dt * C5_12, y + dt * (deri * C5_12 + (rk(1:sizey,4) - rk(1:sizey,3)) * 1.5625e0_wp))
+            rk(1:sizey,6)   = dydt (t + dt * C1_2, y + dt * (deri + rk(1:sizey,4) * FIVE + rk(1:sizey,5) * FOUR) * 0.05e0_wp)
+            rk(1:sizey,7)   = dydt (t + dt * C5_6, y + dt * (- deri * 25.e0_wp + rk(1:sizey,4) * 125.e0_wp - &
+                                                & rk(1:sizey,5) * 260.e0_wp + rk(1:sizey,6) * 250.e0_wp)/108.e0_wp)
+            rk(1:sizey,8)   = dydt (t + dt * C1_6, y + dt * (deri * 93.e0_wp + rk(1:sizey,5) * 244.e0_wp - &
+                                                & rk(1:sizey,6) * 200.e0_wp + rk(1:sizey,7) * 13.e0_wp)/900.e0_wp)
+            rk(1:sizey,9)   = dydt (t + dt * C2_3, y + dt * (deri * TWO + (- rk(1:sizey,4) * 795.e0_wp + &
+                                                & rk(1:sizey,5) * 1408.e0_wp - rk(1:sizey,6) * 1070.e0_wp + &
+                                                & rk(1:sizey,7) * 67.e0_wp)/90.e0_wp + &
+                                                & rk(1:sizey,8) * THREE))
+            rk(1:sizey,10)  = dydt (t + dt * C1_3,  y + dt * ((- deri * 91.e0_wp + rk(1:sizey,4) * 23.e0_wp  + &
+                                                & rk(1:sizey,6) * 622.e0_wp)/108.e0_wp - rk(1:sizey,5) * 976.e0_wp/135.e0_wp + &
+                                                & (- rk(1:sizey,7) * 19.e0_wp + rk(1:sizey,8) * 170.e0_wp - &
+                                                & rk(1:sizey,9) * 5.e0_wp)/60.e0_wp))
 
-            rk(1:sizey,1)  = - rk(1:sizey,4) * 8525.d0 + rk(1:sizey,5) * 17984.d0  !! Used as kaux
+            rk(1:sizey,1)  = - rk(1:sizey,4) * 8525.e0_wp + rk(1:sizey,5) * 17984.e0_wp  !! Used as kaux
 
-            rk(1:sizey,11)  = dydt (t + dt, y + dt * (deri * 2383.d0 + rk(1:sizey,1) - rk(1:sizey,6) * 15050.d0 + &
-                                                & rk(1:sizey,7) * 2133.d0 + rk(1:sizey,8) * 2250.d0 + rk(1:sizey,9) * 1125.d0 + &
-                                                & rk(1:sizey,10) * 1800.d0)/4100.d0)
-            rk(1:sizey,12)  = dydt (t, y + dt * (((deri - rk(1:sizey,7))/205.d0 + ((- rk(1:sizey,6) + rk(1:sizey,10)) * TWO + &
-                                                & (- rk(1:sizey,8) + rk(1:sizey,9)))/41.d0) * THREE))
-            rk(1:sizey,13)  = dydt (t + dt, y + dt * ((- deri * 1777.d0 + rk(1:sizey,1) - rk(1:sizey,6) * 14450.d0 + & 
-                                                & rk(1:sizey,7) * 2193.d0 + rk(1:sizey,8) * 2550.d0 + rk(1:sizey,9) * 825.d0 + &
-                                                & rk(1:sizey,10) * 1900.d0)/4100.d0 + rk(1:sizey,12)))
+            rk(1:sizey,11)  = dydt (t + dt, y + dt * (deri * 2383.e0_wp + rk(1:sizey,1) - rk(1:sizey,6) * 15050.e0_wp + &
+                                                & rk(1:sizey,7) * 2133.e0_wp + rk(1:sizey,8) * 2250.e0_wp + &
+                                                & rk(1:sizey,9) * 1125.e0_wp + &
+                                                & rk(1:sizey,10) * 1800.e0_wp)/4100.e0_wp)
+            rk(1:sizey,12)  = dydt (t, y + dt * (((deri - rk(1:sizey,7))/205.e0_wp + ((- rk(1:sizey,6) + rk(1:sizey,10)) * TWO + &
+                                                & (- rk(1:sizey,8) + rk(1:sizey,9)))/41.e0_wp) * THREE))
+            rk(1:sizey,13)  = dydt (t + dt, y + dt * ((- deri * 1777.e0_wp + rk(1:sizey,1) - rk(1:sizey,6) * 14450.e0_wp + & 
+                                                & rk(1:sizey,7) * 2193.e0_wp + rk(1:sizey,8) * 2550.e0_wp + &
+                                                & rk(1:sizey,9) * 825.e0_wp + &
+                                                & rk(1:sizey,10) * 1900.e0_wp)/4100.e0_wp + rk(1:sizey,12)))
 
-            rk(1:sizey,1) = rk(1:sizey,6) * 272.d0 + (rk(1:sizey,7) + rk(1:sizey,8)) * 216.d0 + (rk(1:sizey,9) + &
-                                                & rk(1:sizey,10)) * 27.d0
+            rk(1:sizey,1) = rk(1:sizey,6) * 272.e0_wp + (rk(1:sizey,7) + rk(1:sizey,8)) * 216.e0_wp + (rk(1:sizey,9) + &
+                                                & rk(1:sizey,10)) * 27.e0_wp
 
-            ynew = y + dt * ((deri + rk(1:sizey,11)) * 41.d0 + rk(1:sizey,1)) * C1_840
-            yauxi = y + dt * (rk(1:sizey,1) + (rk(1:sizey,12) + rk(1:sizey,13)) * 41.d0) * C1_840
+            ynew = y + dt * ((deri + rk(1:sizey,11)) * 41.e0_wp + rk(1:sizey,1)) * C1_840
+            yauxi = y + dt * (rk(1:sizey,1) + (rk(1:sizey,12) + rk(1:sizey,13)) * 41.e0_wp) * C1_840
 
         end subroutine Fehlberg7_8
         
         subroutine Dormand_Prince8_7 (sizey, y, dydt, t, dt, deri, yauxi, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey),  intent(in) :: y
+            real(wp), dimension(sizey),  intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t, dt
-            real(kind=8), dimension(sizey), intent(in) :: deri
-            real(kind=8), dimension(sizey), intent(out) :: yauxi
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), intent(in) :: t, dt
+            real(wp), dimension(sizey), intent(in) :: deri
+            real(wp), dimension(sizey), intent(out) :: yauxi
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             rk(1:sizey,2)  = dydt (t + dt * C1_18, y + dt * (C1_18 * deri))
-            rk(1:sizey,3)  = dydt (t + dt * C1_12, y + dt * (C1_48 * deri + 0.0625d0 * rk(1:sizey,2)))
-            rk(1:sizey,4)  = dydt (t + dt * C1_8, y + dt * (0.03125d0 * deri + 0.09375d0 * rk(1:sizey,3)))
-            rk(1:sizey,5)  = dydt (t + dt * 0.3125d0, y + dt * (0.3125d0 * deri - 1.171875d0 * rk(1:sizey,3) + &
-                                                & 1.171875d0 * rk(1:sizey,4)))
-            rk(1:sizey,6)  = dydt (t + dt * C3_8, y + dt * (0.0375d0 * deri + 0.1875d0 * rk(1:sizey,4) + 0.15d0 * rk(1:sizey,5)))
-            rk(1:sizey,7)  = dydt (t + dt * 0.1475d0, y + dt * (29443841.d0/614563906.d0 * deri + &
-                                                & 77736538.d0/692538347.d0 * rk(1:sizey,4) - &
-                                                & 28693883.d0/1125000000.d0 * rk(1:sizey,5) + &
-                                                & 23124283.d0/1800000000.d0 * rk(1:sizey,6)))
-            rk(1:sizey,8)  = dydt (t + dt * 0.465d0, y + dt * (16016141.d0/946692911.d0 * deri + &
-                                                & 61564180.d0/158732637.d0 * rk(1:sizey,4) + &
-                                                & 22789713.d0/633445777.d0 * rk(1:sizey,5) + &
-                                                & 545815736.d0/2771057229.d0 * rk(1:sizey,6) - &
-                                                & 180193667.d0/1043307555.d0 * rk(1:sizey,7)))
-            rk(1:sizey,9)  = dydt (t + dt * 5490023248.d0/9719169821.d0, y + dt * (39632708.d0/573591083.d0 * deri - &
-                                                & 433636366.d0/683701615.d0 * rk(1:sizey,4) - &
-                                                & 421739975.d0/2616292301.d0 * rk(1:sizey,5) + &
-                                                & 100302831.d0/723423059.d0 * rk(1:sizey,6) + &
-                                                & 790204164.d0/839813087.d0 * rk(1:sizey,7) + &
-                                                & 800635310.d0/3783071287.d0 * rk(1:sizey,8)))
-            rk(1:sizey,10) = dydt (t + dt * 0.65d0, y + dt * (246121993.d0/1340847787.d0 * deri - &
-                                                & 37695042795.d0/15268766246.d0 * rk(1:sizey,4) - &
-                                                & 309121744.d0/1061227803.d0 * rk(1:sizey,5) - &
-                                                & 12992083.d0/490766935.d0 * rk(1:sizey,6) + &
-                                                & 6005943493.d0/2108947869.d0 * rk(1:sizey,7) + &
-                                                & 393006217.d0/1396673457.d0 * rk(1:sizey,8) + &
-                                                & 123872331.d0/1001029789.d0 * rk(1:sizey,9)))
-            rk(1:sizey,11) = dydt (t + dt * 1201146811.d0/1299019798.d0, y + dt * (-1028468189.d0/846180014.d0 * deri + &
-                                                & 8478235783.d0/508512852.d0 * rk(1:sizey,4) + &
-                                                & 1311729495.d0/1432422823.d0 * rk(1:sizey,5) - &
-                                                & 10304129995.d0/1701304382.d0 * rk(1:sizey,6) - &
-                                                & 48777925059.d0/3047939560.d0 * rk(1:sizey,7) + &
-                                                & 15336726248.d0/1032824649.d0 * rk(1:sizey,8) - &
-                                                & 45442868181.d0/3398467696.d0 * rk(1:sizey,9) + &
-                                                & 3065993473.d0/597172653.d0 * rk(1:sizey,10)))
-            rk(1:sizey,12) = dydt (t + dt, y + dt * (185892177.d0/718116043.d0 * deri - &
-                                                & 3185094517.d0/667107341.d0 * rk(1:sizey,4) - &
-                                                & 477755414.d0/1098053517.d0 * rk(1:sizey,5) - &
-                                                & 703635378.d0/230739211.d0 * rk(1:sizey,6) + &
-                                                & 5731566787.d0/1027545527.d0 * rk(1:sizey,7) + &
-                                                & 5232866602.d0/850066563.d0 * rk(1:sizey,8) - &
-                                                & 4093664535.d0/808688257.d0 * rk(1:sizey,9) + &
-                                                & 3962137247.d0/1805957418.d0 * rk(1:sizey,10) + &
-                                                & 65686358.d0/487910083.d0 * rk(1:sizey,11)))
-            rk(1:sizey,13) = dydt (t + dt, y + dt * (403863854.d0/491063109.d0 * deri - &
-                                                & 5068492393.d0/434740067.d0 * rk(1:sizey,4) - &
-                                                & 411421997.d0/543043805.d0 * rk(1:sizey,5) + &
-                                                & 652783627.d0/914296604.d0 * rk(1:sizey,6) + &
-                                                & 11173962825.d0/925320556.d0 * rk(1:sizey,7) - &
-                                                & 13158990841.d0/6184727034.d0 * rk(1:sizey,8) + &
-                                                & 3936647629.d0/1978049680.d0 * rk(1:sizey,9) - &
-                                                & 160528059.d0/685178525.d0 * rk(1:sizey,10) + &
-                                                & 248638103.d0/1413531060.d0 * rk(1:sizey,11)))
+            rk(1:sizey,3)  = dydt (t + dt * C1_12, y + dt * (C1_48 * deri + 0.0625e0_wp * rk(1:sizey,2)))
+            rk(1:sizey,4)  = dydt (t + dt * C1_8, y + dt * (0.03125e0_wp * deri + 0.09375e0_wp * rk(1:sizey,3)))
+            rk(1:sizey,5)  = dydt (t + dt * 0.3125e0_wp, y + dt * (0.3125e0_wp * deri - 1.171875e0_wp * rk(1:sizey,3) + &
+                                                & 1.171875e0_wp * rk(1:sizey,4)))
+            rk(1:sizey,6)  = dydt (t + dt * C3_8, y + dt * (0.0375e0_wp * deri + 0.1875e0_wp * rk(1:sizey,4) + &
+                                                & 0.15e0_wp * rk(1:sizey,5)))
+            rk(1:sizey,7)  = dydt (t + dt * 0.1475e0_wp, y + dt * (29443841.e0_wp/614563906.e0_wp * deri + &
+                                                & 77736538.e0_wp/692538347.e0_wp * rk(1:sizey,4) - &
+                                                & 28693883.e0_wp/1125000000.e0_wp * rk(1:sizey,5) + &
+                                                & 23124283.e0_wp/1800000000.e0_wp * rk(1:sizey,6)))
+            rk(1:sizey,8)  = dydt (t + dt * 0.465e0_wp, y + dt * (16016141.e0_wp/946692911.e0_wp * deri + &
+                                                & 61564180.e0_wp/158732637.e0_wp * rk(1:sizey,4) + &
+                                                & 22789713.e0_wp/633445777.e0_wp * rk(1:sizey,5) + &
+                                                & 545815736.e0_wp/2771057229.e0_wp * rk(1:sizey,6) - &
+                                                & 180193667.e0_wp/1043307555.e0_wp * rk(1:sizey,7)))
+            rk(1:sizey,9)  = dydt (t + dt * 5490023248.e0_wp/9719169821.e0_wp, y + dt * (39632708.e0_wp/573591083.e0_wp * deri - &
+                                                & 433636366.e0_wp/683701615.e0_wp * rk(1:sizey,4) - &
+                                                & 421739975.e0_wp/2616292301.e0_wp * rk(1:sizey,5) + &
+                                                & 100302831.e0_wp/723423059.e0_wp * rk(1:sizey,6) + &
+                                                & 790204164.e0_wp/839813087.e0_wp * rk(1:sizey,7) + &
+                                                & 800635310.e0_wp/3783071287.e0_wp * rk(1:sizey,8)))
+            rk(1:sizey,10) = dydt (t + dt * 0.65e0_wp, y + dt * (246121993.e0_wp/1340847787.e0_wp * deri - &
+                                                & 37695042795.e0_wp/15268766246.e0_wp * rk(1:sizey,4) - &
+                                                & 309121744.e0_wp/1061227803.e0_wp * rk(1:sizey,5) - &
+                                                & 12992083.e0_wp/490766935.e0_wp * rk(1:sizey,6) + &
+                                                & 6005943493.e0_wp/2108947869.e0_wp * rk(1:sizey,7) + &
+                                                & 393006217.e0_wp/1396673457.e0_wp * rk(1:sizey,8) + &
+                                                & 123872331.e0_wp/1001029789.e0_wp * rk(1:sizey,9)))
+            rk(1:sizey,11) = dydt (t + dt * 1201146811.e0_wp/1299019798.e0_wp, y + dt * &
+                                                & (-1028468189.e0_wp/846180014.e0_wp * deri + &
+                                                & 8478235783.e0_wp/508512852.e0_wp * rk(1:sizey,4) + &
+                                                & 1311729495.e0_wp/1432422823.e0_wp * rk(1:sizey,5) - &
+                                                & 10304129995.e0_wp/1701304382.e0_wp * rk(1:sizey,6) - &
+                                                & 48777925059.e0_wp/3047939560.e0_wp * rk(1:sizey,7) + &
+                                                & 15336726248.e0_wp/1032824649.e0_wp * rk(1:sizey,8) - &
+                                                & 45442868181.e0_wp/3398467696.e0_wp * rk(1:sizey,9) + &
+                                                & 3065993473.e0_wp/597172653.e0_wp * rk(1:sizey,10)))
+            rk(1:sizey,12) = dydt (t + dt, y + dt * (185892177.e0_wp/718116043.e0_wp * deri - &
+                                                & 3185094517.e0_wp/667107341.e0_wp * rk(1:sizey,4) - &
+                                                & 477755414.e0_wp/1098053517.e0_wp * rk(1:sizey,5) - &
+                                                & 703635378.e0_wp/230739211.e0_wp * rk(1:sizey,6) + &
+                                                & 5731566787.e0_wp/1027545527.e0_wp * rk(1:sizey,7) + &
+                                                & 5232866602.e0_wp/850066563.e0_wp * rk(1:sizey,8) - &
+                                                & 4093664535.e0_wp/808688257.e0_wp * rk(1:sizey,9) + &
+                                                & 3962137247.e0_wp/1805957418.e0_wp * rk(1:sizey,10) + &
+                                                & 65686358.e0_wp/487910083.e0_wp * rk(1:sizey,11)))
+            rk(1:sizey,13) = dydt (t + dt, y + dt * (403863854.e0_wp/491063109.e0_wp * deri - &
+                                                & 5068492393.e0_wp/434740067.e0_wp * rk(1:sizey,4) - &
+                                                & 411421997.e0_wp/543043805.e0_wp * rk(1:sizey,5) + &
+                                                & 652783627.e0_wp/914296604.e0_wp * rk(1:sizey,6) + &
+                                                & 11173962825.e0_wp/925320556.e0_wp * rk(1:sizey,7) - &
+                                                & 13158990841.e0_wp/6184727034.e0_wp * rk(1:sizey,8) + &
+                                                & 3936647629.e0_wp/1978049680.e0_wp * rk(1:sizey,9) - &
+                                                & 160528059.e0_wp/685178525.e0_wp * rk(1:sizey,10) + &
+                                                & 248638103.e0_wp/1413531060.e0_wp * rk(1:sizey,11)))
 
-            ynew = y + dt * (13451932.d0/455176623.d0 * deri - 808719846.d0/976000145.d0 * rk(1:sizey,6) + &
-                                                & 1757004468.d0/5645159321.d0 * rk(1:sizey,7) + &
-                                                & 656045339.d0/265891186.d0 * rk(1:sizey,8) - &
-                                                & 3867574721.d0/1518517206.d0 * rk(1:sizey,9) + &
-                                                & 465885868.d0/322736535.d0 * rk(1:sizey,10) + &
-                                                & 53011238.d0/667516719.d0 * rk(1:sizey,11) + C2_45 * rk(1:sizey,12))
-            yauxi = y + dt * (14005451.d0/335480064.d0 * deri - 59238493.d0/1068277825.d0 * rk(1:sizey,6) + &
-                                                & 181606767.d0/758867731.d0 * rk(1:sizey,7) + &
-                                                & 561292985.d0/797845732.d0 * rk(1:sizey,8) - &
-                                                & 1041891430.d0/1371343529.d0 * rk(1:sizey,9) + &
-                                                & 760417239.d0/1151165299.d0 * rk(1:sizey,10) + &
-                                                & 118820643.d0/751138087.d0 * rk(1:sizey,11) - &
-                                                & 528747749.d0/2220607170.d0 * rk(1:sizey,12) + C1_4 * rk(1:sizey,13))
+            ynew = y + dt * (13451932.e0_wp/455176623.e0_wp * deri - 808719846.e0_wp/976000145.e0_wp * rk(1:sizey,6) + &
+                                                & 1757004468.e0_wp/5645159321.e0_wp * rk(1:sizey,7) + &
+                                                & 656045339.e0_wp/265891186.e0_wp * rk(1:sizey,8) - &
+                                                & 3867574721.e0_wp/1518517206.e0_wp * rk(1:sizey,9) + &
+                                                & 465885868.e0_wp/322736535.e0_wp * rk(1:sizey,10) + &
+                                                & 53011238.e0_wp/667516719.e0_wp * rk(1:sizey,11) + C2_45 * rk(1:sizey,12))
+            yauxi = y + dt * (14005451.e0_wp/335480064.e0_wp * deri - 59238493.e0_wp/1068277825.e0_wp * rk(1:sizey,6) + &
+                                                & 181606767.e0_wp/758867731.e0_wp * rk(1:sizey,7) + &
+                                                & 561292985.e0_wp/797845732.e0_wp * rk(1:sizey,8) - &
+                                                & 1041891430.e0_wp/1371343529.e0_wp * rk(1:sizey,9) + &
+                                                & 760417239.e0_wp/1151165299.e0_wp * rk(1:sizey,10) + &
+                                                & 118820643.e0_wp/751138087.e0_wp * rk(1:sizey,11) - &
+                                                & 528747749.e0_wp/2220607170.e0_wp * rk(1:sizey,12) + C1_4 * rk(1:sizey,13))
 
         end subroutine Dormand_Prince8_7
 
@@ -521,17 +538,17 @@ module embedded
         recursive subroutine solve_embedded (sizey, y, dydt, t, dt_adap, dt_used, deri, embedded, ynew)
             implicit none
             integer(kind=4), intent(in) :: sizey
-            real(kind=8), dimension(sizey), intent(in) :: y
+            real(wp), dimension(sizey), intent(in) :: y
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: t
-            real(kind=8), intent(inout) :: dt_adap
-            real(kind=8), intent(out) :: dt_used
-            real(kind=8), dimension(sizey), intent(in) :: deri
+            real(wp), intent(in) :: t
+            real(wp), intent(inout) :: dt_adap
+            real(wp), intent(out) :: dt_used
+            real(wp), dimension(sizey), intent(in) :: deri
             procedure (embedded_tem), pointer :: embedded
-            real(kind=8), dimension(sizey), intent(out) :: ynew
+            real(wp), dimension(sizey), intent(out) :: ynew
             
             integer(kind=4), save :: iter = 0
-            real(kind=8) :: e_calc, ratio
+            real(wp) :: e_calc, ratio
 
             iter = iter + 1
             dt_adap = max (dt_adap, DT_MIN_NOW)  
@@ -584,16 +601,16 @@ module embedded
 
         subroutine embedded_caller (t, y, dt_adap, dydt, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in) :: t
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), intent(inout) :: dt_adap  ! This try and also next try
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), intent(inout) :: dt_adap  ! This try and also next try
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: dt
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(wp), intent(in) :: dt
+            real(wp), dimension(size (y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun
             
             integer(kind=4) :: sizey
-            real(kind=8) :: time, t_end, dt_used
+            real(wp) :: time, t_end, dt_used
             logical :: keep = .True.
             logical :: has_check = .False.
 
@@ -621,8 +638,7 @@ module embedded
 
                 der(:sizey) = dydt (time, ycaller(:sizey))
                                     
-                call solve_embedded (sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, &
-                                    & der(:sizey), embedded_ptr, ynew)
+                call solve_embedded (sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, der(:sizey), embedded_ptr, ynew)
 
                 time = time + dt_used
             end do
@@ -636,16 +652,16 @@ module embedded
 
         subroutine embedded_fixed_caller (t, y, dt_adap, dydt, dt, ynew, check_fun)
             implicit none
-            real(kind=8), intent(in) :: t
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), intent(inout) :: dt_adap  ! This is each sub-step
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), intent(inout) :: dt_adap  ! This is each sub-step
             procedure(dydt_tem) :: dydt
-            real(kind=8), intent(in) :: dt ! This is full step
-            real(kind=8), dimension(size (y)), intent(out) :: ynew
+            real(wp), intent(in) :: dt ! This is full step
+            real(wp), dimension(size (y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun
             
             integer(kind=4) :: sizey
-            real(kind=8) :: time, t_end
+            real(wp) :: time, t_end
             logical :: keep = .True.
             logical :: has_check = .False.
 

@@ -1,23 +1,23 @@
 !> Module with bins routines. Unused yet.
 module bins
-    use constants, only: cero, uno2, G, pi, tini
+    use constants, only: wp, cero, uno2, G, pi, tini
 
     implicit none
 
     type :: my_bins
-        real(kind=8), allocatable :: edges(:)   ! Bin edges
-        real(kind=8), allocatable :: centers(:) ! Bin centers
-        real(kind=8) :: rmin, rmax              ! Minimum and maximum radii
-        real(kind=8), allocatable :: areas(:)   ! Bin areas
-        real(kind=8), allocatable :: mass(:)    ! Bin mass
+        real(wp), allocatable :: edges(:)   ! Bin edges
+        real(wp), allocatable :: centers(:) ! Bin centers
+        real(wp) :: rmin, rmax              ! Minimum and maximum radii
+        real(wp), allocatable :: areas(:)   ! Bin areas
+        real(wp), allocatable :: mass(:)    ! Bin mass
         integer(kind=4) :: Nbins                ! Number of bins
         integer(kind=4) :: binning_method       ! Binning method
-        real(kind=8), dimension(2) :: center    ! Center of the disk
+        real(wp), dimension(2) :: center    ! Center of the disk
     end type my_bins
     
-    real(kind=8), dimension(0:15), parameter :: P2_2k = (/ &  ! P_{2k}^2(0)
-    & 1.d0, 0.25d0, 0.140625d0, 0.0976563d0, 0.0747681d0, 0.0605621d0, 0.050889d0, 0.0438788d0, &
-    & 0.0385653d0, 0.0343993d0, 0.0310454d0, 0.0282872d0, 0.0259791d0, 0.0240191d0, 0.0223341d0, 0.02087d0 &
+    real(wp), dimension(0:15), parameter :: P2_2k = (/ &  ! P_{2k}^2(0)
+    & 1.e0_wp, 0.25e0_wp, 0.140625e0_wp, 0.0976563e0_wp, 0.0747681e0_wp, 0.0605621e0_wp, 0.050889e0_wp, 0.0438788e0_wp, &
+    & 0.0385653e0_wp, 0.0343993e0_wp, 0.0310454e0_wp, 0.0282872e0_wp, 0.0259791e0_wp, 0.0240191e0_wp, 0.0223341e0_wp, 0.02087e0_wp &
     &/)
 
     contains
@@ -27,7 +27,7 @@ module bins
             implicit none
             type(my_bins), intent(inout) :: self
             integer(kind=4), intent(in) :: Nbins
-            real(kind=8), intent(in) :: rmin, rmax
+            real(wp), intent(in) :: rmin, rmax
             integer(kind=4), intent(in) :: binning_method
             
             self%Nbins = Nbins
@@ -45,7 +45,7 @@ module bins
         pure subroutine set_center_impl(self, center)
             implicit none
             type(my_bins), intent(inout) :: self
-            real(kind=8), intent(in) :: center(2)
+            real(wp), intent(in) :: center(2)
             
             self%center = center
         end subroutine set_center_impl
@@ -54,9 +54,9 @@ module bins
         subroutine set_bins_impl(self, particles_dist_sorted)
             implicit none
             type(my_bins), intent(inout) :: self
-            real(kind=8), dimension(:), optional, intent(in) :: particles_dist_sorted  ! Out: Sorted
+            real(wp), dimension(:), optional, intent(in) :: particles_dist_sorted  ! Out: Sorted
             integer(kind=4) :: i
-            real(kind=8) :: dr, da
+            real(wp) :: dr, da
 
             self%edges(1) = self%rmin
             self%edges(self%Nbins+1) = self%rmax
@@ -95,7 +95,7 @@ module bins
         subroutine set_bins_equal_particles(self, particles_dist_sorted)
             implicit none
             type(my_bins), intent(inout) :: self
-            real(kind=8), dimension(:), intent(in) :: particles_dist_sorted
+            real(wp), dimension(:), intent(in) :: particles_dist_sorted
             integer(kind=4) :: first_part, last_part
             integer(kind=4) :: npart_per_bin, nbins_with_extra
             integer(kind=4) :: i
@@ -156,7 +156,7 @@ module bins
         pure subroutine get_particles_bins_impl(self, particles_dist, particles_bins, dist_is_sorted)
             implicit none
             type(my_bins), intent(inout) :: self
-            real(kind=8), dimension(:), intent(in) :: particles_dist
+            real(wp), dimension(:), intent(in) :: particles_dist
             integer(kind=4), dimension(:), intent(inout) :: particles_bins
             logical, intent(in) :: dist_is_sorted
             integer(kind=4) :: i, bin_i, aux
@@ -191,7 +191,7 @@ module bins
         pure subroutine calculate_mass_impl(self, particles_dist, particles_mass, particles_bins)
             implicit none
             type(my_bins), intent(inout) :: self
-            real(kind=8), dimension(:), intent(in) :: particles_dist, particles_mass
+            real(wp), dimension(:), intent(in) :: particles_dist, particles_mass
             integer(kind=4), dimension(:), intent(in) :: particles_bins
             integer(kind=4) :: i, bin_i
 
@@ -207,11 +207,11 @@ module bins
             implicit none
             type(my_bins), intent(in) :: self
             integer(kind=4), intent(in) :: particle_bin   ! Particle position (x, y)
-            real(kind=8), intent(in) :: particle_pos(2), particle_dist   ! Particle position (x, y)
+            real(wp), intent(in) :: particle_pos(2), particle_dist   ! Particle position (x, y)
             integer(kind=4), intent(in) :: order_legendre
-            real(kind=8), intent(inout) :: particle_acc(2)  ! Acceleration components (ax, ay)
+            real(wp), intent(inout) :: particle_acc(2)  ! Acceleration components (ax, ay)
             integer(kind=4) :: i, k
-            real(kind=8) :: Rring, mring, r_ratio, legendre_sum
+            real(wp) :: Rring, mring, r_ratio, legendre_sum
             
             ! If particle_bin == 0, only the second loop is used
             ! If particle_bin == Nbins + 1, only the first loop is used
@@ -255,7 +255,7 @@ module bins
         ! Helper function: Find bin index
         pure function find_bin(self, dist) result(bin)
             type(my_bins), intent(in) :: self
-            real(kind=8), intent(in) :: dist
+            real(wp), intent(in) :: dist
             integer(kind=4) :: bin, low, high, mid
 
             bin = -1

@@ -1,17 +1,17 @@
 !> Module with TimesOmegaMass routines.
 module tomodule
-    use constants, only: cero, uno
+    use constants, only: wp, cero, uno
     implicit none
 
     type :: tom_st  !!! This contains only the input parameters
         integer(kind=4) :: index_number = -1  ! Index to count which TOM row is active
         integer(kind=4) :: total_number = 0  ! Total amount of lines in TOM
-        real(kind=8), dimension(:), allocatable :: times  ! Times in TOM
-        real(kind=8), dimension(:), allocatable :: deltaomega  ! Delta Omega in TOM
-        real(kind=8), dimension(:), allocatable :: deltamass  ! Delta Mass in TOM
+        real(wp), dimension(:), allocatable :: times  ! Times in TOM
+        real(wp), dimension(:), allocatable :: deltaomega  ! Delta Omega in TOM
+        real(wp), dimension(:), allocatable :: deltamass  ! Delta Mass in TOM
         logical :: use_dmass = .False.
         logical :: use_domega = .False.
-        real(kind=8) :: mass_growth_param = cero
+        real(wp) :: mass_growth_param = cero
     end type tom_st
 
     contains
@@ -19,13 +19,13 @@ module tomodule
         ! Read TOMfile
         subroutine read_tomfile(t0, tf, t_TOM, domega_TOM, dmass_TOM, file_tout)
             implicit none
-            real(kind=8), intent(in) :: t0, tf
-            real(kind=8), dimension(:), allocatable, intent(out) :: t_TOM, domega_TOM, dmass_TOM
+            real(wp), intent(in) :: t0, tf
+            real(wp), dimension(:), allocatable, intent(out) :: t_TOM, domega_TOM, dmass_TOM
             character(LEN=*), intent(in) :: file_tout
             integer(kind=4) :: n_TOM
             integer(kind=4) :: i, j, io
             integer(kind=4) :: ncols
-            real(kind=8) :: t_aux
+            real(wp) :: t_aux
             character(80) :: auxstr
             logical :: existe
 
@@ -112,7 +112,7 @@ module tomodule
             implicit none
             type(tom_st), intent(inout) :: self
             character(LEN=*), intent(in) :: tomfile
-            real(kind=8), intent(in) :: final_time
+            real(wp), intent(in) :: final_time
             logical, intent(in) :: use_screen
 
             !! En este caso, leeremos los tiempos desde un archivo

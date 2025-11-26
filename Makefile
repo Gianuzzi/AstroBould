@@ -7,6 +7,7 @@ MOD_DIR   = src
 DEP_FILE  = dependencies.dep
 EXE_FILE  = ASTROBOULD
 
+
 #--------------------------------------------------------------------------
 # Compiler selection
 
@@ -15,6 +16,7 @@ FC    = gfortran
 INTEL ?= 0
 AMD   ?= 0
 OPT   ?= 2   # default optimization level if not specified
+PREC  ?= 8  # default precision if not provided
 
 # Intel compiler
 ifeq ($(INTEL),1)
@@ -26,8 +28,9 @@ ifeq ($(AMD),1)
   FC = flang
 endif
 
+
 #--------------------------------------------------------------------------
-# Flags
+# Standard / Architecture / Warnings
 
 # Base settings
 ifeq ($(INTEL),1)
@@ -40,6 +43,7 @@ endif
 WARN_GCC   = -Wall -Wextra -Wshadow
 WARN_INTEL = -warn all -nogen-interfaces
 WARN_AMD   =    # (no good Fortran warning flags in AOCC yet)
+
 
 #--------------------------------------------------------------------------
 # Optimization / Debug
@@ -68,11 +72,13 @@ else
   endif
 endif
 
+
 #--------------------------------------------------------------------------
 # Parallelization
 ifdef PARALLEL
   MYFFLAGS += -fopenmp
 endif
+
 
 #--------------------------------------------------------------------------
 # Final flags per compiler
@@ -88,6 +94,17 @@ endif
 FFLAGS += -I$(OBJ_DIR)
 
 LDFLAGS = $(MYCFLAGS) $(MYFFLAGS)
+
+
+#--------------------------------------------------------------------------
+# Precision selection
+# Default = double precision (real64)
+#  PREC=4  -> real32
+#  PREC=8  -> real64
+#  PREC=16 -> real128
+# Force preprocessing for all compilers (needed for -DWP=...)
+FFLAGS += -DWP=$(PREC) -cpp
+
 
 #--------------------------------------------------------------------------
 # Sources, objects, modules

@@ -1,23 +1,23 @@
 !> Module with filtering methods.
 module filtering
-    use constants, only: pi, twopi, cero, uno, uno2, dos, tini
+    use constants, only: wp, pi, twopi, cero, uno, uno2, dos, tini
     
     implicit none
 
     type :: filter_st
         ! filter parameters
-        real(kind=8) :: dt = cero
-        real(kind=8) :: half_width = cero
+        real(wp) :: dt = cero
+        real(wp) :: half_width = cero
         integer(kind=4) :: size = 0
         integer(kind=4) :: half_size = 0
         integer(kind=4) :: n_windows = 0
         integer(kind=4) :: n_samples = 0
         integer(kind=4) :: weight_model = -1
-        real(kind=8) :: omega_pass = cero
+        real(wp) :: omega_pass = cero
         logical :: low_pass = .True.
-        real(kind=8), dimension(:), allocatable :: kernel  ! convolution kernel
-        real(kind=8), dimension(:), allocatable :: tmp_times  ! times to use for filtering
-        real(kind=8), dimension(:,:), allocatable :: tmp_values  ! values to use for filtering
+        real(wp), dimension(:), allocatable :: kernel  ! convolution kernel
+        real(wp), dimension(:), allocatable :: tmp_times  ! times to use for filtering
+        real(wp), dimension(:,:), allocatable :: tmp_values  ! values to use for filtering
     end type filter_st
     
 contains
@@ -25,13 +25,13 @@ contains
     subroutine create_filter(self, dt_cutoff, oversample, window_factor, low_pass, model)
         implicit none
         type(filter_st), intent(inout) :: self
-        real(kind=8), intent(in) :: dt_cutoff
+        real(wp), intent(in) :: dt_cutoff
         integer(kind=4), intent(in) :: oversample, window_factor
         logical, intent(in) :: low_pass
         integer(kind=4), intent(in) :: model
-        real(kind=8) :: filter_long_dt
-        real(kind=8) :: t_j
-        real(kind=8) :: val, weight, N
+        real(wp) :: filter_long_dt
+        real(wp) :: t_j
+        real(wp) :: val, weight, N
         integer(kind=4) :: j
 
         !------------------------
@@ -50,7 +50,7 @@ contains
 
         self%size = self%n_samples * self%n_windows + 1  ! +1 for the first condition  ! odd
         self%half_size = int((self%size - 1) / 2, 4)
-        self%dt = dble(filter_long_dt / (self%size - 1))
+        self%dt = real(filter_long_dt / (self%size - 1), kind=wp)
         self%half_width = filter_long_dt * uno2
         
         self%omega_pass = twopi / dt_cutoff  ! Frequency allowed
@@ -63,9 +63,9 @@ contains
         ! kernel_j = sin(omega_pass * t_j) / (pi * t_j)
         ! For j = 0, use limit value 1
         !------------------------
-        N = dble(self%size - 1)
+        N = real(self%size - 1, kind=wp)
         do j = -self%half_size, self%half_size
-            t_j = dble(j) * self%dt
+            t_j = real(j, kind=wp) * self%dt
             if (abs(t_j) < tini) then
                 val = self%omega_pass / pi
             else
@@ -78,18 +78,18 @@ contains
                     weight = uno2 - &
                            & uno2 * cos(twopi * (j + self%half_size) / N)
                 case (2)  ! Hamming
-                    weight = 0.54d0 - &
-                           & 0.46d0 * cos(twopi * (j + self%half_size) / N)
+                    weight = 0.54e0_wp - &
+                           & 0.46e0_wp * cos(twopi * (j + self%half_size) / N)
                 case (3)  ! Blackman
-                    weight = 0.42d0 - &
+                    weight = 0.42e0_wp - &
                            & uno2 * cos(twopi * (j + self%half_size) / N) + &
-                           & 0.08d0 * cos(dos * twopi * (j + self%half_size) / N)
+                           & 0.08e0_wp * cos(dos * twopi * (j + self%half_size) / N)
                 case (4)  ! Flat top
                     weight = uno - &
-                           & 1.93d0 * cos(twopi * (j + self%half_size) / N) + &
-                           & 1.29d0 * cos(dos * twopi * (j + self%half_size) / N) - &
-                           & 0.388d0 * cos(3.d0 * twopi * (j + self%half_size) / N) + &
-                           & 0.032d0 * cos(4.d0 * twopi * (j + self%half_size) / N)
+                           & 1.93e0_wp * cos(twopi * (j + self%half_size) / N) + &
+                           & 1.29e0_wp * cos(dos * twopi * (j + self%half_size) / N) - &
+                           & 0.388e0_wp * cos(3.e0_wp * twopi * (j + self%half_size) / N) + &
+                           & 0.032e0_wp * cos(4.e0_wp * twopi * (j + self%half_size) / N)
                 case default  ! boxcar
                     weight = uno
             end select modelo
@@ -127,7 +127,7 @@ contains
     subroutine setup_filter(self, dt_cutoff, oversample, window_factor, low_pass, model, data_size)
         implicit none
         type(filter_st), intent(inout) :: self
-        real(kind=8), intent(in) :: dt_cutoff
+        real(wp), intent(in) :: dt_cutoff
         integer(kind=4), intent(in) :: oversample, window_factor, model, data_size
         logical, intent(in) :: low_pass
 
@@ -140,8 +140,8 @@ contains
     pure subroutine store_to_filter(self, time, state_vector, data_size, filter_index)
         implicit none
         type(filter_st), intent(inout) :: self
-        real(kind=8), intent(in) :: time
-        real(kind=8), dimension(:), intent(in) :: state_vector
+        real(wp), intent(in) :: time
+        real(wp), dimension(:), intent(in) :: state_vector
         integer(kind=4), intent(in) :: data_size, filter_index
 
         self%tmp_values(1:data_size, filter_index) = state_vector(1:data_size)    

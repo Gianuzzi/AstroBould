@@ -1,6 +1,6 @@
 !> Module with main derivate function.
 module derivates
-    use constants, only: G, cero, uno, uno2, uno3, dos, tini
+    use constants, only: wp, G, cero, uno, uno2, uno3, dos, tini
     use auxiliary, only: cross2D_z, rotate2D
     use parameters, only: sim, &
                           & system, &  ! asteroid inertia
@@ -19,17 +19,19 @@ module derivates
     abstract interface
         ! Here must be every f_i defined explicitly
         function dydt_template (t, y) result (der) 
+            import :: wp
             implicit none
-            real(kind=8), intent(in)               :: t
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), dimension(size (y))      :: der
+            real(wp), intent(in)               :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), dimension(size (y))      :: der
         end function dydt_template
 
         function dydt_single_template (t, y) result (der) 
+            import :: wp
             implicit none
-            real(kind=8), intent(in) :: t
-            real(kind=8), intent(in) :: y
-            real(kind=8) :: der
+            real(wp), intent(in) :: t
+            real(wp), intent(in) :: y
+            real(wp) :: der
         end function dydt_single_template
     
     end interface
@@ -51,28 +53,28 @@ module derivates
         function dydt (t, y) result(der)
             !y = /theta, omega, xA, yA, vxA, vyA, Moon, Part, .../
             implicit none
-            real(kind=8), intent(in)               :: t
-            real(kind=8), dimension(:), intent(in) :: y
-            real(kind=8), dimension(size(y))       :: der
-            real(kind=8) :: theta, omega
-            real(kind=8) :: coords_A(4), coords_M(4), coords_P(4), dr_vec(2), dr, dr2
-            real(kind=8) :: acc_grav_m(2), torque
+            real(wp), intent(in)               :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), dimension(size(y))       :: der
+            real(wp) :: theta, omega
+            real(wp) :: coords_A(4), coords_M(4), coords_P(4), dr_vec(2), dr, dr2
+            real(wp) :: acc_grav_m(2), torque
             integer(kind=4) :: i, idx
             integer(kind=4) :: j, jdx
             integer(kind=4) :: N_total, last_moon
-            real(kind=8) :: c2th, s2th  ! For triaxial
-            real(kind=8) :: Q_eff, dQdx, dQdy  ! For triaxial
-            real(kind=8) :: inv_dr, inv_dr2, inv_dr3  ! For triaxial
-            real(kind=8) :: theta_moon  ! For triaxial
-            real(kind=8) :: xy_rotated(2)  ! For triaxial
-            real(kind=8) :: Gmast, Gmcomb  ! For extra/COM forces
-            real(kind=8) :: dr_ver(2), dv_vec(2)  ! For extra forces
-            real(kind=8) :: vel_circ(2), v2  ! For extra forces
-            real(kind=8) :: two_ener  ! For extra forces
-            real(kind=8) :: aux_J2K  ! For extra forces
-            real(kind=8) :: mean_movement  ! For extra forces
-            real(kind=8) :: vel_radial(2), acc_radial(2)  ! For extra forces
-            real(kind=8) :: damp_f, drag_f, stokes_f  ! For extra forces
+            real(wp) :: c2th, s2th  ! For triaxial
+            real(wp) :: Q_eff, dQdx, dQdy  ! For triaxial
+            real(wp) :: inv_dr, inv_dr2, inv_dr3  ! For triaxial
+            real(wp) :: theta_moon  ! For triaxial
+            real(wp) :: xy_rotated(2)  ! For triaxial
+            real(wp) :: Gmast, Gmcomb  ! For extra/COM forces
+            real(wp) :: dr_ver(2), dv_vec(2)  ! For extra forces
+            real(wp) :: vel_circ(2), v2  ! For extra forces
+            real(wp) :: two_ener  ! For extra forces
+            real(wp) :: aux_J2K  ! For extra forces
+            real(wp) :: mean_movement  ! For extra forces
+            real(wp) :: vel_radial(2), acc_radial(2)  ! For extra forces
+            real(wp) :: damp_f, drag_f, stokes_f  ! For extra forces
             
             der = cero  ! init der at cero
 
@@ -98,7 +100,7 @@ module derivates
             ! ---> Omega Damping <---
             if (use_damp) then
                 !! Damping
-                damp_f = uno2 * (uno + tanh(1.d1 * (uno - t / damp_time)))
+                damp_f = uno2 * (uno + tanh(1.e1_wp * (uno - t / damp_time)))
                 select case (damp_model)
                     case (1) ! domega/dt = tau
                         der(2) = der(2) + damp_coef_1 * damp_f
@@ -116,8 +118,8 @@ module derivates
 
             !!! Set-up
             Gmast = G * m_arr(1)
-            if (use_stokes) stokes_f = uno2 * (uno + tanh(1.d1 * (uno - t / stokes_time)))
-            if (use_drag) drag_f = uno2 * (uno + tanh(1.d1 * (uno - t / drag_time)))
+            if (use_stokes) stokes_f = uno2 * (uno + tanh(1.e1_wp * (uno - t / stokes_time)))
+            if (use_drag) drag_f = uno2 * (uno + tanh(1.e1_wp * (uno - t / drag_time)))
             if (use_ellipsoid) then
                 c2th = cos(dos * theta)
                 s2th = sin(dos * theta)
@@ -159,7 +161,7 @@ module derivates
                     inv_dr2 = inv_dr3 * dr
                     ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
                     ! Q_eff = 5 Q / r⁴
-                    Q_eff = 5.d0 * ((dr_vec(1)**2 - dr_vec(2)**2) * c2th &
+                    Q_eff = 5.e0_wp * ((dr_vec(1)**2 - dr_vec(2)**2) * c2th &
                                     & + dos * dr_vec(1) * dr_vec(2) * s2th) * inv_dr2 * inv_dr2
                     dQdx = dos * (dr_vec(1) * c2th + dr_vec(2) * s2th)  ! 2x cos(2th) + 2y sin(2th)
                     dQdy = - dos * (dr_vec(2) * c2th - dr_vec(1) * s2th)  ! - 2y cos(2th) + 2x sin(2th)
@@ -202,7 +204,7 @@ module derivates
 
                     ! Check if unbound
                     if (two_ener > cero) then ! Can calculate only in this case
-                        mean_movement = abs(two_ener)**(1.5d0) / Gmcomb ! n
+                        mean_movement = abs(two_ener)**(1.5e0_wp) / Gmcomb ! n
 
                         ! ---> Drag <---
                         if (use_drag) then
@@ -265,7 +267,7 @@ module derivates
                     inv_dr2 = inv_dr3 * dr
                     ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
                     ! Q_eff = 5 Q / r⁴
-                    Q_eff = 5.d0 * ((dr_vec(1)**2 - dr_vec(2)**2) * c2th + &
+                    Q_eff = 5.e0_wp * ((dr_vec(1)**2 - dr_vec(2)**2) * c2th + &
                                     & dos * dr_vec(1) * dr_vec(2) * s2th) * inv_dr2 * inv_dr2
                     dQdx = dos * (dr_vec(1) * c2th + dr_vec(2) * s2th)  ! 2x cos(2th) + 2y sin(2th)
                     dQdy = - dos * (dr_vec(2) * c2th - dr_vec(1) * s2th)  ! - 2y cos(2th) + 2x sin(2th)
@@ -298,7 +300,7 @@ module derivates
                     ! Get energy
                     if (use_manual_J2) then
                         two_ener = dos * Gmast * inv_dr - v2  ! Check if unbound
-                        mean_movement = abs(two_ener)**(1.5d0) / Gmast ! n
+                        mean_movement = abs(two_ener)**(1.5e0_wp) / Gmast ! n
                     else
                         aux_J2K = J2K_coef / dr2  ! J2K_coef is negative
                         two_ener = dos * Gmast * inv_dr * (uno - aux_J2K) - v2  ! Check if unbound
