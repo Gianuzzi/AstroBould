@@ -10,6 +10,15 @@ module bstoer
     real(kind=8), allocatable :: qcolpz(:,:)  ! bstep
     real(kind=8), allocatable :: mmid_ym(:), mmid_yn(:)  ! mmid
     real(kind=8), allocatable :: pz_d(:)  ! pzextr
+
+    ! Workspace variables
+    integer(kind=4) :: kmax = 0
+    integer(kind=4) :: kopt = 0
+    real(kind=8), dimension(8, 8) :: alf = ZERO
+    integer(kind=4), dimension(9) :: arr = 0! a in NR F90
+    real(kind=8) :: xnew = -1d29
+    real(kind=8) :: epsold = -ONE
+    logical :: first = .True.
     
     contains
     
@@ -51,6 +60,17 @@ module bstoer
 
         !!!! Auxiliar subroutines for Bulirsch_Stoer
 
+        subroutine reset_bstep()
+            implicit none
+            kmax = 0
+            kopt = 0
+            alf = ZERO
+            arr = 0
+            xnew = -1d29
+            epsold = -1d0
+            first = .True.
+        end subroutine reset_bstep
+
         subroutine bstep (sizey, y, dydt, x, htry, hdid, hnext)
             implicit none
             integer(kind=4), intent(in) :: sizey
@@ -64,14 +84,9 @@ module bstoer
             real(kind=8), parameter :: redmax = 1.d-5, redmin = .7d0
             real(kind=8), parameter :: tini = 1.d-30, scalmx = .1d0
             integer(kind=4), parameter, dimension(9) :: nseq = (/2, 4, 6, 8, 10, 12, 14, 16, 18/)
-            integer(kind=4), save :: kmax, kopt
-            real(kind=8), dimension(8, 8), save :: alf
             real(kind=8), dimension(8) :: err
-            integer(kind=4), dimension(9), save :: arr ! a in NR F90
-            real(kind=8), save :: xnew, epsold = -1.d0
             real(kind=8) :: eps1, errmax, fact, h, red, scala, wrkmin, xest
             logical :: reduct
-            logical, save :: first = .True.
             real(kind=8), dimension(16) :: xpz
             real(kind=8) :: work
             integer(kind=4) :: k, iq, i ,km, kk
@@ -179,6 +194,7 @@ module bstoer
         end subroutine bstep
 
         subroutine mmid (sizey, y, dydx, xs, htot, nstep, yout, dydt)
+            implicit none
             integer(kind=4), intent(in) :: sizey
             real(kind=8), dimension(sizey), intent(in) :: y, dydx
             real(kind=8), intent(in) :: xs, htot
@@ -266,6 +282,8 @@ module bstoer
 
             sizey = size (y)
             has_check = present(check_fun)
+
+            call reset_bstep()
 
             ynew = y
             time = t
