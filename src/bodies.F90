@@ -2333,7 +2333,7 @@ module bodies
                 & 0, &  ! ID
                 & 0, &  ! type
                 & self%time / unit_time, &  !time
-                & (self%asteroid%theta + self%asteroid%primary%initial_theta) * radian, &  ! theta
+                & (self%asteroid%theta + self%asteroid%primary%initial_theta) / radian, &  ! theta
                 & self%asteroid%omega * unit_time, &  ! omega
                 & coords(1:2) / unit_dist, &  ! x y
                 & coords(3:4) / unit_vel, &  ! vx vy
@@ -2347,7 +2347,7 @@ module bodies
                     & i, &  ! ID
                     & 0, &  ! type
                     & self%time / unit_time, &  !time
-                    & (self%asteroid%theta + self%asteroid%boulders(i)%initial_theta) * radian, &  ! theta
+                    & (self%asteroid%theta + self%asteroid%boulders(i)%initial_theta) / radian, &  ! theta
                     & self%asteroid%omega * unit_time, &  ! omega
                     & coords(1:2) / unit_dist, &  ! x y
                     & coords(3:4) / unit_vel, &  ! vx vy
