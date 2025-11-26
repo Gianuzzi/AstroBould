@@ -485,7 +485,7 @@ module runge_kutta
             real(kind=8), dimension(sizey), intent(in) :: deri
             real(kind=8), dimension(sizey), intent(out) :: ynew
             
-            rk(1:sizey,2) = dydt (t + dt, y + dt * der)
+            rk(1:sizey,2) = dydt (t + dt, y + dt * deri)
             rk(1:sizey,3) = dydt (t + dt * C1_2, y + dt * (deri + rk(1:sizey,2)) * C1_4)
 
             ynew = y + dt * (deri + rk(1:sizey,2) + rk(1:sizey,3) * FOUR) * C1_6

@@ -442,7 +442,7 @@ module embedded
             real(kind=8), dimension(sizey), intent(out) :: yauxi
             real(kind=8), dimension(sizey), intent(out) :: ynew
             
-            rk(1:sizey,2)  = dydt (t + dt * C1_18, y + dt * (C1_18 * der))
+            rk(1:sizey,2)  = dydt (t + dt * C1_18, y + dt * (C1_18 * deri))
             rk(1:sizey,3)  = dydt (t + dt * C1_12, y + dt * (C1_48 * deri + 0.0625d0 * rk(1:sizey,2)))
             rk(1:sizey,4)  = dydt (t + dt * C1_8, y + dt * (0.03125d0 * deri + 0.09375d0 * rk(1:sizey,3)))
             rk(1:sizey,5)  = dydt (t + dt * 0.3125d0, y + dt * (0.3125d0 * deri - 1.171875d0 * rk(1:sizey,3) + &
