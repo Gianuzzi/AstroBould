@@ -3,7 +3,7 @@ module shared
     implicit none
 
     ! Constants
-    real(kind=8), parameter :: ZERO = 0.0
+    real(kind=8), parameter :: ZERO = 0.0d0
     real(kind=8), parameter :: ONE = 1.d0
     real(kind=8), parameter :: TWO = 2.d0
     real(kind=8), parameter :: THREE = 3.d0

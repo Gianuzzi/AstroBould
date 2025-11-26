@@ -887,7 +887,7 @@ module runge_kutta
             integer(kind=4) :: sizey
             real(kind=8) :: time, t_end, dt_used
             logical :: keep = .True.
-            logical, save :: has_check = .False.
+            logical :: has_check = .False.
 
             sizey = size (y)
             has_check = present(check_fun)
@@ -939,7 +939,7 @@ module runge_kutta
             integer(kind=4) :: sizey
             real(kind=8) :: time, t_end
             logical :: keep = .True.
-            logical, save :: has_check = .False.
+            logical :: has_check = .False.
 
             sizey = size (y)
             has_check = present(check_fun)
