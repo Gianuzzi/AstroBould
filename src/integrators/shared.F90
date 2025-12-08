@@ -1,7 +1,7 @@
 !> Module with shared variables and routines for integrators
 module shared
-   use iso_fortran_env, only: real64, real32  ! or int32, etc.
-   implicit none
+    use iso_fortran_env, only: real64, real32  ! or int32, etc.
+    implicit none
 
     ! Default precision
 #ifdef WP
@@ -89,7 +89,7 @@ module shared
         !!!! TEMPLATES
 
         ! Keep going template
-        function function_check_keep_tem (y) result(keep_going)
+        function function_check_keep_tem(y) result(keep_going)
             import :: wp
             implicit none
             real(wp), dimension(:), intent(in) :: y
@@ -97,24 +97,23 @@ module shared
         end function function_check_keep_tem
 
         ! f__ (t, y__) = (f_i (t, y__), ..., f_n (t, y__)) = der__
-        function dydt_tem (t, y) result (derivate)
+        function dydt_tem(t, y) result(derivate)
             import :: wp
             implicit none
             real(wp), intent(in)               :: t
             real(wp), dimension(:), intent(in) :: y
-            real(wp), dimension(size (y))      :: derivate
+            real(wp), dimension(size(y))      :: derivate
         end function dydt_tem
 
     end interface
-    
-    contains
 
-        pure function get_index(i) result(idx)
-            implicit none
-            integer(kind=4), intent(in) :: i
-            integer(kind=4) :: idx
-            idx = EXTRA2 + NDIM2 * (i - 1) + 1
-        end function get_index
+contains
 
-    
+    pure function get_index(i) result(idx)
+        implicit none
+        integer(kind=4), intent(in) :: i
+        integer(kind=4) :: idx
+        idx = EXTRA2 + NDIM2*(i - 1) + 1
+    end function get_index
+
 end module shared
