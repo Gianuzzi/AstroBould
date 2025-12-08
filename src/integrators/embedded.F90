@@ -43,7 +43,7 @@ module embedded
 
 contains
 
-        !!!! HANDLER
+    !!!! HANDLER
 
     subroutine init_embedded(sizey, which)
         implicit none
@@ -152,7 +152,7 @@ contains
         nullify (embedded_ptr)
     end subroutine free_embedded
 
-        !!!! Embedded subroutines
+    !!!! Embedded subroutines
 
     subroutine Fehlberg1_2(sizey, y, dydt, t, dt, deri, yauxi, ynew)
         implicit none

@@ -39,7 +39,7 @@ contains
 
         open (unit=12, file=file_tout, status="old", action="read")
 
-            !! Count number of columns
+        !! Count number of columns
         ncols = 0
         read (12, '(A)') auxstr
         do i = 1, 3   ! The very maximum that the string can contain: 3
@@ -115,19 +115,19 @@ contains
         real(wp), intent(in) :: final_time
         logical, intent(in) :: use_screen
 
-            !! En este caso, leeremos los tiempos desde un archivo
+        !! En este caso, leeremos los tiempos desde un archivo
         if (use_screen) write (*, *) "Reading times from TOM file: ", trim(tomfile)
         call read_tomfile(cero, final_time, &
                         & self%times, self%deltaomega, self%deltamass, tomfile) ! Read LOOP checkpoints
 
         self%total_number = size(self%times, 1)
 
-            !!! Unidades
+        !!! Unidades
         self%times = self%times
         if (allocated(self%deltaomega)) self%deltaomega = self%deltaomega
         if (allocated(self%deltamass)) self%deltamass = self%deltamass
 
-            !!! Condicion inicial (y final)
+        !!! Condicion inicial (y final)
         self%times(1) = cero
         self%times(self%total_number) = final_time
         if (allocated(self%deltaomega)) then
@@ -141,7 +141,7 @@ contains
             self%deltamass(self%total_number) = cero
         end if
 
-            !!! Mensaje !
+        !!! Mensaje !
         if (use_screen) then
             if (self%use_dmass) then
                 write (*, *) "  - 3 columns read: t, Delta_omega, Delta_m"

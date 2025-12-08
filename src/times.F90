@@ -63,10 +63,10 @@ contains
                 t_out(i) = t0 + t_add - uno
             end do
         case (2) ! Combinado
-                !! Teniendo en cuenta que 0 es t0 y n_out es tf, si se pide
-                !!  una cantidad impar n_out de puntos, se van a hacer
-                !!  lin = (n_out-1)/2 puntos lineales y log = lin-1 puntos logarítmicos
-                !!  Si se pide una cantidad par, lin = log = n_out/2
+            !! Teniendo en cuenta que 0 es t0 y n_out es tf, si se pide
+            !!  una cantidad impar n_out de puntos, se van a hacer
+            !!  lin = (n_out-1)/2 puntos lineales y log = lin-1 puntos logarítmicos
+            !!  Si se pide una cantidad par, lin = log = n_out/2
             ! Primero lineal
             npointsr = uno*(ceiling(npointsr*uno2 - tini) + 1) ! - tini para evitar errores de redondeo
             t_aux = (tf - t0)/(npointsr - uno)

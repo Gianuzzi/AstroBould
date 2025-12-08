@@ -348,7 +348,7 @@ contains
 
         open (unit=11, file=trim(file_name), status="old", action="read")
 
-            !! Count number of columns
+        !! Count number of columns
         read (11, '(A)') auxstr
         do i = 1, MAX_COLS
             io = 0
@@ -365,7 +365,7 @@ contains
 
         if (my_method == 0) then
 
-                !! Count number of rows
+            !! Count number of rows
             do ! Count number of (valid) lines
                 read (11, *, iostat=io) aux_real
                 if (is_iostat_end(io)) exit

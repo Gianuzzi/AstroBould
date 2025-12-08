@@ -103,7 +103,7 @@ module bodies
         type(particle_st), allocatable :: particles(:)
     end type system_st
 
-    !!!!!!!!!!!   Used I/O formats     !!!!!!!!!
+    !!!!!!!!!!!   Used I/O formats   !!!!!!!!!
     character(30), parameter :: i3r23 = "(I7, I7, I7, 23(1X, 1PE22.15))"  ! 3 int y 21 real
     character(26), parameter :: i2r15 = "(I7, I7, 15(1X, 1PE22.15))"  ! 2 int y 11 real
     character(25), parameter :: i2r9 = "(I7, I7, 9(1X, 1PE22.15))"  ! 3 int y 9 real
@@ -406,7 +406,7 @@ contains
                 coords_from_primary(i, 3) = -self%omega*coords_from_primary(i, 2)  ! vX
                 coords_from_primary(i, 4) = self%omega*coords_from_primary(i, 1)  ! vY
             end do
-                !! Get coords of CM from primary
+            !! Get coords of CM from primary
             coords_cm_from_primary(1) = dot_product(coords_from_primary(:, 1), self%boulders(1:)%mu_to_asteroid)
             coords_cm_from_primary(2) = dot_product(coords_from_primary(:, 2), self%boulders(1:)%mu_to_asteroid)
             coords_cm_from_primary(3) = dot_product(coords_from_primary(:, 3), self%boulders(1:)%mu_to_asteroid)
@@ -417,8 +417,8 @@ contains
             if (abs(coords_cm_from_primary(4)) < tini) coords_cm_from_primary(4) = cero  ! Little correction
         end if
 
-            !! Set Distances and Angles
-            !!! Primary
+        !! Set Distances and Angles
+        !!! Primary
         self%primary%coordinates_CM = -coords_cm_from_primary
         self%primary%dist_to_asteroid = sqrt(coords_cm_from_primary(1)*coords_cm_from_primary(1) + &
                                                & coords_cm_from_primary(2)*coords_cm_from_primary(2))
@@ -427,7 +427,7 @@ contains
         else
             self%primary%initial_theta = cero
         end if
-            !!! Boulders
+        !!! Boulders
         do i = 1, self%Nboulders
             aux_real4 = coords_from_primary(i, :) - coords_cm_from_primary
             self%boulders(i)%coordinates_CM = aux_real4
@@ -449,24 +449,24 @@ contains
         end if
 
         ! Set Inertia
-            !! Iz of Ellipsoid, or sphere if equal
+        !! Iz of Ellipsoid, or sphere if equal
         self%inertia = 0.2e0_wp*self%primary%mass*(self%primary%semi_axis(1)**2 + self%primary%semi_axis(2)**2)
         do i = 1, self%Nboulders
-                !! Inertia Sphere boulder
+            !! Inertia Sphere boulder
             aux_real = 0.4e0_wp*self%boulders(i)%mass*self%boulders(i)%radius**2
-                !! Sphere + Steiner
+            !! Sphere + Steiner
             self%inertia = self%inertia + aux_real + self%boulders(i)%mass*self%boulders(i)%dist_to_asteroid**2
         end do
 
         ! Set Angular momentum
         self%ang_mom_rot = self%inertia*self%omega ! Rotational
-            !! Can not set ang_mom_orb here.
+        !! Can not set ang_mom_orb here.
 
         ! Set Energy
         self%e_rot = uno2*self%inertia*self%omega**2  ! Rotational
-            !! Can not set e_kin here. We are assuming v=0
+        !! Can not set e_kin here. We are assuming v=0
 
-            !! Free memory
+        !! Free memory
         if (allocated(coords_from_primary)) deallocate (coords_from_primary)
     end subroutine init_asteroid_params
 
@@ -487,7 +487,7 @@ contains
             self(i)%mass = self(i)%mu_to_asteroid*asteroid%mass
 
             ! Define coordinates
-                !! Elements are ateroid-centric
+            !! Elements are ateroid-centric
             combined_mass = asteroid%mass + self(i)%mass
             aux_real = get_a_corot(combined_mass, asteroid%omega)  ! Ask. Including mass?
             if (self(i)%mmr > tini) then
@@ -543,7 +543,7 @@ contains
             end if
 
             ! Define coordinates
-                !! Elements are ateroid-centric
+            !! Elements are ateroid-centric
             if (self(i)%mmr > tini) then
                 if (asteroid%a_corotation < tini) then  ! Ensure rotating
                     write (*, *) "ERROR: Can not set particle MMR with non rotating asteroid."
@@ -651,9 +651,9 @@ contains
         ! Get mass growth ratio
         growth = uno + (mass_to_add/self%mass)
 
-            !! Update primary mass [mass ratios are kept the same]
+        !! Update primary mass [mass ratios are kept the same]
         self%primary%mass = self%primary%mass*growth
-            !! Update boulders masses [mass ratios are kept the same]
+        !! Update boulders masses [mass ratios are kept the same]
         do i = 1, self%Nboulders
             self%boulders(i)%mass = self%boulders(i)%mass*growth
         end do
@@ -685,7 +685,7 @@ contains
         ! Update coordinates
         self%coordinates = coordinates  ! Update COORDINATES
 
-            !! Distance to CM
+        !! Distance to CM
         self%dist_to_cm = sqrt(coordinates(1)*coordinates(1) + &
                              & coordinates(2)*coordinates(2))
 
@@ -707,7 +707,7 @@ contains
         ! Update coordinates
         self%coordinates = coordinates  ! Update COORDINATES
 
-            !! Distance to CM
+        !! Distance to CM
         self%dist_to_cm = sqrt(coordinates(1)*coordinates(1) + &
                              & coordinates(2)*coordinates(2))
     end subroutine shift_single_particle
@@ -778,16 +778,16 @@ contains
         ang_mom = self%asteroid%ang_mom_rot + self%asteroid%ang_mom_orb
         energy = self%asteroid%e_kin + self%asteroid%e_rot ! e_pot below
 
-            !! e_pot
+        !! e_pot
         e_pot = cero
-            !! Asteroid (with moons)
+        !! Asteroid (with moons)
         do i = 1, self%Nmoons_active
             dr = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)
             dist = sqrt(dr(1)*dr(1) + dr(2)*dr(2))
             if (dist < tini) cycle
             e_pot = e_pot - (self%asteroid%mass*self%moons(i)%mass)/dist
         end do
-            !! Moons (here, only moons with moons are added)
+        !! Moons (here, only moons with moons are added)
         do i = 1, self%Nmoons_active - 1
             do j = 2, self%Nmoons_active
                 dr = self%moons(j)%coordinates(1:2) - self%moons(i)%coordinates(1:2)
@@ -795,14 +795,14 @@ contains
                 if (dist < tini) cycle
                 e_pot = e_pot - (self%moons(i)%mass*self%moons(j)%mass)/dist
             end do
-                !! Energy and Ang Mom (TBD: Last moon)
+            !! Energy and Ang Mom (TBD: Last moon)
             energy = energy + self%moons(i)%e_kin + self%moons(i)%e_rot  ! Energy
             ang_mom = ang_mom + self%moons(i)%ang_mom_orb + self%moons(i)%ang_mom_rot  ! Angular Momentum
         end do
 
         energy = energy + e_pot*G  ! G
 
-            !! Now the last Moon
+        !! Now the last Moon
         if (self%Nmoons_active > 0) then
             ang_mom = ang_mom + self%moons(self%Nmoons_active)%ang_mom_orb + self%moons(self%Nmoons_active)%ang_mom_rot
             energy = energy + self%moons(self%Nmoons_active)%e_kin + self%moons(self%Nmoons_active)%e_rot
@@ -1012,10 +1012,10 @@ contains
         integer(kind=4), allocatable :: id_list(:)
 
         ! Initialize the objects and Create the system
-            !! Asteroid
+        !! Asteroid
         call init_asteroid_params(asteroid, lambda_kep, rotational_period)
         self%asteroid = asteroid  ! CREATE ASTEROID
-            !! Moons
+        !! Moons
         if (allocated(moons)) then
             call init_moons_params(moons, asteroid)
             self%Nmoons = size(moons)
@@ -1025,7 +1025,7 @@ contains
             self%Nmoons = 0
             self%Nmoons_active = 0
         end if
-            !! Particles
+        !! Particles
         if (allocated(particles)) then
             call init_particles_params(particles, asteroid)
             self%Nparticles = size(particles)
@@ -1061,7 +1061,7 @@ contains
         call recalculate_all(self)
 
         ! Now, they are barycentric
-            !! Sanity check for low values in case of no moons
+        !! Sanity check for low values in case of no moons
         if ((self%Nmoons == 0) .and. self%asteroid%dist_to_cm > cero) then
             ! Manual shift
             self%asteroid%coordinates = cero
@@ -1248,40 +1248,40 @@ contains
         call update_elements(self, barycentric)
 
         ! Asteroid
-            !! a
+        !! a
         aux_real2(1) = min(self%asteroid%chaos_a(1), self%asteroid%elements(1))
         aux_real2(2) = max(self%asteroid%chaos_a(2), self%asteroid%elements(1))
         self%asteroid%chaos_a = aux_real2
-            !! e
+        !! e
         aux_real2(1) = min(self%asteroid%chaos_e(1), self%asteroid%elements(2))
         aux_real2(2) = max(self%asteroid%chaos_e(2), self%asteroid%elements(2))
         self%asteroid%chaos_e = aux_real2
 
         ! Moons
         do i = 1, self%Nmoons_active
-                !! a
+            !! a
             aux_real2(1) = min(self%moons(i)%chaos_a(1), self%moons(i)%elements(1))
             aux_real2(2) = max(self%moons(i)%chaos_a(2), self%moons(i)%elements(1))
             self%moons(i)%chaos_a = aux_real2
-                !! e
+            !! e
             aux_real2(1) = min(self%moons(i)%chaos_e(1), self%moons(i)%elements(2))
             aux_real2(2) = max(self%moons(i)%chaos_e(2), self%moons(i)%elements(2))
             self%moons(i)%chaos_e = aux_real2
-                !! time
+            !! time
             self%moons(i)%tmax = self%time
         end do
 
         ! Particles
         do i = 1, self%Nparticles_active
-                !! a
+            !! a
             aux_real2(1) = min(self%particles(i)%chaos_a(1), self%particles(i)%elements(1))
             aux_real2(2) = max(self%particles(i)%chaos_a(2), self%particles(i)%elements(1))
             self%particles(i)%chaos_a = aux_real2
-                !! e
+            !! e
             aux_real2(1) = min(self%particles(i)%chaos_e(1), self%particles(i)%elements(2))
             aux_real2(2) = max(self%particles(i)%chaos_e(2), self%particles(i)%elements(2))
             self%particles(i)%chaos_e = aux_real2
-                !! time
+            !! time
             self%particles(i)%tmax = self%time
         end do
 
@@ -1298,29 +1298,29 @@ contains
 
         ! Moons
         do i = 1, self%Nmoons_active
-                !! a
+            !! a
             aux_real2(1) = min(self%moons(i)%chaos_a_geom(1), self%moons(i)%geometric(1))
             aux_real2(2) = max(self%moons(i)%chaos_a_geom(2), self%moons(i)%geometric(1))
             self%moons(i)%chaos_a_geom = aux_real2
-                !! e
+            !! e
             aux_real2(1) = min(self%moons(i)%chaos_e_geom(1), self%moons(i)%geometric(2))
             aux_real2(2) = max(self%moons(i)%chaos_e_geom(2), self%moons(i)%geometric(2))
             self%moons(i)%chaos_e_geom = aux_real2
-                !! time
+            !! time
             self%moons(i)%tmax = self%time
         end do
 
         ! Particles
         do i = 1, self%Nparticles_active
-                !! a
+            !! a
             aux_real2(1) = min(self%particles(i)%chaos_a_geom(1), self%particles(i)%geometric(1))
             aux_real2(2) = max(self%particles(i)%chaos_a_geom(2), self%particles(i)%geometric(1))
             self%particles(i)%chaos_a_geom = aux_real2
-                !! e
+            !! e
             aux_real2(1) = min(self%particles(i)%chaos_e_geom(1), self%particles(i)%geometric(2))
             aux_real2(2) = max(self%particles(i)%chaos_e_geom(2), self%particles(i)%geometric(2))
             self%particles(i)%chaos_e_geom = aux_real2
-                !! time
+            !! time
             self%particles(i)%tmax = self%time
         end do
 
@@ -1487,7 +1487,7 @@ contains
         ! Primary
         xy_centered = self%primary%coordinates_CM(1:2) + self%coordinates(1:2)
 
-            !! Sphere
+        !! Sphere
         if (self%primary%is_sphere) then
             call get_acc_and_pot_single( &
                 & self%primary%mass, &
@@ -1496,7 +1496,7 @@ contains
                 & self%primary%radius, &
                 & acc, pot, inside)
 
-            !! Ellipsoid
+        !! Ellipsoid
         else
             ! Anti-rotate target to check if inside
             xy_rotated = rotate2D(xy_target, -self%theta)
@@ -1518,7 +1518,7 @@ contains
             sin2th = sin(dos*self%theta)
 
             if (dr > tini) then
-                    !! Now, calculate from non rotated
+                !! Now, calculate from non rotated
                 dx = xy_target(1) - xy_centered(1)
                 dy = xy_target(2) - xy_centered(2)
 
@@ -1557,7 +1557,7 @@ contains
 
         ! Boulders
         do i = 1, self%Nboulders
-                !! Skip if already inside
+            !! Skip if already inside
             if (has_inside) then
                 if (inside) return
             end if
@@ -1604,7 +1604,7 @@ contains
         ! Asteroid
         call get_acc_and_pot_asteroid(self%asteroid, xy_target, acc, pot, is_inside)
 
-            !! Check if inside
+        !! Check if inside
         if (is_inside) then
             pot = -G*self%asteroid%mass/self%asteroid%radius  ! Convenience
             acc = cero
@@ -1667,7 +1667,7 @@ contains
         call spin_asteroid(asteroid, asteroid%theta, new_ang_mom_rot/asteroid%inertia)
 
         ! Update COORDINATES and derivates
-            !! Get total mass if given
+        !! Get total mass if given
         call shift_asteroid(asteroid, rv_cm)
     end subroutine merge_moon_into_ast
 
@@ -1701,7 +1701,7 @@ contains
         end if
 
         ! ENERGY loss ocurrs, and the amount is given by:
-            !! dE = G m1 m2 / r - (m1 m2 / (m1 + m2)) (v2 - v1)**2 / 2
+        !! dE = G m1 m2 / r - (m1 m2 / (m1 + m2)) (v2 - v1)**2 / 2
     end subroutine merge_moon_i_into_ast
 
     ! Eject a moon(i), in a system. DEACTIVATION HERE
@@ -1871,7 +1871,7 @@ contains
         end if
 
         ! Check if merge
-            !! Merge if bounded or eta = 1
+        !! Merge if bounded or eta = 1
         if (((Ekin + Epot < -self%f_col*abs(Epot)) .and. (dv2 < vesc2*(uno - self%f_col))) .or. &
             & (self%eta_col .ge. uno)) then
 
@@ -1993,7 +1993,7 @@ contains
         end if
 
         ! ENERGY loss may ocurr, and the amount is given by something like:
-            !! dE = G m1 m2 / r - (m1 m2 / (m1 + m2)) (v2 - v1)**2 / 2
+        !! dE = G m1 m2 / r - (m1 m2 / (m1 + m2)) (v2 - v1)**2 / 2
     end subroutine collide_2_moons
 
     ! Resolve collisions

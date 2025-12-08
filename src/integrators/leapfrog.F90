@@ -36,7 +36,7 @@ module leapfrog
 
 contains
 
-        !!!! HANDLER
+    !!!! HANDLER
 
     subroutine init_leapfrog(sizey, which, standard)
         implicit none
@@ -87,9 +87,9 @@ contains
         nullify (leapfrog_ptr)
     end subroutine free_leapfrog
 
-        !!!! Main subroutines for LeapFrog
+    !!!! Main subroutines for LeapFrog
 
-        !!! Leap Frog (KDK)
+    !!! Leap Frog (KDK)
 
     subroutine leapfrog_KDK(sizey, y, dydt, t, dt, deri, ynew)
         implicit none
@@ -150,7 +150,7 @@ contains
         end do
     end subroutine leapfrog_KDK
 
-        !!! Leap Frog (DKD)
+    !!! Leap Frog (DKD)
 
     subroutine leapfrog_DKD(sizey, y, dydt, t, dt, deri, ynew)
         implicit none
@@ -211,9 +211,9 @@ contains
         end do
     end subroutine leapfrog_DKD
 
-        !!!! STANDARD subroutines for LeapFrog. Apply when arr = /x0, v0, x1, v1,.../
+    !!!! STANDARD subroutines for LeapFrog. Apply when arr = /x0, v0, x1, v1,.../
 
-        !!! Leap Frog (KDK)
+    !!! Leap Frog (KDK)
 
     subroutine leapfrog_KDK_std(sizey, y, dydt, t, dt, deri, ynew)
         implicit none
@@ -243,7 +243,7 @@ contains
         end do
     end subroutine leapfrog_KDK_std
 
-        !!! Leap Frog (DKD)
+    !!! Leap Frog (DKD)
 
     subroutine leapfrog_DKD_std(sizey, y, dydt, t, dt, deri, ynew)
         implicit none

@@ -22,7 +22,7 @@ module bstoer
 
 contains
 
-        !!!! HANDLERS
+    !!!! HANDLERS
 
     subroutine init_BS(sizey)
         implicit none
@@ -57,7 +57,7 @@ contains
         if (allocated(pz_d)) deallocate (pz_d)
     end subroutine free_BS
 
-        !!!! Auxiliar subroutines for Bulirsch_Stoer
+    !!!! Auxiliar subroutines for Bulirsch_Stoer
 
     subroutine reset_bstep()
         implicit none

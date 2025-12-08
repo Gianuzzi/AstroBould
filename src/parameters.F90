@@ -77,9 +77,11 @@ module parameters
         real(wp) :: stokes_a_damping_time = infinity
         real(wp) :: stokes_e_damping_time = infinity
         real(wp) :: stokes_active_time = cero
+        logical :: use_stokes_with_moons = .False.
         logical :: use_drag = .False.
         real(wp) :: drag_coefficient = cero
         real(wp) :: drag_active_time = cero
+        logical :: use_drag_with_moons = .False.
         logical :: use_omega_damping = .False.
         real(wp) :: omega_lin_damping_time = infinity
         real(wp) :: omega_exp_damping_time = infinity
@@ -319,7 +321,7 @@ contains
         end if
 
         allocate (boulders_in(Nboulders, 3))
-            !! Allocate params arrays
+        !! Allocate params arrays
     end subroutine allocate_params_asteroid
 
     ! Allocate moons params arrays
@@ -366,7 +368,7 @@ contains
 
         aux_logical = .False. ! Leí los parámetros numéricos?
         aux_integer = 0
-            !!!!! PARTÍCULA (en caso de entrada por terminal)
+        !!!!! PARTÍCULA (en caso de entrada por terminal)
         if (arguments_number > 0) then
             do i = 1, arguments_number
                 if (aux_integer /= 0) then
@@ -787,6 +789,12 @@ contains
                     read (value_str, *) params%stokes_e_damping_time
                 case ("stokes force da")
                     read (value_str, *) params%stokes_active_time
+                case ("apply stokes-li")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_stokes_with_moons = .True.
+                    else
+                        params%use_stokes_with_moons = .False.
+                    end if
                 case ("include naive-s")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_drag = .True.
@@ -797,6 +805,12 @@ contains
                     read (value_str, *) params%drag_coefficient
                 case ("drag force acti")
                     read (value_str, *) params%drag_active_time
+                case ("apply drag to m")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_drag_with_moons = .True.
+                    else
+                        params%use_drag_with_moons = .False.
+                    end if
                 case ("include asteroi")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_omega_damping = .True.
@@ -1145,19 +1159,19 @@ contains
             end if
         end if
 
-            !! Times
+        !! Times
         if ((derived%case_output_type < 0) .or. (derived%case_output_type > 2)) then
             write (*, *) "ERROR: Output times distribution method not recognized:", derived%case_output_type
             stop 1
         end if
 
-            !! Expand checkpoints
+        !! Expand checkpoints
         if (derived%extra_checkpoints < 0) then
             write (*, *) "ERROR: Extra checkpoint number can not be lower than 0."
             stop 1
         end if
 
-            !! Boulders
+        !! Boulders
         if (derived%Nboulders < 0) then
             write (*, *) "ERROR: Nboulders can not be negative."
             stop 1
@@ -1206,22 +1220,22 @@ contains
             derived%triax_c_primary = derived%radius_primary
         end if
 
-            !! NMoons
+        !! NMoons
         if (derived%Nmoons < 0) then
             write (*, *) "ERROR: Nmoons can not be negative."
             stop 1
         end if
         derived%use_moons = derived%Nmoons > 0
 
-            !! NParticles
+        !! NParticles
         if (derived%Nparticles < 0) then
             write (*, *) "ERROR: Nparticles can not be negative."
             stop 1
         end if
         derived%use_particles = derived%Nparticles > 0
 
-            !! Forces
-            !!! stokes_a_damping_time y stokes_e_damping_time
+        !! Forces
+        !!! stokes_a_damping_time y stokes_e_damping_time
         if (abs(derived%stokes_a_damping_time) < tini) derived%stokes_a_damping_time = cero
         if (abs(derived%stokes_e_damping_time) < tini) derived%stokes_e_damping_time = cero
         if (derived%stokes_active_time .le. cero) derived%stokes_active_time = infinity
@@ -1231,9 +1245,12 @@ contains
             derived%stokes_a_damping_time = cero
             derived%stokes_e_damping_time = cero
             derived%stokes_active_time = cero
+            derived%use_stokes_with_moons = .False.
+        else if (derived%Nmoons .eq. 0) then
+            derived%use_stokes_with_moons = .False.
         end if
 
-            !!! Naive-stokes
+        !!! Naive-stokes
         if (abs(derived%drag_coefficient) < tini) then
             derived%use_drag = .False.
             derived%drag_coefficient = cero
@@ -1242,9 +1259,12 @@ contains
         if (.not. derived%use_drag) then
             derived%drag_coefficient = cero
             derived%drag_active_time = cero
+            derived%use_drag_with_moons = .False.
+        else if (derived%Nmoons .eq. 0) then
+            derived%use_drag_with_moons = .False.
         end if
 
-            !!! tau_m y tau_o
+        !!! tau_m y tau_o
         if (derived%omega_damp_active_time .le. cero) derived%omega_damp_active_time = infinity
         derived%use_lin_omega_damp = abs(derived%omega_lin_damping_time) > tini
         derived%use_exp_omega_damp = abs(derived%omega_exp_damping_time) > tini
@@ -1267,7 +1287,7 @@ contains
             stop 1
         end if
 
-            !!! manual J2
+        !!! manual J2
         if (derived%use_manual_J2) then
             if (abs(derived%manual_J2) < tini) then
                 derived%manual_J2 = cero
@@ -1276,7 +1296,7 @@ contains
         else
             derived%manual_J2 = cero
         end if
-            !!! Check no J2 and triaxial
+        !!! Check no J2 and triaxial
         if (derived%use_manual_J2 .and. derived%use_triaxial) then
             write (*, *) "ERROR: Can not use both manual J2 and triaxial object at the same time."
             stop 1
@@ -1310,7 +1330,7 @@ contains
         ! !! Self-Gravity or Viscosity
         ! if (derived%use_self_gravity .or. derived%use_viscosity) then
         !     derived%use_bins = .True.
-        !     !! Check
+        ! !! Check
         !     if (derived%binning_method < 1 .or. derived%binning_method > 3) then
         !         write(*,*) "ERROR: binning_method must be 1 (equal dr), 2 (equal dA) or 3 (equal Npart)."
         !         stop 1
@@ -1319,7 +1339,7 @@ contains
         !         write(*,*) "ERROR: Can not create less than 2 bins."
         !         stop 1
         !     end if
-        !     !! Set default update values
+        ! !! Set default update values
         !     derived%update_rmin_bins = derived%rmin_bins < - tini
         !     derived%update_rmax_bins = derived%rmax_bins < - tini
         !     derived%update_bins = derived%update_rmin_bins .or. derived%update_rmax_bins .or. derived%binning_method == 3
@@ -1395,13 +1415,13 @@ contains
             stop 1
         end if
 
-            !! Geometric
+        !! Geometric
         if (derived%use_geometricfile .and. .not. derived%use_triaxial) then
             write (*, *) "WARNING: No geometric file created as not triaxial body is used."
             derived%use_geometricfile = .False.
         end if
 
-            !! Chaos
+        !! Chaos
         derived%use_chaos = derived%use_chaosfile .or. (derived%extra_checkpoints > 0)
         if (derived%use_chaos .and. derived%use_geometricfile) then
             derived%use_geomchaosfile = .True.  ! Need to output geometric chaos values
@@ -1420,7 +1440,7 @@ contains
             derived%use_geomchaosfile = .False.  ! Do not output geometric chaos values
         end if
 
-            !! Names
+        !! Names
         if ((trim(derived%datafile) /= "") .and. (trim(derived%datafile) /= "no")) then
             derived%use_datafile = .True.
         else

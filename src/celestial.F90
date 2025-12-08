@@ -203,7 +203,7 @@ contains
             end if
         end if
 
-            !! Ellipse
+        !! Ellipse
         if (ialpha == -1) then
             a = -uno2*gmsum/energy
             fac = uno - h2/(gmsum*a)
@@ -241,7 +241,7 @@ contains
             omega = omega - int(omega/twopi)*twopi
         end if
 
-            !! Hypérbola
+        !! Hypérbola
         if (ialpha == 1) then
             a = uno2*gmsum/energy
             fac = h2/(gmsum*a)
@@ -279,7 +279,7 @@ contains
             omega = omega - int(omega/twopi)*twopi
         end if
 
-            !! Parábola
+        !! Parábola
         if (ialpha == 0) then
             a = uno2*h2/gmsum
             e = uno
@@ -390,7 +390,7 @@ contains
         ! Coordinates
         real(wp):: x, y, z
         real(wp):: vx, vy, vz
-            !! Polar
+        !! Polar
         real(wp) :: r, L
         real(wp) :: vr, vL
         logical :: coplanar

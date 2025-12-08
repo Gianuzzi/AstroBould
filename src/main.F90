@@ -669,7 +669,8 @@ program main
     if (sim%use_stokes) then
         call init_stokes(sim%stokes_a_damping_time*unit_time, &
                        & sim%stokes_e_damping_time*unit_time, &
-                       & sim%stokes_active_time*unit_time)
+                       & sim%stokes_active_time*unit_time, &
+                       & sim%use_stokes_with_moons)
         if (sim%use_screen) then
             write (*, *) "Stokes"
             write (*, s1r1) "  tau_a   : ", sim%stokes_a_damping_time, "[days]"
@@ -682,7 +683,7 @@ program main
 
     !! <<<< Naive-Stokes (Drag) >>>>
     if (sim%use_drag) then
-        call init_drag(sim%drag_coefficient, sim%drag_active_time*unit_time)
+        call init_drag(sim%drag_coefficient, sim%drag_active_time*unit_time, sim%use_drag_with_moons)
         if (sim%use_screen) then
             write (*, *) "Drag"
             write (*, s1r1) "  eta   : ", sim%drag_coefficient
@@ -711,7 +712,7 @@ program main
 
     ! <<<< Escape/Colisión >>>>
     if (sim%min_distance < cero) then
-        !! Check
+    !! Check
         if (abs(sim%min_distance) < uno) then
             write (*, *) ACHAR(10)
             write (*, s1r1) "ERROR: rmin can not be lower than asteroid radius. Ratio:", abs(sim%min_distance)
@@ -819,7 +820,7 @@ program main
         write (*, *) ACHAR(5)
     end if
 
-    !!!!!!!! TIEMPOS !!!!!!!
+    !!!!!!! TIEMPOS !!!!!!!
 
     ! <<<< Integration times >>>>
     if (sim%final_time < cero) then

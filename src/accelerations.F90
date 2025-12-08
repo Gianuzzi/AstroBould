@@ -6,9 +6,9 @@ module accelerations
 
     implicit none
 
-    logical :: use_stokes = .False.
+    logical :: use_stokes = .False., use_stokes_moons = .False.
     real(wp) :: stokes_time = cero, stokes_C = cero, stokes_alpha = cero  ! Stokes
-    logical :: use_drag = .False.
+    logical :: use_drag = .False., use_drag_moons = .False.
     real(wp) :: drag_coef = cero, drag_time = cero  ! Drag
     logical :: use_ellipsoid = .False.
     real(wp) :: C20_coef = cero, C22_coef = cero, Re_coef = cero ! Ellipsoid basics
@@ -27,9 +27,9 @@ contains
     ! dr: |dr_vec|
     ! total_mass: mass A + mass B
 
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!! GRAVITY !!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!! GRAVITY !!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     pure subroutine gravity(mass, dr_vec, dr, acc)
         implicit none
@@ -61,11 +61,11 @@ contains
         acc = acc + acc_grav
     end subroutine gravity_and_torque_Z
 
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!! TRIAXIAL !!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!! TRIAXIAL !!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        !!! Init Parameters
+    !!! Init Parameters
     subroutine init_ellipsoid(axis_a, axis_b, axis_c)
         implicit none
         real(wp), intent(in) :: axis_a, axis_b, axis_c
@@ -82,7 +82,7 @@ contains
         end if
     end subroutine init_ellipsoid
 
-        !!! Acceleration Example
+    !!! Acceleration Example
     subroutine ellipsoid_acceleration(mass, theta, dr_vec, dr, acc)
         implicit none
         real(wp), intent(in) :: mass, theta, dr_vec(2), dr
@@ -118,11 +118,11 @@ contains
                     &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_param_eff))
     end subroutine ellipsoid_acceleration
 
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!! MANUAL J2 !!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!! MANUAL J2 !!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        !!! Init Parameters
+    !!! Init Parameters
     subroutine init_manual_J2(J2, radius)
         implicit none
         real(wp), intent(in) :: J2, radius
@@ -135,7 +135,7 @@ contains
         end if
     end subroutine init_manual_J2
 
-        !!! Acceleration Example
+    !!! Acceleration Example
     subroutine manual_J2_acceleration(mass, dr_vec, dr, acc)
         implicit none
         real(wp), intent(in) :: mass, dr_vec(2), dr
@@ -151,14 +151,15 @@ contains
         acc(2) = acc(2) - (G*mass*inv_dr3)*dr_vec(2)*(uno - J2K_coef*inv_dr2)
     end subroutine manual_J2_acceleration
 
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!! STOKES !!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!! STOKES !!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        !!! Init Parameters
-    subroutine init_stokes(tau_a, tau_e, active_timescale)
+    !!! Init Parameters
+    subroutine init_stokes(tau_a, tau_e, active_timescale, apply_to_moons)
         implicit none
         real(wp), intent(in) :: tau_a, tau_e, active_timescale
+        logical, intent(in) :: apply_to_moons
 
         if (active_timescale > cero .and. abs(tau_a) > cero .and. abs(tau_e) > cero) then
             use_stokes = .True.
@@ -168,9 +169,10 @@ contains
         else
             use_stokes = .False.
         end if
+        use_stokes_moons = use_stokes .and. apply_to_moons
     end subroutine init_stokes
 
-        !!! Acceleration Example
+    !!! Acceleration Example
     subroutine stokes(time, total_mass, dr_vec, dv_vec, dr, acc)
         implicit none
         real(wp), intent(in) :: total_mass, time, dr_vec(2), dv_vec(2), dr
@@ -183,14 +185,15 @@ contains
         acc = acc - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_factor ! = -C * (v - alpha * vc) * factor
     end subroutine stokes
 
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!! NAIVE-STOKES (DRAG) !!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!! NAIVE-STOKES (DRAG) !!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        !!! Init Parameters
-    subroutine init_drag(drag_coefficient, active_timescale)
+    !!! Init Parameters
+    subroutine init_drag(drag_coefficient, active_timescale, apply_to_moons)
         implicit none
         real(wp), intent(in) :: drag_coefficient, active_timescale
+        logical, intent(in) :: apply_to_moons
 
         if (active_timescale > cero .and. abs(drag_coefficient) > cero) then
             use_drag = .True.
@@ -199,9 +202,10 @@ contains
         else
             use_drag = .False.
         end if
+        use_drag_moons = use_drag .and. apply_to_moons
     end subroutine init_drag
 
-        !!! Acceleration Example
+    !!! Acceleration Example
     subroutine drag(time, total_mass, dr_vec, dv_vec, dr, acc)
         implicit none
         real(wp), intent(in) :: time, total_mass, dr_vec(2), dv_vec(2), dr
@@ -224,11 +228,11 @@ contains
         acc = acc + acc_radial*dr_vec/dr*drag_factor ! = -a_r * (x, y) / r * factor
     end subroutine drag
 
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!! ROTATION DAMPING !!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!! ROTATION DAMPING !!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        !!! Init Parameters
+    !!! Init Parameters
     subroutine init_damping(coefficient_1, coefficient_2, active_timescale, model)
         implicit none
         real(wp), intent(in) :: coefficient_1, coefficient_2, active_timescale
@@ -245,9 +249,9 @@ contains
         end if
     end subroutine init_damping
 
-        !!! Acceleration Example (These are like the torque, but not mass needed)
+    !!! Acceleration Example (These are like the torque, but not mass needed)
 
-        !!!! omega(t) = omega0 + tau * t
+    !!!! omega(t) = omega0 + tau * t
     subroutine damping_linear(time, acc_omega)
         implicit none
         real(wp), intent(in) :: time
@@ -255,11 +259,11 @@ contains
         real(wp) :: damp_factor
 
         damp_factor = uno2*(uno + tanh(1.e1_wp*(uno - time/damp_time)))
-            !! domega/dt = tau
+        !! domega/dt = tau
         acc_omega = acc_omega + damp_coef_1*damp_factor
     end subroutine damping_linear
 
-        !!!! omega(t) = omega0 * exp (- (t - t0) / tau) = omega0 * exp (- (t - t0) / tau)
+    !!!! omega(t) = omega0 * exp (- (t - t0) / tau) = omega0 * exp (- (t - t0) / tau)
     subroutine damping_exp(time, omega, acc_omega)
         implicit none
         real(wp), intent(in) :: time, omega
@@ -267,11 +271,11 @@ contains
         real(wp) :: damp_factor
 
         damp_factor = uno2*(uno + tanh(1.e1_wp*(uno - time/damp_time)))
-            !! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau
+        !! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau
         acc_omega = acc_omega - omega/damp_coef_1*damp_factor
     end subroutine damping_exp
 
-        !!!! omega(t) = omega0 * exp (A * (t-t0)**B)
+    !!!! omega(t) = omega0 * exp (A * (t-t0)**B)
     subroutine damping_expoly(time, omega, acc_omega, initial_time)
         implicit none
         real(wp), intent(in) :: time, omega
@@ -282,7 +286,7 @@ contains
         if (present(initial_time)) t0 = initial_time
         damp_factor = uno2*(uno + tanh(1.e1_wp*(uno - time/damp_time)))
 
-            !! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
+        !! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
         acc_omega = acc_omega + damp_coef_1*(time - t0 + tini)**(damp_coef_2 - uno)*omega*damp_factor
     end subroutine damping_expoly
 

@@ -86,7 +86,7 @@ module shared
 
     abstract interface
 
-        !!!! TEMPLATES
+    !!!! TEMPLATES
 
         ! Keep going template
         function function_check_keep_tem(y) result(keep_going)

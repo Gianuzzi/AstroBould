@@ -35,7 +35,7 @@ module bstoer2
 
 contains
 
-        !!!! HANDLER
+    !!!! HANDLER
 
     subroutine init_BS2(sizey, standard)
         implicit none
@@ -92,7 +92,7 @@ contains
         if (allocated(dy)) deallocate (dy)
     end subroutine free_BS2
 
-        !!!! Auxiliar subroutines for Bulirsch_Stoer 2
+    !!!! Auxiliar subroutines for Bulirsch_Stoer 2
 
     subroutine bstep(sizey, y, dydt, t, htry, hdid, hnext)
         implicit none
@@ -339,7 +339,7 @@ contains
 
     end subroutine bstep
 
-        !!!! STANDARD subroutines for Bulirsch_Stoer 2. Apply when arr = /x0, v0, x1, v1,.../
+    !!!! STANDARD subroutines for Bulirsch_Stoer 2. Apply when arr = /x0, v0, x1, v1,.../
 
     subroutine bstep_std(sizey, y, dydt, t, htry, hdid, hnext)
         implicit none

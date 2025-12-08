@@ -8,8 +8,8 @@ module derivates
                           & m_arr, R_arr, &
                           & hard_exit
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
-                            & use_drag, drag_coef, drag_time, &
-                            & use_stokes, stokes_C, stokes_alpha, stokes_time, &
+                            & use_drag, use_drag_moons, drag_coef, drag_time, &
+                            & use_stokes, use_stokes_moons, stokes_C, stokes_alpha, stokes_time, &
                             & use_ellipsoid, K_coef, L_coef, &
                             & use_manual_J2, J2K_coef
 
@@ -44,9 +44,9 @@ contains
         idx = 4*i - 1
     end function get_index
 
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!! DERIVATIVES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!! DERIVATIVES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     function dydt(t, y) result(der)
         !y = /theta, omega, xA, yA, vxA, vyA, Moon, Part, .../
@@ -95,7 +95,7 @@ contains
 
         ! ---> Omega Damping <---
         if (use_damp) then
-                !! Damping
+            !! Damping
             damp_f = uno2*(uno + tanh(1.e1_wp*(uno - t/damp_time)))
             select case (damp_model)
             case (1) ! domega/dt = tau
@@ -109,9 +109,9 @@ contains
         end if
 
         ! ---> Forces / Escapes/ Collisions acting from COM of asteroid <---
-            !! Includes triaxial
+        !! Includes triaxial
 
-            !!! Set-up
+        !!! Set-up
         Gmast = G*m_arr(1)
         if (use_stokes) stokes_f = uno2*(uno + tanh(1.e1_wp*(uno - t/stokes_time)))
         if (use_drag) drag_f = uno2*(uno + tanh(1.e1_wp*(uno - t/drag_time)))
@@ -120,12 +120,12 @@ contains
             s2th = sin(dos*theta)
         end if
 
-            !! Moons (massive)
+        !! Moons (massive)
         do j = 2, last_moon
             jdx = get_index(j)
             coords_M = y(jdx:jdx + 3)  ! Moon
 
-                !! ASTEROID AND MOON
+            !! ASTEROID AND MOON
             dr_vec = coords_M(1:2) - coords_A(1:2)  ! From Asteroid to Moon
             dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
             dr = sqrt(dr2)
@@ -177,7 +177,7 @@ contains
                 ! Acceleration to moon from asteroid
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - acc_grav_m*m_arr(1)  ! = a_unit_mass * mAsteroid
 
-                    !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
+                !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
                 ! Asteroid acceleration
                 der(5:6) = der(5:6) + acc_grav_m*m_arr(j)  ! REACTION TO ASTEROID
 
@@ -188,7 +188,7 @@ contains
             end if
 
             ! ---> Drag and/or Stokes <---
-            if (use_drag .or. use_stokes) then
+            if (use_drag_moons .or. use_stokes_moons) then
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
                 dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
@@ -202,22 +202,22 @@ contains
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmcomb ! n
 
                     ! ---> Drag <---
-                    if (use_drag) then
+                    if (use_drag_moons) then
                         vel_radial = dot_product(dr_ver, dv_vec)
                         acc_radial = -drag_coef*mean_movement*vel_radial
 
                         ! Drag acceleration
-                            !! acc = -a_r * (x, y) / r * factor
+                        !! acc = -a_r * (x, y) / r * factor
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_radial*dr_ver*drag_f
 
                     end if
 
                     ! ---> Stokes <---
-                    if (use_stokes) then
+                    if (use_stokes_moons) then
                         vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                         ! Stokes acceleration
-                            !! acc = -C * (v - alpha * vc) * factor
+                        !! acc = -C * (v - alpha * vc) * factor
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
 
                     end if
@@ -228,12 +228,12 @@ contains
 
         end do
 
-            !! Particles (massless)
+        !! Particles (massless)
         do j = last_moon + 1, N_total
             jdx = get_index(j)
             coords_P = y(jdx:jdx + 3)  ! Particle
 
-                !! ASTEROID AND PARTICLE
+            !! ASTEROID AND PARTICLE
             dr_vec = coords_P(1:2) - coords_A(1:2)  ! From Asteroid to Particle
             dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
             dr = sqrt(dr2)
@@ -310,7 +310,7 @@ contains
                         acc_radial = -drag_coef*mean_movement*vel_radial
 
                         ! Drag acceleration
-                            !! acc = -a_r * (x, y) / r * factor
+                        !! acc = -a_r * (x, y) / r * factor
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_radial*dr_ver*drag_f
 
                     end if
@@ -319,7 +319,7 @@ contains
                         vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                         ! Stokes acceleration
-                            !! acc = -C * (v - alpha * vc) * factor
+                        !! acc = -C * (v - alpha * vc) * factor
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
 
                     end if
@@ -336,7 +336,7 @@ contains
         if (.not. use_ellipsoid) then  ! Only if NOT triaxial
             ! First we do only boulder 0 (primary) for possible J2
 
-                !! Get boulder coords
+            !! Get boulder coords
             boulders_coords(0, 1) = boulders_data(0, 4)*cos(theta + boulders_data(0, 3))  ! x
             boulders_coords(0, 2) = boulders_data(0, 4)*sin(theta + boulders_data(0, 3))  ! y
             boulders_coords(0, 3) = -omega*boulders_coords(0, 2)  ! vx
@@ -344,12 +344,12 @@ contains
 
             boulders_coords(0, :) = boulders_coords(0, :) + coords_A  ! Move to Asteroid
 
-                !! Moons (massive)
+            !! Moons (massive)
             do j = 2, last_moon ! +1 porque j=1 es asteroid
                 jdx = get_index(j)
                 coords_M = y(jdx:jdx + 3)  ! Moon
 
-                    !! BOULDER AND MOON
+                !! BOULDER AND MOON
                 dr_vec = coords_M(1:2) - boulders_coords(0, 1:2)  ! From Boulder to Moon
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 dr = sqrt(dr2)
@@ -369,7 +369,7 @@ contains
                 ! Moon acceleration
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav_m*boulders_data(0, 1)  ! a_m * mass
 
-                    !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
+                !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
                 ! Asteroid acceleration
                 der(5:6) = der(5:6) - acc_grav_m*boulders_data(0, 1)*m_arr(j)/m_arr(1)  ! Force moved to Asteroid CM
 
@@ -379,12 +379,12 @@ contains
 
             end do
 
-                !! Particles (massless)
+            !! Particles (massless)
             do j = last_moon + 1, N_total
                 jdx = get_index(j)
                 coords_P = y(jdx:jdx + 3)  ! Particle
 
-                    !! BOULDER AND PARTICLE
+                !! BOULDER AND PARTICLE
                 dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)  ! From Boulder to Particle
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 dr = sqrt(dr2)
@@ -406,7 +406,7 @@ contains
             ! Now the rest of the boulders
             do i = 1, sim%Nboulders
 
-                    !! Get boulder coords
+                !! Get boulder coords
                 boulders_coords(i, 1) = boulders_data(i, 4)*cos(theta + boulders_data(i, 3))  ! x
                 boulders_coords(i, 2) = boulders_data(i, 4)*sin(theta + boulders_data(i, 3))  ! y
                 boulders_coords(i, 3) = -omega*boulders_coords(i, 2)  ! vx
@@ -414,12 +414,12 @@ contains
 
                 boulders_coords(i, :) = boulders_coords(i, :) + coords_A  ! Move to Asteroid
 
-                    !! Moons (massive)
+                !! Moons (massive)
                 do j = 2, last_moon ! +1 porque j=1 es asteroid
                     jdx = get_index(j)
                     coords_M = y(jdx:jdx + 3)  ! Moon
 
-                        !! BOULDER AND MOON
+                    !! BOULDER AND MOON
                     dr_vec = coords_M(1:2) - boulders_coords(i, 1:2)  ! From Boulder to Moon
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     dr = sqrt(dr2)
@@ -435,7 +435,7 @@ contains
                     ! Moon acceleration
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav_m*boulders_data(i, 1)  ! a_m * mass
 
-                        !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
+                    !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
                     ! Asteroid acceleration
                     der(5:6) = der(5:6) - acc_grav_m*boulders_data(i, 1)*m_arr(j)/m_arr(1)  ! Force moved to Asteroid CM
 
@@ -445,12 +445,12 @@ contains
 
                 end do
 
-                    !! Particles (massless)
+                !! Particles (massless)
                 do j = last_moon + 1, N_total
                     jdx = get_index(j)
                     coords_P = y(jdx:jdx + 3)  ! Particle
 
-                        !! BOULDER AND PARTICLE
+                    !! BOULDER AND PARTICLE
                     dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)  ! From Boulder to Particle
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     dr = sqrt(dr2)
@@ -469,7 +469,7 @@ contains
 
         end if
 
-            !! Update Omega with Torque
+        !! Update Omega with Torque
         der(2) = der(2) + torque/system%asteroid%inertia
 
         ! Second, Moons to particles
@@ -477,12 +477,12 @@ contains
             idx = get_index(i)
             coords_M = y(idx:idx + 3)  ! Moon 1 (M)
 
-                !! Particles (massless)
+            !! Particles (massless)
             do j = last_moon + 1, N_total
                 jdx = get_index(j)
                 coords_P = y(jdx:jdx + 3)  ! Particle
 
-                    !! MOON AND PARTICLE
+                !! MOON AND PARTICLE
                 dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon 1 (M) to Particle
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 dr = sqrt(dr2)
@@ -505,12 +505,12 @@ contains
                 idx = get_index(i)
                 coords_M = y(idx:idx + 3)  ! Moon 1 (M)
 
-                    !! Other Moons (massive)
+                !! Other Moons (massive)
                 do j = i + 1, last_moon ! Ahora sí +1 porque j=1 es asteroid
                     jdx = get_index(j)
                     coords_P = y(jdx:jdx + 3)  ! Moon 2 (P)
 
-                        !! MOON 1 (M) AND MOON 2 (P)
+                    !! MOON 1 (M) AND MOON 2 (P)
                     dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon 1 (M) to Moon 2 (P)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     dr = sqrt(dr2)

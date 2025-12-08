@@ -62,7 +62,7 @@ module runge_kutta
 
 contains
 
-        !!!! HANDLER
+    !!!! HANDLER
 
     subroutine init_runge_kutta(sizey, which)
         implicit none
@@ -252,7 +252,7 @@ contains
         nullify (runge_kutta_ptr)
     end subroutine free_runge_kutta
 
-        !!!! Runge Kutta subroutines
+    !!!! Runge Kutta subroutines
 
     subroutine Euler1(sizey, y, dydt, t, dt, deri, ynew)
         implicit none
@@ -757,7 +757,7 @@ contains
     !  Solvers Runge Kutta (Implicit and Half Step)
     !------------------------------------------------
 
-        !!!! Implicit: 1D SOLVER
+    !!!! Implicit: 1D SOLVER
     subroutine solve_1k_implicit(sizey, y, dydt, t, dt, kprev, cte, kout)
         implicit none
         integer(kind=4), intent(in) :: sizey
@@ -779,7 +779,7 @@ contains
         end do
     end subroutine solve_1k_implicit
 
-        !!!! Implicit: ND SOLVER
+    !!!! Implicit: ND SOLVER
     subroutine solve_rk_implicit(sizey, nstages, y, dydt, t, dt, impl_funK, rkout)
         implicit none
         integer(kind=4), intent(in) :: sizey, nstages
@@ -800,7 +800,7 @@ contains
         end do
     end subroutine solve_rk_implicit
 
-        !!!! Adaptive Timestep: Half step
+    !!!! Adaptive Timestep: Half step
     recursive subroutine solve_rk_half_step(sizey, y, dydt, t, dt_adap, dt_used, deri, runge_kutta, ynew)
         implicit none
         integer(kind=4), intent(in) :: sizey
