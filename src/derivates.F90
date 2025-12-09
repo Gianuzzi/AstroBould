@@ -191,7 +191,7 @@ contains
             if (use_drag_moons .or. use_stokes_moons) then
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
-                dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
+                dv_vec = coords_M(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
                 v2 = dot_product(dv_vec, dv_vec)
 
                 ! Get energy
@@ -289,7 +289,7 @@ contains
             if (use_drag .or. use_stokes) then
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
-                dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
+                dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Particle
                 v2 = dot_product(dv_vec, dv_vec)
 
                 ! Get energy
@@ -350,7 +350,7 @@ contains
                 coords_M = y(jdx:jdx + 3)  ! Moon
 
                 !! BOULDER AND MOON
-                dr_vec = coords_M(1:2) - boulders_coords(0, 1:2)  ! From Boulder to Moon
+                dr_vec = coords_M(1:2) - boulders_coords(0, 1:2)  ! From Boulder 0 (primary) to Moon
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 dr = sqrt(dr2)
 
@@ -385,7 +385,7 @@ contains
                 coords_P = y(jdx:jdx + 3)  ! Particle
 
                 !! BOULDER AND PARTICLE
-                dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)  ! From Boulder to Particle
+                dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)  ! From Boulder 0 (primary) to Particle
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 dr = sqrt(dr2)
 
@@ -406,7 +406,7 @@ contains
             ! Now the rest of the boulders
             do i = 1, sim%Nboulders
 
-                !! Get boulder coords
+                !! Get boulder i coords
                 boulders_coords(i, 1) = boulders_data(i, 4)*cos(theta + boulders_data(i, 3))  ! x
                 boulders_coords(i, 2) = boulders_data(i, 4)*sin(theta + boulders_data(i, 3))  ! y
                 boulders_coords(i, 3) = -omega*boulders_coords(i, 2)  ! vx
@@ -420,7 +420,7 @@ contains
                     coords_M = y(jdx:jdx + 3)  ! Moon
 
                     !! BOULDER AND MOON
-                    dr_vec = coords_M(1:2) - boulders_coords(i, 1:2)  ! From Boulder to Moon
+                    dr_vec = coords_M(1:2) - boulders_coords(i, 1:2)  ! From Boulder i to Moon
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     dr = sqrt(dr2)
 
@@ -451,7 +451,7 @@ contains
                     coords_P = y(jdx:jdx + 3)  ! Particle
 
                     !! BOULDER AND PARTICLE
-                    dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)  ! From Boulder to Particle
+                    dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)  ! From Boulder i to Particle
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     dr = sqrt(dr2)
 
@@ -475,7 +475,7 @@ contains
         ! Second, Moons to particles
         do i = 2, last_moon
             idx = get_index(i)
-            coords_M = y(idx:idx + 3)  ! Moon 1 (M)
+            coords_M = y(idx:idx + 3)  ! Moon i (M)
 
             !! Particles (massless)
             do j = last_moon + 1, N_total
@@ -483,7 +483,7 @@ contains
                 coords_P = y(jdx:jdx + 3)  ! Particle
 
                 !! MOON AND PARTICLE
-                dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon 1 (M) to Particle
+                dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon i (M) to Particle j (P)
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 dr = sqrt(dr2)
 
@@ -503,7 +503,7 @@ contains
         if (sim%use_moon_gravity) then
             do i = 2, last_moon - 1
                 idx = get_index(i)
-                coords_M = y(idx:idx + 3)  ! Moon 1 (M)
+                coords_M = y(idx:idx + 3)  ! Moon i (M)
 
                 !! Other Moons (massive)
                 do j = i + 1, last_moon ! Ahora sí +1 porque j=1 es asteroid
@@ -511,7 +511,7 @@ contains
                     coords_P = y(jdx:jdx + 3)  ! Moon 2 (P)
 
                     !! MOON 1 (M) AND MOON 2 (P)
-                    dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon 1 (M) to Moon 2 (P)
+                    dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon i (M) to Moon j (P)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     dr = sqrt(dr2)
 
