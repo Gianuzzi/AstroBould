@@ -129,7 +129,7 @@ module parameters
         logical :: use_datascreen = .False.
         logical :: use_diagnostics = .True.
         logical :: use_percentage = .False.
-        logical :: use_elements_output = .True.
+        integer(kind=4) :: int_elements_output = 1  ! 0: False, 1: True, 2: Both
         logical :: use_baryc_output = .True.
         logical :: use_potential_map = .False.
         character(30) :: mapfile = ""
@@ -259,6 +259,25 @@ module parameters
     character(24), parameter :: s1r1 = "(3(A, 1X, 1PE22.15, 1X))"
     character(21), parameter :: i1r5 = "(I7, 5(1X, 1PE22.15))"
     character(21), parameter :: i1r7 = "(I7, 7(1X, 1PE22.15))"
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    FILE UNITS     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    integer(kind=4), parameter :: u_configfile = 10
+
+    integer(kind=4), parameter :: u_datafile = 21 ! +1 free for possible both (elements and coordinates)
+    integer(kind=4), parameter :: u_chaosfile = 23
+    integer(kind=4), parameter :: u_geometricfile = 24
+    integer(kind=4), parameter :: u_geomchaosfile = 25
+
+    integer(kind=4), parameter :: u_filterfile = 40
+    integer(kind=4), parameter :: u_filtdatafile = 41
+    integer(kind=4), parameter :: u_filtchaosfile = 43
+    integer(kind=4), parameter :: u_filtgeometricfile = 44
+    integer(kind=4), parameter :: u_filtgeomchaosfile = 45
+
+    integer(kind=4), parameter :: u_mapfile = 50
+
+    integer(kind=4), parameter :: u_multfile = 100  ! First file
+    integer(kind=4), parameter :: u_filtmultfile = 4100  ! First file    
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    POINTERS     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     procedure(write_to_unit_template), pointer :: write_to_general => null()
@@ -449,9 +468,9 @@ contains
                     params%use_potential_map = .False.
                     params%mapfile = ""
                 case ("--elem")
-                    params%use_elements_output = .True.
+                    params%int_elements_output = 1
                 case ("--noelem")
-                    params%use_elements_output = .False.
+                    params%int_elements_output = 0
                 case ("-tomfile")
                     params%use_tomfile = .True.
                     call get_command_argument(i + 1, params%tomfile)
@@ -662,10 +681,10 @@ contains
         end if
 
         nlines = 0
-        open (unit=10, file=trim(file_name), status='old', action='read')
+        open (unit=u_configfile, file=trim(file_name), status='old', action='read')
         do
             ! Read the line from the file
-            read (10, '(A)', END=98) line
+            read (u_configfile, '(A)', END=98) line
             nlines = nlines + 1
 
             if ((len_trim(line) == 0) .or. (auxch15(:2) == "c ") .or. (auxch15(:2) == "! ")) cycle
@@ -978,9 +997,13 @@ contains
                     end if
                 case ("output variable")
                     if (auxch1 == "c") then
-                        params%use_elements_output = .False.
+                        params%int_elements_output = 0
+                    else if (auxch1 == "e") then
+                        params%int_elements_output = 1
+                    else if (auxch1 == "b") then
+                        params%int_elements_output = 2
                     else
-                        params%use_elements_output = .True.
+                        params%int_elements_output = 1  ! Just default
                     end if
                 case ("output elements")
                     if (auxch1 == "b") then
@@ -1138,7 +1161,7 @@ contains
                 end if
             end if
         end do
-98      close (10)
+98      close (u_configfile)
     end subroutine read_config_file
 
     ! 3. Set derived parameters
@@ -1332,11 +1355,11 @@ contains
         !     derived%use_bins = .True.
         ! !! Check
         !     if (derived%binning_method < 1 .or. derived%binning_method > 3) then
-        !         write(*,*) "ERROR: binning_method must be 1 (equal dr), 2 (equal dA) or 3 (equal Npart)."
+        !         write (*,*) "ERROR: binning_method must be 1 (equal dr), 2 (equal dA) or 3 (equal Npart)."
         !         stop 1
         !     end if
         !     if (derived%Nbins < 2) then
-        !         write(*,*) "ERROR: Can not create less than 2 bins."
+        !         write (*,*) "ERROR: Can not create less than 2 bins."
         !         stop 1
         !     end if
         ! !! Set default update values
@@ -1478,6 +1501,12 @@ contains
             derived%use_particlesfile = .False.
         end if
 
+        ! Check no mutiple outputs and also both (elements and coordinates)
+        if (derived%use_multiple_outputs .and. derived%int_elements_output .eq. 2) then
+            write (*, *) "ERROR: Can not use both outputs (elements and coordinates) and mutiple outpues at the same time."
+            stop 1
+        end if
+
         ! Check no TOM and Filter
         if (derived%use_tomfile .and. derived%use_filter) then
             write (*, *) "ERROR: Can not use both filtering and TOM at the same time."
@@ -1495,7 +1524,7 @@ contains
 
     ! Define IO pointers
     subroutine define_writing_pointers(simu)
-        use bodies, only: write_chaos, write_elem, write_coor, &
+        use bodies, only: write_chaos, write_elem, write_coor, write_both, &
                         & write_ast_elem, write_moon_i_elem, write_particle_i_elem, &
                         & write_ast_coor, write_moon_i_coor, write_particle_i_coor, &
                         & write_geom, write_geomchaos
@@ -1504,7 +1533,7 @@ contains
 
         ! Screen
         if (simu%use_datascreen) then
-            if (simu%use_elements_output) then
+            if (simu%int_elements_output > 0) then
                 write_to_screen => write_elem
             else
                 write_to_screen => write_coor
@@ -1517,10 +1546,12 @@ contains
 
         ! Datafile
         if (simu%use_datafile) then
-            if (simu%use_elements_output) then
+            if (simu%int_elements_output .eq. 0) then
+                write_to_general => write_coor
+            else if (simu%int_elements_output .eq. 1) then
                 write_to_general => write_elem
             else
-                write_to_general => write_coor
+                write_to_general => write_both
             end if
             if (use_flush_output) then
                 flush_output => flush_to_file
@@ -1534,7 +1565,7 @@ contains
 
         ! Multiple Files
         if (simu%use_multiple_outputs) then
-            if (simu%use_elements_output) then
+            if (simu%int_elements_output > 0) then
                 write_a_to_individual => write_ast_elem
                 write_m_to_individual => write_moon_i_elem
                 write_p_to_individual => write_particle_i_elem
@@ -1740,7 +1771,7 @@ contains
         integer(kind=4), intent(in) :: i, unit_file
     end subroutine do_not_write_i
 
-    subroutine do_not_write(self, unit_file)
+    subroutine do_not_write (self, unit_file)
         implicit none
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: unit_file
@@ -1865,46 +1896,46 @@ contains
         integer(kind=4) :: i, pind, pout
 
         if (present(filtered)) then
-            pind = 3000
+            pind = u_filtmultfile - u_multfile
             pout = 10
         else
             pind = 0
             pout = 0
         end if
 
-        call write_a_to_individual(syst, 100 + pind)
+        call write_a_to_individual(syst, u_multfile + pind)
         !$OMP PARALLEL DEFAULT(SHARED) &
         !$OMP PRIVATE(i)
         !$OMP DO
         do i = 1, syst%Nmoons_active
-            call write_m_to_individual(syst, i, 100 + syst%moons(i)%id + pind)
+            call write_m_to_individual(syst, i, u_multfile + syst%moons(i)%id + pind)
         end do
         !$OMP END DO NOWAIT
         !$OMP DO
         do i = 1, syst%Nparticles_active
-            call write_p_to_individual(syst, i, 100 + syst%particles(i)%id + pind)
+            call write_p_to_individual(syst, i, u_multfile + syst%particles(i)%id + pind)
         end do
         !$OMP END DO NOWAIT
         !$OMP SECTIONS
         !$OMP SECTION
         if (sim%use_diagnostics) then
-            call write_diagnostics(initial_system, syst, 6)
+            call write_diagnostics(initial_system, syst, 6)  ! 6 defaults to std out
         else if (pout == 0) then
-            call write_to_screen(syst, 6)
+            call write_to_screen(syst, 6)  ! 6 defaults to std out
             flush (6)
         end if
         !$OMP SECTION
-        call write_to_general(syst, 21 + pout)
-        call flush_output(21 + pout)
+        call write_to_general(syst, u_datafile + pout)
+        call flush_output(u_datafile + pout)
         !$OMP SECTION
-        call write_to_chaos(syst, initial_system, 22 + pout)
-        call flush_chaos(22 + pout) ! Update chaos
+        call write_to_chaos(syst, initial_system, u_chaosfile + pout)
+        call flush_chaos(u_chaosfile + pout) ! Update chaos
         !$OMP SECTION
         if (pout == 0) then
-            call write_to_geometric(syst, 23)
-            call flush_geometric(23)
-            call write_to_geomchaos(syst, initial_system, 24)
-            call flush_geomchaos(24)
+            call write_to_geometric(syst, u_geometricfile)
+            call flush_geometric(u_geometricfile)
+            call write_to_geomchaos(syst, initial_system, u_geomchaosfile)
+            call flush_geomchaos(u_geomchaosfile)
         end if
         !$OMP END SECTIONS
         !$OMP END PARALLEL

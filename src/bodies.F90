@@ -1152,7 +1152,7 @@ contains
         aux_real = sqrt(coordinates(1)*coordinates(1) + &
                       & coordinates(2)*coordinates(2))
         if (aux_real > epsilon) then
-            !write(*,*) "WARNING: CM is not centered at 0.", aux_real
+            !write (*,*) "WARNING: CM is not centered at 0.", aux_real
             if (present(error)) error = error + 1
         end if
 
@@ -1160,7 +1160,7 @@ contains
         aux_real = sqrt(coordinates(3)*coordinates(3) + &
                       & coordinates(4)*coordinates(4))
         if (aux_real > epsilon) then
-            !write(*,*) "WARNING: CM velocity is not 0.", aux_real
+            !write (*,*) "WARNING: CM velocity is not 0.", aux_real
             if (present(error)) error = error + 1
         end if
     end subroutine check_coordinates
@@ -2430,6 +2430,15 @@ contains
 
     end subroutine write_coor
 
+    ! Write both: elements and coordinates. Unit_file and Unit_file + 1
+    subroutine write_both(self, unit_file)
+        implicit none
+        type(system_st), intent(in) :: self
+        integer(kind=4), intent(in) :: unit_file
+        call write_elem(self, unit_file)
+        call write_coor(self, unit_file + 1)
+    end subroutine write_both
+
     ! Write chaos asteroid
     subroutine write_ast_chaos(initial, actual, unit_file)
         implicit none
@@ -2679,7 +2688,7 @@ contains
 
     end subroutine write_geom
 
-    ! Write chaos moon i
+    ! Write geometric chaos moon i
     subroutine write_moon_i_geomchaos(initial, actual, i, unit_file)
         implicit none
         type(system_st), intent(in) :: initial
@@ -2723,7 +2732,7 @@ contains
             & actual%moons(i)%chaos_e_geom  ! de
     end subroutine write_moon_i_geomchaos
 
-    ! Write chaos particle i
+    ! Write geometric chaos particle i
     subroutine write_particle_i_geomchaos(initial, actual, i, unit_file)
         implicit none
         type(system_st), intent(in) :: initial
@@ -2767,7 +2776,7 @@ contains
             & actual%particles(i)%chaos_e_geom  ! de
     end subroutine write_particle_i_geomchaos
 
-    ! Write chaos ALL
+    ! Write geometric chaos ALL
     subroutine write_geomchaos(initial, actual, unit_file)
         implicit none
         type(system_st), intent(in) :: initial

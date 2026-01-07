@@ -1020,11 +1020,11 @@ program main
         sim%filter_nwindows = filter%n_windows
 
         ! Create filter file
-        open (unit=30, file=trim(trim(sim%filter_prefix)), status='replace', action='write', position="append")
-        write (30, *) "dt ", "n_samples ", "n_windows ", "size ", "total_dt"
-        write (30, *) filter%dt, filter%n_samples, filter%n_windows, filter%size, filter%dt*filter%size
-        write (30, *) filter%kernel
-        close (30)
+        open (unit=u_filterfile, file=trim(trim(sim%filter_prefix)), status='replace', action='write', position="append")
+        write (u_filterfile, *) "dt ", "n_samples ", "n_windows ", "size ", "total_dt"
+        write (u_filterfile, *) filter%dt, filter%n_samples, filter%n_windows, filter%size, filter%dt*filter%size
+        write (u_filterfile, *) filter%kernel
+        close (u_filterfile)
 
         ! CHECK
         if (filter%dt*filter%size > sim%final_time) then
@@ -1188,60 +1188,73 @@ program main
     ! 3100+i:  filtered individual bodies data
 
     !! Archivo de salida general
-    if (sim%use_datafile) open (unit=21, file=trim(sim%datafile), status='replace', action='write', position="append")
+    if (sim%use_datafile) then
+        if (sim%int_elements_output .eq. 2) then
+            open (unit=u_datafile, file="elem_"//trim(sim%datafile), status='replace', action='write')
+            open (unit=u_datafile+1, file="coor_"//trim(sim%datafile), status='replace', action='write')
+        else
+            open (unit=u_datafile, file=trim(sim%datafile), status='replace', action='write')
+        end if
+    end if
 
     !! Chaos File
-    if (sim%use_chaosfile) open (unit=22, file=trim(sim%chaosfile), status='replace', action='readwrite', position="append")
+    if (sim%use_chaosfile) then
+        open (unit=u_chaosfile, file=trim(sim%chaosfile), status='replace', action='readwrite')
+    end if
 
     !! Geometric file
-    if (sim%use_geometricfile) open (unit=23, file=trim(sim%geometricfile), status='replace', action='write', position="append")
+    if (sim%use_geometricfile) then
+        open (unit=u_geometricfile, file=trim(sim%geometricfile), status='replace', action='write')
+    end if
 
     !! Geometric chaos file
-    if (sim%use_geomchaosfile) open (unit=24, file=trim(sim%geomchaosfile), status='replace', action='readwrite', position="append")
-
-    !! Filter Files
-    if (sim%use_filter) then
-
-        !! Archivo de salida general
-        if (sim%use_datafile) then
-            open (unit=31, &
-                & file=trim(sim%filter_prefix)//trim(sim%datafile), &
-                & status='replace', action='write', position="append")
-        end if
-
-        !! Chaos File
-        if (sim%use_chaosfile) then
-            open (unit=32, &
-                & file=trim(sim%filter_prefix)//trim(sim%chaosfile), &
-                & status='replace', action='readwrite', position="append")
-        end if
-
-        ! !! Geometric File
-        ! if (sim%use_geometricfile) then
-        !     open (unit=33, &
-        !         & file=trim(sim%filter_prefix) // trim(sim%geometricfile), &
-        !         & status='replace', action='readwrite', position="append")
-        ! end if
-
-        !! Archivos individuales
-        if (sim%use_multiple_outputs) then
-            do i = 0, sim%Ntotal  ! 0 is the asteroid
-                write (aux_character20, *) i
-                open (unit=3100 + i, &
-                    & file=trim(sim%filter_prefix)//trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
-                    & status='replace', action='write', position="append")
-            end do
-        end if
-
+    if (sim%use_geomchaosfile) then
+        open (unit=u_geomchaosfile, file=trim(sim%geomchaosfile), status='replace', action='readwrite')
     end if
 
     !! Archivos individuales
     if (sim%use_multiple_outputs) then
         do i = 0, sim%Ntotal  ! 0 is the asteroid
             write (aux_character20, *) i
-            open (unit=100 + i, file=trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
-                & status='replace', action='write', position="append")
+            open (unit=u_multfile + i, file=trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
+                & status='replace', action='write')
         end do
+    end if
+
+    !! Filter Files
+    if (sim%use_filter) then
+
+        !! Archivo de salida general
+        if (sim%use_datafile) then
+            open (unit=u_filtdatafile, &
+                & file=trim(sim%filter_prefix)//trim(sim%datafile), &
+                & status='replace', action='write')
+        end if
+
+        !! Chaos File
+        if (sim%use_chaosfile) then
+            open (unit=u_filtchaosfile, &
+                & file=trim(sim%filter_prefix)//trim(sim%chaosfile), &
+                & status='replace', action='readwrite')
+        end if
+
+        ! !! Geometric File
+        ! if (sim%use_geometricfile) then
+        !     open (unit=u_filtgeometricfile, &
+        !         & file=trim(sim%filter_prefix) // trim(sim%geometricfile), &
+        !         & status='replace', action='readwrite')
+        ! end if
+
+        !! Archivos individuales
+        if (sim%use_multiple_outputs) then
+            do i = 0, sim%Ntotal  ! 0 is the asteroid
+                write (aux_character20, *) i
+                open (unit=u_filtmultfile + i, &
+                    & file=trim(sim%filter_prefix)//trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
+                    & status='replace', action='write')
+            end do
+        end if
+
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2359,10 +2372,18 @@ program main
 
     !! Cerrar archivo de salida
     if (sim%use_datafile) then
-        close (21)
-        if (sim%use_screen) then
-            write (*, *) ACHAR(10)
-            write (*, *) "Output data saved to file: ", trim(sim%datafile)
+        close (u_datafile)
+        if (sim%int_elements_output .eq. 2) then
+            close (u_datafile + 1)
+            if (sim%use_screen) then
+                write (*, *) ACHAR(10)
+                write (*, *) "Output data saved to files: ", "elem_"//trim(sim%datafile), " and  coor_"//trim(sim%datafile)
+            end if
+        else
+            if (sim%use_screen) then
+                write (*, *) ACHAR(10)
+                write (*, *) "Output data saved to file: ", trim(sim%datafile)
+            end if
         end if
     end if
 
@@ -2370,14 +2391,14 @@ program main
     if (sim%use_chaos) then
         if (sim%use_chaosfile) then
             !! Chaosfile
-            inquire (unit=22, opened=aux_logical)
+            inquire (unit=u_chaosfile, opened=aux_logical)
             if (.not. aux_logical) then
-                open (unit=22, file=trim(sim%chaosfile), status='unknown', action='write')
+                open (unit=u_chaosfile, file=trim(sim%chaosfile), status='unknown', action='write')
             else
-                rewind (22)
+                rewind (u_chaosfile)
             end if
-            call write_chaos(initial_system, system, 22)
-            close (22)
+            call write_chaos(initial_system, system, u_chaosfile)
+            close (u_chaosfile)
             !! Mensaje
             if (sim%use_screen) then
                 write (*, *) ACHAR(10)
@@ -2393,7 +2414,7 @@ program main
 
     !! Cerrar archivo de geométricos
     if (sim%use_geometricfile) then
-        close (23)
+        close (u_geometricfile)
         if (sim%use_screen) then
             write (*, *) ACHAR(10)
             write (*, *) "Geometric output data saved to file: ", trim(sim%geometricfile)
@@ -2404,14 +2425,14 @@ program main
     if (sim%use_chaos) then
         if (sim%use_geomchaosfile) then
             !! Chaosfile
-            inquire (unit=24, opened=aux_logical)
+            inquire (unit=u_geomchaosfile, opened=aux_logical)
             if (.not. aux_logical) then
-                open (unit=24, file=trim(sim%geomchaosfile), status='unknown', action='write')
+                open (unit=u_geomchaosfile, file=trim(sim%geomchaosfile), status='unknown', action='write')
             else
-                rewind (24)
+                rewind (u_geomchaosfile)
             end if
-            call write_to_geomchaos(initial_system, system, 24)
-            close (24)
+            call write_to_geomchaos(initial_system, system, u_geomchaosfile)
+            close (u_geomchaosfile)
             !! Mensaje
             if (sim%use_screen) then
                 write (*, *) ACHAR(10)
@@ -2430,7 +2451,7 @@ program main
 
         !! Cerrar archivo de salida filtrado
         if (sim%use_datafile) then
-            close (31)
+            close (u_filtdatafile)
             if (sim%use_screen) then
                 write (*, *) ACHAR(10)
                 write (*, *) "Filterd output data saved to file: ", trim(sim%filter_prefix)//trim(sim%datafile)
@@ -2441,14 +2462,14 @@ program main
         if (sim%use_chaos) then
             if (sim%use_chaosfile) then
                 !! Chaosfile
-                inquire (unit=32, opened=aux_logical)
+                inquire (unit=u_filtchaosfile, opened=aux_logical)
                 if (.not. aux_logical) then
-                    open (unit=32, file=trim(sim%chaosfile), status='unknown', action='write')
+                    open (unit=u_filtchaosfile, file=trim(sim%chaosfile), status='unknown', action='write')
                 else
-                    rewind (32)
+                    rewind (u_filtchaosfile)
                 end if
-                call write_chaos(initial_system, system_filtered, 32)
-                close (32)
+                call write_chaos(initial_system, system_filtered, u_filtchaosfile)
+                close (u_filtchaosfile)
                 !! Mensaje
                 if (sim%use_screen) then
                     write (*, *) ACHAR(10)
@@ -2464,17 +2485,17 @@ program main
 
         ! !! Cerrar archivo de geométricos filtrado
         ! if (sim%use_geometricfile) then
-        !     close (33)
+        !     close (u_filtgeometricfile)
         !     if (sim%use_screen) then
-        !         write(*,*) ACHAR(10)
-        !         write(*,*) "Filterd geometric data saved to file: ", trim(sim%filter_prefix) // trim(sim%geometricfile)
+        !         write (*,*) ACHAR(10)
+        !         write (*,*) "Filterd geometric data saved to file: ", trim(sim%filter_prefix) // trim(sim%geometricfile)
         !     end if
         ! end if
 
         !! Cerrar archivos individuales filtrados
         if (sim%use_multiple_outputs) then
             do i = 0, sim%Ntotal  ! 0 is the asteroid
-                close (3100 + i)
+                close (u_filtmultfile + i)
             end do
             if (sim%use_screen) then
                 write (*, *) ACHAR(10)
@@ -2487,7 +2508,7 @@ program main
     !! Cerrar archivos individuales
     if (sim%use_multiple_outputs) then
         do i = 0, sim%Ntotal  ! 0 is the asteroid
-            close (100 + i)
+            close (u_multfile + i)
         end do
         if (sim%use_screen) then
             write (*, *) ACHAR(10)
@@ -2538,7 +2559,7 @@ end program main
 subroutine create_map(sim, system)
     use constants, only: wp, cero
     use bodies, only: system_st, get_acc_and_pot_xy
-    use parameters, only: sim_params_st
+    use parameters, only: sim_params_st, u_mapfile
     implicit none
     type(sim_params_st), intent(in) :: sim
     type(system_st), intent(in) :: system
@@ -2565,16 +2586,16 @@ subroutine create_map(sim, system)
 
     pot = cero
     acc = cero
-    dx_nx = (sim%map_max_x - sim%map_min_x)/(sim%map_grid_size_x - 1)
-    dy_ny = (sim%map_max_y - sim%map_min_y)/(sim%map_grid_size_y - 1)
+    dx_nx = (sim%map_max_x - sim%map_min_x) / (sim%map_grid_size_x - 1)
+    dy_ny = (sim%map_max_y - sim%map_min_y) / (sim%map_grid_size_y - 1)
 
     !$OMP PARALLEL DEFAULT(SHARED) &
     !$OMP PRIVATE(i,j,rb)
     !$OMP DO SCHEDULE (STATIC)
     do i = 1, sim%map_grid_size_x
         do j = 1, sim%map_grid_size_y
-            rb(1) = sim%map_min_x + (i - 1)*dx_nx
-            rb(2) = sim%map_min_y + (j - 1)*dy_ny
+            rb(1) = sim%map_min_x + (i - 1) * dx_nx
+            rb(2) = sim%map_min_y + (j - 1) * dy_ny
             call get_acc_and_pot_xy(system, rb, acc(i, j, :), pot(i, j))
         end do
     end do
@@ -2582,13 +2603,16 @@ subroutine create_map(sim, system)
     !$OMP END PARALLEL
 
     if (sim%use_screen) write (*, *) "Potential calculated. Writing file..."
-    open (unit=50, file=trim(sim%mapfile), status='replace', action='write')
+    open (unit=u_mapfile, file=trim(sim%mapfile), status='replace', action='write')
     do i = 1, sim%map_grid_size_x
         do j = 1, sim%map_grid_size_y
-            write (50, '(5(1PE22.15,1X))') sim%map_min_x + (i - 1)*dx_nx, sim%map_min_y + (j - 1)*dy_ny, pot(i, j), acc(i, j, :)
+            write (u_mapfile, '(5(1PE22.15,1X))') sim%map_min_x + (i - 1) * dx_nx, &
+                                                & sim%map_min_y + (j - 1) * dy_ny, &
+                                                & pot(i, j), &
+                                                & acc(i, j, :)
         end do
     end do
-    close (50)
+    close (u_mapfile)
 
     ! Deallocate
     deallocate (pot)
