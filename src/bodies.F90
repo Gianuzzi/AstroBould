@@ -1,6 +1,6 @@
 !> Module with System, Asteroid, Moons, and Particles structures and routines
 module bodies
-    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, epsilon, sqepsilon, tini, infinity, &
+    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, epsilon, sqepsilon, tini, infinito, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, radian
     use celestial, only: get_a_corot, get_acc_and_pot_single, elem, coord, coord2geom
     use auxiliary, only: quickargsort_int, rotate2D
@@ -54,8 +54,8 @@ module bodies
         real(wp), dimension(4) :: coordinates = cero  ! x, y, vx, vy
         real(wp) :: e_rot = cero ! Rotational energy [dynamic]
         real(wp) :: e_kin = cero ! Kinetic energy [dynamic]
-        real(wp) :: chaos_a(2) = (/infinity, cero/) ! (a_min, a_max)
-        real(wp) :: chaos_e(2) = (/infinity, cero/) ! (e_min, e_max)
+        real(wp) :: chaos_a(2) = (/infinito, cero/) ! (a_min, a_max)
+        real(wp) :: chaos_e(2) = (/infinito, cero/) ! (e_min, e_max)
     end type asteroid_st
 
     type :: particle_st
@@ -67,10 +67,10 @@ module bodies
         real(wp), dimension(4) :: geometric = cero  ! a_geom, e_geom, M_geom, w_geom [config]
         real(wp) :: mmr = cero  ! mean motion ratio to asteroid  [config]
         real(wp) :: mmr_geom = cero  ! geometric mean motion ratio to asteroid
-        real(wp) :: chaos_a(2) = (/infinity, cero/) ! (a_min, a_max)
-        real(wp) :: chaos_e(2) = (/infinity, cero/) ! (e_min, e_max)
-        real(wp) :: chaos_a_geom(2) = (/infinity, cero/) ! (a_geom_min, a_geom_max)
-        real(wp) :: chaos_e_geom(2) = (/infinity, cero/) ! (e_geom_min, e_geom_max)
+        real(wp) :: chaos_a(2) = (/infinito, cero/) ! (a_min, a_max)
+        real(wp) :: chaos_e(2) = (/infinito, cero/) ! (e_min, e_max)
+        real(wp) :: chaos_a_geom(2) = (/infinito, cero/) ! (a_geom_min, a_geom_max)
+        real(wp) :: chaos_e_geom(2) = (/infinito, cero/) ! (e_geom_min, e_geom_max)
         real(wp) :: tmax = cero ! max time integrated
         integer(kind=4) :: merged_to = -1  ! IDX of body it was merged to
     end type particle_st

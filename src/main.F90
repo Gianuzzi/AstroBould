@@ -126,7 +126,7 @@ program main
 
         !! Stokes
         input%use_stokes = .False.
-        input%stokes_a_damping_time = infinity                           ! [day]
+        input%stokes_a_damping_time = infinito                           ! [day]
         input%stokes_e_damping_time = input%stokes_a_damping_time/1.e2_wp ! [day]
         input%stokes_active_time = cero                                  ! [day] Tiempo que actúa stokes
 
@@ -910,7 +910,7 @@ program main
     timestep = checkpoint_times(1) ! Paso de tiempo inicial
 
     ! Get minimum period (already has units)
-    sim%min_period = infinity
+    sim%min_period = infinito
     if (system%asteroid%rotational_period > tini) sim%min_period = system%asteroid%rotational_period
     do i = 1, system%Nmoons_active
         sim%min_period = min(sim%min_period, get_Period(system%asteroid%mass + system%moons(i)%mass, system%moons(i)%elements(1)))

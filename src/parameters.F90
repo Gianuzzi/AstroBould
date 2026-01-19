@@ -74,8 +74,8 @@ module parameters
         logical :: use_manual_J2 = .False.
         real(wp) :: manual_J2 = cero
         logical :: use_stokes = .False.
-        real(wp) :: stokes_a_damping_time = infinity
-        real(wp) :: stokes_e_damping_time = infinity
+        real(wp) :: stokes_a_damping_time = infinito
+        real(wp) :: stokes_e_damping_time = infinito
         real(wp) :: stokes_active_time = cero
         logical :: use_stokes_with_moons = .False.
         logical :: use_drag = .False.
@@ -83,12 +83,12 @@ module parameters
         real(wp) :: drag_active_time = cero
         logical :: use_drag_with_moons = .False.
         logical :: use_omega_damping = .False.
-        real(wp) :: omega_lin_damping_time = infinity
-        real(wp) :: omega_exp_damping_time = infinity
+        real(wp) :: omega_lin_damping_time = infinito
+        real(wp) :: omega_exp_damping_time = infinito
         real(wp) :: omega_exp_damp_poly_A = cero
         real(wp) :: omega_exp_damp_poly_B = cero
         real(wp) :: omega_damp_active_time = cero
-        real(wp) :: mass_exp_damping_time = infinity
+        real(wp) :: mass_exp_damping_time = infinito
         ! Filter
         logical :: use_filter = .False.
         real(wp) :: filter_dt = cero
@@ -150,7 +150,7 @@ module parameters
     type, extends(input_params_st) :: sim_params_st  !! Extra DERIVED parameters
         ! Times
         integer(kind=4) :: checkpoint_number = 0
-        real(wp) :: min_period = infinity  ! This helps to create minimum timestep
+        real(wp) :: min_period = infinito  ! This helps to create minimum timestep
         ! Bodies
         integer(kind=4) :: Ntotal = 0  ! Amount of all bodies (asteroid is just 1)
         integer(kind=4) :: Npart_active = 0 ! Active particles
@@ -268,11 +268,12 @@ module parameters
     integer(kind=4), parameter :: u_geometricfile = 24
     integer(kind=4), parameter :: u_geomchaosfile = 25
 
-    integer(kind=4), parameter :: u_filterfile = 40
-    integer(kind=4), parameter :: u_filtdatafile = 41
-    integer(kind=4), parameter :: u_filtchaosfile = 43
-    integer(kind=4), parameter :: u_filtgeometricfile = 44
-    integer(kind=4), parameter :: u_filtgeomchaosfile = 45
+    integer(kind=4), parameter :: pad_with_filter_units = 20
+    integer(kind=4), parameter :: u_filterfile = u_datafile + pad_with_filter_units - 1  ! Filter configuration
+    integer(kind=4), parameter :: u_filtdatafile = u_datafile + pad_with_filter_units
+    integer(kind=4), parameter :: u_filtchaosfile = u_chaosfile + pad_with_filter_units
+    integer(kind=4), parameter :: u_filtgeometricfile = u_geometricfile + pad_with_filter_units
+    integer(kind=4), parameter :: u_filtgeomchaosfile = u_geomchaosfile + pad_with_filter_units
 
     integer(kind=4), parameter :: u_mapfile = 50
 
@@ -1261,7 +1262,7 @@ contains
         !!! stokes_a_damping_time y stokes_e_damping_time
         if (abs(derived%stokes_a_damping_time) < tini) derived%stokes_a_damping_time = cero
         if (abs(derived%stokes_e_damping_time) < tini) derived%stokes_e_damping_time = cero
-        if (derived%stokes_active_time .le. cero) derived%stokes_active_time = infinity
+        if (derived%stokes_active_time .le. cero) derived%stokes_active_time = infinito
         if ((abs(derived%stokes_a_damping_time) < tini) .and. &
           & (abs(derived%stokes_e_damping_time) < tini)) derived%use_stokes = .False.
         if (.not. derived%use_stokes) then
@@ -1278,7 +1279,7 @@ contains
             derived%use_drag = .False.
             derived%drag_coefficient = cero
         end if
-        if (derived%drag_active_time .le. cero) derived%drag_active_time = infinity
+        if (derived%drag_active_time .le. cero) derived%drag_active_time = infinito
         if (.not. derived%use_drag) then
             derived%drag_coefficient = cero
             derived%drag_active_time = cero
@@ -1288,7 +1289,7 @@ contains
         end if
 
         !!! tau_m y tau_o
-        if (derived%omega_damp_active_time .le. cero) derived%omega_damp_active_time = infinity
+        if (derived%omega_damp_active_time .le. cero) derived%omega_damp_active_time = infinito
         derived%use_lin_omega_damp = abs(derived%omega_lin_damping_time) > tini
         derived%use_exp_omega_damp = abs(derived%omega_exp_damping_time) > tini
         derived%use_poly_omega_damp = (abs(derived%omega_exp_damp_poly_A) > tini .or. &
@@ -1326,7 +1327,7 @@ contains
         end if
 
         ! ! Mass Damping [UNAVAILABLE YET]
-        ! if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinity
+        ! if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinito
 
         ! Filter (fast check)
         if (derived%use_filter) then
@@ -1897,7 +1898,7 @@ contains
 
         if (present(filtered)) then
             pind = u_filtmultfile - u_multfile
-            pout = 10
+            pout = pad_with_filter_units
         else
             pind = 0
             pout = 0
