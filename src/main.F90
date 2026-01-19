@@ -1430,288 +1430,10 @@ program main
         ! -----------------------------------------------------------------------------
         ! --------> LOOP WITH NO FILTER, up to first filter time <--------
         next_time = checkpoint_times(first_idx_yes_filter) - filter%half_width
-        loop_until_first_filter: do while (keep_integrating)
 
-            hard_exit = .False. ! Resetear HardExit
-            is_premature_exit = .False. ! Resetear premature
+        if (keep_integrating) then  ! Only integrate if needed
 
-            ! Check if Particles/Moons left
-            if (sim%Nactive == 1) then
-
-                ! Set flag
-                keep_integrating = .False.
-
-                if (sim%use_screen) then
-                    write (*, *) ACHAR(5)
-                    write (*, *) " No more active particles/moons left."
-                    write (*, *) ACHAR(5)
-                    write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
-                end if
-
-                exit loop_until_first_filter
-
-            end if
-
-            ! Update dt
-            timestep = next_time - time
-            if (abs(timestep) < tini) exit loop_until_first_filter !! Manual CHECK
-
-            ! INTEGRATE
-            call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
-
-            ! Check if it might be hard_exit
-            if (hard_exit) then
-                !! If so, the dt used is in dt_adap
-                timestep = adaptive_timestep
-
-                !! Check if premature_exit: If exit at less than 1% of finishing timestep
-                if (timestep > cero) then
-                    is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
-                else  ! Weird case of timestep 0
-                    is_premature_exit = next_time - time < tini
-                end if
-
-            end if
-
-            ! Update parameters
-            time = time + timestep
-            y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
-
-            y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
-
-            ! Update from y_new
-            call update_system_from_array(system, time, y_arr)
-
-            ! Apply escapes and colissions and check
-            call check_esc_and_col(system, unit_file)
-
-            ! Update Nactive and y_arr if necessary
-            call get_Nactive(system, new_Nactive)
-            if (new_Nactive < sim%Nactive) then
-
-                call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-
-            end if
-
-            ! Update Chaos (triggers update elements)
-            call update_chaos(system, sim%use_baryc_output)
-
-            ! Update geometric Chaos (triggers update geometric elements)
-            if (sim%use_geometricfile) call update_chaos_geometric(system)
-
-            ! Reset adaptive if needed
-            if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
-
-            ! Percentage output
-            if (sim%use_percentage) call percentage(time, sim%final_time)
-
-        end do loop_until_first_filter
-        ! -----------------------------------------------------------------------------
-
-        ! SET TMP
-        tmp_j = j
-        tmp_sim = sim
-        tmp_time = time
-        tmp_system = system
-        tmp_y_nvalues = y_nvalues
-        tmp_adaptive_timestep = adaptive_timestep
-        tmp_y_arr(:y_nvalues) = y_arr(:y_nvalues)
-
-        ! -----------------------------------------------------------------------------
-        ! --------> WORK ON FIRST FILTER <--------
-        ! Now we are at the first filtering data time needed
-        ! This is exceptional bc may include checkpoints that may not have filters
-        ! The proceeding is split in 3 steps:
-        !  First: Integrate the filter using a parallel 'y_pre_filter' array
-        !  Second: Integrate the checkpoints up to the principal (including). j is updated here
-        !  Third: Set the array and time to next filter first time.
-
-        ! =======> FISRT STEP <==========
-        time_filt = time
-        adaptive_timestep_filt = adaptive_timestep
-
-        ! Get system and y_arr filtering
-        call copy_objects(system, system_filtered)  ! From system to filtered; but no chaos (only objects)
-        y_pre_filter(:y_nvalues) = y_arr(:y_nvalues)
-
-        !! Store it
-        call store_to_filter(filter, time_filt, y_pre_filter, y_nvalues, 1)
-
-        ! Integrate and store filtered values
-        do i = 2, filter%size
-
-            !! Reset adaptive timestep if needed
-            if (.not. sim%use_adaptive) adaptive_timestep_filt = fixed_timestep
-
-            ! INTEGRATE (without check)
-            call integrate(time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt, y_arr_new(:y_nvalues))
-
-            !! Update time
-            time_filt = time_filt + filter%dt
-
-            y_arr_new(1) = modulo(y_arr_new(1), twopi)  ! Modulate theta
-
-            !! Store
-            call store_to_filter(filter, time_filt, y_arr_new, y_nvalues, i)
-
-            !! Update y
-            y_pre_filter(:y_nvalues) = y_arr_new(:y_nvalues)
-
-        end do
-
-        ! Create filtered and do post-processing
-        call apply_filter(y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
-        call update_system_from_elements(system_filtered, &
-                                        & checkpoint_times(first_idx_yes_filter), &
-                                        & elem_filtered, &
-                                        & sim%use_baryc_output)
-        ! Update Chaos (triggers update elements)
-        call update_chaos(system_filtered, sim%use_baryc_output)
-        ! Filtered output
-        call generate_output(system_filtered, .True.)
-
-        ! =======> SECOND STEP <==========
-
-        ! j is where I WILL be
-        loop_missing_chkp: do while (j .le. first_idx_yes_filter)
-
-            hard_exit = .False. ! Resetear HardExit
-            is_premature_exit = .False. ! Resetear premature
-
-            ! Check if Particles/Moons left
-            if (sim%Nactive == 1) then
-
-                ! Set flag
-                keep_integrating = .False.
-
-                if (sim%use_screen) then
-                    write (*, *) ACHAR(5)
-                    write (*, *) " No more active particles/moons left."
-                    write (*, *) ACHAR(5)
-                    write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
-                end if
-
-                exit loop_missing_chkp
-
-            end if
-
-            ! Update dt
-            next_time = checkpoint_times(j)  ! Get next time
-            timestep = next_time - time
-
-            ! INTEGRATE
-            call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
-
-            ! Check if it might be hard_exit
-            if (hard_exit) then
-
-                !! If so, the dt used is in dt_adap
-                timestep = adaptive_timestep
-
-                !! Check if premature_exit: If exit at less than 1% of finishing timestep
-                if (timestep > cero) then
-                    is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
-                else  ! Weird case of timestep 0
-                    is_premature_exit = next_time - time < tini
-                end if
-
-            end if
-
-            ! Update parameters
-            time = time + timestep
-            y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
-            y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
-
-            ! Update from y_new
-            call update_system_from_array(system, time, y_arr)
-
-            ! Apply escapes and colissions and check
-            call check_esc_and_col(system, unit_file)
-
-            ! Update Nactive and y_arr if necessary
-            call get_Nactive(system, new_Nactive)
-            if (new_Nactive < sim%Nactive) then
-                call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-            end if
-
-            ! Update Chaos (triggers update elements)
-            call update_chaos(system, sim%use_baryc_output)
-
-            ! Update geometric Chaos (triggers update geometric elements)
-            if (sim%use_geometricfile) call update_chaos_geometric(system)
-
-            ! Output and Update j; only if not premature
-            if (.not. is_premature_exit) then
-                if (checkpoint_is_output(j) .and. (j > last_output)) then
-                    call generate_output(system)
-                    last_output = j
-                end if
-                j = j + 1
-            end if
-
-            ! Reset adaptive if needed
-            if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
-
-            ! Percentage output
-            if (sim%use_percentage) call percentage(time, sim%final_time)
-
-        end do loop_missing_chkp
-
-        ! =======> THIRD STEP <==========
-
-        keep_integrating = keep_integrating .and. (j .le. sim%checkpoint_number)
-
-        ! If not needed, skip
-        if (keep_integrating) then
-
-            ! -- Find the next output checkpoint index --
-            next_output = j
-            do i = j, sim%checkpoint_number
-                if (checkpoint_is_output(i)) then
-                    next_output = i
-                    exit
-                end if
-            end do
-
-            ! -- Compute the time at which filtering should start --
-            next_t_filt = checkpoint_times(next_output) - filter%half_width
-
-            ! -- Find the next checkpoint after that filtering time --
-            aux_int = next_checkpoint
-            do i = aux_int, next_output
-                if (checkpoint_times(i) > next_t_filt) then
-                    next_checkpoint = i
-                    exit
-                end if
-            end do
-
-            !! In this case, then next filter time has already passed
-            if (time > next_t_filt) then
-
-                ! We reset the system up to the tmp values
-                j = tmp_j
-                sim = tmp_sim
-                time = tmp_time
-                system = tmp_system
-                y_nvalues = tmp_y_nvalues
-                adaptive_timestep = tmp_adaptive_timestep
-                y_arr(:y_nvalues) = tmp_y_arr(:y_nvalues)
-                aux_int = unit_file  ! For coll/escp writing
-
-            else
-                aux_int = -1  ! For coll/escp writing
-
-            end if
-
-            !! Now we just need to integrate the normal system up to next filter time
-
-            !!! First, we go until last checkpoint before the filter time
-            !!! No output here. At most, only extra checkpoints
-            loop_until_next_checkpoint_minus_1: do while ((j < next_checkpoint) .and. keep_integrating)
+            loop_until_first_filter: do
 
                 hard_exit = .False. ! Resetear HardExit
                 is_premature_exit = .False. ! Resetear premature
@@ -1729,89 +1451,13 @@ program main
                         write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
                     end if
 
-                    exit loop_until_next_checkpoint_minus_1
-
-                end if
-
-                ! Update dt
-                timestep = checkpoint_times(j) - time
-
-                ! INTEGRATE
-                call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
-
-                ! Check if it might be hard_exit
-                if (hard_exit) then
-                    !! If so, the dt used is in dt_adap
-                    timestep = adaptive_timestep
-
-                    !! Check if premature_exit: If exit at less than 1% of finishing timestep
-                    if (timestep > cero) then
-                        is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
-                    else
-                        is_premature_exit = checkpoint_times(j) - time < tini
-                    end if
-                end if
-
-                ! Update parameters
-                time = time + timestep
-                y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
-                y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
-
-                ! Update from y_new
-                call update_system_from_array(system, time, y_arr)
-
-                ! Apply escapes and colissions and check
-                call check_esc_and_col(system, aux_int)
-
-                ! Update Nactive and y_arr if necessary
-                call get_Nactive(system, new_Nactive)
-                if (new_Nactive < sim%Nactive) then
-                    call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                    call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-                end if
-
-                ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%use_baryc_output)
-
-                ! Update geometric Chaos (triggers update geometric elements)
-                if (sim%use_geometricfile) call update_chaos_geometric(system)
-
-                ! Update j; only if not premature
-                if (.not. is_premature_exit) j = j + 1
-
-                ! Reset adaptive if needed
-                if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
-
-            end do loop_until_next_checkpoint_minus_1
-
-            !!! Now, we integrate up to next_filter
-            next_time = next_t_filt
-            loop_until_second_filter: do while (keep_integrating)
-
-                hard_exit = .False. ! Resetear HardExit
-                is_premature_exit = .False. ! Resetear premature
-
-                ! Check if Particles/Moons left
-                if (sim%Nactive == 1) then
-
-                    ! Set flag
-                    keep_integrating = .False.
-
-                    if (sim%use_screen) then
-                        write (*, *) ACHAR(5)
-                        write (*, *) " No more active particles/moons left."
-                        write (*, *) ACHAR(5)
-                        write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
-                    end if
-
-                    exit loop_until_second_filter
+                    exit loop_until_first_filter
 
                 end if
 
                 ! Update dt
                 timestep = next_time - time
-                if (abs(timestep) < tini) exit loop_until_second_filter !! Manual CHECK
+                if (abs(timestep) < tini) exit loop_until_first_filter !! Manual CHECK
 
                 ! INTEGRATE
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
@@ -1864,9 +1510,372 @@ program main
                 ! Percentage output
                 if (sim%use_percentage) call percentage(time, sim%final_time)
 
-            end do loop_until_second_filter
+            end do loop_until_first_filter
 
         end if
+        ! -----------------------------------------------------------------------------
+
+        ! SET TMP
+        tmp_j = j
+        tmp_sim = sim
+        tmp_time = time
+        tmp_system = system
+        tmp_y_nvalues = y_nvalues
+        tmp_adaptive_timestep = adaptive_timestep
+        tmp_y_arr(:y_nvalues) = y_arr(:y_nvalues)
+
+        ! -----------------------------------------------------------------------------
+        ! --------> WORK ON FIRST FILTER <--------
+        ! Now we are at the first filtering data time needed
+        ! This is exceptional bc may include checkpoints that may not have filters
+        ! The proceeding is split in 3 steps:
+        !  First: Integrate the filter using a parallel 'y_pre_filter' array
+        !  Second: Integrate the checkpoints up to the principal (including). j is updated here
+        !  Third: Set the array and time to next filter first time.
+
+        if (keep_integrating) then  ! Only integrate if needed
+
+            ! =======> FISRT STEP <==========
+            time_filt = time
+            adaptive_timestep_filt = adaptive_timestep
+
+            ! Get system and y_arr filtering
+            call copy_objects(system, system_filtered)  ! From system to filtered; but no chaos (only objects)
+            y_pre_filter(:y_nvalues) = y_arr(:y_nvalues)
+
+            !! Store it
+            call store_to_filter(filter, time_filt, y_pre_filter, y_nvalues, 1)
+
+            ! Integrate and store filtered values
+            do i = 2, filter%size
+
+                !! Reset adaptive timestep if needed
+                if (.not. sim%use_adaptive) adaptive_timestep_filt = fixed_timestep
+
+                ! INTEGRATE (without check)
+                call integrate(time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt, y_arr_new(:y_nvalues))
+
+                !! Update time
+                time_filt = time_filt + filter%dt
+
+                y_arr_new(1) = modulo(y_arr_new(1), twopi)  ! Modulate theta
+
+                !! Store
+                call store_to_filter(filter, time_filt, y_arr_new, y_nvalues, i)
+
+                !! Update y
+                y_pre_filter(:y_nvalues) = y_arr_new(:y_nvalues)
+
+            end do
+
+            ! Create filtered and do post-processing
+            call apply_filter(y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
+            call update_system_from_elements(system_filtered, &
+                                            & checkpoint_times(first_idx_yes_filter), &
+                                            & elem_filtered, &
+                                            & sim%use_baryc_output)
+            ! Update Chaos (triggers update elements)
+            call update_chaos(system_filtered, sim%use_baryc_output)
+            ! Filtered output
+            call generate_output(system_filtered, .True.)
+
+            ! =======> SECOND STEP <==========
+
+            ! j is where I WILL be
+            loop_missing_chkp: do while (j .le. first_idx_yes_filter)
+
+                hard_exit = .False. ! Resetear HardExit
+                is_premature_exit = .False. ! Resetear premature
+
+                ! Check if Particles/Moons left
+                if (sim%Nactive == 1) then
+
+                    ! Set flag
+                    keep_integrating = .False.
+
+                    if (sim%use_screen) then
+                        write (*, *) ACHAR(5)
+                        write (*, *) " No more active particles/moons left."
+                        write (*, *) ACHAR(5)
+                        write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
+                    end if
+
+                    exit loop_missing_chkp
+
+                end if
+
+                ! Update dt
+                next_time = checkpoint_times(j)  ! Get next time
+                timestep = next_time - time
+
+                ! INTEGRATE
+                call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
+
+                ! Check if it might be hard_exit
+                if (hard_exit) then
+
+                    !! If so, the dt used is in dt_adap
+                    timestep = adaptive_timestep
+
+                    !! Check if premature_exit: If exit at less than 1% of finishing timestep
+                    if (timestep > cero) then
+                        is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
+                    else  ! Weird case of timestep 0
+                        is_premature_exit = next_time - time < tini
+                    end if
+
+                end if
+
+                ! Update parameters
+                time = time + timestep
+                y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
+                y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
+
+                ! Update from y_new
+                call update_system_from_array(system, time, y_arr)
+
+                ! Apply escapes and colissions and check
+                call check_esc_and_col(system, unit_file)
+
+                ! Update Nactive and y_arr if necessary
+                call get_Nactive(system, new_Nactive)
+                if (new_Nactive < sim%Nactive) then
+                    call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
+                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                    call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
+                end if
+
+                ! Update Chaos (triggers update elements)
+                call update_chaos(system, sim%use_baryc_output)
+
+                ! Update geometric Chaos (triggers update geometric elements)
+                if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                ! Output and Update j; only if not premature
+                if (.not. is_premature_exit) then
+                    if (checkpoint_is_output(j) .and. (j > last_output)) then
+                        call generate_output(system)
+                        last_output = j
+                    end if
+                    j = j + 1
+                end if
+
+                ! Reset adaptive if needed
+                if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
+
+                ! Percentage output
+                if (sim%use_percentage) call percentage(time, sim%final_time)
+
+            end do loop_missing_chkp
+
+            ! =======> THIRD STEP <==========
+
+            keep_integrating = keep_integrating .and. (j .le. sim%checkpoint_number)
+
+            ! If not needed, skip
+            if (keep_integrating) then
+
+                ! -- Find the next output checkpoint index --
+                next_output = j
+                do i = j, sim%checkpoint_number
+                    if (checkpoint_is_output(i)) then
+                        next_output = i
+                        exit
+                    end if
+                end do
+
+                ! -- Compute the time at which filtering should start --
+                next_t_filt = checkpoint_times(next_output) - filter%half_width
+
+                ! -- Find the next checkpoint after that filtering time --
+                aux_int = next_checkpoint
+                do i = aux_int, next_output
+                    if (checkpoint_times(i) > next_t_filt) then
+                        next_checkpoint = i
+                        exit
+                    end if
+                end do
+
+                !! In this case, then next filter time has already passed
+                if (time > next_t_filt) then
+
+                    ! We reset the system up to the tmp values
+                    j = tmp_j
+                    sim = tmp_sim
+                    time = tmp_time
+                    system = tmp_system
+                    y_nvalues = tmp_y_nvalues
+                    adaptive_timestep = tmp_adaptive_timestep
+                    y_arr(:y_nvalues) = tmp_y_arr(:y_nvalues)
+                    aux_int = unit_file  ! For coll/escp writing
+
+                else
+                    aux_int = -1  ! For coll/escp writing
+
+                end if
+
+                !! Now we just need to integrate the normal system up to next filter time
+
+                !!! First, we go until last checkpoint before the filter time
+                !!! No output here. At most, only extra checkpoints
+                loop_until_next_checkpoint_minus_1: do while ((j < next_checkpoint) .and. keep_integrating)
+
+                    hard_exit = .False. ! Resetear HardExit
+                    is_premature_exit = .False. ! Resetear premature
+
+                    ! Check if Particles/Moons left
+                    if (sim%Nactive == 1) then
+
+                        ! Set flag
+                        keep_integrating = .False.
+
+                        if (sim%use_screen) then
+                            write (*, *) ACHAR(5)
+                            write (*, *) " No more active particles/moons left."
+                            write (*, *) ACHAR(5)
+                            write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
+                        end if
+
+                        exit loop_until_next_checkpoint_minus_1
+
+                    end if
+
+                    ! Update dt
+                    timestep = checkpoint_times(j) - time
+
+                    ! INTEGRATE
+                    call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
+
+                    ! Check if it might be hard_exit
+                    if (hard_exit) then
+                        !! If so, the dt used is in dt_adap
+                        timestep = adaptive_timestep
+
+                        !! Check if premature_exit: If exit at less than 1% of finishing timestep
+                        if (timestep > cero) then
+                            is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
+                        else
+                            is_premature_exit = checkpoint_times(j) - time < tini
+                        end if
+                    end if
+
+                    ! Update parameters
+                    time = time + timestep
+                    y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
+                    y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
+
+                    ! Update from y_new
+                    call update_system_from_array(system, time, y_arr)
+
+                    ! Apply escapes and colissions and check
+                    call check_esc_and_col(system, aux_int)
+
+                    ! Update Nactive and y_arr if necessary
+                    call get_Nactive(system, new_Nactive)
+                    if (new_Nactive < sim%Nactive) then
+                        call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
+                        y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                        call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
+                    end if
+
+                    ! Update Chaos (triggers update elements)
+                    call update_chaos(system, sim%use_baryc_output)
+
+                    ! Update geometric Chaos (triggers update geometric elements)
+                    if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                    ! Update j; only if not premature
+                    if (.not. is_premature_exit) j = j + 1
+
+                    ! Reset adaptive if needed
+                    if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
+
+                end do loop_until_next_checkpoint_minus_1
+
+                !!! Now, we integrate up to next_filter
+                next_time = next_t_filt
+                loop_until_second_filter: do while (keep_integrating)
+
+                    hard_exit = .False. ! Resetear HardExit
+                    is_premature_exit = .False. ! Resetear premature
+
+                    ! Check if Particles/Moons left
+                    if (sim%Nactive == 1) then
+
+                        ! Set flag
+                        keep_integrating = .False.
+
+                        if (sim%use_screen) then
+                            write (*, *) ACHAR(5)
+                            write (*, *) " No more active particles/moons left."
+                            write (*, *) ACHAR(5)
+                            write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
+                        end if
+
+                        exit loop_until_second_filter
+
+                    end if
+
+                    ! Update dt
+                    timestep = next_time - time
+                    if (abs(timestep) < tini) exit loop_until_second_filter !! Manual CHECK
+
+                    ! INTEGRATE
+                    call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
+
+                    ! Check if it might be hard_exit
+                    if (hard_exit) then
+                        !! If so, the dt used is in dt_adap
+                        timestep = adaptive_timestep
+
+                        !! Check if premature_exit: If exit at less than 1% of finishing timestep
+                        if (timestep > cero) then
+                            is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
+                        else  ! Weird case of timestep 0
+                            is_premature_exit = next_time - time < tini
+                        end if
+
+                    end if
+
+                    ! Update parameters
+                    time = time + timestep
+                    y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
+
+                    y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
+
+                    ! Update from y_new
+                    call update_system_from_array(system, time, y_arr)
+
+                    ! Apply escapes and colissions and check
+                    call check_esc_and_col(system, unit_file)
+
+                    ! Update Nactive and y_arr if necessary
+                    call get_Nactive(system, new_Nactive)
+                    if (new_Nactive < sim%Nactive) then
+
+                        call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
+                        y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                        call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
+
+                    end if
+
+                    ! Update Chaos (triggers update elements)
+                    call update_chaos(system, sim%use_baryc_output)
+
+                    ! Update geometric Chaos (triggers update geometric elements)
+                    if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                    ! Reset adaptive if needed
+                    if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
+
+                    ! Percentage output
+                    if (sim%use_percentage) call percentage(time, sim%final_time)
+
+                end do loop_until_second_filter
+
+            end if
+
+        end if  ! keep integrating
 
         !!!! Now we are in the second filter (j = next_checkpoint)
 
@@ -1888,7 +1897,7 @@ program main
         ! -----------------------------------------------------------------------------
         ! --------> LOOP WITH FILTER <--------
         ! j is where I WILL be
-        loop_filter: do while (.True.)
+        loop_filter: do while (keep_integrating)
 
             ! Check if all done
             !! Time end
