@@ -39,6 +39,7 @@ module parameters
         logical :: only_print = .False.
         ! Times for the integration -
         real(wp) :: final_time = cero
+        integer(kind=4) :: negative_time_selector = 0
         real(wp) :: output_timestep = cero
         integer(kind=4) :: output_number = 0
         integer(kind=4) :: case_output_type = 2
@@ -151,6 +152,7 @@ module parameters
         ! Times
         integer(kind=4) :: checkpoint_number = 0
         real(wp) :: min_period = infinito  ! This helps to create minimum timestep
+        real(wp) :: max_period = cero  ! This helps to create maximum time
         ! Bodies
         integer(kind=4) :: Ntotal = 0  ! Amount of all bodies (asteroid is just 1)
         integer(kind=4) :: Npart_active = 0 ! Active particles
@@ -704,6 +706,8 @@ contains
                 select case (auxch15)
                 case ("total integrati")
                     read (value_str, *) params%final_time
+                case ("negative time p")
+                    read (value_str, *) params%negative_time_selector
                 case ("output time int")
                     read (value_str, *) params%output_timestep
                 case ("number of outpu")
@@ -1188,6 +1192,13 @@ contains
             write (*, *) "ERROR: Output times distribution method not recognized:", derived%case_output_type
             stop 1
         end if
+
+        !! Negative time selector
+        if ((derived%negative_time_selector > 1) .or. (derived%negative_time_selector < -1)) then
+            write (*, *) "ERROR: Negative time selector must be -1, 0, or 1. Option not recognized:", derived%negative_time_selector
+            stop 1
+        end if
+
 
         !! Expand checkpoints
         if (derived%extra_checkpoints < 0) then

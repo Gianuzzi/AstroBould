@@ -822,13 +822,35 @@ program main
 
     !!!!!!! TIEMPOS !!!!!!!
 
+    ! Get minimum and maximum periods (already have internal units)
+    sim%min_period = infinito
+    sim%max_period = system%asteroid%rotational_period  ! No problem if it is 0
+    if (system%asteroid%rotational_period > tini) sim%min_period = system%asteroid%rotational_period
+    do i = 1, system%Nmoons_active
+        aux_real = get_Period(system%asteroid%mass + system%moons(i)%mass, system%moons(i)%elements(1))
+        sim%min_period = min(sim%min_period, aux_real)
+        sim%max_period = max(sim%max_period, aux_real)
+    end do
+    do i = 1, system%Nparticles_active
+        aux_real = get_Period(system%asteroid%mass, system%particles(i)%elements(1))
+        sim%min_period = min(sim%min_period, aux_real)
+        sim%max_period = max(sim%max_period, aux_real)
+    end do
+
     ! <<<< Integration times >>>>
     if (sim%final_time < cero) then
-        if (abs(system%asteroid%rotational_period) < tini) then
-            write (*, *) "WARNING: Setting total integration time with non-rotating asteroid."
-            write (*, *) ACHAR(5)
+        if (sim%negative_time_selector .eq. 0) then
+            if (abs(system%asteroid%rotational_period) < tini) then
+                write (*, *) ACHAR(10)
+                write (*, *) "Error: Setting total integration time with non-rotating asteroid."
+                stop 1
+            end if
+            sim%final_time = abs(sim%final_time)*system%asteroid%rotational_period
+        else if (sim%negative_time_selector .eq. 1) then
+            sim%final_time = abs(sim%final_time)*sim%max_period
+        else
+            sim%final_time = abs(sim%final_time)*sim%min_period
         end if
-        sim%final_time = abs(sim%final_time)*system%asteroid%rotational_period
     else
         sim%final_time = sim%final_time*unit_time
     end if
@@ -889,12 +911,13 @@ program main
     if (sim%extra_checkpoints > 0) then
 
         !! Ensure extra_checkpoints is not the same as output_number
-        aux_int = sim%extra_checkpoints + 2   ! (+2 to account fo initial and final times, and +1 for ???)
+        aux_int = sim%extra_checkpoints + 2   ! (+2 to account for initial and final times, and +1 for ???)
         if (sim%output_number - aux_int == 1) aux_int = aux_int + 2  ! Add 2 just to make a different array
         if (MOD(aux_int, sim%output_number) == 0) aux_int = aux_int + 1  ! Add 1 just to make a different array
         if (aux_int - sim%output_number == 1) aux_int = aux_int + 1  ! Add 1 just to make a different array
 
         !! Create more checkpoint times than only the output+tom ones
+        aux_real = cero
         call set_output_times(cero, sim%final_time, aux_int, aux_real, sim%case_output_type, aux_1D)
 
         !! Ahora debemos combinar los checkpoints previos con los nuevos, y crear un nuevo vector de tiempos Checkpoints
@@ -908,16 +931,6 @@ program main
     ! <<<<  Variables temporales (para integración) >>>>
     time = cero ! Tiempo actual
     timestep = checkpoint_times(1) ! Paso de tiempo inicial
-
-    ! Get minimum period (already has units)
-    sim%min_period = infinito
-    if (system%asteroid%rotational_period > tini) sim%min_period = system%asteroid%rotational_period
-    do i = 1, system%Nmoons_active
-        sim%min_period = min(sim%min_period, get_Period(system%asteroid%mass + system%moons(i)%mass, system%moons(i)%elements(1)))
-    end do
-    do i = 1, system%Nparticles_active
-        sim%min_period = min(sim%min_period, get_Period(system%asteroid%mass, system%particles(i)%elements(1)))
-    end do
 
     ! Set minumum timestep  (already has units)
     if (sim%dt_min < cero) then
@@ -1021,9 +1034,15 @@ program main
 
         ! Create filter file
         open (unit=u_filterfile, file=trim(trim(sim%filter_prefix)), status='replace', action='write', position="append")
-        write (u_filterfile, *) "dt ", "n_samples ", "n_windows ", "size ", "total_dt"
-        write (u_filterfile, *) filter%dt, filter%n_samples, filter%n_windows, filter%size, filter%dt*filter%size
-        write (u_filterfile, *) filter%kernel
+        write (u_filterfile, '(2(A22,1X),A10,1X,A8,1X,A7,1X,A22,1X,A22)') &
+                & 'dt', 'dt/Prot', 'n_samples', 'n_windows', 'size', 'total_dt', 'total_dt/Prot'
+        write (u_filterfile, '(2(1PE22.15,1X),I10,1X,I8,1X,I7,2(1X,1PE22.15))') &
+                & filter%dt, filter%dt/system%asteroid%rotational_period, filter%n_samples, filter%n_windows, filter%size, &
+                & filter%dt*filter%size, filter%dt*filter%size/system%asteroid%rotational_period
+        write(u_filterfile,'(/,A)') 'Kernel (index, value):'
+        do i = 1, size(filter%kernel)
+            write(u_filterfile,'(I7,1X,1PE22.15)') i, filter%kernel(i)
+        end do
         close (u_filterfile)
 
         ! CHECK
