@@ -13,7 +13,7 @@ module accelerations
     logical :: use_ellipsoid = .False.
     real(wp) :: C20_coef = cero, C22_coef = cero, Re_coef = cero ! Ellipsoid basics
     real(wp) :: K_coef = cero, L_coef = cero ! Ellipsoid deep
-    logical :: use_manual_J2 = .False.
+    logical :: use_manual_J2_from_cm = .False., use_manual_J2_from_primary = .False.
     real(wp) :: J2K_coef = cero ! Manual J2 basics
     logical :: use_damp = .False.
     real(wp) :: damp_coef_1 = cero, damp_coef_2 = cero, damp_time = cero ! Omega Damping
@@ -123,15 +123,24 @@ contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     !!! Init Parameters
-    subroutine init_manual_J2(J2, radius)
+    subroutine init_manual_J2(J2, radius, gama, from_cm)
         implicit none
         real(wp), intent(in) :: J2, radius
+        real(wp), intent(in) :: gama
+        logical, intent(in), optional :: from_cm
 
-        if ((J2 > cero) .and. (radius > cero)) then
-            use_manual_J2 = .True.
-            J2K_coef = -1.5e0_wp*radius**2*J2  ! Minus, bc C20 = -J2
+        if ((abs(J2) > cero) .and. (radius > cero) .and. (gama > cero)) then
+            J2K_coef = -1.5e0_wp*(radius/gama)**2*J2  ! Minus, bc C20 = -J2
+            if (present(from_cm)) then
+                use_manual_J2_from_cm = from_cm
+                use_manual_J2_from_primary = .not. from_cm
+            else
+                use_manual_J2_from_cm = .False.
+                use_manual_J2_from_primary = .True.
+            end if
         else
-            use_manual_J2 = .False.
+            use_manual_J2_from_cm = .False.
+            use_manual_J2_from_primary = .False.
         end if
     end subroutine init_manual_J2
 

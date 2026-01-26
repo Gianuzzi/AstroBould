@@ -2,7 +2,7 @@
 module bodies
     use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, epsilon, sqepsilon, tini, infinito, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, radian
-    use celestial, only: get_a_corot, get_acc_and_pot_single, elem, coord, coord2geom
+    use celestial, only: get_a_corot, get_acc_and_pot_single, get_acc_and_pot_single_with_J2, elem, coord, coord2geom
     use auxiliary, only: quickargsort_int, rotate2D
 
     implicit none
@@ -52,6 +52,7 @@ module bodies
         real(wp) :: dist_to_cm = cero  ! Distance to origin [dynamic]
         real(wp), dimension(4) :: elements = cero  ! a, e, M, w
         real(wp), dimension(4) :: coordinates = cero  ! x, y, vx, vy
+        real(wp) :: C20 = cero  ! C20 of the asteroid as a whole
         real(wp) :: e_rot = cero ! Rotational energy [dynamic]
         real(wp) :: e_kin = cero ! Kinetic energy [dynamic]
         real(wp) :: chaos_a(2) = (/infinito, cero/) ! (a_min, a_max)
@@ -933,19 +934,26 @@ contains
         real(wp) :: n
         real(wp) :: coords_ast(4), ast_cm(4)
         real(wp) :: mass_ast, radius_ast, omega_ast
-        real(wp) :: J2
+        real(wp) :: J2_pri, J2_ast, J2_used
 
         coords_ast = cero
         mass_ast = self%asteroid%primary%mass
         radius_ast = self%asteroid%primary%radius
         omega_ast = self%asteroid%omega
         ast_cm = self%asteroid%coordinates
-        J2 = -self%asteroid%primary%C20
+        J2_ast = -self%asteroid%C20
+        J2_pri = -self%asteroid%primary%C20
+
+        if (abs(J2_ast) > abs(J2_pri)) then
+            J2_used = J2_ast
+        else 
+            J2_used = J2_pri
+        end if
 
         ! Moons
         do j = 1, self%Nmoons_active
             coords_ast = self%moons(j)%coordinates - ast_cm
-            call coord2geom(mass_ast + self%moons(j)%mass, radius_ast, J2, &
+            call coord2geom(mass_ast + self%moons(j)%mass, radius_ast, J2_used, &
                     & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
                     a, e, i, M, w, O, n)
             M = modulo(M, twopi)
@@ -957,7 +965,7 @@ contains
         ! Particles
         do j = 1, self%Nparticles_active
             coords_ast = self%particles(j)%coordinates - ast_cm
-            call coord2geom(mass_ast, radius_ast, J2, &
+            call coord2geom(mass_ast, radius_ast, J2_used, &
                     & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
                     a, e, i, M, w, O, n)
             M = modulo(M, twopi)
@@ -1073,11 +1081,12 @@ contains
     end subroutine init_system
 
     ! Set extra system parameters
-    pure subroutine set_system_extra(self, time, eta_collision, f_collision, manual_J2)
+    pure subroutine set_system_extra(self, time, eta_collision, f_collision, manual_J2, J2_from_asteroid)
         implicit none
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: time
         real(wp), intent(in) :: eta_collision, f_collision, manual_J2
+        logical, intent(in) :: J2_from_asteroid
 
         ! Initial time. Set TIME
         self%time = time
@@ -1085,7 +1094,13 @@ contains
         ! Initial collisional eta and f. Set eta_col and f_col
         self%eta_col = eta_collision
         self%f_col = f_collision
-        if (abs(manual_J2) > cero) self%asteroid%primary%C20 = -manual_J2  ! C20 = -J2
+        if (abs(manual_J2) > cero) then
+            if (J2_from_asteroid) then
+                self%asteroid%C20 = -manual_J2  ! C20 = -J2
+            else
+                self%asteroid%primary%C20 = -manual_J2  ! C20 = -J2
+            end if
+        end if
     end subroutine set_system_extra
 
     !  ----------------------   OBJECT SWAP  ------------------------------
@@ -1480,6 +1495,7 @@ contains
         real(wp) :: xy_centered(2)
         real(wp) :: xy_rotated(2)
         real(wp) :: mu, R2, cos2th, sin2th  ! ellipsoid
+        real(wp) :: J2K_coef
 
         ! Init
         has_inside = present(inside)
@@ -1489,12 +1505,23 @@ contains
 
         !! Sphere
         if (self%primary%is_sphere) then
-            call get_acc_and_pot_single( &
-                & self%primary%mass, &
-                & xy_centered, &
-                & xy_target, &
-                & self%primary%radius, &
-                & acc, pot, inside)
+            if (abs(self%primary%C20) > 0) then
+                J2K_coef = 1.5e0_wp*self%primary%radius**2*self%primary%C20 
+                call get_acc_and_pot_single_with_J2 ( &
+                    & self%primary%mass, &
+                    & xy_centered, &
+                    & xy_target, &
+                    & self%primary%radius, &
+                    & J2K_coef, &
+                    & acc, pot, inside)
+            else
+                call get_acc_and_pot_single( &
+                    & self%primary%mass, &
+                    & xy_centered, &
+                    & xy_target, &
+                    & self%primary%radius, &
+                    & acc, pot, inside)
+            end if
 
         !! Ellipsoid
         else
@@ -1562,7 +1589,7 @@ contains
                 if (inside) return
             end if
 
-            ! Center and calcualte
+            ! Center and calculate
             xy_centered = self%boulders(i)%coordinates_CM(1:2) + self%coordinates(1:2)
             call get_acc_and_pot_single( &
                 & self%boulders(i)%mass, &
@@ -1572,6 +1599,18 @@ contains
                 & acc, pot, inside)
         end do
 
+        ! Asteroid as a whole
+        if (abs(self%C20) > 0) then
+            ! Center
+            dx = xy_target(1) - self%coordinates(1)
+            dy = xy_target(2) - self%coordinates(2)
+            dr2 = dx*dx + dy*dy
+            dr = sqrt(dr2)
+            ! Add J2 contribution from CM
+            J2K_coef = 1.5e0_wp*self%radius**2*self%C20 
+            acc = acc + G*self%mass/(dr2*dr)*(/dx, dy/)*J2K_coef/dr2
+            pot = pot + G*self%mass/dr*J2K_coef*uno3/dr2
+        end if
     end subroutine get_acc_and_pot_asteroid
 
     ! Get acceleration and potential energy from single moon

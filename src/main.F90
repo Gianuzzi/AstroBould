@@ -120,9 +120,11 @@ program main
 
         ! Additional forces
 
-        !! Manual J2 (for primary)
+        !! Manual J2 (for primary or asteroid)
         input%use_manual_J2 = .False.
         input%manual_J2 = cero
+        input%use_J2_from_asteroid = .False.
+        input%gamma_J2 = uno        
 
         !! Stokes
         input%use_stokes = .False.
@@ -456,7 +458,7 @@ program main
                     & sim%lambda_kep, &                           ! keplerian omega
                     & sim%asteroid_rotational_period*unit_time) ! asteroid period
 
-    call set_system_extra(system, cero, sim%eta_col, sim%f_col, sim%manual_J2)  ! Extra parameters
+    call set_system_extra(system, cero, sim%eta_col, sim%f_col, sim%manual_J2, sim%use_J2_from_asteroid)  ! Extra parameters
 
     ! <<<< Save initial data >>>>
     initial_system = system
@@ -601,10 +603,14 @@ program main
 
     !! <<<< Manual J2 >>>>
     if (sim%use_manual_J2) then
-        call init_manual_J2(sim%manual_J2, system%asteroid%primary%radius)
+        call init_manual_J2(sim%manual_J2, system%asteroid%primary%radius, sim%gamma_J2, sim%use_J2_from_asteroid)
         if (sim%use_screen) then
             write (*, *) "Manual J2"
-            write (*, s1r1) "  J2 : ", sim%manual_J2
+            write (*, s1r1) "  J2    : ", sim%manual_J2
+            if (sim%use_J2_from_asteroid) then
+                write (*, s1r1) "  gamma : ", sim%gamma_J2
+                write (*, *) "  Using J2 from asteroid center of mass."
+            end if
             write (*, *) ACHAR(5)
         end if
         any_extra_effect = .True.

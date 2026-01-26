@@ -62,13 +62,35 @@ contains
         dr = sqrt(dr2)
 
         if (dr > tini) then
-            acc = acc - G*(mass/(dr2*dr))*(/dx, dy/)
+            acc = acc - G*mass/(dr2*dr)*(/dx, dy/)
             pot = pot - G*mass/dr
         end if
 
         if (present(inside)) inside = dr < max(dr_max, tini)
 
     end subroutine get_acc_and_pot_single
+
+    ! Get acceleration and potential energy from single mass
+    pure subroutine get_acc_and_pot_single_with_J2(mass, rib, xy_target, dr_max, J2K_coef, acc, pot, inside)
+        implicit none
+        real(wp), intent(in) :: mass, rib(2), xy_target(2), dr_max, J2K_coef
+        real(wp), intent(inout) :: acc(2), pot
+        logical, intent(inout), optional :: inside
+        real(wp) :: dx, dy, dr, dr2
+
+        dx = xy_target(1) - rib(1)
+        dy = xy_target(2) - rib(2)
+        dr2 = dx*dx + dy*dy
+        dr = sqrt(dr2)
+
+        if (dr > tini) then
+            acc = acc - G*mass/(dr2*dr)*(/dx, dy/)*(uno - J2K_coef/dr2)
+            pot = pot - G*mass/dr*(uno - J2K_coef*uno3/dr2)
+        end if
+
+        if (present(inside)) inside = dr < max(dr_max, tini)
+
+    end subroutine get_acc_and_pot_single_with_J2
 
     ! Get coordinates from a body
     subroutine coord(msum, a, e, inc, capm, omega, capom, xc)

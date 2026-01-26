@@ -11,7 +11,7 @@ module derivates
                             & use_drag, use_drag_moons, drag_coef, drag_time, &
                             & use_stokes, use_stokes_moons, stokes_C, stokes_alpha, stokes_time, &
                             & use_ellipsoid, K_coef, L_coef, &
-                            & use_manual_J2, J2K_coef
+                            & use_manual_J2_from_cm, use_manual_J2_from_primary, J2K_coef
 
     implicit none
 
@@ -62,7 +62,7 @@ contains
         integer(kind=4) :: N_total, last_moon
         real(wp) :: c2th, s2th  ! For triaxial
         real(wp) :: Q_eff, dQdx, dQdy  ! For triaxial
-        real(wp) :: inv_dr, inv_dr2, inv_dr3  ! For triaxial
+        real(wp) :: inv_dr, inv_dr2, inv_dr3  ! For triaxial and extra forces
         real(wp) :: theta_moon  ! For triaxial
         real(wp) :: xy_rotated(2)  ! For triaxial
         real(wp) :: Gmast, Gmcomb  ! For extra/COM forces
@@ -185,6 +185,12 @@ contains
                 theta_moon = atan2(dr_vec(2), dr_vec(1))
                 torque = torque - dos*m_arr(j)*L_coef*inv_dr3*sin(dos*(theta_moon - theta))
 
+            
+            ! ---> Manual J2 from asteroid CM <---
+            else if (use_manual_J2_from_cm) then
+
+                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- K) / r³
+
             end if
 
             ! ---> Drag and/or Stokes <---
@@ -225,6 +231,8 @@ contains
                 end if
 
             end if
+
+            
 
         end do
 
@@ -283,6 +291,14 @@ contains
                 ! Acceleration to particle from asteroid
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - acc_grav_m*m_arr(1)  ! = a_unit_mass * mAsteroid
 
+            
+            
+
+            ! ---> Manual J2 from asteroid CM <---
+            else if (use_manual_J2_from_cm) then
+
+                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- K) / r³
+                
             end if
 
             ! ---> Drag and/or Stokes <---
@@ -293,13 +309,13 @@ contains
                 v2 = dot_product(dv_vec, dv_vec)
 
                 ! Get energy
-                if (use_manual_J2) then
-                    two_ener = dos*Gmast*inv_dr - v2  ! Check if unbound
-                    mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast ! n
-                else
+                if (use_manual_J2_from_cm) then
                     aux_J2K = J2K_coef/dr2  ! J2K_coef is negative
                     two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2  ! Check if unbound
                     mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
+                else
+                    two_ener = dos*Gmast*inv_dr - v2  ! Check if unbound
+                    mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast ! n
                 end if
 
                 if (two_ener > cero) then ! Can calculate only in this case
@@ -360,7 +376,7 @@ contains
                 if (dr < boulders_data(0, 2) + R_arr(j)) hard_exit = .True.
 
                 ! Moon acceleration per unit mass (WITHOUT MASSES)
-                if (use_manual_J2) then  ! Possible extra J2
+                if (use_manual_J2_from_primary) then  ! Possible extra J2
                     acc_grav_m = -G*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  !! G (x, y) (1 - K) / r³
                 else
                     acc_grav_m = -G*dr_vec/(dr2*dr)  !! G (x, y) / r³
@@ -395,7 +411,7 @@ contains
                 if (dr < boulders_data(0, 2)) hard_exit = .True.
 
                 ! Particle acceleration
-                if (use_manual_J2) then  ! Possible extra J2
+                if (use_manual_J2_from_primary) then  ! Possible extra J2
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(0, 1)*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  ! G m0 (x, y) (1 - K) / r³
                 else
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(0, 1)*dr_vec/(dr2*dr)  ! G m0 (x, y) / r³

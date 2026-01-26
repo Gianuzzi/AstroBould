@@ -73,6 +73,8 @@ module parameters
         logical :: use_moon_gravity = .True.
         logical :: use_manual_J2 = .False.
         real(wp) :: manual_J2 = cero
+        real(wp) :: gamma_J2 = uno
+        logical :: use_J2_from_asteroid = .False.
         logical :: use_stokes = .False.
         real(wp) :: stokes_a_damping_time = infinito
         real(wp) :: stokes_e_damping_time = infinito
@@ -687,8 +689,7 @@ contains
             ! Read the line from the file
             read (u_configfile, '(A)', END=98) line
             nlines = nlines + 1
-
-            if ((len_trim(line) == 0) .or. (auxch15(:2) == "c ") .or. (auxch15(:2) == "! ")) cycle
+            if ((len_trim(line) == 0) .or. (line(:2) == "c ") .or. (line(:2) == "! ")) cycle
 
             colonPos = index(line, ':') !this should be 50
 
@@ -763,6 +764,14 @@ contains
                     end if
                 case ("manual J2 value")
                     read (value_str, *) params%manual_J2
+                case ("set from astero")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_J2_from_asteroid = .True.
+                    else
+                        params%use_J2_from_asteroid = .False.
+                    end if
+                case ("primary radius ")
+                    read (value_str, *) params%gamma_J2
                 case ("ratio of spin t")
                     read (value_str, *) params%lambda_kep
                 case ("rotational peri")
@@ -1034,7 +1043,9 @@ contains
                 case ("upper y bound (")
                     read (value_str, *) params%map_max_y
                 case default
-                    write (*, *) "WARNING: Parameter not recongnized: ", trim(param_str)
+                    write (*,*) "WARNING: Skipping parameter not recongnized: ", trim(param_str)
+                    write (*,*) "           with value:", value_str
+                    write (*,*) ACHAR(5)
                 end select
             else  ! Read boulders, moons or particles
                 param_str = trim(adjustl(line))
@@ -1316,6 +1327,11 @@ contains
             if (abs(derived%manual_J2) < tini) then
                 derived%manual_J2 = cero
                 derived%use_manual_J2 = .False.
+            else if (.not. derived%use_J2_from_asteroid) then
+                derived%gamma_J2 = uno
+            else if (derived%gamma_J2 .le. cero) then
+                write (*, *) "ERROR: Parameter gamma for manual J2 must be positive."
+                stop 1
             end if
         else
             derived%manual_J2 = cero
@@ -1440,8 +1456,8 @@ contains
         end if
 
         !! Geometric
-        if (derived%use_geometricfile .and. .not. derived%use_triaxial) then
-            write (*, *) "WARNING: No geometric file created as not triaxial body is used."
+        if (derived%use_geometricfile .and. .not. (derived%use_triaxial .or. derived%use_manual_J2)) then
+            write (*, *) "WARNING: No geometric file created as not triaxial body is used." 
             derived%use_geometricfile = .False.
         end if
 
