@@ -204,11 +204,19 @@ contains
         real(wp), intent(in) :: tau_a, tau_e, active_timescale
         logical, intent(in) :: apply_to_moons
 
-        if (active_timescale > cero .and. abs(tau_a) > cero .and. abs(tau_e) > cero) then
+        if (active_timescale > cero .and. (abs(tau_a) > cero .or. abs(tau_e) > cero)) then
             use_stokes = .True.
             stokes_time = active_timescale
-            stokes_C = uno/(dos*tau_a) + uno/tau_e
-            stokes_alpha = (dos*tau_a)/((dos*tau_a) + tau_e)
+            if (abs(tau_a) > cero .and. abs(tau_e) > cero) then
+                stokes_C = uno/(dos*tau_a) + uno/tau_e
+                stokes_alpha = (dos*tau_a)/((dos*tau_a) + tau_e)
+            else if (abs(tau_a) > cero) then
+                stokes_C = uno2 / tau_a
+                stokes_alpha = cero
+            else
+                stokes_C = uno/tau_e
+                stokes_alpha = uno
+            end if
         else
             use_stokes = .False.
         end if
