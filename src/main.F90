@@ -55,7 +55,7 @@ program main
         input%radius_primary = 129.e0_wp ! Radio del cuerpo 0 [km]
 
         !!! Rotation
-        input%asteroid_rotational_period = 7.004e0_wp/24.e0_wp  ! Periodo de rotación [day]
+        input%asteroid_rotational_period = 7.004e0_wp * hora  ! Periodo de rotación [day]
         !lambda_kep = 0.471e0_wp      ! Cociente omega/wk
 
         !! Boulders
