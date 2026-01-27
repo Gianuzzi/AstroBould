@@ -13,8 +13,10 @@ module accelerations
     logical :: use_ellipsoid = .False.
     real(wp) :: C20_coef = cero, C22_coef = cero, Re_coef = cero ! Ellipsoid basics
     real(wp) :: K_coef = cero, L_coef = cero ! Ellipsoid deep
-    logical :: use_manual_J2 = .False.
+    logical :: use_manual_J2_from_cm = .False., use_manual_J2_from_primary = .False. ! Manual J2
     real(wp) :: J2K_coef = cero ! Manual J2 basics
+    logical :: use_boulder_z = .False. ! Boulder_z
+    real(wp) :: Gboulder_z_coef = cero, dz2_boulder_z_coef = cero ! Manual boulder_z basics
     logical :: use_damp = .False.
     real(wp) :: damp_coef_1 = cero, damp_coef_2 = cero, damp_time = cero ! Omega Damping
     integer(kind=4) :: damp_model = -1 ! Omega Damping
@@ -123,15 +125,18 @@ contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     !!! Init Parameters
-    subroutine init_manual_J2(J2, radius)
+    subroutine init_manual_J2(J2, radius, gama, from_primary)
         implicit none
-        real(wp), intent(in) :: J2, radius
+        real(wp), intent(in) :: J2, radius, gama
+        logical, intent(in) :: from_primary
 
-        if ((J2 > cero) .and. (radius > cero)) then
-            use_manual_J2 = .True.
-            J2K_coef = -1.5e0_wp*radius**2*J2  ! Minus, bc C20 = -J2
+        if ((abs(J2) > cero) .and. (radius > cero) .and. (gama > cero)) then
+            J2K_coef = -1.5e0_wp*(radius/gama)**2*J2  ! Minus, bc C20 = -J2
+            use_manual_J2_from_primary = from_primary
+            use_manual_J2_from_cm = .not. from_primary
         else
-            use_manual_J2 = .False.
+            use_manual_J2_from_primary = .False.
+            use_manual_J2_from_cm = .False.
         end if
     end subroutine init_manual_J2
 
@@ -150,6 +155,44 @@ contains
         acc(1) = acc(1) - (G*mass*inv_dr3)*dr_vec(1)*(uno - J2K_coef*inv_dr2)
         acc(2) = acc(2) - (G*mass*inv_dr3)*dr_vec(2)*(uno - J2K_coef*inv_dr2)
     end subroutine manual_J2_acceleration
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!! BOULDER_Z !!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !!! Init Parameters
+    subroutine init_boulder_z(mu_boulder_z, m0, radius, r0)
+        implicit none
+        real(wp), intent(in) :: mu_boulder_z, m0, radius, r0
+        real(wp) :: mass_boulder_z
+
+        mass_boulder_z = mu_boulder_z * m0
+
+        if ((abs(mass_boulder_z) > cero) .and. (radius > cero)) then
+            use_boulder_z = .True.
+            Gboulder_z_coef = G * mass_boulder_z
+            dz2_boulder_z_coef = radius * radius - r0 * r0
+        else
+            use_boulder_z = .False.
+            Gboulder_z_coef = cero
+            dz2_boulder_z_coef = cero
+        end if
+    end subroutine init_boulder_z
+
+    !!! Acceleration Example
+    subroutine boulder_z_acceleration(mass, dr_vec, dr, acc)
+        implicit none
+        real(wp), intent(in) :: mass, dr_vec(2), dr
+        real(wp), intent(inout) :: acc(2)
+        real(wp) :: inv_dr3
+
+        inv_dr3 = uno/(dr*dr + dz2_boulder_z_coef)**(1.5e0_wp)
+
+        ! a_unit_massx = 2 G boulder_z x / r³
+        ! a_unit_massy = 2 G boulder_z x / r³
+        acc(1) = acc(1) - Gboulder_z_coef*dr_vec(1)*inv_dr3
+        acc(2) = acc(2) - Gboulder_z_coef*dr_vec(2)*inv_dr3
+    end subroutine boulder_z_acceleration
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!! STOKES !!!!!!!!!!!!!!!!!!!!!!!!!

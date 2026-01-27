@@ -55,7 +55,7 @@ program main
         input%radius_primary = 129.e0_wp ! Radio del cuerpo 0 [km]
 
         !!! Rotation
-        input%asteroid_rotational_period = 7.004e0_wp/24.e0_wp  ! Periodo de rotación [day]
+        input%asteroid_rotational_period = 7.004e0_wp * hora  ! Periodo de rotación [day]
         !lambda_kep = 0.471e0_wp      ! Cociente omega/wk
 
         !! Boulders
@@ -120,9 +120,15 @@ program main
 
         ! Additional forces
 
-        !! Manual J2 (for primary)
+        !! Manual J2 (for primary or asteroid)
         input%use_manual_J2 = .False.
         input%manual_J2 = cero
+        input%use_J2_from_primary = .False.
+        input%gamma_J2 = uno
+
+        !! Boulders on Z
+        input%use_boulder_z = .False.
+        input%mu_boulder_z = cero
 
         !! Stokes
         input%use_stokes = .False.
@@ -179,6 +185,7 @@ program main
         !! Screen
         input%use_screen = .True. ! Print info in screen
         input%use_datascreen = .True. ! Print data in screen
+        input%use_diagnostics = .False. ! Print diagnostic data on screen
 
         ! Input: "" or "no", if not used
         input%tomfile = ""
@@ -415,6 +422,7 @@ program main
                     & sim%triax_a_primary*unit_dist, &  ! Semi-axis a
                     & sim%triax_b_primary*unit_dist, &  ! Semi-axis b
                     & sim%triax_c_primary*unit_dist)    ! Semi-axis c
+    call add_boulder_z(asteroid, sim%mu_boulder_z)  ! Add boulders in Z
     do i = 1, sim%Nboulders ! Add boulders
         call add_boulder(asteroid, &
                         & boulders_in(i, 1), &              ! mu
@@ -456,7 +464,7 @@ program main
                     & sim%lambda_kep, &                           ! keplerian omega
                     & sim%asteroid_rotational_period*unit_time) ! asteroid period
 
-    call set_system_extra(system, cero, sim%eta_col, sim%f_col, sim%manual_J2)  ! Extra parameters
+    call set_system_extra(system, cero, sim%eta_col, sim%f_col, sim%manual_J2, sim%use_J2_from_primary)  ! Extra parameters
 
     ! <<<< Save initial data >>>>
     initial_system = system
@@ -599,12 +607,33 @@ program main
         call init_ellipsoid(sim%triax_a_primary*unit_dist, sim%triax_b_primary*unit_dist, sim%triax_c_primary*unit_dist)
     end if
 
+    !! <<<< Boudlers in Z >>>>
+    if (sim%use_boulder_z) then
+        call init_boulder_z(sim%mu_boulder_z, &
+                            & system%asteroid%primary%mass, &
+                            & sim%radius_primary, &
+                            & system%asteroid%primary%dist_to_asteroid)
+        if (sim%use_screen) then
+            write (*, *) "Boulders over axis Z"
+            write (*, s1r1) "  Mass    : ", system%asteroid%boulder_z%mass, "[kg] = ", &
+                                & system%asteroid%boulder_z%mu_to_asteroid, "[Mast]"
+            write (*, s1r1) "  Distance: ", system%asteroid%boulder_z%dist_to_asteroid, "[km] = ", &
+                                & system%asteroid%boulder_z%dist_to_asteroid/system%asteroid%radius, "[Rast]"
+            write (*, *) ACHAR(5)
+        end if
+        any_extra_effect = .True.
+    end if
+
     !! <<<< Manual J2 >>>>
     if (sim%use_manual_J2) then
-        call init_manual_J2(sim%manual_J2, system%asteroid%primary%radius)
+        call init_manual_J2(sim%manual_J2, system%asteroid%primary%radius, sim%gamma_J2, sim%use_J2_from_primary)
         if (sim%use_screen) then
             write (*, *) "Manual J2"
-            write (*, s1r1) "  J2 : ", sim%manual_J2
+            write (*, s1r1) "  J2    : ", sim%manual_J2
+            if (.not. sim%use_J2_from_primary) then
+                write (*, s1r1) "  gamma : ", sim%gamma_J2
+                write (*, *) "  Using J2 from asteroid center of mass."
+            end if
             write (*, *) ACHAR(5)
         end if
         any_extra_effect = .True.

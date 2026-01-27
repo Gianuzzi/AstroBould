@@ -3,7 +3,7 @@ module parameters
     use constants
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
-    use accelerations, only: init_ellipsoid, init_manual_J2, init_stokes, init_drag, init_damping
+    use accelerations, only: init_ellipsoid, init_boulder_z, init_manual_J2, init_stokes, init_drag, init_damping
     use filtering
     use omp_lib
     use tomodule
@@ -74,6 +74,10 @@ module parameters
         logical :: use_moon_gravity = .True.
         logical :: use_manual_J2 = .False.
         real(wp) :: manual_J2 = cero
+        real(wp) :: gamma_J2 = uno
+        logical :: use_J2_from_primary = .False.
+        logical :: use_boulder_z = .False.
+        real(wp) ::mu_boulder_z = cero
         logical :: use_stokes = .False.
         real(wp) :: stokes_a_damping_time = infinito
         real(wp) :: stokes_e_damping_time = infinito
@@ -128,7 +132,7 @@ module parameters
         logical :: use_geometricfile = .False.
         character(30) :: geometricfile = ""
         logical :: use_datascreen = .False.
-        logical :: use_diagnostics = .True.
+        logical :: use_diagnostics = .False.
         logical :: use_percentage = .False.
         integer(kind=4) :: int_elements_output = 1  ! 0: False, 1: True, 2: Both
         logical :: use_baryc_output = .True.
@@ -257,10 +261,13 @@ module parameters
     ! procedure (check_continue_template), pointer :: check_continue_ptr => null ()
 
     ! ----  <<<<<    I/O     >>>>>   -----
-    character(18), parameter :: s1i1 = "(3(A, 1X, I7, 1X))"
-    character(24), parameter :: s1r1 = "(3(A, 1X, 1PE22.15, 1X))"
+    ! character(18), parameter :: s1i1 = "(3(A, 1X, I7, 1X))"
+    ! character(24), parameter :: s1r1 = "(3(A, 1X, 1PE22.15, 1X))"
+    character(29), parameter :: s1i1 = "(2(A, 1X, I7, 1X), A, 1X, I7)"
+    character(41), parameter :: s1r1 = "(2(A, 1X, 1PE22.15, 1X), A, 1X, 1PE22.15)"
     character(21), parameter :: i1r5 = "(I7, 5(1X, 1PE22.15))"
     character(21), parameter :: i1r7 = "(I7, 7(1X, 1PE22.15))"
+    character(27), parameter :: rrr7 = "(1PE22.15, 6(1X, 1PE22.15))"
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    FILE UNITS     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     integer(kind=4), parameter :: u_configfile = 10
@@ -689,8 +696,7 @@ contains
             ! Read the line from the file
             read (u_configfile, '(A)', END=98) line
             nlines = nlines + 1
-
-            if ((len_trim(line) == 0) .or. (auxch15(:2) == "c ") .or. (auxch15(:2) == "! ")) cycle
+            if ((len_trim(line) == 0) .or. (line(:2) == "c ") .or. (line(:2) == "! ")) cycle
 
             colonPos = index(line, ':') !this should be 50
 
@@ -759,14 +765,6 @@ contains
                     read (value_str, *) params%triax_b_primary
                 case ("semi-axis c (km")
                     read (value_str, *) params%triax_c_primary
-                case ("use manual J2 (")
-                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                        params%use_manual_J2 = .True.
-                    else
-                        params%use_manual_J2 = .False.
-                    end if
-                case ("manual J2 value")
-                    read (value_str, *) params%manual_J2
                 case ("ratio of spin t")
                     read (value_str, *) params%lambda_kep
                 case ("rotational peri")
@@ -801,6 +799,30 @@ contains
                     else
                         params%use_moon_gravity = .True.
                     end if
+                case ("include manual ")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_manual_J2 = .True.
+                    else
+                        params%use_manual_J2 = .False.
+                    end if
+                case ("manual J2 value")
+                    read (value_str, *) params%manual_J2
+                case ("set J2 from pri")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_J2_from_primary = .True.
+                    else
+                        params%use_J2_from_primary = .False.
+                    end if
+                case ("primary radius ")
+                    read (value_str, *) params%gamma_J2
+                case ("include two bou")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_boulder_z = .True.
+                    else
+                        params%use_boulder_z = .False.
+                    end if
+                case ("mass ratio of w")
+                    read (value_str, *) params%mu_boulder_z
                 case ("include stokes-")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_stokes = .True.
@@ -1038,7 +1060,9 @@ contains
                 case ("upper y bound (")
                     read (value_str, *) params%map_max_y
                 case default
-                    write (*, *) "WARNING: Parameter not recongnized: ", trim(param_str)
+                    write (*,*) "WARNING: Skipping parameter not recongnized: ", trim(param_str)
+                    write (*,*) "           with value:", value_str
+                    write (*,*) ACHAR(5)
                 end select
             else  ! Read boulders, moons or particles
                 param_str = trim(adjustl(line))
@@ -1322,11 +1346,22 @@ contains
             stop 1
         end if
 
+        !!! Boulders in Z
+        if ((.not. derived%use_boulder_z) .or. (abs(derived%mu_boulder_z) < tini)) then
+            derived%mu_boulder_z = cero
+            derived%use_boulder_z = .False.
+        end if
+
         !!! manual J2
         if (derived%use_manual_J2) then
             if (abs(derived%manual_J2) < tini) then
-                derived%manual_J2 = cero
                 derived%use_manual_J2 = .False.
+                derived%manual_J2 = cero
+            else if (derived%use_J2_from_primary) then
+                derived%gamma_J2 = uno
+            else if (derived%gamma_J2 .le. cero) then
+                write (*, *) "ERROR: Parameter gamma for manual J2 must be positive."
+                stop 1
             end if
         else
             derived%manual_J2 = cero
@@ -1334,6 +1369,11 @@ contains
         !!! Check no J2 and triaxial
         if (derived%use_manual_J2 .and. derived%use_triaxial) then
             write (*, *) "ERROR: Can not use both manual J2 and triaxial object at the same time."
+            stop 1
+        end if
+        !!! Check no J2 and boulders in Z
+        if (derived%use_manual_J2 .and. derived%use_boulder_z) then
+            write (*, *) "ERROR: Can not use both manual J2 and boudlers in Z at the same time."
             stop 1
         end if
 
@@ -1451,8 +1491,8 @@ contains
         end if
 
         !! Geometric
-        if (derived%use_geometricfile .and. .not. derived%use_triaxial) then
-            write (*, *) "WARNING: No geometric file created as not triaxial body is used."
+        if (derived%use_geometricfile .and. .not. (derived%use_triaxial .or. derived%use_manual_J2)) then
+            write (*, *) "WARNING: No geometric file created as not triaxial body is used." 
             derived%use_geometricfile = .False.
         end if
 
