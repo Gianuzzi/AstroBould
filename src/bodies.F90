@@ -33,11 +33,20 @@ module bodies
         real(wp) :: C22 = cero
     end type primary_st
 
+    type :: boulder_z_st
+        logical :: active  ! Whether this is active or not
+        real(wp) :: mu_to_primary = cero  ! Mass ratio to primary
+        real(wp) :: mu_to_asteroid = cero ! Mass ratio to asteroid
+        real(wp) :: mass = cero  ! Mass
+        real(wp) :: dist_to_asteroid = cero  ! Mass
+    end type boulder_z_st
+
     type :: asteroid_st
         integer(kind=4) :: Nbodies = 0  ! Amount of boulders + primary
         integer(kind=4) :: Nboulders = 0  ! Amount of boulders
         type(primary_st) :: primary  ! Primary object
         type(sphere_st), allocatable :: boulders(:)  ! Without primary (from 1)
+        type(boulder_z_st) :: boulder_z
         real(wp) :: mass = cero  ! Mass  [config -]
         real(wp) :: radius = cero  ! Radius
         real(wp) :: theta ! Rotational angle from X [dynamic]
@@ -328,6 +337,16 @@ contains
         end if
     end subroutine add_particle
 
+    subroutine add_boulder_z(self, mu_boulder_z_to_primary)
+        implicit none
+        type(asteroid_st), intent(inout) :: self
+        real(wp), intent(in) :: mu_boulder_z_to_primary
+        
+        self%boulder_z%mu_to_primary = mu_boulder_z_to_primary
+        self%boulder_z%active = abs(mu_boulder_z_to_primary) > tini
+        
+    end subroutine add_boulder_z
+
     !  -----------------------   INIT OBJECTS   ---------------------------
 
     ! Init asteroid parameters from config
@@ -355,28 +374,27 @@ contains
         end do
 
         ! Correct primary Mass
-        aux_real = self%primary%mass
-        if (aux_real < cero) then
-            if (self%Nboulders > 0) then
-                self%primary%mass = abs(aux_real)/(uno + sum(self%boulders%mu_to_primary))
-            else
-                self%primary%mass = -aux_real
-            end if
+        if (self%primary%mass < cero) then
+            aux_real = self%boulder_z%mu_to_primary + sum(self%boulders%mu_to_primary)
+            self%primary%mass = abs(self%primary%mass)/(uno + aux_real)
         end if
 
         ! Set boulders Masses
+        self%boulder_z%mass = self%boulder_z%mu_to_primary*self%primary%mass
         do i = 1, self%Nboulders
             self%boulders(i)%mass = self%boulders(i)%mu_to_primary*self%primary%mass
         end do
 
-        ! Set asteroid Mass and boulders Ratios
-        self%mass = self%primary%mass + sum(self%boulders%mass)  ! Mass
+        ! Set asteroid Mass and boulders Ratios to primary
+        self%mass = self%primary%mass + self%boulder_z%mass + sum(self%boulders%mass)  ! Mass
         if (self%mass <= cero) then
             write (*, *) "ERROR: Asteroid mass is zero or negative"
             stop 1
         end if
+
         self%primary%mu_to_asteroid = self%primary%mass/self%mass  ! Mass ratio of primary to asteroid
-        self%boulders%mu_to_asteroid = self%boulders%mass/self%mass  ! Mass ratio of boudlers to asteroid
+        self%boulder_z%mu_to_asteroid = self%boulder_z%mass/self%mass  ! Mass ratio of boulder z to asteroid
+        self%boulders%mu_to_asteroid = self%boulders%mass/self%mass  ! Mass ratio of boulders to asteroid
 
         ! Set Rotations
         self%theta = cero  ! Initial angle with X axis
@@ -428,6 +446,8 @@ contains
         else
             self%primary%initial_theta = cero
         end if
+        !!! Boulder z
+        self%boulder_z%dist_to_asteroid = sqrt(self%primary%radius**2 - self%primary%dist_to_asteroid**2)
         !!! Boulders
         do i = 1, self%Nboulders
             aux_real4 = coords_from_primary(i, :) - coords_cm_from_primary
@@ -654,6 +674,8 @@ contains
 
         !! Update primary mass [mass ratios are kept the same]
         self%primary%mass = self%primary%mass*growth
+        !! Update boulder z masses [mass ratios are kept the same]
+        self%boulder_z%mass = self%boulder_z%mass*growth
         !! Update boulders masses [mass ratios are kept the same]
         do i = 1, self%Nboulders
             self%boulders(i)%mass = self%boulders(i)%mass*growth
@@ -750,7 +772,7 @@ contains
         integer(kind=4) :: i
 
         ! Calculate cm
-        mass = self%asteroid%primary%mass
+        mass = self%asteroid%primary%mass + self%asteroid%boulder_z%mass
         coordinates = (self%asteroid%primary%coordinates_CM + self%asteroid%coordinates)*self%asteroid%primary%mass
         do i = 1, self%asteroid%Nboulders
             aux_4 = self%asteroid%boulders(i)%coordinates_CM + self%asteroid%coordinates
@@ -934,26 +956,19 @@ contains
         real(wp) :: n
         real(wp) :: coords_ast(4), ast_cm(4)
         real(wp) :: mass_ast, radius_ast, omega_ast
-        real(wp) :: J2_pri, J2_ast, J2_used
+        real(wp) :: J2_ast
 
         coords_ast = cero
-        mass_ast = self%asteroid%primary%mass
-        radius_ast = self%asteroid%primary%radius
+        mass_ast = self%asteroid%mass
+        radius_ast = self%asteroid%radius
         omega_ast = self%asteroid%omega
         ast_cm = self%asteroid%coordinates
         J2_ast = -self%asteroid%C20
-        J2_pri = -self%asteroid%primary%C20
-
-        if (abs(J2_ast) > abs(J2_pri)) then
-            J2_used = J2_ast
-        else 
-            J2_used = J2_pri
-        end if
 
         ! Moons
         do j = 1, self%Nmoons_active
             coords_ast = self%moons(j)%coordinates - ast_cm
-            call coord2geom(mass_ast + self%moons(j)%mass, radius_ast, J2_used, &
+            call coord2geom(mass_ast + self%moons(j)%mass, radius_ast, J2_ast, &
                     & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
                     a, e, i, M, w, O, n)
             M = modulo(M, twopi)
@@ -965,7 +980,7 @@ contains
         ! Particles
         do j = 1, self%Nparticles_active
             coords_ast = self%particles(j)%coordinates - ast_cm
-            call coord2geom(mass_ast, radius_ast, J2_used, &
+            call coord2geom(mass_ast, radius_ast, J2_ast, &
                     & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
                     a, e, i, M, w, O, n)
             M = modulo(M, twopi)
@@ -1081,12 +1096,12 @@ contains
     end subroutine init_system
 
     ! Set extra system parameters
-    pure subroutine set_system_extra(self, time, eta_collision, f_collision, manual_J2, J2_from_asteroid)
+    pure subroutine set_system_extra(self, time, eta_collision, f_collision, manual_J2, J2_from_primary)
         implicit none
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: time
         real(wp), intent(in) :: eta_collision, f_collision, manual_J2
-        logical, intent(in) :: J2_from_asteroid
+        logical, intent(in) :: J2_from_primary
 
         ! Initial time. Set TIME
         self%time = time
@@ -1094,13 +1109,14 @@ contains
         ! Initial collisional eta and f. Set eta_col and f_col
         self%eta_col = eta_collision
         self%f_col = f_collision
-        if (abs(manual_J2) > cero) then
-            if (J2_from_asteroid) then
+        if ((abs(manual_J2) > cero) .and. self%asteroid%primary%is_sphere) then
+            if ((.not. J2_from_primary) .or. (self%asteroid%Nboulders .eq. 0)) then
                 self%asteroid%C20 = -manual_J2  ! C20 = -J2
             else
                 self%asteroid%primary%C20 = -manual_J2  ! C20 = -J2
             end if
         end if
+
     end subroutine set_system_extra
 
     !  ----------------------   OBJECT SWAP  ------------------------------
@@ -1491,7 +1507,7 @@ contains
         logical, intent(inout), optional :: inside
         logical :: has_inside = .False.
         integer(kind=4) :: i
-        real(wp) :: dx, dy, dr, dr2, dr4
+        real(wp) :: dx, dy, dr, dr2, dr4, dz2
         real(wp) :: xy_centered(2)
         real(wp) :: xy_rotated(2)
         real(wp) :: mu, R2, cos2th, sin2th  ! ellipsoid
@@ -1599,7 +1615,7 @@ contains
                 & acc, pot, inside)
         end do
 
-        ! Asteroid as a whole
+        ! Asteroid as a whole, if C20 from it
         if (abs(self%C20) > 0) then
             ! Center
             dx = xy_target(1) - self%coordinates(1)
@@ -1610,7 +1626,19 @@ contains
             J2K_coef = 1.5e0_wp*self%radius**2*self%C20 
             acc = acc + G*self%mass/(dr2*dr)*(/dx, dy/)*J2K_coef/dr2
             pot = pot + G*self%mass/dr*J2K_coef*uno3/dr2
+        
+        else if (self%boulder_z%active) then
+            ! Center
+            dx = xy_target(1) - self%coordinates(1)
+            dy = xy_target(2) - self%coordinates(2)
+            dz2 = self%boulder_z%dist_to_asteroid**2
+            dr2 = dx*dx + dy*dy + dz2
+            dr = sqrt(dr2)
+            acc = acc - G*self%boulder_z%mass*(/dx, dy/)/(dr2*dr)
+            pot = pot - G*self%boulder_z%mass/dr
+
         end if
+
     end subroutine get_acc_and_pot_asteroid
 
     ! Get acceleration and potential energy from single moon
