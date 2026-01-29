@@ -38,7 +38,7 @@ module bodies
         real(wp) :: mu_to_primary = cero  ! Mass ratio to primary
         real(wp) :: mu_to_asteroid = cero ! Mass ratio to asteroid
         real(wp) :: mass = cero  ! Mass
-        real(wp) :: dist_to_asteroid = cero  ! Mass
+        real(wp) :: dist_to_asteroid = cero  ! Distance in Z
     end type boulder_z_st
 
     type :: asteroid_st
@@ -220,6 +220,16 @@ contains
 
     end subroutine add_primary
 
+    subroutine add_boulder_z(self, mu_boulder_z_to_primary)
+        implicit none
+        type(asteroid_st), intent(inout) :: self
+        real(wp), intent(in) :: mu_boulder_z_to_primary
+        
+        self%boulder_z%mu_to_primary = mu_boulder_z_to_primary
+        self%boulder_z%active = abs(mu_boulder_z_to_primary) > tini
+        
+    end subroutine add_boulder_z
+
     subroutine add_boulder(self, mu_to_primary, radius, theta_from_primary)
         implicit none
         type(asteroid_st), intent(inout) :: self
@@ -336,16 +346,6 @@ contains
             stop 1
         end if
     end subroutine add_particle
-
-    subroutine add_boulder_z(self, mu_boulder_z_to_primary)
-        implicit none
-        type(asteroid_st), intent(inout) :: self
-        real(wp), intent(in) :: mu_boulder_z_to_primary
-        
-        self%boulder_z%mu_to_primary = mu_boulder_z_to_primary
-        self%boulder_z%active = abs(mu_boulder_z_to_primary) > tini
-        
-    end subroutine add_boulder_z
 
     !  -----------------------   INIT OBJECTS   ---------------------------
 
@@ -508,7 +508,7 @@ contains
             self(i)%mass = self(i)%mu_to_asteroid*asteroid%mass
 
             ! Define coordinates
-            !! Elements are ateroid-centric
+            !! Elements are asteroid-centric
             combined_mass = asteroid%mass + self(i)%mass
             aux_real = get_a_corot(combined_mass, asteroid%omega)  ! Ask. Including mass?
             if (self(i)%mmr > tini) then
@@ -564,7 +564,7 @@ contains
             end if
 
             ! Define coordinates
-            !! Elements are ateroid-centric
+            !! Elements are asteroid-centric
             if (self(i)%mmr > tini) then
                 if (asteroid%a_corotation < tini) then  ! Ensure rotating
                     write (*, *) "ERROR: Can not set particle MMR with non rotating asteroid."
@@ -771,19 +771,26 @@ contains
         real(wp) :: aux_4(4)
         integer(kind=4) :: i
 
-        ! Calculate cm
-        mass = self%asteroid%primary%mass + self%asteroid%boulder_z%mass
+        ! Calculate cm with all contributing parts
+        mass = self%asteroid%primary%mass
         coordinates = (self%asteroid%primary%coordinates_CM + self%asteroid%coordinates)*self%asteroid%primary%mass
+
+        mass = mass + self%asteroid%boulder_z%mass
+        coordinates = coordinates + self%asteroid%coordinates*self%asteroid%boulder_z%mass  ! Assume they are on the asteroid CM
+
         do i = 1, self%asteroid%Nboulders
             aux_4 = self%asteroid%boulders(i)%coordinates_CM + self%asteroid%coordinates
             coordinates = coordinates + aux_4*self%asteroid%boulders(i)%mass
             mass = mass + self%asteroid%boulders(i)%mass
         end do
+
         do i = 1, self%Nmoons_active
             coordinates = coordinates + self%moons(i)%coordinates*self%moons(i)%mass
             mass = mass + self%moons(i)%mass
         end do
+
         coordinates = coordinates/mass  ! rcm = sum(ri * mi) / mcm
+
     end subroutine get_cm
 
     ! Calculate system energy and angular momentum
@@ -995,7 +1002,7 @@ contains
         implicit none
         type(system_st), intent(inout) :: self
         real(wp) :: total_mass, energy, ang_mom
-        real(wp) :: rvcm(4), coords_shift(4)
+        real(wp) :: rvcm(4)
         integer(kind=4) :: i
 
         ! Get mass and then CM too
@@ -1004,15 +1011,12 @@ contains
         self%mass = total_mass  ! Update MASS
 
         ! Set system at CM, shifting all objects.
-        coords_shift = self%asteroid%coordinates - rvcm
-        call shift_asteroid(self%asteroid, coords_shift)
+        call shift_asteroid(self%asteroid, self%asteroid%coordinates - rvcm)
         do i = 1, self%Nmoons_active
-            coords_shift = self%moons(i)%coordinates - rvcm
-            call shift_single_moon(self%moons(i), coords_shift)
+            call shift_single_moon(self%moons(i), self%moons(i)%coordinates - rvcm)
         end do
         do i = 1, self%Nparticles_active
-            coords_shift = self%particles(i)%coordinates - rvcm
-            call shift_single_particle(self%particles(i), coords_shift)
+            call shift_single_particle(self%particles(i), self%particles(i)%coordinates - rvcm)
         end do
 
         ! Set Energy and Angular Momentum

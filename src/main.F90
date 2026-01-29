@@ -18,6 +18,7 @@ program main
     character(20) :: aux_character20
     logical :: aux_logical
     real(wp) :: aux_real
+    real(wp), dimension(4) :: aux_real4
     real(wp), dimension(:), allocatable :: aux_1D
     real(wp), dimension(:, :), allocatable :: aux_2D  ! To read files
 
@@ -1022,6 +1023,7 @@ program main
     ! <<<< Amount of values of Y to use >>>>
     y_nvalues = get_index(sim%Nactive) + 3  ! Update nvalues to use in y
 
+
     ! <<<< Arrays to integrate >>>>
     call center_sytem(system)
     call generate_arrays(system, m_arr, R_arr, y_arr)
@@ -1183,6 +1185,20 @@ program main
 
     ! <<<< Free initial arrays >>>>
     call free_initial_arays()
+
+    print*, system%mass, system%asteroid%mass
+    print*, system%asteroid%coordinates(1:2)
+    print*, system%asteroid%coordinates(3:4)
+    print*, system%asteroid%elements(1:2)
+    ! print*, ""
+    ! print*, ((system%asteroid%primary%coordinates_CM*system%asteroid%primary%mass) +&
+    !          & (system%asteroid%boulders(1)%coordinates_CM*system%asteroid%boulders(1)%mass)) / system%asteroid%mass
+    print*, ""
+    call get_cm(system, aux_real, aux_real4)
+    print*, aux_real
+    print*, aux_real4(1:2)
+    print*, aux_real4(3:4)
+    print*, ""
 
     !! <<<< CHECK IF GO ON >>>>
     if (sim%only_print) then
@@ -2378,6 +2394,11 @@ program main
 
             ! Update Chaos (triggers update elements)
             call update_chaos(system, sim%use_baryc_output)
+            print*, system%mass, system%asteroid%mass
+            print*, system%asteroid%coordinates(1:2)
+            print*, system%asteroid%coordinates(2:3)
+            print*, system%asteroid%elements(1:2)
+            print*, ""
 
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)
