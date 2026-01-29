@@ -1,10 +1,12 @@
 # AstroBould
 
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://tldrlegal.com/license/mit-license)
+
 **AstroBould** is a code designed to integrate particles that gravitationally interact with an asteroid featuring mass anomalies or a central tri-axial ellipsoid.
 
 The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
 
-If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [36 and 198](./src/main.F90#L36-198).
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [36 and 198](./src/main.F90#L36#198).
 
 ---
 
@@ -133,7 +135,7 @@ To run:
 ```console
 $ ./ASTROBOULD [args] -parallel <number_of_cpus> -partfile <particles_file>
 ```
-or edit [config.ini](./config.ini) and set "use parallel threads" to the desired value (see line [15](./config.ini#L15)), and "particles input file" to the particles file name (see line [66](./config.ini#66)). Then simply run
+or edit [config.ini](./config.ini) and set "use parallel threads" to the desired value (see line [16](./config.ini#L16)), and "particles input file" to the particles file name (see line [71](./config.ini#L71)). Then simply run
 ```console
 $ ./ASTROBOULD [args]
 ```
