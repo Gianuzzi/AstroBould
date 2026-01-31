@@ -131,9 +131,10 @@ contains
                     ! return
                 end if
                 call mmid(sizey, ysav(:sizey), der(:sizey), x, h, nseq(k), yseq(:sizey), dydt)
-                yscal(:sizey) = abs(y) + abs(h*der(:sizey)) + SAFE_LOW
                 xest = (h/real(nseq(k), kind=wp))**2 ! Squared, since error series is even.
                 call pzextr(sizey, k, xest, yseq(:sizey), y, yerr(:sizey), qcolpz(1:sizey, :), xpz) ! Perform extrapolation.
+                ! yscal(:sizey) = abs(y) + abs(h*der(:sizey)) + SAFE_LOW
+                yscal(:sizey) = abs(y) + abs(yerr(:sizey)) + SAFE_LOW
                 if (k /= 1) then ! Compute normalized error estimate eps(k).
                     errmax = tini
                     do i = 1, sizey

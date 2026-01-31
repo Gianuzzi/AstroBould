@@ -20,9 +20,9 @@ module constants
     real(wp), parameter :: pi = uno2*twopi
     real(wp), parameter :: radian = twopi/360.0e0_wp
     real(wp), parameter :: infinito = 1.0e50_wp  ! Infinito
-    real(wp), parameter :: epsilon = 1.0e-16_wp ! Precisión / Error [Usado en elem y coord]
-    real(wp), parameter :: sqepsilon = sqrt(epsilon) ! Error usado para checkeos
-    real(wp), parameter :: tini = 1.e-30_wp ! Lowest value
+    real(wp), parameter :: myepsilon = epsilon(1.0_wp) ! Precisión / Error [Usado en elem y coord]
+    real(wp), parameter :: sqepsilon = sqrt(myepsilon) ! Error usado para checkeos
+    real(wp), parameter :: tini = sqepsilon ! Lowest value to compare
     real(wp), parameter :: unit_mass = 1.e0_wp   ! in [kg]
     real(wp), parameter :: unit_dist = 1.e0_wp   ! in [km]
     real(wp), parameter :: unit_time = 1.e0_wp   ! in [day]

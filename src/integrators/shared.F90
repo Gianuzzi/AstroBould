@@ -68,7 +68,7 @@ module shared
     real(wp), parameter :: SQ15_24 = sqrt(15.e0_wp)/24.e0_wp
     real(wp), parameter :: SQ15_30 = sqrt(15.e0_wp)/30.e0_wp
 
-    real(wp), parameter :: SAFE_LOW = 1e-30_wp
+    real(wp), parameter :: SAFE_LOW = sqrt(tiny(1.0_wp))
 
     ! BASIC CONFIGURATION INPUT
     integer(kind=4) :: NDIM = 1  ! Number of dimensions
