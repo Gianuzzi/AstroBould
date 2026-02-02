@@ -901,6 +901,7 @@ contains
         integer(kind=4) :: j, ref_used
         real(wp) :: a, e, i, M, w, O, a_corot
         real(wp) :: coords_shifted(4), coords_cm_in(4), mass_cm_in
+        logical :: mmr_from_n
 
         ! Set reference frame
         if (present(reference_frame)) then 
@@ -913,6 +914,7 @@ contains
         a_corot = get_a_corot(self%asteroid%mass, self%asteroid%omega)  ! Astrocentric here
         ! a_corot = get_a_corot(self%mass, self%ang_mom/self%inertia)  ! Something strange
         self%asteroid%a_corotation = a_corot
+        mmr_from_n = (a_corot < tini) .or. (self%Nmoons_active > 0)
 
         if ((ref_used .eq. 0) .or. (ref_used .eq. 1)) then  ! Baryc or Jacobi
 
@@ -935,12 +937,12 @@ contains
                     & (/coords_shifted(1:2), cero, coords_shifted(3:4), cero/), &
                     a, e, i, M, w, O)
                 self%moons(j)%elements = (/a, e, M, w/)
-                if (a_corot > cero) self%moons(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                self%moons(j)%mmr = self%asteroid%omega / (sqrt(G * (mass_cm_in + self%moons(j)%mass) / a**3)) ! MMR
 
                 ! Update cm in
                 coords_cm_in = mass_cm_in*coords_cm_in + self%moons(j)%mass*self%moons(j)%coordinates
                 if (ref_used .eq. 0) then  ! If baryc
-                    self%moons(j)%elements(1) = self%moons(j)%elements(1) * mass_cm_in/(mass_cm_in + self%moons(j)%mass)
+                    self%moons(j)%elements(1) = a * mass_cm_in/(mass_cm_in + self%moons(j)%mass)
                 end if
                 mass_cm_in = mass_cm_in + self%moons(j)%mass
                 coords_cm_in = coords_cm_in/mass_cm_in
@@ -953,7 +955,11 @@ contains
                     & self%particles(j)%coordinates(3:4), cero/), &
                     a, e, i, M, w, O)
                 self%particles(j)%elements = (/a, e, M, w/)
-                if (a_corot > cero) self%particles(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                if (mmr_from_n) then
+                    self%particles(j)%mmr = self%asteroid%omega / (sqrt(G * mass_cm_in / a**3)) ! MMR
+                else
+                    self%particles(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                end if
             end do
 
         else  ! Astrocentric
@@ -969,7 +975,7 @@ contains
                         & (/coords_shifted(1:2), cero, coords_shifted(3:4), cero/), &
                         a, e, i, M, w, O)
                 self%moons(j)%elements = (/a, e, M, w/)
-                if (a_corot > cero) self%moons(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                self%moons(j)%mmr = self%asteroid%omega / (sqrt(G * (mass_cm_in + self%moons(j)%mass) / a**3)) ! MMR
             end do
 
             ! Particles
@@ -979,7 +985,11 @@ contains
                         & (/coords_shifted(1:2), cero, coords_shifted(3:4), cero/), &
                         a, e, i, M, w, O)
                 self%particles(j)%elements = (/a, e, M, w/)
-                if (a_corot > cero) self%particles(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                if (mmr_from_n) then
+                    self%particles(j)%mmr = self%asteroid%omega / (sqrt(G * mass_cm_in / a**3)) ! MMR
+                else
+                    self%particles(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                end if
             end do
         end if
     end subroutine update_elements
