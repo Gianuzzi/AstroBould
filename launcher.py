@@ -323,6 +323,7 @@ args += " --noscreen --nodatascr --noperc --noparallel --nopartfile"
 args += f" -tomfile {tomfile}" if tomfile else " --notomfile"
 args += " --elem" if elements else " --noelem"
 args += f" -merge {merge}"
+args += f" -stopif {stopif}"
 
 
 # # Change drag and or spin down
