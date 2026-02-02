@@ -18,7 +18,8 @@ build/main :  \
 	build/main.o \
 	build/parameters.o \
 	build/times.o \
-	build/tomodule.o
+	build/tomodule.o \
+	build/version_info.o
 
 build/accelerations.o :  \
 	build/auxiliary.o \
@@ -81,7 +82,8 @@ build/main.o :  \
 	build/filtering.o \
 	build/integrators/integrators.o \
 	build/parameters.o \
-	build/times.o
+	build/times.o \
+	build/version_info.o
 
 build/parameters.o :  \
 	build/accelerations.o \
@@ -97,3 +99,5 @@ build/times.o :  \
 
 build/tomodule.o :  \
 	build/constants.o
+
+build/version_info.o : 
