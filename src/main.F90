@@ -1164,6 +1164,14 @@ program main
             write (*, *) "Data will not be printed on screen."
         end if
         write (*, *) ACHAR(5)
+        if (sim%reference_frame .eq. 0) then
+            write (*, *) "Elements reference frame: Barycentric"
+        else if (sim%reference_frame .eq. 2) then
+            write (*, *) "Elements reference frame: Astrocentric"
+        else
+            write (*, *) "Elements reference frame: Jacobi"
+        end if
+        write (*, *) ACHAR(5)
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
