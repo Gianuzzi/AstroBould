@@ -18,6 +18,7 @@ program main
     character(20) :: aux_character20
     logical :: aux_logical
     real(wp) :: aux_real
+    real(wp), dimension(4) :: aux_real4
     real(wp), dimension(:), allocatable :: aux_1D
     real(wp), dimension(:, :), allocatable :: aux_2D  ! To read files
 
@@ -181,6 +182,9 @@ program main
         input%chaosfile = ""
         input%multfile = ""
         input%geometricfile = ""
+
+        ! Reference frame for elements and/or coordinates
+        input%reference_frame = 1 ! 0: Barycentric (not recommended), 1: Jacobi, 2: Astrocentric
 
         !! Screen
         input%use_screen = .True. ! Print info in screen
@@ -462,7 +466,8 @@ program main
 
     call init_system(system, asteroid, moons_arr, particles_arr, &
                     & sim%lambda_kep, &                           ! keplerian omega
-                    & sim%asteroid_rotational_period*unit_time) ! asteroid period
+                    & sim%asteroid_rotational_period*unit_time, & ! asteroid period
+                    & sim%reference_frame) ! Reference frame for elements
 
     call set_system_extra(system, cero, sim%eta_col, sim%f_col, sim%manual_J2, sim%use_J2_from_primary)  ! Extra parameters
 
@@ -473,12 +478,19 @@ program main
     allocate (boulders_data(0:sim%Nboulders, 4))   ! To use in dydt
     allocate (boulders_coords(0:sim%Nboulders, 4)) ! To use in dydt
 
+    !! Asteroid
+    asteroid_data(1:2) = system%asteroid%primary%semi_axis(1:2)
+    asteroid_data(3) = system%asteroid%inertia
+
     !! Primary
     boulders_coords(0, :) = system%asteroid%primary%coordinates_CM + system%asteroid%coordinates
     boulders_data(0, 1) = system%asteroid%primary%mass
     boulders_data(0, 2) = system%asteroid%primary%radius
     boulders_data(0, 3) = system%asteroid%primary%initial_theta
     boulders_data(0, 4) = system%asteroid%primary%dist_to_asteroid
+
+    !! BouldersZ
+    ! Nothing
 
     !! Boulders
     do i = 1, sim%Nboulders
@@ -1022,6 +1034,7 @@ program main
     ! <<<< Amount of values of Y to use >>>>
     y_nvalues = get_index(sim%Nactive) + 3  ! Update nvalues to use in y
 
+
     ! <<<< Arrays to integrate >>>>
     call center_sytem(system)
     call generate_arrays(system, m_arr, R_arr, y_arr)
@@ -1334,7 +1347,7 @@ program main
     end if
 
     ! Update Chaos (triggers update elements)
-    call update_chaos(system, sim%use_baryc_output)
+    call update_chaos(system, sim%reference_frame)
 
     ! Update geometric chaos (and elements) if needed
     if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1452,7 +1465,7 @@ program main
             end if
 
             ! Update Chaos (triggers update elements)
-            call update_chaos(system, sim%use_baryc_output)
+            call update_chaos(system, sim%reference_frame)
 
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1547,7 +1560,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%use_baryc_output)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1621,9 +1634,9 @@ program main
             call update_system_from_elements(system_filtered, &
                                             & checkpoint_times(first_idx_yes_filter), &
                                             & elem_filtered, &
-                                            & sim%use_baryc_output)
+                                            & sim%reference_frame)
             ! Update Chaos (triggers update elements)
-            call update_chaos(system_filtered, sim%use_baryc_output)
+            call update_chaos(system_filtered, sim%reference_frame)
             ! Filtered output
             call generate_output(system_filtered, .True.)
 
@@ -1694,7 +1707,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%use_baryc_output)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1827,7 +1840,7 @@ program main
                     end if
 
                     ! Update Chaos (triggers update elements)
-                    call update_chaos(system, sim%use_baryc_output)
+                    call update_chaos(system, sim%reference_frame)
 
                     ! Update geometric Chaos (triggers update geometric elements)
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1908,7 +1921,7 @@ program main
                     end if
 
                     ! Update Chaos (triggers update elements)
-                    call update_chaos(system, sim%use_baryc_output)
+                    call update_chaos(system, sim%reference_frame)
 
                     ! Update geometric Chaos (triggers update geometric elements)
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2012,9 +2025,9 @@ program main
             call update_system_from_elements(system_filtered, &
                                         & checkpoint_times(next_output), &
                                         & elem_filtered, &
-                                        & sim%use_baryc_output)
+                                        & sim%reference_frame)
             ! Update Chaos (triggers update elements)
-            call update_chaos(system_filtered, sim%use_baryc_output)
+            call update_chaos(system_filtered, sim%reference_frame)
             ! Filtered output
             call generate_output(system_filtered, .True.)
 
@@ -2079,7 +2092,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%use_baryc_output)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2203,7 +2216,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%use_baryc_output)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2276,7 +2289,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%use_baryc_output)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2377,7 +2390,8 @@ program main
             end if
 
             ! Update Chaos (triggers update elements)
-            call update_chaos(system, sim%use_baryc_output)
+            call update_chaos(system, sim%reference_frame)
+
 
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)

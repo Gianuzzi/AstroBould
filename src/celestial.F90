@@ -1,6 +1,6 @@
 !> Module with coordinates/elements, and some extra cel-mech routines.
 module celestial
-    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, tini, epsilon, sqepsilon
+    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, tini, myepsilon, sqepsilon
 
     implicit none
 
@@ -148,7 +148,7 @@ contains
         u0 = dm
         dif = uno
         i = 0
-        do while (dif > epsilon)
+        do while (dif > myepsilon)
             u = dm + e*sin(u0)
             dif = abs(u - u0)
             u0 = u
@@ -191,10 +191,10 @@ contains
         inc = acos(hz/h)
 
         fac = sqrt(hx*hx + hy*hy)/h
-        if (fac < epsilon) then
+        if (fac < myepsilon) then
             capom = cero
             u = atan2(y, x)
-            if (abs(inc - pi) < 10.e0_wp*epsilon) then
+            if (abs(inc - pi) < myepsilon) then
                 u = -u
             end if
         else
@@ -229,7 +229,7 @@ contains
         if (ialpha == -1) then
             a = -uno2*gmsum/energy
             fac = uno - h2/(gmsum*a)
-            if (fac > epsilon) then
+            if (fac > myepsilon) then
                 e = sqrt(fac)
                 face = (a - r)/(a*e)
                 if (face > uno) then
@@ -267,7 +267,7 @@ contains
         if (ialpha == 1) then
             a = uno2*gmsum/energy
             fac = h2/(gmsum*a)
-            if (fac > epsilon) then
+            if (fac > myepsilon) then
                 e = sqrt(uno + fac)
                 tmpf = (a + r)/(a*e)
                 if (tmpf < uno) then

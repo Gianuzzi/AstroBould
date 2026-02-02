@@ -179,10 +179,17 @@ contains
         end if
     end subroutine init_boulder_z
 
-    !!! Acceleration Example
-    subroutine boulder_z_acceleration(mass, dr_vec, dr, acc)
+    subroutine update_boulder_z(mass_z)
         implicit none
-        real(wp), intent(in) :: mass, dr_vec(2), dr
+        real(wp), intent(in) :: mass_z
+        
+        Gboulder_z_coef = G * mass_z
+    end subroutine update_boulder_z
+
+    !!! Acceleration Example
+    subroutine boulder_z_acceleration(dr_vec, dr, acc)
+        implicit none
+        real(wp), intent(in) :: dr_vec(2), dr
         real(wp), intent(inout) :: acc(2)
         real(wp) :: inv_dr3
 

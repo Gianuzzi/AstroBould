@@ -3,7 +3,7 @@ module parameters
     use constants
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
-    use accelerations, only: init_ellipsoid, init_boulder_z, init_manual_J2, init_stokes, init_drag, init_damping
+    use accelerations, only: init_ellipsoid, init_boulder_z, init_manual_J2, init_stokes, init_drag, init_damping, update_boulder_z
     use filtering
     use omp_lib
     use tomodule
@@ -135,7 +135,7 @@ module parameters
         logical :: use_diagnostics = .False.
         logical :: use_percentage = .False.
         integer(kind=4) :: int_elements_output = 1  ! 0: False, 1: True, 2: Both
-        logical :: use_baryc_output = .True.
+        integer(kind=4) :: reference_frame = 1 ! 0: Bar, 1: Jacob, 2: Astroc
         logical :: use_potential_map = .False.
         character(30) :: mapfile = ""
         integer(kind=4) :: map_grid_size_x = 500
@@ -206,6 +206,7 @@ module parameters
     real(wp) :: cl_body_in(7) = cero  !! mass, a, e, M, w, MMR, radius  | (7)  | COMMAND LINE Input
 
     ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
+    real(wp), dimension(3) :: asteroid_data !! |axis_a, axis_b, inertia|
     real(wp), dimension(:, :), allocatable :: boulders_coords !! (Nb, 4) |x,y,vx,vy|
     real(wp), dimension(:, :), allocatable :: boulders_data !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
 
@@ -1033,10 +1034,12 @@ contains
                         params%int_elements_output = 1  ! Just default
                     end if
                 case ("output elements")
-                    if (auxch1 == "b") then
-                        params%use_baryc_output = .True.
+                    if (auxch1 == "a") then
+                        params%reference_frame = 2
+                    else if (auxch1 == "j") then
+                        params%reference_frame = 1
                     else
-                        params%use_baryc_output = .False.
+                        params%reference_frame = 0
                     end if
                 case ("create map file")
                     if ((to_lower(trim(value_str)) == "n") .or. &
@@ -1382,7 +1385,7 @@ contains
 
         ! Filter (fast check)
         if (derived%use_filter) then
-            if (derived%filter_dt == 0) then
+            if (derived%filter_dt == cero) then
                 write (*, *) "ERROR: Filter dt must be different than 0."
                 stop 1
             end if
@@ -1742,6 +1745,14 @@ contains
         simu%Nactive = 1 + Npart_active + Nmoon_active ! Update Nactive, including asteroid
     end subroutine update_sim_Nactive
 
+    ! Update forces and constant arrays data
+    subroutine update_forces_and_constants(sistema)
+        implicit none
+        type(system_st), intent(in) :: sistema
+        if (sim%use_merge_massive) asteroid_data(3) = sistema%asteroid%inertia
+        if (sistema%asteroid%boulder_z%active) call update_boulder_z(sistema%asteroid%boulder_z%mass)
+    end subroutine update_forces_and_constants
+
     ! Check if keep integrating after collisions
     subroutine check_after_col(sistema, simu, keep)
         implicit none
@@ -1749,14 +1760,14 @@ contains
         type(sim_params_st), intent(in) :: simu
         logical, intent(inout) :: keep
 
-        if ((.not. simu%use_merge_part_mass) .and. sistema%Nparticles_active < sistema%Nparticles_active) then
+        if ((.not. simu%use_merge_part_mass) .and. sistema%Nparticles_active < simu%Npart_active) then
             if (simu%use_screen) then
                 write (*, *) ACHAR(10)
                 write (*, *) "A particle-massive merge body occured."
             end if
             keep = .False.
         end if
-        if ((.not. simu%use_merge_massive) .and. sistema%Nmoons_active < sistema%Nmoons_active) then
+        if ((.not. simu%use_merge_massive) .and. sistema%Nmoons_active < simu%Nmoon_active) then
             if (simu%use_screen) then
                 write (*, *) ACHAR(10)
                 write (*, *) "A massive-massive merge body occured."
@@ -1863,7 +1874,7 @@ contains
         do i = 1, filter%size
             weigth = filter%kernel(i)
             call update_system_from_array(syst_filtered, filter%tmp_times(i), filter%tmp_values(:y_nvalues, i))
-            call update_elements(syst_filtered, sim%use_baryc_output)
+            call update_elements(syst_filtered, sim%reference_frame)
 
             ! Theta
             cos_th = cos_th + cos(syst_filtered%asteroid%theta)*weigth

@@ -1,9 +1,9 @@
 !> Module with System, Asteroid, Moons, and Particles structures and routines
 module bodies
-    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, epsilon, sqepsilon, tini, infinito, &
+    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, sqepsilon, tini, infinito, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, radian
     use celestial, only: get_a_corot, get_acc_and_pot_single, get_acc_and_pot_single_with_J2, elem, coord, coord2geom
-    use auxiliary, only: quickargsort_int, rotate2D
+    use auxiliary, only: quickargsort, quickargsort_int, rotate2D
 
     implicit none
 
@@ -38,7 +38,7 @@ module bodies
         real(wp) :: mu_to_primary = cero  ! Mass ratio to primary
         real(wp) :: mu_to_asteroid = cero ! Mass ratio to asteroid
         real(wp) :: mass = cero  ! Mass
-        real(wp) :: dist_to_asteroid = cero  ! Mass
+        real(wp) :: dist_to_asteroid = cero  ! Distance in Z
     end type boulder_z_st
 
     type :: asteroid_st
@@ -102,6 +102,7 @@ module bodies
         real(wp) :: mass = cero
         real(wp) :: energy = cero
         real(wp) :: ang_mom = cero
+        real(wp) :: inertia = cero
         real(wp) :: eta_col = uno
         real(wp) :: f_col = uno
         type(asteroid_st) :: asteroid
@@ -111,6 +112,7 @@ module bodies
         integer(kind=4) :: Nparticles = 0
         integer(kind=4) :: Nparticles_active = 0
         type(particle_st), allocatable :: particles(:)
+        integer(kind=4) :: reference_frame = 0  ! Just to have an idea. 0:B, 1:J, 2:A
     end type system_st
 
     !!!!!!!!!!!   Used I/O formats   !!!!!!!!!
@@ -219,6 +221,16 @@ contains
         self%primary%C22 = (semi_a_primary**2 - semi_b_primary**2)/(20.e0_wp*radius_primary**2)
 
     end subroutine add_primary
+
+    subroutine add_boulder_z(self, mu_boulder_z_to_primary)
+        implicit none
+        type(asteroid_st), intent(inout) :: self
+        real(wp), intent(in) :: mu_boulder_z_to_primary
+        
+        self%boulder_z%mu_to_primary = mu_boulder_z_to_primary
+        self%boulder_z%active = abs(mu_boulder_z_to_primary) > tini
+        
+    end subroutine add_boulder_z
 
     subroutine add_boulder(self, mu_to_primary, radius, theta_from_primary)
         implicit none
@@ -336,16 +348,6 @@ contains
             stop 1
         end if
     end subroutine add_particle
-
-    subroutine add_boulder_z(self, mu_boulder_z_to_primary)
-        implicit none
-        type(asteroid_st), intent(inout) :: self
-        real(wp), intent(in) :: mu_boulder_z_to_primary
-        
-        self%boulder_z%mu_to_primary = mu_boulder_z_to_primary
-        self%boulder_z%active = abs(mu_boulder_z_to_primary) > tini
-        
-    end subroutine add_boulder_z
 
     !  -----------------------   INIT OBJECTS   ---------------------------
 
@@ -508,7 +510,7 @@ contains
             self(i)%mass = self(i)%mu_to_asteroid*asteroid%mass
 
             ! Define coordinates
-            !! Elements are ateroid-centric
+            !! Elements are asteroid-centric relative
             combined_mass = asteroid%mass + self(i)%mass
             aux_real = get_a_corot(combined_mass, asteroid%omega)  ! Ask. Including mass?
             if (self(i)%mmr > tini) then
@@ -564,7 +566,7 @@ contains
             end if
 
             ! Define coordinates
-            !! Elements are ateroid-centric
+            !! Elements are asteroid-centric
             if (self(i)%mmr > tini) then
                 if (asteroid%a_corotation < tini) then  ! Ensure rotating
                     write (*, *) "ERROR: Can not set particle MMR with non rotating asteroid."
@@ -771,26 +773,33 @@ contains
         real(wp) :: aux_4(4)
         integer(kind=4) :: i
 
-        ! Calculate cm
-        mass = self%asteroid%primary%mass + self%asteroid%boulder_z%mass
+        ! Calculate cm with all contributing parts
+        mass = self%asteroid%primary%mass
         coordinates = (self%asteroid%primary%coordinates_CM + self%asteroid%coordinates)*self%asteroid%primary%mass
+
+        mass = mass + self%asteroid%boulder_z%mass
+        coordinates = coordinates + self%asteroid%coordinates*self%asteroid%boulder_z%mass  ! Assume they are on the asteroid CM
+
         do i = 1, self%asteroid%Nboulders
             aux_4 = self%asteroid%boulders(i)%coordinates_CM + self%asteroid%coordinates
             coordinates = coordinates + aux_4*self%asteroid%boulders(i)%mass
             mass = mass + self%asteroid%boulders(i)%mass
         end do
+
         do i = 1, self%Nmoons_active
             coordinates = coordinates + self%moons(i)%coordinates*self%moons(i)%mass
             mass = mass + self%moons(i)%mass
         end do
+
         coordinates = coordinates/mass  ! rcm = sum(ri * mi) / mcm
+
     end subroutine get_cm
 
     ! Calculate system energy and angular momentum
-    pure subroutine calculate_energy_and_ang_mom(self, energy, ang_mom)
+    pure subroutine calculate_energy_ang_mom_inertia(self, energy, ang_mom, inertia)
         implicit none
         type(system_st), intent(in) :: self
-        real(wp), intent(out) :: energy, ang_mom
+        real(wp), intent(out) :: energy, ang_mom, inertia
         real(wp) :: e_pot
         integer(kind=4) :: i, j
         real(wp) :: dr(2), dist
@@ -800,6 +809,7 @@ contains
         ! Calculate energy and ang_mom
         ang_mom = self%asteroid%ang_mom_rot + self%asteroid%ang_mom_orb
         energy = self%asteroid%e_kin + self%asteroid%e_rot ! e_pot below
+        inertia = self%asteroid%inertia
 
         !! e_pot
         e_pot = cero
@@ -807,6 +817,7 @@ contains
         do i = 1, self%Nmoons_active
             dr = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)
             dist = sqrt(dr(1)*dr(1) + dr(2)*dr(2))
+            inertia = inertia + self%moons(i)%mass*dist*dist
             if (dist < tini) cycle
             e_pot = e_pot - (self%asteroid%mass*self%moons(i)%mass)/dist
         end do
@@ -830,7 +841,7 @@ contains
             ang_mom = ang_mom + self%moons(self%Nmoons_active)%ang_mom_orb + self%moons(self%Nmoons_active)%ang_mom_rot
             energy = energy + self%moons(self%Nmoons_active)%e_kin + self%moons(self%Nmoons_active)%e_rot
         end if
-    end subroutine calculate_energy_and_ang_mom
+    end subroutine calculate_energy_ang_mom_inertia
 
     ! Get amount of active bodies, including asteroid
     pure subroutine get_Nactive(self, Nactive)
@@ -883,66 +894,102 @@ contains
     !  -----------------   UPDATE INTERNAL PARAMETERS    ------------------
 
     ! Recalculate elements
-    pure subroutine update_elements(self, barycentric)
+    pure subroutine update_elements(self, reference_frame)
         implicit none
         type(system_st), intent(inout) :: self
-        logical, intent(in) :: barycentric
-        integer(kind=4) :: j
+        integer(kind=4), intent(in), optional :: reference_frame
+        integer(kind=4) :: j, ref_used
         real(wp) :: a, e, i, M, w, O, a_corot
-        real(wp) :: coords_ast(4), ast_cm(4), mass_ast
+        real(wp) :: coords_shifted(4), coords_cm_in(4), mass_cm_in
+        logical :: mmr_from_n
 
-        if (barycentric) then
+        ! Set reference frame
+        if (present(reference_frame)) then 
+            ref_used = reference_frame
+        else
+            ref_used = self%reference_frame
+        end if
 
-            if ((self%asteroid%dist_to_cm > tini) .and. (self%Nmoons_active > 0)) then
-                call elem(self%mass, (/self%asteroid%coordinates(1:2), cero, self%asteroid%coordinates(3:4), cero/), &
-                        & a, e, i, M, w, O)
-                self%asteroid%elements = (/a, e, M, w/)
-            end if
+        ! This may not have too much of a meaning to be fair, depending on the reference frame used
+        a_corot = get_a_corot(self%asteroid%mass, self%asteroid%omega)  ! Astrocentric here
+        ! a_corot = get_a_corot(self%mass, self%ang_mom/self%inertia)  ! Something strange
+        self%asteroid%a_corotation = a_corot
+        mmr_from_n = (a_corot < tini) .or. (self%Nmoons_active > 0)
 
-            a_corot = get_a_corot(self%mass, self%asteroid%omega)  ! Mass instead of asteroid mass ???
-            self%asteroid%a_corotation = a_corot
+        if ((ref_used .eq. 0) .or. (ref_used .eq. 1)) then  ! Baryc or Jacobi
 
+            coords_shifted = cero
+            coords_cm_in = self%asteroid%coordinates
+            mass_cm_in = self%asteroid%mass
+            
+            ! ! Deprecated. Not used in reality
+            ! if ((self%asteroid%dist_to_cm > tini) .and. (self%Nmoons_active > 0)) then
+            !     call elem(mass_cm_in, (/self%asteroid%coordinates(1:2), cero, self%asteroid%coordinates(3:4), cero/), &
+            !             & a, e, i, M, w, O)
+            !     self%asteroid%elements = (/a, e, M, w/)
+            ! end if
+
+            ! Assume mass ordered
+            !!call sort_moons(self%moons)  ! If not ordered
             do j = 1, self%Nmoons_active
-                call elem(self%mass, (/self%moons(j)%coordinates(1:2), cero, self%moons(j)%coordinates(3:4), cero/), &
-                        & a, e, i, M, w, O)
+                coords_shifted = self%moons(j)%coordinates - coords_cm_in
+                call elem(mass_cm_in + self%moons(j)%mass, &
+                    & (/coords_shifted(1:2), cero, coords_shifted(3:4), cero/), &
+                    a, e, i, M, w, O)
                 self%moons(j)%elements = (/a, e, M, w/)
-                if (a_corot > cero) self%moons(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
-            end do
+                self%moons(j)%mmr = self%asteroid%omega / (sqrt(G * (mass_cm_in + self%moons(j)%mass) / a**3)) ! MMR
 
+                ! Update cm in
+                coords_cm_in = mass_cm_in*coords_cm_in + self%moons(j)%mass*self%moons(j)%coordinates
+                if (ref_used .eq. 0) then  ! If baryc
+                    self%moons(j)%elements(1) = a * mass_cm_in/(mass_cm_in + self%moons(j)%mass)
+                end if
+                mass_cm_in = mass_cm_in + self%moons(j)%mass
+                coords_cm_in = coords_cm_in/mass_cm_in
+            end do
+            
+            ! Here, the cm is already defined
             do j = 1, self%Nparticles_active
-                call elem(self%mass, (/self%particles(j)%coordinates(1:2), cero, self%particles(j)%coordinates(3:4), cero/), &
-                        & a, e, i, M, w, O)
+                call elem(mass_cm_in, &
+                    & (/self%particles(j)%coordinates(1:2), cero, &
+                    & self%particles(j)%coordinates(3:4), cero/), &
+                    a, e, i, M, w, O)
                 self%particles(j)%elements = (/a, e, M, w/)
-                if (a_corot > cero) self%particles(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                if (mmr_from_n) then
+                    self%particles(j)%mmr = self%asteroid%omega / (sqrt(G * mass_cm_in / a**3)) ! MMR
+                else
+                    self%particles(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                end if
             end do
 
         else  ! Astrocentric
 
-            coords_ast = cero
-            mass_ast = self%asteroid%mass
-            ast_cm = self%asteroid%coordinates
+            coords_shifted = cero
+            coords_cm_in = self%asteroid%coordinates
+            mass_cm_in = self%asteroid%mass
 
             ! Moons
             do j = 1, self%Nmoons_active
-                a_corot = get_a_corot(mass_ast + self%moons(j)%mass, self%asteroid%omega)
-                coords_ast = self%moons(j)%coordinates - ast_cm
-                call elem(mass_ast + self%moons(j)%mass, &
-                        & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
+                coords_shifted = self%moons(j)%coordinates - coords_cm_in
+                call elem(mass_cm_in, &
+                        & (/coords_shifted(1:2), cero, coords_shifted(3:4), cero/), &
                         a, e, i, M, w, O)
                 self%moons(j)%elements = (/a, e, M, w/)
-                if (a_corot > cero) self%moons(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                self%moons(j)%mmr = self%asteroid%omega / (sqrt(G * (mass_cm_in + self%moons(j)%mass) / a**3)) ! MMR
             end do
 
             ! Particles
-            a_corot = get_a_corot(mass_ast, self%asteroid%omega)  ! Mass instead of asteroid mass ???
-            self%asteroid%a_corotation = a_corot
             do j = 1, self%Nparticles_active
-                coords_ast = self%particles(j)%coordinates - ast_cm
-                call elem(mass_ast, &
-                        & (/coords_ast(1:2), cero, coords_ast(3:4), cero/), &
+                coords_shifted = self%particles(j)%coordinates - coords_cm_in
+                call elem(mass_cm_in, &
+                        & (/coords_shifted(1:2), cero, coords_shifted(3:4), cero/), &
                         a, e, i, M, w, O)
                 self%particles(j)%elements = (/a, e, M, w/)
-                if (a_corot > cero) self%particles(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                if (mmr_from_n) then
+                    self%particles(j)%mmr = self%asteroid%omega / (sqrt(G * mass_cm_in / a**3)) ! MMR
+                else
+                    self%particles(j)%mmr = (a/a_corot)**(1.5e0_wp) ! MMR
+                end if
             end do
         end if
     end subroutine update_elements
@@ -994,8 +1041,8 @@ contains
     pure subroutine recalculate_all(self)
         implicit none
         type(system_st), intent(inout) :: self
-        real(wp) :: total_mass, energy, ang_mom
-        real(wp) :: rvcm(4), coords_shift(4)
+        real(wp) :: total_mass, energy, ang_mom, inertia
+        real(wp) :: rvcm(4)
         integer(kind=4) :: i
 
         ! Get mass and then CM too
@@ -1004,35 +1051,37 @@ contains
         self%mass = total_mass  ! Update MASS
 
         ! Set system at CM, shifting all objects.
-        coords_shift = self%asteroid%coordinates - rvcm
-        call shift_asteroid(self%asteroid, coords_shift)
+        call shift_asteroid(self%asteroid, self%asteroid%coordinates - rvcm)
         do i = 1, self%Nmoons_active
-            coords_shift = self%moons(i)%coordinates - rvcm
-            call shift_single_moon(self%moons(i), coords_shift)
+            call shift_single_moon(self%moons(i), self%moons(i)%coordinates - rvcm)
         end do
         do i = 1, self%Nparticles_active
-            coords_shift = self%particles(i)%coordinates - rvcm
-            call shift_single_particle(self%particles(i), coords_shift)
+            call shift_single_particle(self%particles(i), self%particles(i)%coordinates - rvcm)
         end do
 
         ! Set Energy and Angular Momentum
-        call calculate_energy_and_ang_mom(self, energy, ang_mom)
+        call calculate_energy_ang_mom_inertia(self, energy, ang_mom, inertia)
         self%ang_mom = ang_mom  !Set ANG_MOM
         self%energy = energy  !Set ENERGY
+        self%inertia = inertia !Set INERTIA
     end subroutine recalculate_all
 
     !  -------------------   INIT MAIN SYSTEM   ---------------------------
 
     ! Init whole system
-    subroutine init_system(self, asteroid, moons, particles, lambda_kep, rotational_period)
+    subroutine init_system(self, asteroid, moons, particles, lambda_kep, rotational_period, reference_frame)
         implicit none
         type(system_st), intent(inout) :: self
         type(asteroid_st), intent(inout) :: asteroid
         type(moon_st), allocatable, intent(inout) :: moons(:)
         type(particle_st), allocatable, intent(inout) :: particles(:)
         real(wp), intent(in) :: lambda_kep, rotational_period
+        integer(kind=4), intent(in) :: reference_frame
         integer(kind=4) :: i, j
         integer(kind=4), allocatable :: id_list(:)
+
+        ! Set main reference frame
+        self%reference_frame = reference_frame
 
         ! Initialize the objects and Create the system
         !! Asteroid
@@ -1125,7 +1174,7 @@ contains
     subroutine swap_moons(self, i, j)
         implicit none
         type(moon_st), intent(inout) :: self(:)
-        integer, intent(in) :: i, j
+        integer(kind=4), intent(in) :: i, j
         type(moon_st) :: tmp_moon
 
         ! Safety check
@@ -1144,7 +1193,7 @@ contains
     subroutine swap_particles(self, i, j)
         implicit none
         type(particle_st), intent(inout) :: self(:)
-        integer, intent(in) :: i, j
+        integer(kind=4), intent(in) :: i, j
         type(particle_st) :: tmp_particles
 
         ! Safety check
@@ -1159,13 +1208,35 @@ contains
         self(j) = tmp_particles
     end subroutine swap_particles
 
+    ! Sort moons according to their mass
+    pure subroutine sort_moons(self)
+        implicit none    
+        type(moon_st), intent(inout) :: self(:)
+        integer(kind=4), dimension(size(self)) :: order
+        type(moon_st), dimension(size(self)) :: tmp_moon
+        integer(kind=4) :: i, Nmoons
+
+        Nmoons = size(self)
+        
+        ! Get order
+        call quickargsort(self%mass, order, 1, Nmoons)
+
+        ! Get a copy
+        tmp_moon = self
+
+        ! Reorder
+        do i = 1, Nmoons
+            self(i) = tmp_moon(order(i))
+        end do
+    end subroutine sort_moons
+
     !  -------------------------   CHECK  ---------------------------------
 
     ! Check if syst is in CM = 0
     subroutine check_coordinates(self, error)
         implicit none
         type(system_st), intent(in) :: self
-        integer, intent(inout), optional :: error
+        integer(kind=4), intent(inout), optional :: error
         real(wp), dimension(4) :: coordinates
         real(wp) :: mass
         real(wp) :: aux_real
@@ -1174,7 +1245,7 @@ contains
         call get_cm(self, mass, coordinates)
 
         ! Check MASS
-        if (abs(mass - self%mass)/mass > epsilon) then
+        if (abs(mass - self%mass)/mass > myepsilon) then
             write (*, *) "WARNING: Total mass differs from CM mass. Error:", abs(mass - self%mass)/mass
             if (present(error)) error = error + 1
         end if
@@ -1182,7 +1253,7 @@ contains
         ! Check POS
         aux_real = sqrt(coordinates(1)*coordinates(1) + &
                       & coordinates(2)*coordinates(2))
-        if (aux_real > epsilon) then
+        if (aux_real > myepsilon) then
             !write (*,*) "WARNING: CM is not centered at 0.", aux_real
             if (present(error)) error = error + 1
         end if
@@ -1190,7 +1261,7 @@ contains
         ! Check VEL
         aux_real = sqrt(coordinates(3)*coordinates(3) + &
                       & coordinates(4)*coordinates(4))
-        if (aux_real > epsilon) then
+        if (aux_real > myepsilon) then
             !write (*,*) "WARNING: CM velocity is not 0.", aux_real
             if (present(error)) error = error + 1
         end if
@@ -1199,11 +1270,13 @@ contains
     !  -------------------   OBJECT DEACTIVATION  -------------------------
 
     ! Remove a moon from a system by deactivating and moving it to bottom
-    subroutine deactivate_moon_i(self, i, error)
+    subroutine deactivate_moon_i(self, i, keep_order, error)
         implicit none
         type(system_st), intent(inout) :: self
         integer(kind=4), intent(in) :: i
-        integer, intent(inout), optional :: error
+        logical, intent(in) :: keep_order
+        type(moon_st), allocatable :: tmp_moons(:)  ! In case of keep order
+        integer(kind=4), intent(inout), optional :: error
         integer(kind=4) :: j
 
         ! Check
@@ -1221,14 +1294,26 @@ contains
 
         ! If it is the last active, do not swap
         if (i < self%Nmoons_active) then
-            ! Switch deactivated moon with last active
-            do j = self%Nmoons_active, 1, -1
-                if (i == j) cycle
-                if (self%moons(j)%active) then
-                    call swap_moons(self%moons, i, j)
-                    exit
-                end if
-            end do
+            if (keep_order) then
+                allocate(tmp_moons(self%Nmoons_active))
+                tmp_moons = self%moons(:self%Nmoons_active)
+                do j = 1, i-1
+                    self%moons(j) = tmp_moons(j)
+                end do
+                do j = i+1, self%Nmoons_active
+                    self%moons(j-1) = tmp_moons(j)
+                end do
+                deallocate(tmp_moons)
+            else
+                ! Switch deactivated moon with last active
+                do j = self%Nmoons_active, 1, -1
+                    if (i == j) cycle
+                    if (self%moons(j)%active) then
+                        call swap_moons(self%moons, i, j)
+                        exit
+                    end if
+                end do
+            end if
         end if
         self%Nmoons_active = self%Nmoons_active - 1  ! Update NMOONS_ACTIVE
     end subroutine deactivate_moon_i
@@ -1238,7 +1323,7 @@ contains
         implicit none
         type(system_st), intent(inout) :: self
         integer(kind=4), intent(in) :: i
-        integer, intent(inout), optional :: error
+        integer(kind=4), intent(inout), optional :: error
         integer(kind=4) :: j
 
         ! Check
@@ -1269,14 +1354,14 @@ contains
     !  -------------------   UPDATE / GENERATION  -------------------------
 
     ! Update bodies chaos at system
-    pure subroutine update_chaos(self, barycentric)
+    pure subroutine update_chaos(self, reference_frame)
         implicit none
         type(system_st), intent(inout) :: self
-        logical, intent(in) :: barycentric
+        integer(kind=4), intent(in) :: reference_frame
         real(wp) :: aux_real2(2)
         integer(kind=4) :: i
 
-        call update_elements(self, barycentric)
+        call update_elements(self, reference_frame)
 
         ! Asteroid
         !! a
@@ -1357,15 +1442,15 @@ contains
 
     end subroutine update_chaos_geometric
 
-    ! Update system state. ! Assumes theta, omega, x, y, vx, vy,...
+    ! Update system state. ! Assumes theta, omega, x, y, vx, vy,... ! BARYCENTRIC
     subroutine update_system_from_array(self, time, array, error)
         implicit none
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: time
         real(wp), dimension(:), intent(in) :: array ! Includes theta and omega
-        integer, intent(inout), optional :: error
+        integer(kind=4), intent(inout), optional :: error
         real(wp), dimension(4) :: aux_coordinates
-        real(wp) :: energy, ang_mom
+        real(wp) :: energy, ang_mom, inertia
         integer(kind=4) :: i, idx
 
         ! Update TIME
@@ -1397,9 +1482,10 @@ contains
         call check_coordinates(self, error)
 
         ! Update energy and ang_mom
-        call calculate_energy_and_ang_mom(self, energy, ang_mom)
-        self%energy = energy
-        self%ang_mom = ang_mom
+        call calculate_energy_ang_mom_inertia(self, energy, ang_mom, inertia)
+        self%ang_mom = ang_mom  !Set ANG_MOM
+        self%energy = energy  !Set ENERGY
+        self%inertia = inertia !Set INERTIA
     end subroutine update_system_from_array
 
     ! Create mass and coordinates. STARTS FROM 1
@@ -1437,32 +1523,30 @@ contains
     end subroutine generate_arrays
 
     ! Update system state. ! Assumes theta, omega, a, e, M, w,...
-    subroutine update_system_from_elements(self, time, array, barycentric, error)
+    subroutine update_system_from_elements(self, time, array, reference_frame, error)
         implicit none
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: time
         real(wp), dimension(:), intent(in) :: array ! Includes theta and omega
-        logical, intent(in) :: barycentric
-        integer, intent(inout), optional :: error
+        integer(kind=4), intent(in) :: reference_frame
+        integer(kind=4), intent(inout), optional :: error
         real(wp), dimension(size(array)) :: arr_coor
         real(wp), dimension(6) :: aux_coordinates
-        real(wp) :: mass_in
+        real(wp), dimension(4) :: coords_in
+        real(wp) :: mass_in, mass_add
+        real(wp) :: a_effect
+        real(wp) :: mass_cm
+        real(wp), dimension(4) :: coords_cm
         integer(kind=4) :: nactive, i, idx
-
-        if (barycentric) then
-            mass_in = self%mass
-        else
-            mass_in = self%asteroid%mass
-        end if
 
         arr_coor(1) = modulo(array(1), twopi)
         arr_coor(2) = array(2)
 
         ! Check if a asteroid too small
-        if (array(3) < tini) then ! All 0
+        if ((array(3) < tini) .or. (reference_frame > 0)) then ! All 0
             arr_coor(3:6) = cero
         else
-            call coord(mass_in, &
+            call coord(self%mass, &
                     & array(3), &
                     & array(4), &
                     & cero, &
@@ -1470,29 +1554,108 @@ contains
                     & array(6), &
                     & cero, &
                     & aux_coordinates)
-            arr_coor(3) = aux_coordinates(1)
-            arr_coor(4) = aux_coordinates(2)
-            arr_coor(5) = aux_coordinates(4)
-            arr_coor(6) = aux_coordinates(5)
+            arr_coor(3:6) = aux_coordinates((/1,2,4,5/))
         end if
 
+        ! Get Nactive
         call get_Nactive(self, nactive)
-        do i = 2, nactive
-            idx = i*4 - 1
-            call coord(mass_in, &
-                    & array(idx), &
-                    & array(idx + 1), &
-                    & cero, &
-                    & array(idx + 2), &
-                    & array(idx + 3), &
-                    & cero, &
-                    & aux_coordinates)
-            arr_coor(idx) = aux_coordinates(1)
-            arr_coor(idx + 1) = aux_coordinates(2)
-            arr_coor(idx + 2) = aux_coordinates(4)
-            arr_coor(idx + 3) = aux_coordinates(5)
-        end do
-        call update_system_from_array(self, time, arr_coor, error)
+
+        ! Get inner
+        mass_in = self%asteroid%mass
+        coords_in = cero
+
+        if ((reference_frame .eq. 0) .or. (reference_frame .eq. 1)) then  ! Barycentric or Jacobi         
+
+            ! Moons (massive)
+            do i = 2, self%Nmoons_active + 1
+                idx = i*4 - 1
+                mass_add = self%moons(i-1)%mass
+                if (reference_frame .eq. 0) then ! Barycenter
+                    a_effect = array(idx) * (mass_in + mass_add) / mass_in
+                else
+                    a_effect = array(idx)
+                end if
+                call coord(mass_in + mass_add, &
+                        & a_effect, &
+                        & array(idx + 1), &
+                        & cero, &
+                        & array(idx + 2), &
+                        & array(idx + 3), &
+                        & cero, &
+                        & aux_coordinates)
+                ! Jacobi -> barycentric
+                arr_coor(idx:idx+3) = aux_coordinates((/1,2,4,5/)) + coords_in
+                ! Update barycenter
+                coords_in = coords_in*mass_in + arr_coor(idx:idx+3)*mass_add
+                mass_in = mass_in + mass_add
+                coords_in = coords_in/mass_in
+            end do
+            
+            ! Shift to CM
+            do i = 1, self%Nmoons_active + 1
+                idx = i*4 - 1
+                arr_coor(idx:idx+3) = arr_coor(idx:idx+3) - coords_in
+            end do
+
+            ! Particles
+            do i = self%Nmoons_active + 2, nactive
+                idx = i*4 - 1
+                call coord(mass_in, &
+                        & array(idx), &
+                        & array(idx + 1), &
+                        & cero, &
+                        & array(idx + 2), &
+                        & array(idx + 3), &
+                        & cero, &
+                        & aux_coordinates)
+                arr_coor(idx:idx+3) = aux_coordinates((/1,2,4,5/))
+            end do
+        
+        else ! Astrocentric
+
+            mass_cm = mass_in
+            coords_cm = cero
+
+            ! Moons (massive)
+            do i = 2, self%Nmoons_active + 1
+                idx = i*4 - 1
+                call coord(mass_in, &
+                        & array(idx), &
+                        & array(idx + 1), &
+                        & cero, &
+                        & array(idx + 2), &
+                        & array(idx + 3), &
+                        & cero, &
+                        & aux_coordinates)
+                arr_coor(idx:idx+3) = aux_coordinates((/1,2,4,5/))
+                coords_cm = coords_cm + arr_coor(idx:idx+3)*self%moons(i-1)%mass
+                mass_cm = mass_cm + self%moons(i-1)%mass
+            end do
+
+            ! Particles
+            do i = self%Nmoons_active + 2, nactive
+                idx = i*4 - 1
+                call coord(mass_in, &
+                        & array(idx), &
+                        & array(idx + 1), &
+                        & cero, &
+                        & array(idx + 2), &
+                        & array(idx + 3), &
+                        & cero, &
+                        & aux_coordinates)
+                arr_coor(idx:idx+3) = aux_coordinates((/1,2,4,5/))
+            end do
+
+            ! Now we find the CM and move everything
+            coords_cm = coords_cm/mass_cm
+            do i = 1, nactive
+                idx = i*4 - 1
+                arr_coor(idx:idx+3) = arr_coor(idx:idx+3) - coords_cm
+            end do
+
+        end if
+
+        call update_system_from_array(self, time, arr_coor, error) ! THey must be barycentric here
 
     end subroutine update_system_from_elements
 
@@ -1703,7 +1866,7 @@ contains
         implicit none
         type(asteroid_st), intent(inout) :: asteroid
         type(moon_st), intent(inout) :: moon
-        integer, intent(inout), optional :: error
+        integer(kind=4), intent(inout), optional :: error
         real(wp) :: m_cm, rv_cm(4)
         real(wp) :: new_ang_mom_rot
         real(wp) :: aux_real24(2, 4)
@@ -1743,7 +1906,7 @@ contains
         implicit none
         type(system_st), intent(inout) :: self
         integer(kind=4), intent(in) :: i
-        integer, intent(inout), optional :: error
+        integer(kind=4), intent(inout), optional :: error
         real(wp) :: aux_real, ang_mom
 
         ! Perform the merge
@@ -1753,13 +1916,13 @@ contains
         self%moons(i)%merged_to = 0 ! Merged to asteroid
 
         ! Deactivate the moon
-        call deactivate_moon_i(self, i, error)
+        call deactivate_moon_i(self, i, .False., error)  ! Possible reordering done outside
 
         ! Check CM
         call check_coordinates(self, error)
 
         ! Check ANGULAR MOMENTUM
-        call calculate_energy_and_ang_mom(self, aux_real, ang_mom)
+        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_real)
         aux_real = max(sqepsilon, abs(ang_mom))
         if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
             write (*, *) "WARNING: Total angular momentum relative error:", abs(ang_mom - self%ang_mom)/aux_real
@@ -1776,13 +1939,15 @@ contains
         implicit none
         type(system_st), intent(inout) :: self
         integer(kind=4), intent(in) :: i
-        integer, intent(inout), optional :: error
+        integer(kind=4), intent(inout), optional :: error
+        logical :: keep_order
 
         ! Add the flag
         self%moons(i)%merged_to = -2 ! Ejected
 
         ! Deactivate the moon
-        call deactivate_moon_i(self, i, error)
+        keep_order = self%reference_frame .eq. 1 ! Only if Jacobi
+        call deactivate_moon_i(self, i, keep_order, error)
 
         ! Update almost all
         call recalculate_all(self)
@@ -1843,7 +2008,7 @@ contains
         type(system_st), intent(inout) :: self
         integer(kind=4), intent(in) :: i, j
         integer(kind=4), intent(out) :: outcome
-        integer, intent(inout), optional :: error
+        integer(kind=4), intent(inout), optional :: error
         real(wp) :: m_cm, rv_cm(4)
         real(wp) :: L_rot, L_orb
         real(wp) :: aux_real, ang_mom, aux_real24(2, 4)
@@ -1970,7 +2135,7 @@ contains
             self%moons(j)%merged_to = self%moons(i)%id  ! Merged j into i
 
             ! Deactivate the moon
-            call deactivate_moon_i(self, j, error)
+            call deactivate_moon_i(self, j, .False., error)  ! Possible reordering done below
 
             ! Update COORDINATES and derivates
             call shift_single_moon(self%moons(i), rv_cm)
@@ -2052,7 +2217,7 @@ contains
         call check_coordinates(self, error)
 
         ! Check ANGULAR MOMENTUM
-        call calculate_energy_and_ang_mom(self, aux_real, ang_mom)
+        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_real)
         aux_real = max(sqepsilon, abs(ang_mom))
         if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
             write (*, *) "WARNING: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real
@@ -2078,11 +2243,12 @@ contains
         real(wp) :: boul_rad, moon_rad
         real(wp) :: dr_vec(2), dr
         real(wp) :: xy_rotated(2), dx, dy  ! For ellipsoid
-        logical :: again, do_write
+        logical :: again, do_write, was_any_moon_something
 
         ! Init
         do_write = present(unit_file) .and. unit_file > 0   !!! -std=f08
-
+        
+        was_any_moon_something = .False.
         again = .True.
         do while (again)
 
@@ -2106,6 +2272,7 @@ contains
                             end if
                         end if
                         again = .True.
+                        was_any_moon_something = .True.
                         exit inner_loop
                     end if
                 end do inner_loop
@@ -2125,6 +2292,7 @@ contains
                         if (dr .le. boul_rad + self%moons(i)%radius) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
+                            was_any_moon_something = .True.
                         end if
                     end do
                 else  ! Ellipsoid
@@ -2136,6 +2304,7 @@ contains
                          & + (dy/self%asteroid%primary%semi_axis(2))**2) < uno) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
+                            was_any_moon_something = .True.
                         end if
                     end do
                 end if
@@ -2163,6 +2332,7 @@ contains
                     if (dr .le. r_min + self%moons(i)%radius) then
                         if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                         call merge_moon_i_into_ast(self, i)
+                        was_any_moon_something = .True.
                     end if
                 end do
 
@@ -2254,6 +2424,9 @@ contains
             end do
 
         end if
+
+        ! Reorder if needed
+        if ((self%reference_frame .eq. 1 ) .and. was_any_moon_something) call sort_moons(self%moons)
     end subroutine resolve_collisions
 
     !  -------------------------   IO    ----------------------------------
@@ -2888,10 +3061,10 @@ contains
         type(system_st), intent(in) :: actual
         integer(kind=4), intent(in), optional :: unit_file
         integer(kind=4) :: my_file = 6  ! StdOut
-        real(wp) :: mass, COM(4), energy, ang_mom
+        real(wp) :: mass, COM(4), energy, ang_mom, inertia
 
         call get_cm(actual, mass, COM)
-        call calculate_energy_and_ang_mom(actual, energy, ang_mom)
+        call calculate_energy_ang_mom_inertia(actual, energy, ang_mom, inertia)
         if (present(unit_file)) my_file = unit_file
 
         write (my_file, r13) actual%time/unit_time, &  ! time

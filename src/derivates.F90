@@ -3,7 +3,7 @@ module derivates
     use constants, only: wp, G, cero, uno, uno2, uno3, dos, tini
     use auxiliary, only: cross2D_z, rotate2D
     use parameters, only: sim, &
-                          & system, &  ! asteroid inertia
+                          & asteroid_data, &  !! |axis_a, axis_b, inertia|
                           & boulders_coords, boulders_data, & !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
                           & m_arr, R_arr, &
                           & hard_exit
@@ -149,8 +149,8 @@ contains
 
                 ! Anti-rotate target to check if inside
                 xy_rotated = rotate2D(dr_vec, -theta)
-                if (((xy_rotated(1) + R_arr(j))/system%asteroid%primary%semi_axis(1))**2 &
-                & + ((xy_rotated(2) + R_arr(j))/system%asteroid%primary%semi_axis(2))**2 < uno) then
+                if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
+                & + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
                     hard_exit = .True.
                 end if
 
@@ -266,8 +266,8 @@ contains
 
                 ! Anti-rotate target to check if inside
                 xy_rotated = rotate2D(dr_vec, -theta)
-                if ((xy_rotated(1)/system%asteroid%primary%semi_axis(1))**2 &
-                & + (xy_rotated(2)/system%asteroid%primary%semi_axis(2))**2 < uno) then
+                if ((xy_rotated(1)/asteroid_data(1))**2 &
+                & + (xy_rotated(2)/asteroid_data(2))**2 < uno) then
                     hard_exit = .True.
                 end if
 
@@ -399,7 +399,6 @@ contains
                 ! Torque to Asteroid
                 torque = torque - cross2D_z(boulders_coords(0, 1:2) - coords_A(1:2), &
                                             & acc_grav_m*m_arr(j)*boulders_data(0, 1))  !! r x F
-
             end do
 
             !! Particles (massless)
@@ -493,7 +492,7 @@ contains
         end if
 
         !! Update Omega with Torque
-        der(2) = der(2) + torque/system%asteroid%inertia
+        der(2) = der(2) + torque/asteroid_data(3) ! Torque/Inertia
 
         ! Second, Moons to particles
         do i = 2, last_moon
