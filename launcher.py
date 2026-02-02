@@ -670,7 +670,7 @@ if __name__ == "__main__":
     if summaryfile:
         try:
             tmp_args = args.replace(" --noscreen", "")
-            tmp_args = args + " --version"
+            tmp_args = tmp_args + " --version"
             with open(summaryfile, "w") as f:
                 p = subprocess.run(
                     [f"./{program} {tmp_args} --onlyprint"],
