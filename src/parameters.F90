@@ -1036,10 +1036,10 @@ contains
                 case ("output elements")
                     if (auxch1 == "a") then
                         params%reference_frame = 2
-                    else if (auxch1 == "j") then
-                        params%reference_frame = 1
-                    else
+                    else if (auxch1 == "b") then
                         params%reference_frame = 0
+                    else
+                        params%reference_frame = 1
                     end if
                 case ("create map file")
                     if ((to_lower(trim(value_str)) == "n") .or. &
