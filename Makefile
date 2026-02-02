@@ -12,11 +12,12 @@ EXE_FILE  = ASTROBOULD
 # Compiler selection
 
 # Defaults
-FC    = gfortran
-INTEL ?= 0
-AMD   ?= 0
-OPT   ?= 2   # default optimization level if not specified
-PREC  ?= 8  # default precision if not provided
+FC           = gfortran
+INTEL        ?= 0
+AMD          ?= 0
+OPT          ?= 2  # default optimization level if not specified
+PREC         ?= 8  # default precision if not provided
+REQUIRE_DEPS ?= 1
 
 # Intel compiler
 ifeq ($(INTEL),1)
@@ -26,6 +27,23 @@ endif
 # AMD compiler (AOCC Flang)
 ifeq ($(AMD),1)
   FC = flang
+endif
+
+
+#--------------------------------------------------------------------------
+# Git version information (uses CPP)
+
+GIT_DESCRIBE := $(shell git describe --dirty --always --tags 2>/dev/null)
+GIT_HASH     := $(shell git rev-parse --short HEAD 2>/dev/null)
+GIT_DATE     := $(shell git log -1 --format=%cd --date=short 2>/dev/null)
+GIT_BRANCH   := $(shell git branch --show-current 2>/dev/null)
+
+# Fallbacks for non-git builds
+ifeq ($(strip $(GIT_DESCRIBE)),)
+  GIT_DESCRIBE := unknown
+endif
+ifeq ($(strip $(GIT_DATE)),)
+  GIT_DATE := unknown
 endif
 
 
@@ -93,17 +111,46 @@ endif
 # Add module directory
 FFLAGS += -I$(OBJ_DIR)
 
+# Combine Flags
 LDFLAGS = $(MYCFLAGS) $(MYFFLAGS)
 
 
 #--------------------------------------------------------------------------
+# CPP configurations
+
+ifdef DEBUG
+  FFLAGS += -DDEBUG
+endif
+
+#------------------------------
 # Precision selection
 # Default = double precision (real64)
 #  PREC=4  -> real32
 #  PREC=8  -> real64
 #  PREC=16 -> real128
 # Force preprocessing for all compilers (needed for -DWP=...)
-FFLAGS += -DWP=$(PREC) -cpp
+FFLAGS += -DWP=$(PREC)
+
+#------------------------------
+# Git configuration
+FFLAGS += -DPACKAGE_NAME=\"$(EXE_FILE)\"
+
+# Just if git exits
+ifneq ($(strip $(GIT_DESCRIBE)),unknown)
+  FFLAGS += -DPACKAGE_VERSION=\"$(GIT_DESCRIBE)\"
+  FFLAGS += -DPACKAGE_BRANCH=\"$(GIT_BRANCH)\"
+  FFLAGS += -DPACKAGE_DATE=\"$(GIT_DATE)\"
+# Extra flag if Debugging
+  ifdef DEBUG
+    FFLAGS += -DPACKAGE_HASH=\"$(GIT_HASH)\"
+  endif
+endif
+
+
+#------------------------------
+# ADD CPP
+FFLAGS += -cpp
+#------------------------------
 
 
 #--------------------------------------------------------------------------
@@ -123,7 +170,7 @@ MODULES       = $(filter-out main.mod,$(notdir $(OBJECTS:.o=.mod))) \
 #--------------------------------------------------------------------------
 # Rules
 
-all: $(OBJ_DIR) main $(DEP_FILE)
+all: check_deps $(OBJ_DIR) main $(DEP_FILE)
 
 debug:
 	$(MAKE) DEBUG=1
@@ -159,6 +206,15 @@ main: $(OBJECTS)
 	@echo "Compilation successful!"
 	@if [ -n "$(PARALLEL)" ]; then echo " (Using OpenMP)"; fi
 
+check_deps:
+ifeq ($(REQUIRE_DEPS),1)
+	@if [ ! -f $(DEP_FILE) ]; then \
+	  echo "Error: dependency file '$(DEP_FILE)' not found."; \
+	  echo "Run 'make deps' first."; \
+	  exit 1; \
+	fi
+endif
+
 deps:
 	@echo "Creating dependencies file: $(DEP_FILE)"
 	@if ! command -v fortdepend >/dev/null 2>&1; then \
@@ -191,9 +247,12 @@ clean:
 	@[ -d $(OBJ_DIR) ] && rmdir --ignore-fail-on-non-empty $(OBJ_DIR) || true
 	@[ -d $(MOD_DIR) ] && rmdir --ignore-fail-on-non-empty $(MOD_DIR) || true
 
-ifeq ($(filter-out main all debug parallel debug_parallel,$(MAKECMDGOALS)),)
--include $(DEP_FILE)
+ifneq ($(MAKECMDGOALS),deps)
+  ifneq ($(MAKECMDGOALS),install)
+    -include $(DEP_FILE)
+  endif
 endif
 
-.PHONY: clean all deps install parallel debug debug_parallel
+
+.PHONY: clean all deps install parallel debug debug_parallel check_deps
 .DEFAULT_GOAL := all

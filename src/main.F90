@@ -1,4 +1,5 @@
 program main
+    use version_info
     use parameters
     use integrators
     use celestial, only: get_Period, coord2geom
@@ -26,6 +27,9 @@ program main
     integer(kind=4) :: new_Nactive = 0  ! When escapes/collisions occur
     integer(kind=4) :: unit_file = -1  ! Where to write escapes/collisions
 
+    ! Set program name
+    call get_command_argument(0, PROGRAM_NAME)
+
     use_configfile = .True. ! Manual override if needed
     if (use_configfile) call read_config_file(input, "config.ini", configfile_exists) ! Leemos archivo de configuración
 
@@ -33,7 +37,7 @@ program main
     !!!!!!!!!! Edit from here to change configuration without configfile !!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    if (.not. use_configfile) then ! Usaremos parámetros por defecto
+    if ((.not. use_configfile) .or. (.not. configfile_exists)) then ! Usaremos parámetros por defecto
 
         ! Just print? (True) Or integrate? (False)
         input%only_print = .False.
@@ -66,37 +70,37 @@ program main
             call allocate_params_asteroid(input%Nboulders)!! Alocatamos (No tocar)
 
             boulders_in(1, 1) = 1.e-1_wp   ! Cociente de masas entre boulder 1 y primary
-            boulders_in(1, 2) = cero    ! Ángulo de fase del boulder 1 [deg]
+            boulders_in(1, 2) = cero       ! Ángulo de fase del boulder 1 [deg]
             boulders_in(1, 3) = 2.5e0_wp   ! Radio del boulder 1 [km]
 
         end if
 
         !! Moons
-        input%Nmoons = 0 ! Número de boulders
+        input%Nmoons = 0 ! Número de lunas
 
         if (input%Nmoons > 0) then  ! Specify moons properties
             call allocate_params_moons(input%Nmoons)!! Alocatamos (No tocar)
 
             moons_in(1, 1) = 1.e-6_wp   ! Cociente de masas entre luna 1 y asteroide
-            moons_in(1, 2) = cero    ! Semieje [km]
-            moons_in(1, 3) = cero    ! Eccentricidad
-            moons_in(1, 4) = cero    ! M [deg]
-            moons_in(1, 5) = cero    ! w [deg]
+            moons_in(1, 2) = cero       ! Semieje [km]
+            moons_in(1, 3) = cero       ! Eccentricidad
+            moons_in(1, 4) = cero       ! M [deg]
+            moons_in(1, 5) = cero       ! w [deg]
             moons_in(1, 6) = 11.1e0_wp  ! MMR
-            moons_in(1, 7) = cero    ! radius [km]
+            moons_in(1, 7) = cero       ! radius [km]
 
         end if
 
         !! Particles
-        input%Nparticles = 0 ! Número de boulders
+        input%Nparticles = 0 ! Número de partículas
 
         if (input%Nparticles > 0) then ! Specify particles properties
             call allocate_params_particles(input%Nparticles)!! Alocatamos (No tocar)
 
-            particles_in(1, 1) = cero   ! Semieje [km]
-            particles_in(1, 2) = cero   ! Eccentricidad
-            particles_in(1, 3) = cero   ! M [deg]
-            particles_in(1, 4) = cero   ! w [deg]
+            particles_in(1, 1) = cero      ! Semieje [km]
+            particles_in(1, 2) = cero      ! Eccentricidad
+            particles_in(1, 3) = cero      ! M [deg]
+            particles_in(1, 4) = cero      ! w [deg]
             particles_in(1, 5) = 8.1e0_wp  ! MMR
 
         end if
@@ -104,12 +108,12 @@ program main
         ! Interactions
 
         !! Collision y escapes
-        input%min_distance = -1.5e0_wp    ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
-        input%max_distance = -1.e2_wp     ! Max distance before escape [km] ! -x => R0 * x
+        input%min_distance = -1.5e0_wp  ! Min distance before impact [km] ! 0 => R0 + max(Rboul)
+        input%max_distance = -1.e2_wp   ! Max distance before escape [km] ! -x => R0 * x
 
         !! Merges
         input%use_merge_part_mass = .True. ! Merge particles into asteroid
-        input%use_merge_massive = .True. ! Merge massive bodies
+        input%use_merge_massive = .True.   ! Merge massive bodies
 
         !!! Collisions factors
         input%eta_col = uno  ! 0: Elastic, 1: Plastic
@@ -133,9 +137,9 @@ program main
 
         !! Stokes
         input%use_stokes = .False.
-        input%stokes_a_damping_time = infinito                           ! [day]
+        input%stokes_a_damping_time = infinito                            ! [day]
         input%stokes_e_damping_time = input%stokes_a_damping_time/1.e2_wp ! [day]
-        input%stokes_active_time = cero                                  ! [day] Tiempo que actúa stokes
+        input%stokes_active_time = cero                                   ! [day] Tiempo que actúa stokes
 
         !! Naive-Stokes (drag)
         input%use_drag = .False.
@@ -152,20 +156,21 @@ program main
         ! Simulation parameters
 
         !! Integrator
-        input%integrator_ID = 0        ! Integrator to use. (0 = BS; see src/integrators/README.md)
+        input%integrator_ID = 0    ! Integrator to use. (0 = BS; see src/integrators/README.md)
 
         !! Times
-        input%final_time = 2.e3_wp        ! Final time [day]
-        input%case_output_type = 0     ! 0: Linear ; 1: Logarithmic ; 2: Combination
-        input%output_timestep = cero   ! Output timestep [day] (used if case_output_type != 1)
-        input%output_number = 100      ! Number of outputs (if output_timestep = 0)
-        input%extra_checkpoints = 2000 ! Number of extra checkpoints for chaos calculations
+        input%final_time = 2.e3_wp        ! Final time [day] ! -tf => Period * t
+        input%negative_time_selector = 0  ! -1 => min Per, 0=> central body Per, 1 => max Per
+        input%case_output_type = 0        ! 0: Linear ; 1: Logarithmic ; 2: Combination
+        input%output_timestep = cero      ! Output timestep [day] (used if case_output_type != 1)
+        input%output_number = 100         ! Number of outputs (if output_timestep = 0)
+        input%extra_checkpoints = 2000    ! Number of extra checkpoints for chaos calculations
 
         !! Error and Tiemstepping
-        input%use_adaptive = .True.    ! Whether to use an adaptive timestepping method
+        input%use_adaptive = .True.       ! Whether to use an adaptive timestepping method
         input%dt_min = -1.e-2_wp          ! Minimum dt to use. (if negative, |dt| * min_period)
         input%learning_rate = 0.85e0_wp   ! [For adaptive step integrators] Learning rate
-        input%error_digits = 12        ! [For adaptive step integrators] Digits for relative error
+        input%error_digits = 12           ! [For adaptive step integrators] Digits for relative error
 
         ! Map
         input%use_potential_map = .False.
@@ -228,33 +233,29 @@ program main
 
     ! Message
     if ((arguments_number .le. 1) .and. (use_configfile .and. (.not. configfile_exists))) then  ! Global variable
-        print *, "WARNING: No command line arguments."
+        print *, "WARNING: No command line arguments, and configuration file not found/used."
         print *, "¿Do you want to run with in-code set parameters? [y/N]"
         read (*, *) aux_character20
         aux_character20 = adjustl(aux_character20)
         aux_character1 = aux_character20(1:1)
         if (index("YySs", aux_character1) == 0) then
-            write (*, *) "Exiting."
+            print *, "Exiting."
             stop 1
-        else if (sim%use_screen) then
-            write (*, *) "Resuming..."
-            write (*, *) ACHAR(5)
+        else
+            print *, ACHAR(5)
         end if
     end if
 
+    
     ! Init derived parameters
     sim%input_params_st = input ! Create sim with input parameters
     call set_derived_parameters(sim) ! Inicializamos parámetros derivados
-    if (sim%use_screen) unit_file = 6  ! Unit_file to std out (for collisions and escapes)
-
-    ! <> Check Output
-
-    ! Mensaje
-    if (sim%use_screen .and. .not. configfile_exists) then
-        write (*, *) "WARNING: Configurations file could not be read: config.ini"
-        write (*, *) "         Using in-code parameters."
+    if (sim%use_screen) then
+        unit_file = 6  ! Unit_file to std out (for collisions and escapes)
+        if (sim%use_version) call print_version(unit_file, PROGRAM_NAME)
     end if
 
+    ! <> Check Output
     if (.not. any((/sim%use_datascreen, sim%use_datafile, sim%use_chaosfile, sim%use_geometricfile, &
                   & sim%use_potential_map, sim%use_multiple_outputs/))) then ! No tiene sentido hacer nada
         if (.not. sim%use_screen) then
@@ -374,7 +375,7 @@ program main
     !! Check
     if (sim%Ntotal - 1 == 0) then ! No Hay partículas para integrar?
         if (.not. (sim%use_potential_map .or. sim%only_print)) then
-            write (*, *) ACHAR(10)
+            write (*, *) ACHAR(5)
             write (*, *) "EXITING: No moons/particles to integrate."
             stop 1
         else if (sim%use_potential_map .and. .not. sim%only_print) then

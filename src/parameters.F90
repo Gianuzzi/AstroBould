@@ -11,6 +11,7 @@ module parameters
     implicit none
 
     !! ----  <<<<<    GLOBAL     >>>>>   -----
+    character(len=150) :: PROGRAM_NAME = "UNKNOWN"
     integer(kind=4) :: simulation_number = 1
     logical :: keep_integrating = .False.
     !! I/O
@@ -122,6 +123,7 @@ module parameters
         logical :: use_tomfile = .False.
         character(30) :: tomfile = ""
         ! Output -
+        logical :: use_version = .False.
         logical :: use_screen = .False.
         logical :: use_datafile = .False.
         character(30) :: datafile = ""
@@ -556,6 +558,8 @@ contains
                 case ("--noparallel")
                     params%use_parallel = .False.
                     params%requested_threads = 1
+                case ("--version")
+                    params%use_version = .True.
                 case ("--help")
                     call get_command_argument(0, aux_character30)
                     write (*, *) "Uso: "//trim(aux_character30)//" <ea> <ee> <eM> <ew> <eR> [args]"

@@ -6,7 +6,7 @@
 
 The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
 
-If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [36 and 198](./src/main.F90#L36#198).
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [41 and 207](./src/main.F90#L41#207).
 
 ---
 
@@ -103,6 +103,7 @@ $ ./ASTROBOULD --help
     -parallel     : Cantida de thread a utilizar en paralelo [int]
     --parallel    : Paralelizar usando todos los threads disponibles
     --noparallel  : No usar paralelización para lunas/partículas
+    --version     : Imprimir versión del código al iniciar la ejecución.
     --help        : Mostrar esta ayuda
 
 ``` 
