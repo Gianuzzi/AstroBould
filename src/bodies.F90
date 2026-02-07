@@ -81,6 +81,8 @@ module bodies
         real(wp) :: chaos_e(2) = (/infinito, cero/) ! (e_min, e_max)
         real(wp) :: chaos_a_geom(2) = (/infinito, cero/) ! (a_geom_min, a_geom_max)
         real(wp) :: chaos_e_geom(2) = (/infinito, cero/) ! (e_geom_min, e_geom_max)
+        real(wp) :: lyapunov = cero ! lyapunov value
+        real(wp) :: megno = cero ! megno value
         real(wp) :: tmax = cero ! max time integrated
         integer(kind=4) :: merged_to = -1  ! IDX of body it was merged to
     end type particle_st
@@ -95,6 +97,20 @@ module bodies
         real(wp) :: e_kin = cero ! Kinetic energy [dynamic]
         real(wp) :: e_rot = cero ! Rotational energy [dynamic] (Just for conservation)
     end type moon_st
+
+    type :: shadow_body_st
+        integer(kind=4) :: real_id = -1  ! Real body Identifier
+        real(wp), dimension(4) :: coordinates = cero  ! x, y vx, vy
+        real(wp) :: accumulated = cero
+        real(wp) :: megno = cero
+    end type shadow_body_st
+
+    type :: MEGNO_st
+        logical :: active = .False.
+        real(wp) :: value = cero
+        real(wp) :: epsilon = cero
+        type(shadow_body_st), allocatable :: shadows(:)
+    end type MEGNO_st
 
     ! This struct will store the CM (system) properties and objects
     type :: system_st
@@ -112,6 +128,7 @@ module bodies
         integer(kind=4) :: Nparticles = 0
         integer(kind=4) :: Nparticles_active = 0
         type(particle_st), allocatable :: particles(:)
+        type(MEGNO_st) :: megno
         integer(kind=4) :: reference_frame = 0  ! Just to have an idea. 0:B, 1:J, 2:A
     end type system_st
 
@@ -851,7 +868,7 @@ contains
         Nactive = 1 + self%Nmoons_active + self%Nparticles_active  ! Includes asteroid
     end subroutine get_Nactive
 
-    ! Get amount of active bodies, including asteroid
+    ! Get amount values in array to generate, including asteroid
     pure subroutine get_nvalues(self, nvalues)
         implicit none
         type(system_st), intent(in) :: self
@@ -1168,7 +1185,37 @@ contains
 
     end subroutine set_system_extra
 
-    !  ----------------------   OBJECT SWAP  ------------------------------
+    ! ---------------------------   ADD MEGNO    ---------------------------
+
+    subroutine init_megno(self, eps)
+        implicit none
+        type(system_st), intent(inout) :: self
+        real(wp), intent(in) :: eps
+        integer(kind=4) :: i, Nbodies
+        
+        call get_Nactive(self, Nbodies)
+
+        if (Nbodies > 1) then
+            allocate(self%megno%shadows(Nbodies-1))
+            do i = 1, self%Nmoons
+                self%megno%shadows(i)%real_id = self%moons(i)%id
+                self%megno%shadows(i)%coordinates = self%moons(i)%coordinates
+                self%megno%shadows(i)%coordinates(1) = self%megno%shadows(i)%coordinates(1) + eps
+            end do
+            do i = self%Nmoons + 1, Nbodies - 1
+                self%megno%shadows(i)%real_id = self%particles(i)%id
+                self%megno%shadows(i)%coordinates = self%particles(i)%coordinates
+                self%megno%shadows(i)%coordinates(1) = self%megno%shadows(i)%coordinates(1) + eps
+            end do
+            self%megno%active = .True.
+            self%megno%epsilon = eps
+        else
+            self%megno%active = .False.
+        end if
+        
+    end subroutine init_megno
+
+    !  ------------------------   OBJECT SWAP  -----------------------------
 
     ! Swap between two moons, using the positional index
     subroutine swap_moons(self, i, j)
@@ -1353,14 +1400,73 @@ contains
 
     !  -------------------   UPDATE / GENERATION  -------------------------
 
-    ! Update bodies chaos at system
-    pure subroutine update_chaos(self, reference_frame)
+    pure subroutine update_megno(self, dt, time)
         implicit none
         type(system_st), intent(inout) :: self
+        real(wp), intent(in) :: dt, time
+        real(wp), dimension(4) :: d4 
+        real(wp) :: delta, scale, lyap, megno, accumulated
+        integer(kind=4) :: i, id_real
+
+        ! Check if something to do
+        if (.not. self%megno%active) return
+
+        ! If megno active, the shadow order is kept
+        ! call get_Nactive(self, Nactive)
+        
+        ! do i = 1, self%Nmoons_active
+        !     id_real = self%moons(i)%id
+        !     d4 = self%shadows(id_real)%coordinates - self%moons(i)%coordinates
+        !     delta = sqrt(d4(1)*d4(1) + d4(2)*d4(2) + d4(3)*d4(3) + d4(4)*d4(4))
+        ! end do
+
+        do i = 1, self%Nparticles_active
+
+            ! Get id
+            id_real = self%particles(i)%id
+
+            ! Phase-space difference (4D)
+            d4 = self%megno%shadows(id_real)%coordinates - self%particles(i)%coordinates
+            delta = max(sqrt(d4(1)*d4(1) + d4(2)*d4(2) + d4(3)*d4(3) + d4(4)*d4(4)), tini)
+            
+            ! Local Lyapunov
+            lyap = log(delta / self%megno%epsilon) / dt
+
+            self%particles(i)%lyapunov = lyap  ! In particle
+
+            ! Update MEGNO
+            megno = self%megno%shadows(id_real)%megno + dos * lyap * dt
+
+            self%megno%shadows(id_real)%megno = megno
+
+            ! Update accumulated
+            accumulated = self%megno%shadows(id_real)%accumulated + megno * dt
+
+            self%megno%shadows(id_real)%accumulated = accumulated
+
+            ! Renormalize
+            scale = self%megno%epsilon / delta
+
+            self%megno%shadows(id_real)%coordinates = self%particles(i)%coordinates + scale * d4
+
+            ! Update mean megno
+            self%particles(i)%megno = accumulated / time  ! In particle
+
+        end do
+    
+        
+    end subroutine update_megno
+
+    ! Update bodies chaos at system
+    pure subroutine update_chaos(self, dt, time, reference_frame)
+        implicit none
+        type(system_st), intent(inout) :: self
+        real(wp), intent(in) :: dt, time
         integer(kind=4), intent(in) :: reference_frame
         real(wp) :: aux_real2(2)
         integer(kind=4) :: i
 
+        if (dt > cero) call update_megno(self, dt, time)
         call update_elements(self, reference_frame)
 
         ! Asteroid
@@ -1486,6 +1592,19 @@ contains
         self%ang_mom = ang_mom  !Set ANG_MOM
         self%energy = energy  !Set ENERGY
         self%inertia = inertia !Set INERTIA
+
+        ! If MEGNO present, we have to add the extra bodies
+        if (self%megno%active) then
+            do i = 1, self%Nmoons_active
+                self%megno%shadows(self%moons(i)%id)%coordinates = array(idx:idx + 3)
+                idx = idx + 4
+            end do
+            do i = 1, self%Nparticles_active
+                self%megno%shadows(self%particles(i)%id)%coordinates = array(idx:idx + 3)
+                idx = idx + 4
+            end do
+        end if
+
     end subroutine update_system_from_array
 
     ! Create mass and coordinates. STARTS FROM 1
@@ -1520,6 +1639,19 @@ contains
             array(idx:idx + 3) = self%particles(i)%coordinates
             idx = idx + 4
         end do
+
+        ! If MEGNO present, we have to add the extra bodies
+        if (self%megno%active) then
+            do i = 1, self%Nmoons_active
+                array(idx:idx + 3) = self%megno%shadows(self%moons(i)%id)%coordinates
+                idx = idx + 4
+            end do
+            do i = 1, self%Nparticles_active
+                array(idx:idx + 3) = self%megno%shadows(self%particles(i)%id)%coordinates
+                idx = idx + 4
+            end do
+        end if
+
     end subroutine generate_arrays
 
     ! Update system state. ! Assumes theta, omega, a, e, M, w,...

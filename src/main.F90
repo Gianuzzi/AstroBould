@@ -19,7 +19,6 @@ program main
     character(20) :: aux_character20
     logical :: aux_logical
     real(wp) :: aux_real
-    real(wp), dimension(4) :: aux_real4
     real(wp), dimension(:), allocatable :: aux_1D
     real(wp), dimension(:, :), allocatable :: aux_2D  ! To read files
 
@@ -1356,7 +1355,7 @@ program main
     end if
 
     ! Update Chaos (triggers update elements)
-    call update_chaos(system, sim%reference_frame)
+    call update_chaos(system, cero, time, sim%reference_frame)
 
     ! Update geometric chaos (and elements) if needed
     if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1474,7 +1473,7 @@ program main
             end if
 
             ! Update Chaos (triggers update elements)
-            call update_chaos(system, sim%reference_frame)
+            call update_chaos(system, timestep, time, sim%reference_frame)
 
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1569,7 +1568,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%reference_frame)
+                call update_chaos(system, timestep, time, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1645,7 +1644,7 @@ program main
                                             & elem_filtered, &
                                             & sim%reference_frame)
             ! Update Chaos (triggers update elements)
-            call update_chaos(system_filtered, sim%reference_frame)
+            call update_chaos(system_filtered, -uno, aux_real, sim%reference_frame)
             ! Filtered output
             call generate_output(system_filtered, .True.)
 
@@ -1716,7 +1715,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%reference_frame)
+                call update_chaos(system, timestep, time, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1849,7 +1848,7 @@ program main
                     end if
 
                     ! Update Chaos (triggers update elements)
-                    call update_chaos(system, sim%reference_frame)
+                    call update_chaos(system, timestep, time, sim%reference_frame)
 
                     ! Update geometric Chaos (triggers update geometric elements)
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1930,7 +1929,7 @@ program main
                     end if
 
                     ! Update Chaos (triggers update elements)
-                    call update_chaos(system, sim%reference_frame)
+                    call update_chaos(system, timestep, time, sim%reference_frame)
 
                     ! Update geometric Chaos (triggers update geometric elements)
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2036,7 +2035,7 @@ program main
                                         & elem_filtered, &
                                         & sim%reference_frame)
             ! Update Chaos (triggers update elements)
-            call update_chaos(system_filtered, sim%reference_frame)
+            call update_chaos(system_filtered, -uno, aux_real, sim%reference_frame)
             ! Filtered output
             call generate_output(system_filtered, .True.)
 
@@ -2101,7 +2100,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%reference_frame)
+                call update_chaos(system, timestep, time, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2225,7 +2224,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%reference_frame)
+                call update_chaos(system, timestep, time, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2298,7 +2297,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, sim%reference_frame)
+                call update_chaos(system, timestep, time, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2399,7 +2398,7 @@ program main
             end if
 
             ! Update Chaos (triggers update elements)
-            call update_chaos(system, sim%reference_frame)
+            call update_chaos(system, timestep, time, sim%reference_frame)
 
 
             ! Update geometric Chaos (triggers update geometric elements)
