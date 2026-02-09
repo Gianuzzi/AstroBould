@@ -175,7 +175,7 @@ module parameters
         logical :: use_exp_omega_damp = .False.
         logical :: use_poly_omega_damp = .False.
         ! Megno
-        integer :: megno_particle = 1
+        integer (kind=4) :: megno_particle = 1
         real(wp) :: megno_eps = 1.e-10_wp
         !! Filter
         integer(kind=4) :: filter_size = 0
@@ -233,7 +233,7 @@ module parameters
     logical, dimension(:), allocatable :: checkpoint_is_output ! Array with whether each checkpoint is output
 
     ! ----  <<<<<    PARAMETERS ARRAYS     >>>>>   -----
-    integer, parameter :: equation_size = 4
+    integer(kind=4), parameter :: equation_size = 4
     integer(kind=4) :: y_nvalues = 0  ! Will change dynamically
     real(wp), dimension(:), allocatable :: m_arr         ! Mass array
     real(wp), dimension(:), allocatable :: R_arr         ! Radius array
@@ -1103,7 +1103,7 @@ contains
                     call allocate_params_asteroid(Nboulders)
                     params%Nboulders = Nboulders
                     ! Backspace to read again
-                    do j = aux_integer, nlines - 1  ! -1 por ser both included
+                    do j = aux_integer(kind=4), nlines - 1  ! -1 por ser both included
                         backspace (10)
                     end do
                     ! Read again and store
@@ -1140,7 +1140,7 @@ contains
                         ! Alocate
                         call allocate_params_moons(Nmoons)
                         ! Backspace to read again
-                        do j = aux_integer, nlines - 1  ! -1 por ser both included
+                        do j = aux_integer(kind=4), nlines - 1  ! -1 por ser both included
                             backspace (10)
                         end do
                         ! Read again and store
@@ -1184,7 +1184,7 @@ contains
                         ! Alocate
                         call allocate_params_particles(Nparticles)
                         ! Backspace to read again
-                        do j = aux_integer, nlines - 1  ! -1 por ser both included
+                        do j = aux_integer(kind=4), nlines - 1  ! -1 por ser both included
                             backspace (10)
                         end do
                         ! Read again and store

@@ -868,13 +868,23 @@ contains
         Nactive = 1 + self%Nmoons_active + self%Nparticles_active  ! Includes asteroid
     end subroutine get_Nactive
 
-    ! Get amount values in array to generate, including asteroid
-    pure subroutine get_nvalues(self, nvalues)
+    ! Get amount values in array to generate (includes possible megno)
+    pure function get_y_nvalues(self, new_Nactive) result(y_nvalues)
         implicit none
         type(system_st), intent(in) :: self
-        integer(kind=4), intent(inout) :: nvalues
-        nvalues = 2 + 4*(1 + self%Nmoons_active + self%Nparticles_active)
-    end subroutine get_nvalues
+        integer(kind=4), intent(in), optional :: new_Nactive
+        integer(kind=4) :: y_nvalues
+        integer(kind=4) :: Nactive
+
+        if (present(new_Nactive)) then
+            Nactive = new_Nactive
+        else
+            call get_Nactive(self, Nactive)
+        end if
+
+        y_nvalues = 2 + 4*Nactive
+        if (self%megno%active) y_nvalues = y_nvalues + 4*(Nactive-1)
+    end function get_y_nvalues
 
     ! Get moon by ID
     pure subroutine get_moon_by_ID(self, id, moon)
@@ -1196,8 +1206,8 @@ contains
         call get_Nactive(self, Nbodies)
 
         if (Nbodies > 1) then
-            allocate(self%megno%shadows(Nbodies-1))
-            do i = 1, self%Nmoons
+            allocate(self%megno%shadows(Nbodies))
+            do i = 2, self%Nmoons + 1
                 self%megno%shadows(i)%real_id = self%moons(i)%id
                 self%megno%shadows(i)%coordinates = self%moons(i)%coordinates
                 self%megno%shadows(i)%coordinates(1) = self%megno%shadows(i)%coordinates(1) + eps

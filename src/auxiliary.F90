@@ -13,7 +13,7 @@ contains
         implicit none
         character(len=*), intent(in) :: strIn
         character(len=len(strIn)) :: strOut
-        integer :: i, j
+        integer (kind=4) :: i, j
 
         do i = 1, len(strIn)
             j = iachar(strIn(i:i))
@@ -30,7 +30,7 @@ contains
         implicit none
         character(len=*), intent(in) :: strIn
         character(len=len(strIn)) :: strOut
-        integer :: i, j
+        integer (kind=4) :: i, j
 
         do i = 1, len(strIn)
             j = iachar(strIn(i:i))

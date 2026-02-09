@@ -1031,13 +1031,14 @@ program main
     y_arr_new = cero
     y_der = cero
 
-    ! <<<< Amount of values of Y to use >>>>
-    y_nvalues = get_index(sim%Nactive) + 3  ! Update nvalues to use in y
-
-
     ! <<<< Arrays to integrate >>>>
     call center_sytem(system)
     call generate_arrays(system, m_arr, R_arr, y_arr)
+    
+    
+    ! <<<< Amount of values of Y to use >>>>
+    y_nvalues = get_y_nvalues(system)  ! Get nvalues to use in y
+
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! FILTER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1350,7 +1351,7 @@ program main
     call get_Nactive(system, new_Nactive)
     if (new_Nactive < sim%Nactive) then
         call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-        y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+        y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
         call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
     end if
 
@@ -1468,7 +1469,7 @@ program main
             call get_Nactive(system, new_Nactive)
             if (new_Nactive < sim%Nactive) then
                 call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                 call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
             end if
 
@@ -1562,7 +1563,7 @@ program main
                 if (new_Nactive < sim%Nactive) then
 
                     call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                    y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                     call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
 
                 end if
@@ -1710,7 +1711,7 @@ program main
                 call get_Nactive(system, new_Nactive)
                 if (new_Nactive < sim%Nactive) then
                     call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                    y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                     call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
                 end if
 
@@ -1843,7 +1844,7 @@ program main
                     call get_Nactive(system, new_Nactive)
                     if (new_Nactive < sim%Nactive) then
                         call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                        y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                        y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                         call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
                     end if
 
@@ -1923,7 +1924,7 @@ program main
                     if (new_Nactive < sim%Nactive) then
 
                         call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                        y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                        y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                         call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
 
                     end if
@@ -2095,7 +2096,7 @@ program main
                 call get_Nactive(system, new_Nactive)
                 if (new_Nactive < sim%Nactive) then
                     call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                    y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                     call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
                 end if
 
@@ -2219,7 +2220,7 @@ program main
                 call get_Nactive(system, new_Nactive)
                 if (new_Nactive < sim%Nactive) then
                     call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                    y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                     call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
                 end if
 
@@ -2291,7 +2292,7 @@ program main
                 if (new_Nactive < sim%Nactive) then
 
                     call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                    y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                     call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
 
                 end if
@@ -2393,7 +2394,7 @@ program main
             call get_Nactive(system, new_Nactive)
             if (new_Nactive < sim%Nactive) then
                 call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                 call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
             end if
 
@@ -2430,7 +2431,7 @@ program main
                 call get_Nactive(system, new_Nactive)
                 if (new_Nactive < sim%Nactive) then
                     call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
+                    y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
                 end if
 
                 call generate_arrays(system, m_arr, R_arr, y_arr)  ! Mandatory bc of new asteroid
@@ -2706,14 +2707,14 @@ end subroutine create_map
 ! !     implicit none
 ! !     public
 
-! !     integer, parameter :: Character_Storage_Size = 8
-! !     integer, parameter :: Error_Unit = 0
-! !     integer, parameter :: File_Storage_Size = 8
-! !     integer, parameter :: Input_Unit = 5
-! !     integer, parameter :: IOSTAT_END = -1
-! !     integer, parameter :: IOSTAT_EOR = -2
-! !     integer, parameter :: Numeric_Storage_Size = 32
-! !     integer, parameter :: Output_Unit = 6
+! !     integer(kind=4), parameter :: Character_Storage_Size = 8
+! !     integer(kind=4), parameter :: Error_Unit = 0
+! !     integer(kind=4), parameter :: File_Storage_Size = 8
+! !     integer(kind=4), parameter :: Input_Unit = 5
+! !     integer(kind=4), parameter :: IOSTAT_END = -1
+! !     integer(kind=4), parameter :: IOSTAT_EOR = -2
+! !     integer(kind=4), parameter :: Numeric_Storage_Size = 32
+! !     integer(kind=4), parameter :: Output_Unit = 6
 
 ! !   end module iso_fortran_env
 

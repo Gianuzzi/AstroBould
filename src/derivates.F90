@@ -77,7 +77,7 @@ contains
 
         der = cero  ! init der at cero
 
-        last_moon = sim%Nmoon_active + 1  ! This would be the last moon (+ 1 bc asteroid is 1)
+        last_moon = 1 + sim%Nmoon_active  ! This would be the last moon (+ 1 bc asteroid is 1)
         N_total = last_moon + sim%Npart_active
 
         ! Calculate the angle of the asteroid
@@ -352,6 +352,243 @@ contains
             end if
 
         end do
+
+        !! SHADOWS (Megno)
+        if (sim%use_megno) then
+
+            !!! Moons (massive)
+            do j = N_total + 1, last_moon + N_total
+                jdx = get_index(j)
+                coords_M = y(jdx:jdx + 3)  ! Moon
+
+                !! ASTEROID AND MOON
+                dr_vec = coords_M(1:2) - coords_A(1:2)  ! From Asteroid to Moon
+                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                dr = sqrt(dr2)
+
+                ! Check if collision or Escape
+                if ((dr < R_arr(1) + R_arr(j)) .or. &
+                & (dr < sim%min_distance) .or. &
+                & (dr > sim%max_distance .and. sim%max_distance > cero)) then
+                    hard_exit = .True.
+                end if
+
+                if (dr < tini) cycle  ! Skip to avoid NaNs
+
+                ! Extra needed
+                Gmcomb = Gmast + (G*m_arr(j))
+                inv_dr3 = uno/(dr2*dr)
+
+                ! ---> Triaxial <---
+                if (use_ellipsoid) then
+
+                    ! Anti-rotate target to check if inside
+                    xy_rotated = rotate2D(dr_vec, -theta)
+                    if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
+                    & + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
+                        hard_exit = .True.
+                    end if
+
+                    inv_dr2 = inv_dr3*dr
+                    ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
+                    ! Q_eff = 5 Q / r⁴
+                    Q_eff = 5.e0_wp*((dr_vec(1)**2 - dr_vec(2)**2)*c2th &
+                                    & + dos*dr_vec(1)*dr_vec(2)*s2th)*inv_dr2*inv_dr2
+                    dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)  ! 2x cos(2th) + 2y sin(2th)
+                    dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)  ! - 2y cos(2th) + 2x sin(2th)
+
+                    ! a_unit_massx = G / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴))
+                    ! a_unit_massy = G / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴))
+                    acc_grav_m(1) = (G*inv_dr3)*( &
+                                    &  dr_vec(1) &
+                                    &  - K_coef*dr_vec(1)*inv_dr2 &
+                                    &  - L_coef*(dQdx*inv_dr2 - dr_vec(1)*Q_eff) &
+                                    &)
+                    acc_grav_m(2) = (G*inv_dr3)*( &
+                                    &  dr_vec(2) &
+                                    &  - K_coef*dr_vec(2)*inv_dr2 &
+                                    &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_eff) &
+                                    &)
+
+                    ! Acceleration to moon from asteroid
+                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - acc_grav_m*m_arr(1)  ! = a_unit_mass * mAsteroid
+
+                    !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
+                    ! Asteroid acceleration
+                    der(5:6) = der(5:6) + acc_grav_m*m_arr(j)  ! REACTION TO ASTEROID
+
+                    ! Torque to Asteroid
+                    theta_moon = atan2(dr_vec(2), dr_vec(1))
+                    torque = torque - dos*m_arr(j)*L_coef*inv_dr3*sin(dos*(theta_moon - theta))
+
+                ! ---> Manual J2 from asteroid CM <---
+                else if (use_manual_J2_from_cm) then
+
+                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- K) / r³
+
+                ! ---> Manual boulder_z from asteroid CM <---
+                else if (use_boulder_z) then
+
+                    aux_inv_dr3_boulder_z = uno/(dr2 + dz2_boulder_z_coef)**(1.5e0_wp)
+                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - Gboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z  !! Add - 2 G (x, y) boulder_z / r³
+
+                end if
+
+                ! ---> Drag and/or Stokes <---
+                if (use_drag_moons .or. use_stokes_moons) then
+                    inv_dr = inv_dr3*dr2
+                    dr_ver = dr_vec*inv_dr
+                    dv_vec = coords_M(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
+                    v2 = dot_product(dv_vec, dv_vec)
+
+                    ! Get energy
+                    two_ener = dos*Gmcomb*inv_dr - v2
+
+                    ! Check if unbound
+                    if (two_ener > cero) then ! Can calculate only in this case
+                        mean_movement = abs(two_ener)**(1.5e0_wp)/Gmcomb ! n
+
+                        ! ---> Drag <---
+                        if (use_drag_moons) then
+                            vel_radial = dot_product(dr_ver, dv_vec)
+                            acc_radial = -drag_coef*mean_movement*vel_radial
+
+                            ! Drag acceleration
+                            !! acc = -a_r * (x, y) / r * factor
+                            der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_radial*dr_ver*drag_f
+
+                        end if
+
+                        ! ---> Stokes <---
+                        if (use_stokes_moons) then
+                            vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+
+                            ! Stokes acceleration
+                            !! acc = -C * (v - alpha * vc) * factor
+                            der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
+
+                        end if
+
+                    end if
+
+                end if            
+
+            end do
+
+            !! Particles (massless)
+            do j = last_moon + N_total + 1, N_total + N_total
+                jdx = get_index(j)
+                coords_P = y(jdx:jdx + 3)  ! Particle
+
+                !! ASTEROID AND PARTICLE
+                dr_vec = coords_P(1:2) - coords_A(1:2)  ! From Asteroid to Particle
+                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                dr = sqrt(dr2)
+
+                ! Check if collision or Escape
+                if ((dr < sim%min_distance) .or. &
+                & (dr > sim%max_distance .and. sim%max_distance > cero)) then
+                    hard_exit = .True.
+                end if
+
+                if (dr < tini) cycle  ! Skip to avoid NaNs
+
+                ! Extra needed
+                inv_dr3 = uno/(dr2*dr)
+
+                ! ---> Triaxial <---
+                if (use_ellipsoid) then
+
+                    ! Anti-rotate target to check if inside
+                    xy_rotated = rotate2D(dr_vec, -theta)
+                    if ((xy_rotated(1)/asteroid_data(1))**2 &
+                    & + (xy_rotated(2)/asteroid_data(2))**2 < uno) then
+                        hard_exit = .True.
+                    end if
+
+                    inv_dr2 = inv_dr3*dr
+                    ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
+                    ! Q_eff = 5 Q / r⁴
+                    Q_eff = 5.e0_wp*((dr_vec(1)**2 - dr_vec(2)**2)*c2th + &
+                                    & dos*dr_vec(1)*dr_vec(2)*s2th)*inv_dr2*inv_dr2
+                    dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)  ! 2x cos(2th) + 2y sin(2th)
+                    dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)  ! - 2y cos(2th) + 2x sin(2th)
+
+                    ! a_unit_massx = G / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴))
+                    ! a_unit_massy = G / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴))
+                    acc_grav_m(1) = (G*inv_dr3)*( &
+                                    &  dr_vec(1) &
+                                    &  - K_coef*dr_vec(1)*inv_dr2 &
+                                    &  - L_coef*(dQdx*inv_dr2 - dr_vec(1)*Q_eff) &
+                                    &)
+                    acc_grav_m(2) = (G*inv_dr3)*( &
+                                    &  dr_vec(2) &
+                                    &  - K_coef*dr_vec(2)*inv_dr2 &
+                                    &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_eff) &
+                                    &)
+
+                    ! Acceleration to particle from asteroid
+                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - acc_grav_m*m_arr(1)  ! = a_unit_mass * mAsteroid            
+
+                ! ---> Manual J2 from asteroid CM <---
+                else if (use_manual_J2_from_cm) then
+
+                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- K) / r³
+
+                ! ---> Manual boulder_z from asteroid CM <---
+                else if (use_boulder_z) then
+
+                    aux_inv_dr3_boulder_z = uno/(dr2 + dz2_boulder_z_coef)**(1.5e0_wp)
+                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - Gboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z  !! Add - 2 G (x, y) boulder_z / r³
+
+                end if
+
+                ! ---> Drag and/or Stokes <---
+                if (use_drag .or. use_stokes) then
+                    inv_dr = inv_dr3*dr2
+                    dr_ver = dr_vec*inv_dr
+                    dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Particle
+                    v2 = dot_product(dv_vec, dv_vec)
+
+                    ! Get energy
+                    if (use_manual_J2_from_cm) then
+                        aux_J2K = J2K_coef/dr2  ! J2K_coef is negative
+                        two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2  ! Check if unbound
+                        mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
+                    else
+                        two_ener = dos*Gmast*inv_dr - v2  ! Check if unbound
+                        mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast ! n
+                    end if
+
+                    if (two_ener > cero) then ! Can calculate only in this case
+
+                        ! ---> Drag <---
+                        if (use_drag) then
+                            vel_radial = dot_product(dr_ver, dv_vec)
+                            acc_radial = -drag_coef*mean_movement*vel_radial
+
+                            ! Drag acceleration
+                            !! acc = -a_r * (x, y) / r * factor
+                            der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_radial*dr_ver*drag_f
+
+                        end if
+                        ! ---> Stokes <---
+                        if (use_stokes) then
+                            vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+
+                            ! Stokes acceleration
+                            !! acc = -C * (v - alpha * vc) * factor
+                            der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
+
+                        end if
+
+                    end if
+
+                end if
+
+            end do
+        
+        end if
 
         ! ---> GRAVITY (if not triaxial, only boulders) <---
 
