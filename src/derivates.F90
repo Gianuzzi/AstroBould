@@ -1,6 +1,7 @@
 !> Module with main derivate function.
 module derivates
-    use constants, only: wp, G, cero, uno, uno2, uno3, dos, tres, myepsilon, tini
+    use, intrinsic :: ieee_arithmetic
+    use constants, only: wp, G, cero, uno, uno2, uno3, dos, myepsilon, tini, megno_factor
     use auxiliary, only: cross2D_z, rotate2D
     use parameters, only: sim, &
                           & asteroid_data, &  !! |axis_a, axis_b, inertia|
@@ -45,6 +46,13 @@ contains
         idx = 4*i - 1
     end function get_index
 
+    pure function get_variational_index(i, first_particle, Ntotal) result(idx)
+        implicit none
+        integer(kind=4), intent(in) :: i, first_particle, Ntotal  ! Without asteroid
+        integer(kind=4) :: idx
+        idx = 4*(Ntotal + 1) - 1 + 7*(i - first_particle)
+    end function get_variational_index
+
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! DERIVATIVES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -60,9 +68,8 @@ contains
         real(wp) :: acc_grav_m(2), torque
         integer(kind=4) :: i, idx
         integer(kind=4) :: j, jdx
-        integer(kind=4) :: vdx
-        integer(kind=4) :: N_total, last_moon, N_particles
-        integer(kind=4) :: N_with_megno
+        integer(kind=4) :: vdx  ! For variational
+        integer(kind=4) :: N_total, N_particles, last_moon, first_particle 
         real(wp) :: c2th, s2th  ! For triaxial
         real(wp) :: Q_eff, dQdx, dQdy  ! For triaxial
         real(wp) :: inv_dr, inv_dr2, inv_dr3  ! For triaxial and extra forces
@@ -76,17 +83,15 @@ contains
         real(wp) :: mean_movement  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial(2)  ! For extra forces
         real(wp) :: damp_f, drag_f, stokes_f  ! For extra forces
+        real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
+        real(wp) :: aux_real
 
         der = cero  ! init der at cero
 
         last_moon = 1 + sim%Nmoon_active  ! This would be the last moon (+ 1 bc asteroid is 1)
+        first_particle = last_moon + 1
         N_particles = sim%Npart_active
         N_total = last_moon + N_particles
-        if (sim%use_megno) then
-            N_with_megno = N_total + N_particles
-        else
-            N_with_megno = N_total
-        end if
 
         ! Calculate the angle of the asteroid
         theta = y(1)
@@ -94,7 +99,7 @@ contains
         der(1) = omega
 
         ! Set the position derivates: dX/dt = V
-        do i = 1, N_with_megno
+        do i = 1, N_total
             idx = get_index(i)
             der(idx:idx + 1) = y(idx + 2:idx + 3)
         end do
@@ -165,8 +170,7 @@ contains
                 inv_dr2 = inv_dr3*dr
                 ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
                 ! Q_eff = 5 Q / r⁴
-                Q_eff = 5.e0_wp*((dr_vec(1)**2 - dr_vec(2)**2)*c2th &
-                                & + dos*dr_vec(1)*dr_vec(2)*s2th)*inv_dr2*inv_dr2
+                Q_eff = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th + dos*dr_vec(1)*dr_vec(2)*s2th )*inv_dr2*inv_dr2
                 dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)  ! 2x cos(2th) + 2y sin(2th)
                 dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)  ! - 2y cos(2th) + 2x sin(2th)
 
@@ -197,7 +201,7 @@ contains
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
 
-                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- K) / r³
+                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- J2K / r²) / r³
 
             ! ---> Manual boulder_z from asteroid CM <---
             else if (use_boulder_z) then
@@ -249,7 +253,7 @@ contains
         end do
 
         !! Particles (massless)
-        do j = last_moon + 1, N_total
+        do j = first_particle, N_total
             jdx = get_index(j)
             coords_P = y(jdx:jdx + 3)  ! Particle
 
@@ -282,8 +286,7 @@ contains
                 inv_dr2 = inv_dr3*dr
                 ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
                 ! Q_eff = 5 Q / r⁴
-                Q_eff = 5.e0_wp*((dr_vec(1)**2 - dr_vec(2)**2)*c2th + &
-                                & dos*dr_vec(1)*dr_vec(2)*s2th)*inv_dr2*inv_dr2
+                Q_eff = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th + dos*dr_vec(1)*dr_vec(2)*s2th )*inv_dr2*inv_dr2
                 dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)  ! 2x cos(2th) + 2y sin(2th)
                 dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)  ! - 2y cos(2th) + 2x sin(2th)
 
@@ -306,7 +309,7 @@ contains
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
 
-                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- K) / r³
+                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- J2K / r²) / r³
 
             ! ---> Manual boulder_z from asteroid CM <---
             else if (use_boulder_z) then
@@ -392,7 +395,7 @@ contains
 
                 ! Moon acceleration per unit mass (WITHOUT MASSES)
                 if (use_manual_J2_from_primary) then  ! Possible extra J2
-                    acc_grav_m = -G*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  !! G (x, y) (1 - K) / r³
+                    acc_grav_m = -G*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  !! G (x, y) (1 - K / r²) / r³
                 else
                     acc_grav_m = -G*dr_vec/(dr2*dr)  !! G (x, y) / r³
                 end if
@@ -411,7 +414,7 @@ contains
             end do
 
             !! Particles (massless)
-            do j = last_moon + 1, N_total
+            do j = first_particle, N_total
                 jdx = get_index(j)
                 coords_P = y(jdx:jdx + 3)  ! Particle
 
@@ -427,19 +430,19 @@ contains
 
                 ! Particle acceleration
                 if (use_manual_J2_from_primary) then  ! Possible extra J2
-                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(0, 1)*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  ! G m0 (x, y) (1 - K) / r³
+                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(0, 1)*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  ! G m0 (x, y) (1 - J2K / r²) / r³
                 else
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(0, 1)*dr_vec/(dr2*dr)  ! G m0 (x, y) / r³
                 end if
 
                 ! MEGNO
                 if (sim%use_megno) then
-                    vdx = get_index(j + N_particles)
+                    vdx = get_variational_index(j, first_particle, N_total)
 
                     coords_P = y(vdx:vdx + 3)  ! Variational particle
                     
                     der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - G*boulders_data(0, 1) * &
-                        & ( coords_P(1:2)*dr2 - tres * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                        & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
 
                 end if
 
@@ -488,7 +491,7 @@ contains
                 end do
 
                 !! Particles (massless)
-                do j = last_moon + 1, N_total
+                do j = first_particle, N_total
                     jdx = get_index(j)
                     coords_P = y(jdx:jdx + 3)  ! Particle
 
@@ -507,12 +510,12 @@ contains
 
                     ! MEGNO
                     if (sim%use_megno) then
-                        vdx = get_index(j + N_particles)
+                        vdx = get_variational_index(j, first_particle, N_total)
 
                         coords_P = y(vdx:vdx + 3)  ! Variational particle
 
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - G*boulders_data(i, 1) * &
-                            & ( coords_P(1:2)*dr2 - tres * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
 
@@ -531,7 +534,7 @@ contains
             coords_M = y(idx:idx + 3)  ! Moon i (M)
 
             !! Particles (massless)
-            do j = last_moon + 1, N_total
+            do j = first_particle, N_total
                 jdx = get_index(j)
                 coords_P = y(jdx:jdx + 3)  ! Particle
 
@@ -550,12 +553,12 @@ contains
 
                 ! MEGNO
                 if (sim%use_megno) then
-                    vdx = get_index(j + N_particles)
+                    vdx = get_variational_index(j, first_particle, N_total)
 
                     coords_P = y(vdx:vdx + 3)  ! Variational particle
 
                     der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - G*m_arr(i) * &
-                        & ( coords_P(1:2)*dr2 - tres * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                        & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
 
                 end if
 
@@ -596,6 +599,56 @@ contains
             end do
 
         end if
+
+        ! Fourth, Extra variational if MEGNO
+        if (sim%use_megno) then
+
+            ! Initialize to 0
+            glob_prod = cero
+            glob_dist = cero
+
+            ! Loop trhough particles
+            do i = first_particle, N_total
+                vdx = get_variational_index(i, first_particle, N_total)
+                ! Update 'd positions' with 'd velocities'
+                der(vdx:vdx + 1) = y(vdx + 2:vdx + 3)
+
+                ! Get and update prod  and dist
+                prod = y(vdx)*der(vdx) + y(vdx+1)*der(vdx+1) + y(vdx+2)*der(vdx+2) + y(vdx+3)*der(vdx+3)
+                if (.not. ieee_is_finite(prod) .or. abs(prod) < tini) prod = cero
+
+                dist = y(vdx)*y(vdx) + y(vdx+1)*y(vdx+1) + y(vdx+2)*y(vdx+2) + y(vdx+3)*y(vdx+3)
+                if (.not. ieee_is_finite(dist) .or. dist < tini) dist = tini
+                
+                glob_prod = glob_prod + prod
+                glob_dist = glob_dist + dist
+
+                ! Calculate dot{lambda}
+                der(vdx + 4) = prod / dist
+
+                ! Calculate dot{Y}
+                der(vdx + 5) = prod / dist * t / megno_factor
+
+                ! Calculate dot{<Y>}
+                if (t > 0) aux_real = dos * y(vdx + 5) / t
+                if (t > 0) der(vdx + 6) = dos * y(vdx + 5) / t
+                
+                ! print*, t, i-first_particle, y(vdx + 5), y(vdx + 5) / max(t, tini)
+
+            end do
+
+            ! Now, we compute the global 
+
+            ! Calculate dot{lambda}
+            der(vdx + 7) = glob_prod / glob_dist
+
+            ! Calculate dot{Y}
+            der(vdx + 8) = glob_prod / glob_dist * t / megno_factor
+
+            ! Calculate dot{<Y>}
+            if (t > 0) der(vdx + 9) = dos * y(vdx + 8) / t
+
+        endif
 
     end function dydt
 

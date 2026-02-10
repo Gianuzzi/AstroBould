@@ -98,7 +98,7 @@ module parameters
         real(wp) :: mass_exp_damping_time = infinito
         ! Megno
         logical :: use_megno = .True.
-        real(wp) :: megno_eps = 1.e-10_wp
+        real(wp) :: megno_eps = 1.e-6_wp
         ! Filter
         logical :: use_filter = .False.
         real(wp) :: filter_dt = cero
@@ -1604,6 +1604,14 @@ contains
             write (*, *) "ERROR: Can not use both filtering and extra checkpoints at the same time (yet)."
             write (*, *) "       Set all checkpoints to outputs."
             stop 1
+        end if
+
+        ! Check MEGNO with positive epsilon
+        if (derived%use_megno .and. ((derived%megno_eps < myepsilon) .or. (derived%megno_eps > uno2))) then
+            write (*, *) "ERROR: MEGNO epsilon must be a small positive, non infinitesimal number."
+            stop 1
+        else if (.not. derived%use_megno) then
+            derived%megno_eps = cero
         end if
 
     end subroutine set_derived_parameters

@@ -173,7 +173,7 @@ program main
 
         ! MEGNO
         input%use_megno = .False.
-        input%megno_eps = 1e-10_wp       ! initial displacement for shadows
+        input%megno_eps = 1e-6_wp       ! initial displacement for shadows
 
         ! Map
         input%use_potential_map = .False.
@@ -869,7 +869,7 @@ program main
         call init_megno(system, sim%megno_eps)
         if (sim%use_screen) then
             write (*, *) " ACTIVATED. Applied only in particles"
-            write (*, s1r1) "   Epsilon used:", system%megno_epsilon
+            write (*, s1r1) "   Epsilon used:", system%megno%epsilon
             write (*, *) ACHAR(5)
         end if
     else if (sim%use_screen)then
@@ -2362,6 +2362,7 @@ program main
 
             hard_exit = .False. ! Resetear HardExit
             is_premature_exit = .False. ! Resetear premature
+            regenerate_arrays = .False. ! Resetear regenerar
 
             ! Check if all done
             !! Time end
@@ -2424,29 +2425,22 @@ program main
                 regenerate_arrays = .True.
             end if
 
-            ! Update Chaos (triggers update elements)
-            print*, system%particles(1)%var_dist
-            print*, system%particles(1)%variational
+            ! Update Chaos (triggers update orbital elements and chaos)
+            ! print*, time, norm2(system%particles(1)%variational)
             call update_chaos(system, sim%reference_frame)
             
             ! Update megno if needed
-            if (sim%use_megno) then
-                y_der(:y_nvalues) = dydt(time, y_arr(:y_nvalues))
-                call update_megno(system, y_der(:y_nvalues), checkpoint_is_output(j))
-                regenerate_arrays = .True.
-            end if
+            if (sim%use_megno) regenerate_arrays = .True.
 
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)
 
             ! Regenerate if needed
             if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
+            ! print*, time, norm2(system%particles(1)%variational)
 
             ! Output
             if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) call generate_output(system)
-            ! print*, system%particles%id
-            ! print*, system%particles%megno
-            ! print*, system%particles%lyapunov
 
             ! Percentage output
             if (sim%use_percentage) call percentage(time, sim%final_time)
@@ -2529,6 +2523,10 @@ program main
             write (*, *) ACHAR(10)
             write (*, *) "Chaos:"
             call write_chaos(initial_system, system, 6)
+            if (sim%use_megno) then
+                write (*, *) ACHAR(5)
+                write (*, s1r1) "  Global MEGNO:", system%megno%megno
+            end if
         end if
     end if
 

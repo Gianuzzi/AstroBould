@@ -106,7 +106,7 @@ contains
 
         ! Q_param = (x²-y²) cos(2th) + 2xy sin(2th)
         ! Q_param_eff = 5 * Q_param / r⁴
-        Q_param_eff = 5.e0_wp*Q_param*inv_dr2*inv_dr2 ! Q_ef = 5 * Q / r⁴
+        Q_param_eff = 5*Q_param*inv_dr2*inv_dr2 ! Q_ef = 5 * Q / r⁴
 
         ! a_unit_massx = G / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴))
         ! a_unit_massy = G / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴))

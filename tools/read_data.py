@@ -31,16 +31,23 @@ chaos_names = [
     "amax",
     "emin",
     "emax",
+    "megno",
 ]
 
 
-def read_chaos(chaos_name="sump.out", work_dir=None):
+def read_chaos(chaos_name="sump.out", work_dir=None, use_megno=True):
     if work_dir is None:
         full_name = chaos_name
     else:
         full_name = os.path.join(work_dir, chaos_name)
     df = pd.read_csv(full_name, delimiter="\\s+", header=None)
-    df.columns = chaos_names if len(df.columns == 28) else chaos_names[1:]
+    if len(df.columns) == 28:
+        df.columns = chaos_names 
+    elif len(df.columns == 27):
+        if use_megno:
+            df.columns = chaos_names[1:]
+        else:
+            df.columns = chaos_names[1:]
     return df
 
 
@@ -76,11 +83,7 @@ def read_outfile(
         df["r"] = np.sqrt(df["x"] ** 2 + df["y"] ** 2)
         df["v"] = np.sqrt(df["vx"] ** 2 + df["vy"] ** 2)
     else:
-        df = pd.read_csv(
-            full_name,
-            delimiter="\\s+",
-            header=None,
-            names=[
+        names=[
                 "idx",
                 "btype",
                 "t",
@@ -98,8 +101,14 @@ def read_outfile(
                 "amax",
                 "emin",
                 "emax",
-            ],
+                "megno"
+            ]
+        df = pd.read_csv(
+            full_name,
+            delimiter="\\s+",
+            header=None,
         )
+        df.columns = names[:len(df.columns)]
         df["lam"] = np.mod(df.M + df.w, 360.)
         df.tmax = df.t.iloc[-1]
     return df
