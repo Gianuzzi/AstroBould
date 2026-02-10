@@ -97,7 +97,7 @@ module parameters
         real(wp) :: omega_damp_active_time = cero
         real(wp) :: mass_exp_damping_time = infinito
         ! Megno
-        logical :: use_megno = .True.
+        logical :: use_megno = .False.
         real(wp) :: megno_eps = 1.e-6_wp
         ! Filter
         logical :: use_filter = .False.

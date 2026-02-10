@@ -34,6 +34,7 @@
 # 14-22! final body: theta (ast), omega (ast), a, e, M, w, MMR, mass, radius
 # 23-24! a_min, a_max
 # 25-26! e_min, e_max
+# 27   ! MEGNO single
 
 # Excepto <final_chaos>, el resto de los archivos estarán en carpetas creadas
 # con nombre 'dpi[pid]' asociado al ID del procesador que ejecutó el sistema.
