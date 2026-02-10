@@ -1205,6 +1205,7 @@ contains
         real(wp) :: norma
         integer(kind=4) :: i
 
+        self%megno%epsilon = eps
         if ((self%Nparticles) > 0 .and. (eps > cero)) then
 
             do i = 1, self%Nparticles
@@ -1215,7 +1216,6 @@ contains
                 rndm_arr = rndm_arr / norma
                 self%particles(i)%variational = rndm_arr * eps
             end do
-            self%megno%epsilon = eps
             self%megno%active = .True.
 
         else
