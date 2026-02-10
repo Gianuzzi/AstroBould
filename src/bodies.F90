@@ -81,7 +81,9 @@ module bodies
         real(wp) :: chaos_e(2) = (/infinito, cero/) ! (e_min, e_max)
         real(wp) :: chaos_a_geom(2) = (/infinito, cero/) ! (a_geom_min, a_geom_max)
         real(wp) :: chaos_e_geom(2) = (/infinito, cero/) ! (e_geom_min, e_geom_max)
-        real(wp) :: lyapunov = cero ! lyapunov value
+        real(wp) :: variational(4) = cero ! dx, dy, dvx, dvy  ! For Megno
+        real(wp) :: var_dist = cero ! variational distance
+        real(wp) :: lyapunov = uno ! lyapunov value
         real(wp) :: megno = cero ! megno value
         real(wp) :: tmax = cero ! max time integrated
         integer(kind=4) :: merged_to = -1  ! IDX of body it was merged to
@@ -98,19 +100,6 @@ module bodies
         real(wp) :: e_rot = cero ! Rotational energy [dynamic] (Just for conservation)
     end type moon_st
 
-    type :: shadow_body_st
-        integer(kind=4) :: real_id = -1  ! Real body Identifier
-        real(wp), dimension(4) :: coordinates = cero  ! x, y vx, vy
-        real(wp) :: accumulated = cero
-        real(wp) :: megno = cero
-    end type shadow_body_st
-
-    type :: MEGNO_st
-        logical :: active = .False.
-        real(wp) :: value = cero
-        real(wp) :: epsilon = cero
-        type(shadow_body_st), allocatable :: shadows(:)
-    end type MEGNO_st
 
     ! This struct will store the CM (system) properties and objects
     type :: system_st
@@ -128,13 +117,15 @@ module bodies
         integer(kind=4) :: Nparticles = 0
         integer(kind=4) :: Nparticles_active = 0
         type(particle_st), allocatable :: particles(:)
-        type(MEGNO_st) :: megno
+        real(wp) :: megno_epsilon = cero
         integer(kind=4) :: reference_frame = 0  ! Just to have an idea. 0:B, 1:J, 2:A
     end type system_st
 
     !!!!!!!!!!!   Used I/O formats   !!!!!!!!!
-    character(30), parameter :: i3r23 = "(I7, I7, I7, 23(1X, 1PE22.15))"  ! 3 int y 21 real
-    character(26), parameter :: i2r15 = "(I7, I7, 15(1X, 1PE22.15))"  ! 2 int y 11 real
+    character(30), parameter :: i3r23 = "(I7, I7, I7, 23(1X, 1PE22.15))"  ! 3 int y 23 real
+    character(30), parameter :: i3r24 = "(I7, I7, I7, 24(1X, 1PE22.15))"  ! 3 int y 24 real
+    character(26), parameter :: i2r15 = "(I7, I7, 15(1X, 1PE22.15))"  ! 2 int y 15 real
+    character(26), parameter :: i2r16 = "(I7, I7, 16(1X, 1PE22.15))"  ! 2 int y 15 real
     character(25), parameter :: i2r9 = "(I7, I7, 9(1X, 1PE22.15))"  ! 3 int y 9 real
     character(18), parameter :: s1i5x5 = "(5(A, 1X, I5, 1X))"
     character(18), parameter :: r13 = "(13(1X, 1PE22.15))"
@@ -220,13 +211,13 @@ contains
 
         ! Ensure not anti-radius
         aux_radius = semi_a_primary*semi_b_primary*semi_c_primary
-        if (aux_radius < tini) then
+        if (aux_radius < myepsilon) then
             write (*, *) "ERROR: Primary can not have zero or negative radius."
             stop 1
         end if
         radius_primary = (aux_radius)**uno3
 
-        self%primary%is_sphere = abs(radius_primary - semi_c_primary) < tini  ! c == radius => Sphere
+        self%primary%is_sphere = abs(radius_primary - semi_c_primary) < myepsilon  ! c == radius => Sphere
 
         self%primary%semi_axis = (/semi_a_primary, semi_b_primary, semi_c_primary/)
         self%primary%mass = mass_primary_or_ast
@@ -245,7 +236,7 @@ contains
         real(wp), intent(in) :: mu_boulder_z_to_primary
         
         self%boulder_z%mu_to_primary = mu_boulder_z_to_primary
-        self%boulder_z%active = abs(mu_boulder_z_to_primary) > tini
+        self%boulder_z%active = abs(mu_boulder_z_to_primary) > myepsilon
         
     end subroutine add_boulder_z
 
@@ -294,7 +285,7 @@ contains
         slot_found = .False. ! Default
 
         ! Ensure not massless
-        if (mu_to_asteroid < tini) then
+        if (mu_to_asteroid < myepsilon) then
             write (*, *) "ERROR: Moons can not have zero or negative mass (I think)..."
             stop 1
         end if
@@ -418,11 +409,11 @@ contains
         ! Set Rotations
         self%theta = cero  ! Initial angle with X axis
         self%omega_kep = sqrt(G*self%mass/self%primary%radius**3) ! Keplerian mean motion boulders would have
-        if (abs(lambda_kep) > tini) then
+        if (abs(lambda_kep) > myepsilon) then
             self%lambda_kep = lambda_kep
             self%omega = self%omega_kep*self%lambda_kep  ! Angular velocity of primary
             self%rotational_period = twopi/abs(self%omega) ! Rotational period of primary
-        else if (abs(rotational_period) > tini) then
+        else if (abs(rotational_period) > myepsilon) then
             self%rotational_period = abs(rotational_period)
             self%omega = (twopi/rotational_period) ! Angular velocity of primary
             self%lambda_kep = self%omega/self%omega_kep ! Ratio of omegas
@@ -449,10 +440,10 @@ contains
             coords_cm_from_primary(2) = dot_product(coords_from_primary(:, 2), self%boulders(1:)%mu_to_asteroid)
             coords_cm_from_primary(3) = dot_product(coords_from_primary(:, 3), self%boulders(1:)%mu_to_asteroid)
             coords_cm_from_primary(4) = dot_product(coords_from_primary(:, 4), self%boulders(1:)%mu_to_asteroid)
-            if (abs(coords_cm_from_primary(1)) < tini) coords_cm_from_primary(1) = cero  ! Little correction
-            if (abs(coords_cm_from_primary(2)) < tini) coords_cm_from_primary(2) = cero  ! Little correction
-            if (abs(coords_cm_from_primary(3)) < tini) coords_cm_from_primary(3) = cero  ! Little correction
-            if (abs(coords_cm_from_primary(4)) < tini) coords_cm_from_primary(4) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(1)) < myepsilon) coords_cm_from_primary(1) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(2)) < myepsilon) coords_cm_from_primary(2) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(3)) < myepsilon) coords_cm_from_primary(3) = cero  ! Little correction
+            if (abs(coords_cm_from_primary(4)) < myepsilon) coords_cm_from_primary(4) = cero  ! Little correction
         end if
 
         !! Set Distances and Angles
@@ -460,7 +451,7 @@ contains
         self%primary%coordinates_CM = -coords_cm_from_primary
         self%primary%dist_to_asteroid = sqrt(coords_cm_from_primary(1)*coords_cm_from_primary(1) + &
                                                & coords_cm_from_primary(2)*coords_cm_from_primary(2))
-        if ((self%Nboulders > 0) .and. (self%primary%dist_to_asteroid > tini)) then
+        if ((self%Nboulders > 0) .and. (self%primary%dist_to_asteroid > myepsilon)) then
             self%primary%initial_theta = modulo(atan2(coords_cm_from_primary(2), coords_cm_from_primary(1)) + pi, twopi)
         else
             self%primary%initial_theta = cero
@@ -530,14 +521,14 @@ contains
             !! Elements are asteroid-centric relative
             combined_mass = asteroid%mass + self(i)%mass
             aux_real = get_a_corot(combined_mass, asteroid%omega)  ! Ask. Including mass?
-            if (self(i)%mmr > tini) then
-                if (aux_real < tini) then  ! Ensure rotating
+            if (self(i)%mmr > myepsilon) then
+                if (aux_real < myepsilon) then  ! Ensure rotating
                     write (*, *) "ERROR: Can not set moon MMR with non rotating asteroid."
                     stop 1
                 end if
                 self(i)%elements(1) = self(i)%mmr**(2.e0_wp/3.e0_wp)*aux_real  ! a
             else
-                if (aux_real < tini) then  ! Ensure rotating
+                if (aux_real < myepsilon) then  ! Ensure rotating
                     self(i)%mmr = cero
                 else
                     self(i)%mmr = (self(i)%elements(1)/aux_real)**(1.5e0_wp) ! MMR
@@ -584,14 +575,14 @@ contains
 
             ! Define coordinates
             !! Elements are asteroid-centric
-            if (self(i)%mmr > tini) then
-                if (asteroid%a_corotation < tini) then  ! Ensure rotating
+            if (self(i)%mmr > myepsilon) then
+                if (asteroid%a_corotation < myepsilon) then  ! Ensure rotating
                     write (*, *) "ERROR: Can not set particle MMR with non rotating asteroid."
                     stop 1
                 end if
                 self(i)%elements(1) = self(i)%mmr**(2.e0_wp/3.e0_wp)*asteroid%a_corotation  ! a
             else
-                if (asteroid%a_corotation < tini) then  ! Ensure rotating
+                if (asteroid%a_corotation < myepsilon) then  ! Ensure rotating
                     self(i)%mmr = cero
                 else
                     self(i)%mmr = (self(i)%elements(1)/asteroid%a_corotation)**(1.5e0_wp) ! MMR
@@ -621,7 +612,7 @@ contains
 
         ! Update Rotation
         self%theta = modulo(theta, twopi)  ! Update THETA
-        if (abs(omega) > tini) then
+        if (abs(omega) > myepsilon) then
             self%a_corotation = get_a_corot(self%mass, omega)  ! This is a bit odd now...
             self%rotational_period = twopi/omega ! Rotational period of primary
             self%lambda_kep = omega/self%omega_kep ! Ratio of omegas
@@ -686,7 +677,7 @@ contains
         real(wp) :: growth
         integer(kind=4) :: i
 
-        if (mass_to_add < tini) return  ! No mass to add
+        if (mass_to_add < myepsilon) return  ! No mass to add
 
         ! Get mass growth ratio
         growth = uno + (mass_to_add/self%mass)
@@ -835,7 +826,7 @@ contains
             dr = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)
             dist = sqrt(dr(1)*dr(1) + dr(2)*dr(2))
             inertia = inertia + self%moons(i)%mass*dist*dist
-            if (dist < tini) cycle
+            if (dist < myepsilon) cycle
             e_pot = e_pot - (self%asteroid%mass*self%moons(i)%mass)/dist
         end do
         !! Moons (here, only moons with moons are added)
@@ -843,7 +834,7 @@ contains
             do j = 2, self%Nmoons_active
                 dr = self%moons(j)%coordinates(1:2) - self%moons(i)%coordinates(1:2)
                 dist = sqrt(dr(1)*dr(1) + dr(2)*dr(2))
-                if (dist < tini) cycle
+                if (dist < myepsilon) cycle
                 e_pot = e_pot - (self%moons(i)%mass*self%moons(j)%mass)/dist
             end do
             !! Energy and Ang Mom (TBD: Last moon)
@@ -883,7 +874,8 @@ contains
         end if
 
         y_nvalues = 2 + 4*Nactive
-        if (self%megno%active) y_nvalues = y_nvalues + 4*(Nactive-1)
+        
+        if (self%megno_epsilon > tini) y_nvalues = y_nvalues + 4*self%Nparticles_active
     end function get_y_nvalues
 
     ! Get moon by ID
@@ -941,7 +933,7 @@ contains
         a_corot = get_a_corot(self%asteroid%mass, self%asteroid%omega)  ! Astrocentric here
         ! a_corot = get_a_corot(self%mass, self%ang_mom/self%inertia)  ! Something strange
         self%asteroid%a_corotation = a_corot
-        mmr_from_n = (a_corot < tini) .or. (self%Nmoons_active > 0)
+        mmr_from_n = (a_corot < myepsilon) .or. (self%Nmoons_active > 0)
 
         if ((ref_used .eq. 0) .or. (ref_used .eq. 1)) then  ! Baryc or Jacobi
 
@@ -950,7 +942,7 @@ contains
             mass_cm_in = self%asteroid%mass
             
             ! ! Deprecated. Not used in reality
-            ! if ((self%asteroid%dist_to_cm > tini) .and. (self%Nmoons_active > 0)) then
+            ! if ((self%asteroid%dist_to_cm > myepsilon) .and. (self%Nmoons_active > 0)) then
             !     call elem(mass_cm_in, (/self%asteroid%coordinates(1:2), cero, self%asteroid%coordinates(3:4), cero/), &
             !             & a, e, i, M, w, O)
             !     self%asteroid%elements = (/a, e, M, w/)
@@ -1201,26 +1193,28 @@ contains
         implicit none
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: eps
-        integer(kind=4) :: i, Nbodies
-        
-        call get_Nactive(self, Nbodies)
+        real(wp), dimension(4) :: rndm_arr
+        real(wp) :: norma
+        integer(kind=4) :: i
 
-        if (Nbodies > 1) then
-            allocate(self%megno%shadows(Nbodies))
-            do i = 2, self%Nmoons + 1
-                self%megno%shadows(i)%real_id = self%moons(i)%id
-                self%megno%shadows(i)%coordinates = self%moons(i)%coordinates
-                self%megno%shadows(i)%coordinates(1) = self%megno%shadows(i)%coordinates(1) + eps
+        if (self%Nparticles_active > 0) then
+
+            do i = 1, self%Nparticles
+                rndm_arr = uno
+                call random_number(rndm_arr)
+                rndm_arr = rndm_arr - 0.5
+                norma = sqrt(sum(rndm_arr*rndm_arr))
+                rndm_arr = rndm_arr / norma
+                self%particles(i)%variational = rndm_arr * eps
+                self%particles(i)%var_dist = eps
             end do
-            do i = self%Nmoons + 1, Nbodies - 1
-                self%megno%shadows(i)%real_id = self%particles(i)%id
-                self%megno%shadows(i)%coordinates = self%particles(i)%coordinates
-                self%megno%shadows(i)%coordinates(1) = self%megno%shadows(i)%coordinates(1) + eps
-            end do
-            self%megno%active = .True.
-            self%megno%epsilon = eps
+
+            self%megno_epsilon = eps
+
         else
-            self%megno%active = .False.
+
+            self%megno_epsilon = cero
+
         end if
         
     end subroutine init_megno
@@ -1410,73 +1404,43 @@ contains
 
     !  -------------------   UPDATE / GENERATION  -------------------------
 
-    pure subroutine update_megno(self, dt, time)
+    pure subroutine update_megno(self, der, rescale)
         implicit none
         type(system_st), intent(inout) :: self
-        real(wp), intent(in) :: dt, time
-        real(wp), dimension(4) :: d4 
-        real(wp) :: delta, scale, lyap, megno, accumulated
-        integer(kind=4) :: i, id_real
+        real(wp), dimension(:), intent(in) :: der
+        logical, intent(in) :: rescale
+        real(wp) :: dist2, prod2
+        integer(kind=4) :: i, vdx
 
         ! Check if something to do
-        if (.not. self%megno%active) return
-
-        ! If megno active, the shadow order is kept
-        ! call get_Nactive(self, Nactive)
+        if (self%megno_epsilon < tini) return
         
-        ! do i = 1, self%Nmoons_active
-        !     id_real = self%moons(i)%id
-        !     d4 = self%shadows(id_real)%coordinates - self%moons(i)%coordinates
-        !     delta = sqrt(d4(1)*d4(1) + d4(2)*d4(2) + d4(3)*d4(3) + d4(4)*d4(4))
-        ! end do
-
+        vdx = 2 + (self%Nmoons_active + self%Nparticles_active) * 4 + 1
         do i = 1, self%Nparticles_active
-
-            ! Get id
-            id_real = self%particles(i)%id
-
-            ! Phase-space difference (4D)
-            d4 = self%megno%shadows(id_real)%coordinates - self%particles(i)%coordinates
-            delta = max(sqrt(d4(1)*d4(1) + d4(2)*d4(2) + d4(3)*d4(3) + d4(4)*d4(4)), tini)
             
-            ! Local Lyapunov
-            lyap = log(delta / self%megno%epsilon) / dt
+            dist2 = max(sum(self%particles(i)%variational*self%particles(i)%variational), tini)
 
-            self%particles(i)%lyapunov = lyap  ! In particle
+            prod2 = sum(self%particles(i)%variational*der(vdx:vdx+3))
 
-            ! Update MEGNO
-            megno = self%megno%shadows(id_real)%megno + dos * lyap * dt
+            self%particles(i)%lyapunov = prod2 / dist2
+            self%particles(i)%megno = self%particles(i)%lyapunov * self%time
 
-            self%megno%shadows(id_real)%megno = megno
+            if (rescale) self%particles(i)%variational = self%particles(i)%variational * self%megno_epsilon / sqrt(dist2)
 
-            ! Update accumulated
-            accumulated = self%megno%shadows(id_real)%accumulated + megno * dt
+            vdx = vdx + 4
 
-            self%megno%shadows(id_real)%accumulated = accumulated
-
-            ! Renormalize
-            scale = self%megno%epsilon / delta
-
-            self%megno%shadows(id_real)%coordinates = self%particles(i)%coordinates + scale * d4
-
-            ! Update mean megno
-            self%particles(i)%megno = accumulated / time  ! In particle
-
-        end do
-    
+        end do    
         
     end subroutine update_megno
 
-    ! Update bodies chaos at system
-    pure subroutine update_chaos(self, dt, time, reference_frame)
+    ! Update bodies chaos and MENGO at system
+    pure subroutine update_chaos(self, reference_frame)
         implicit none
         type(system_st), intent(inout) :: self
-        real(wp), intent(in) :: dt, time
         integer(kind=4), intent(in) :: reference_frame
         real(wp) :: aux_real2(2)
         integer(kind=4) :: i
 
-        if (dt > cero) call update_megno(self, dt, time)
         call update_elements(self, reference_frame)
 
         ! Asteroid
@@ -1604,13 +1568,9 @@ contains
         self%inertia = inertia !Set INERTIA
 
         ! If MEGNO present, we have to add the extra bodies
-        if (self%megno%active) then
-            do i = 1, self%Nmoons_active
-                self%megno%shadows(self%moons(i)%id)%coordinates = array(idx:idx + 3)
-                idx = idx + 4
-            end do
+        if (self%megno_epsilon > tini) then
             do i = 1, self%Nparticles_active
-                self%megno%shadows(self%particles(i)%id)%coordinates = array(idx:idx + 3)
+                self%particles(i)%variational = array(idx:idx + 3)
                 idx = idx + 4
             end do
         end if
@@ -1650,14 +1610,10 @@ contains
             idx = idx + 4
         end do
 
-        ! If MEGNO present, we have to add the extra bodies
-        if (self%megno%active) then
-            do i = 1, self%Nmoons_active
-                array(idx:idx + 3) = self%megno%shadows(self%moons(i)%id)%coordinates
-                idx = idx + 4
-            end do
+        ! If MEGNO present, we have to add the extra equations
+        if (self%megno_epsilon > tini) then
             do i = 1, self%Nparticles_active
-                array(idx:idx + 3) = self%megno%shadows(self%particles(i)%id)%coordinates
+                array(idx:idx + 3) = self%particles(i)%variational
                 idx = idx + 4
             end do
         end if
@@ -1685,7 +1641,7 @@ contains
         arr_coor(2) = array(2)
 
         ! Check if a asteroid too small
-        if ((array(3) < tini) .or. (reference_frame > 0)) then ! All 0
+        if ((array(3) < myepsilon) .or. (reference_frame > 0)) then ! All 0
             arr_coor(3:6) = cero
         else
             call coord(self%mass, &
@@ -1865,7 +1821,7 @@ contains
             cos2th = cos(dos*self%theta)
             sin2th = sin(dos*self%theta)
 
-            if (dr > tini) then
+            if (dr > myepsilon) then
                 !! Now, calculate from non rotated
                 dx = xy_target(1) - xy_centered(1)
                 dy = xy_target(2) - xy_centered(2)
@@ -2331,7 +2287,7 @@ contains
             ! Denominator: lever arms for tangential correction (explicit symmetric form)
             denom = mi*((new_rvi(1) - new_rvj(1))*dr_ver(1) + (new_rvi(2) - new_rvj(2))*dr_ver(2))
 
-            if (abs(denom) > tini) then
+            if (abs(denom) > myepsilon) then
                 ! Solve for tangential velocity correction (delta on vi_col along t)
                 delta_vi = (L_orb - L_tmp)/denom
                 delta_vj = -(mi/mj)*delta_vi
@@ -2579,7 +2535,7 @@ contains
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: unit_file
 
-        write (unit_file, i2r15) &
+        write (unit_file, i2r16) &
             & 0, &  ! ID
             & -1, &  ! type
             & self%time/unit_time, &  ! time
@@ -2594,7 +2550,8 @@ contains
             & self%asteroid%radius/unit_dist, &  ! radius
             & self%asteroid%dist_to_cm/unit_dist, &  ! distance
             & self%asteroid%chaos_a/unit_dist, &  ! da
-            & self%asteroid%chaos_e  ! de
+            & self%asteroid%chaos_e, & ! de
+            & cero  ! MEGNO
     end subroutine write_ast_elem
 
     ! Write elements moon i
@@ -2603,7 +2560,7 @@ contains
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: i, unit_file
 
-        write (unit_file, i2r15) &
+        write (unit_file, i2r16) &
             & self%moons(i)%id, &  ! ID
             & 1, &  ! type
             & self%time/unit_time, &  ! time
@@ -2618,7 +2575,8 @@ contains
             & self%moons(i)%radius/unit_dist, &  ! radius
             & self%moons(i)%dist_to_cm/unit_dist, &  ! distance
             & self%moons(i)%chaos_a/unit_dist, &  ! da
-            & self%moons(i)%chaos_e  ! de
+            & self%moons(i)%chaos_e, & ! de
+            & cero  ! MEGNO
     end subroutine write_moon_i_elem
 
     ! Write elements particle i
@@ -2626,8 +2584,14 @@ contains
         implicit none
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: i, unit_file
+        real(kind=wp) :: megno
+        if (self%time > tini) then
+            megno = dos * self%particles(i)%megno / self%time
+        else
+            megno = cero
+        end if
 
-        write (unit_file, i2r15) &
+        write (unit_file, i2r16) &
             & self%particles(i)%id, &   ! ID
             & 2, &  ! type
             & self%time/unit_time, &  ! time
@@ -2642,7 +2606,8 @@ contains
             & cero, &  ! radius
             & self%particles(i)%dist_to_cm/unit_dist, &  ! distance
             & self%particles(i)%chaos_a/unit_dist, &  ! da
-            & self%particles(i)%chaos_e  ! de
+            & self%particles(i)%chaos_e, & ! de
+            & megno  ! MEGNO
     end subroutine write_particle_i_elem
 
     ! Write elements ALL
@@ -2654,7 +2619,7 @@ contains
         integer(kind=4), dimension(:), allocatable :: ids
 
         allocate (ids(max(self%Nmoons_active, self%Nparticles_active)))
-        if (self%asteroid%chaos_a(2) > tini) call write_ast_elem(self, unit_file)
+        if (self%asteroid%chaos_a(2) > myepsilon) call write_ast_elem(self, unit_file)
 
         if (self%Nmoons_active > 1) then
             do i = 1, self%Nmoons_active
@@ -2828,7 +2793,7 @@ contains
         type(system_st), intent(in) :: actual
         integer(kind=4), intent(in) :: unit_file
 
-        write (unit_file, i3r23) &
+        write (unit_file, i3r24) &
             & 0, &  ! ID
             & -1, &  ! type
             & -1, &  ! merged_to
@@ -2852,7 +2817,8 @@ contains
             & actual%asteroid%mass/unit_mass, &  ! mass
             & actual%asteroid%radius/unit_dist, &  ! radius
             & actual%asteroid%chaos_a/unit_dist, &  ! da
-            & actual%asteroid%chaos_e  ! de
+            & actual%asteroid%chaos_e, & ! de
+            & cero  ! MEGNO
     end subroutine write_ast_chaos
 
     ! Write chaos moon i
@@ -2872,7 +2838,7 @@ contains
             stop 2
         end if
 
-        write (unit_file, i3r23) &
+        write (unit_file, i3r24) &
             & actual%moons(i)%id, &  ! ID
             & 1, &  ! type
             & actual%moons(i)%merged_to, &  ! merged_to
@@ -2896,7 +2862,8 @@ contains
             & actual%moons(i)%mass/unit_mass, &  ! mass
             & actual%moons(i)%radius/unit_dist, &  ! radius
             & actual%moons(i)%chaos_a/unit_dist, &  ! da
-            & actual%moons(i)%chaos_e  ! de
+            & actual%moons(i)%chaos_e, & ! de
+            & cero  ! MEGNO
     end subroutine write_moon_i_chaos
 
     ! Write chaos particle i
@@ -2906,6 +2873,12 @@ contains
         type(system_st), intent(in) :: actual
         integer(kind=4), intent(in) :: i, unit_file
         integer(kind=4) :: i_initial
+        real(kind=wp) :: megno
+        if (actual%time > tini) then
+            megno = dos * actual%particles(i)%megno / actual%time
+        else
+            megno = cero
+        end if
 
         do i_initial = 1, initial%Nparticles
             if (actual%particles(i)%id == initial%particles(i_initial)%id) exit
@@ -2916,7 +2889,7 @@ contains
             stop 2
         end if
 
-        write (unit_file, i3r23) &
+        write (unit_file, i3r24) &
             & actual%particles(i)%id, &  ! ID
             & 2, &  ! type
             & actual%particles(i)%merged_to, &  ! merged_to
@@ -2940,7 +2913,8 @@ contains
             & cero, &  ! mass
             & cero, &  ! radius
             & actual%particles(i)%chaos_a/unit_dist, &  ! da
-            & actual%particles(i)%chaos_e  ! de
+            & actual%particles(i)%chaos_e, & ! de
+            & megno  ! MEGNO
     end subroutine write_particle_i_chaos
 
     ! Write chaos ALL
@@ -2954,7 +2928,7 @@ contains
 
         allocate (ids(max(actual%Nmoons, actual%Nparticles)))
 
-        if (actual%asteroid%chaos_a(2) > tini) call write_ast_chaos(initial, actual, unit_file)
+        if (actual%asteroid%chaos_a(2) > myepsilon) call write_ast_chaos(initial, actual, unit_file)
 
         if (actual%Nmoons > 1) then
             do i = 1, actual%Nmoons
@@ -2990,7 +2964,7 @@ contains
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: i, unit_file
 
-        write (unit_file, i2r15) &
+        write (unit_file, i2r16) &
             & self%moons(i)%id, &  ! ID
             & 1, &  ! type
             & self%time/unit_time, &  ! time
@@ -3005,7 +2979,8 @@ contains
             & self%moons(i)%radius/unit_dist, &  ! radius
             & self%moons(i)%dist_to_cm/unit_dist, &  ! distance
             & self%moons(i)%chaos_a_geom/unit_dist, &  ! da
-            & self%moons(i)%chaos_e_geom  ! de
+            & self%moons(i)%chaos_e_geom, & ! de
+            & cero  ! MEGNO
     end subroutine write_moon_i_geom
 
     ! Write geometric elements particle i
@@ -3013,8 +2988,14 @@ contains
         implicit none
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: i, unit_file
+        real(kind=wp) :: megno
+        if (self%time > tini) then
+            megno = dos * self%particles(i)%megno / self%time
+        else
+            megno = cero
+        end if
 
-        write (unit_file, i2r15) &
+        write (unit_file, i2r16) &
             & self%particles(i)%id, &   ! ID
             & 2, &  ! type
             & self%time/unit_time, &  ! time
@@ -3029,7 +3010,8 @@ contains
             & cero, &  ! radius
             & self%particles(i)%dist_to_cm/unit_dist, &  ! distance
             & self%particles(i)%chaos_a_geom/unit_dist, &  ! da
-            & self%particles(i)%chaos_e_geom  ! de
+            & self%particles(i)%chaos_e_geom, & ! de
+            & megno  ! MEGNO
     end subroutine write_particle_i_geom
 
     ! Write geometric elements ALL
@@ -3087,7 +3069,7 @@ contains
             stop 2
         end if
 
-        write (unit_file, i3r23) &
+        write (unit_file, i3r24) &
             & actual%moons(i)%id, &  ! ID
             & 1, &  ! type
             & actual%moons(i)%merged_to, &  ! merged_to
@@ -3111,7 +3093,8 @@ contains
             & actual%moons(i)%mass/unit_mass, &  ! mass
             & actual%moons(i)%radius/unit_dist, &  ! radius
             & actual%moons(i)%chaos_a_geom/unit_dist, &  ! da
-            & actual%moons(i)%chaos_e_geom  ! de
+            & actual%moons(i)%chaos_e_geom, & ! de
+            & cero  ! MEGNO
     end subroutine write_moon_i_geomchaos
 
     ! Write geometric chaos particle i
@@ -3121,6 +3104,12 @@ contains
         type(system_st), intent(in) :: actual
         integer(kind=4), intent(in) :: i, unit_file
         integer(kind=4) :: i_initial
+        real(kind=wp) :: megno
+        if (actual%time > tini) then
+            megno = dos * actual%particles(i)%megno / actual%time
+        else
+            megno = cero
+        end if
 
         do i_initial = 1, initial%Nparticles
             if (actual%particles(i)%id == initial%particles(i_initial)%id) exit
@@ -3131,7 +3120,7 @@ contains
             stop 2
         end if
 
-        write (unit_file, i3r23) &
+        write (unit_file, i3r24) &
             & actual%particles(i)%id, &  ! ID
             & 2, &  ! type
             & actual%particles(i)%merged_to, &  ! merged_to
@@ -3155,7 +3144,8 @@ contains
             & cero, &  ! mass
             & cero, &  ! radius
             & actual%particles(i)%chaos_a_geom/unit_dist, &  ! da
-            & actual%particles(i)%chaos_e_geom  ! de
+            & actual%particles(i)%chaos_e_geom, & ! de
+            & megno ! MEGNO
     end subroutine write_particle_i_geomchaos
 
     ! Write geometric chaos ALL

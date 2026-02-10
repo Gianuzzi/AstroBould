@@ -171,6 +171,10 @@ program main
         input%learning_rate = 0.85e0_wp   ! [For adaptive step integrators] Learning rate
         input%error_digits = 12           ! [For adaptive step integrators] Digits for relative error
 
+        ! MEGNO
+        input%use_megno = .False.
+        input%megno_eps = 1e-10_wp       ! initial displacement for shadows
+
         ! Map
         input%use_potential_map = .False.
         input%mapfile = ""
@@ -760,7 +764,7 @@ program main
             stop 1
         end if
         sim%min_distance = system%asteroid%radius*abs(sim%min_distance)
-    else if (sim%min_distance > tini) then
+    else if (sim%min_distance > myepsilon) then
         sim%min_distance = max(sim%min_distance*unit_dist, system%asteroid%radius)
     else  ! Assume its cero
         sim%min_distance = cero
@@ -778,7 +782,7 @@ program main
     end if
     if (sim%use_screen) then
         write (*, *) "Conditions for escape / collision"
-        if (sim%min_distance > tini) then
+        if (sim%min_distance > myepsilon) then
             write (*, s1r1) "   rmin : ", sim%min_distance/unit_dist, "[km] =", sim%min_distance/system%asteroid%radius, "[Rast]"
         else
             write (*, s1r1) "   rmin : Asteroid surface ~", system%asteroid%radius/unit_dist, "[km]"
@@ -851,6 +855,29 @@ program main
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! MEGNO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !! Initial message
+    if (sim%use_screen) then
+        write (*, *) ACHAR(5)
+        write (*, *) "---------- MEGNO  ----------"
+    end if
+
+    !! Configuration
+    if (sim%use_megno) then
+        call init_megno(system, sim%megno_eps)
+        if (sim%use_screen) then
+            write (*, *) " ACTIVATED. Applied only in particles"
+            write (*, s1r1) "   Epsilon used:", system%megno_epsilon
+            write (*, *) ACHAR(5)
+        end if
+    else if (sim%use_screen)then
+        write (*, *) " NOT Activated."
+        write (*, *) ACHAR(5)
+    end if
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRACIÓN !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -866,7 +893,7 @@ program main
     ! Get minimum and maximum periods (already have internal units)
     sim%min_period = infinito
     sim%max_period = system%asteroid%rotational_period  ! No problem if it is 0
-    if (system%asteroid%rotational_period > tini) sim%min_period = system%asteroid%rotational_period
+    if (system%asteroid%rotational_period > myepsilon) sim%min_period = system%asteroid%rotational_period
     do i = 1, system%Nmoons_active
         aux_real = get_Period(system%asteroid%mass + system%moons(i)%mass, system%moons(i)%elements(1))
         sim%min_period = min(sim%min_period, aux_real)
@@ -881,7 +908,7 @@ program main
     ! <<<< Integration times >>>>
     if (sim%final_time < cero) then
         if (sim%negative_time_selector .eq. 0) then
-            if (abs(system%asteroid%rotational_period) < tini) then
+            if (abs(system%asteroid%rotational_period) < myepsilon) then
                 write (*, *) ACHAR(10)
                 write (*, *) "Error: Setting total integration time with non-rotating asteroid."
                 stop 1
@@ -979,7 +1006,7 @@ program main
     else if (sim%dt_min > cero) then
         sim%dt_min = sim%dt_min*unit_time
     end if
-    if (sim%dt_min < tini) sim%dt_min = sim%min_period*1e-5_wp  ! Heuristic
+    if (sim%dt_min < myepsilon) sim%dt_min = sim%min_period*1e-5_wp  ! Heuristic
 
     ! Set initial adaptive and fixed timestep  (already has units)
     adaptive_timestep = sim%dt_min
@@ -988,7 +1015,7 @@ program main
     !! Mensaje
     if (sim%use_screen) then
         write (*, *) "Times:"
-        if (system%asteroid%rotational_period > tini) then
+        if (system%asteroid%rotational_period > myepsilon) then
             write (*, s1r1) "  tf    : ", sim%final_time/system%asteroid%rotational_period, "[Prot] = ", &
             & sim%final_time/unit_time, "[day]"
             write (*, s1r1) "  dt_out: ", sim%output_timestep/system%asteroid%rotational_period, "[Prot] = ", &
@@ -1017,12 +1044,15 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!! Integration Arrays !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    ! <<<< Amount of values of Y to use >>>>
+    y_nvalues = get_y_nvalues(system)  ! Get nvalues to use in y
+
     ! <<<< Allocate >>>>
     allocate (m_arr(sim%Ntotal))  ! Masses
     allocate (R_arr(sim%Ntotal))  ! Radii
-    allocate (y_arr(2 + sim%Ntotal*4))     ! Theta, Omega, Positions
-    allocate (y_arr_new(2 + sim%Ntotal*4)) ! Theta, Omega, Positions
-    allocate (y_der(2 + sim%Ntotal*4))     ! derivate(Theta, Omega, Positions)
+    allocate (y_arr(y_nvalues))     ! Theta, Omega, Positions
+    allocate (y_arr_new(y_nvalues)) ! Theta, Omega, Positions
+    allocate (y_der(y_nvalues))     ! derivate(Theta, Omega, Positions)
 
     ! <<<< Init to 0 >>>>
     m_arr = cero
@@ -1034,10 +1064,6 @@ program main
     ! <<<< Arrays to integrate >>>>
     call center_sytem(system)
     call generate_arrays(system, m_arr, R_arr, y_arr)
-    
-    
-    ! <<<< Amount of values of Y to use >>>>
-    y_nvalues = get_y_nvalues(system)  ! Get nvalues to use in y
 
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1356,7 +1382,7 @@ program main
     end if
 
     ! Update Chaos (triggers update elements)
-    call update_chaos(system, cero, time, sim%reference_frame)
+    call update_chaos(system, sim%reference_frame)
 
     ! Update geometric chaos (and elements) if needed
     if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1449,7 +1475,7 @@ program main
                 if (timestep > cero) then
                     is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                 else  ! Weird case of timestep 0
-                    is_premature_exit = next_time - time < tini
+                    is_premature_exit = next_time - time < myepsilon
                 end if
 
             end if
@@ -1474,7 +1500,7 @@ program main
             end if
 
             ! Update Chaos (triggers update elements)
-            call update_chaos(system, timestep, time, sim%reference_frame)
+            call update_chaos(system, sim%reference_frame)
 
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1527,7 +1553,7 @@ program main
 
                 ! Update dt
                 timestep = next_time - time
-                if (abs(timestep) < tini) exit loop_until_first_filter !! Manual CHECK
+                if (abs(timestep) < myepsilon) exit loop_until_first_filter !! Manual CHECK
 
                 ! INTEGRATE
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
@@ -1541,7 +1567,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < tini
+                        is_premature_exit = next_time - time < myepsilon
                     end if
 
                 end if
@@ -1569,7 +1595,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, timestep, time, sim%reference_frame)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1645,7 +1671,7 @@ program main
                                             & elem_filtered, &
                                             & sim%reference_frame)
             ! Update Chaos (triggers update elements)
-            call update_chaos(system_filtered, -uno, aux_real, sim%reference_frame)
+            call update_chaos(system_filtered, sim%reference_frame)
             ! Filtered output
             call generate_output(system_filtered, .True.)
 
@@ -1691,7 +1717,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < tini
+                        is_premature_exit = next_time - time < myepsilon
                     end if
 
                 end if
@@ -1716,7 +1742,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, timestep, time, sim%reference_frame)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1758,7 +1784,7 @@ program main
                 next_t_filt = checkpoint_times(next_output) - filter%half_width
 
                 ! -- Find the next checkpoint after that filtering time --
-                aux_int = next_checkpoint
+                aux_int = first_idx_yes_filter
                 do i = aux_int, next_output
                     if (checkpoint_times(i) > next_t_filt) then
                         next_checkpoint = i
@@ -1825,7 +1851,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                         else
-                            is_premature_exit = checkpoint_times(j) - time < tini
+                            is_premature_exit = checkpoint_times(j) - time < myepsilon
                         end if
                     end if
 
@@ -1849,7 +1875,7 @@ program main
                     end if
 
                     ! Update Chaos (triggers update elements)
-                    call update_chaos(system, timestep, time, sim%reference_frame)
+                    call update_chaos(system, sim%reference_frame)
 
                     ! Update geometric Chaos (triggers update geometric elements)
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -1888,7 +1914,7 @@ program main
 
                     ! Update dt
                     timestep = next_time - time
-                    if (abs(timestep) < tini) exit loop_until_second_filter !! Manual CHECK
+                    if (abs(timestep) < myepsilon) exit loop_until_second_filter !! Manual CHECK
 
                     ! INTEGRATE
                     call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
@@ -1902,7 +1928,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                         else  ! Weird case of timestep 0
-                            is_premature_exit = next_time - time < tini
+                            is_premature_exit = next_time - time < myepsilon
                         end if
 
                     end if
@@ -1930,7 +1956,7 @@ program main
                     end if
 
                     ! Update Chaos (triggers update elements)
-                    call update_chaos(system, timestep, time, sim%reference_frame)
+                    call update_chaos(system, sim%reference_frame)
 
                     ! Update geometric Chaos (triggers update geometric elements)
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2036,7 +2062,7 @@ program main
                                         & elem_filtered, &
                                         & sim%reference_frame)
             ! Update Chaos (triggers update elements)
-            call update_chaos(system_filtered, -uno, aux_real, sim%reference_frame)
+            call update_chaos(system_filtered, sim%reference_frame)
             ! Filtered output
             call generate_output(system_filtered, .True.)
 
@@ -2076,7 +2102,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < tini
+                        is_premature_exit = checkpoint_times(j) - time < myepsilon
                     end if
                 end if
 
@@ -2101,7 +2127,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, timestep, time, sim%reference_frame)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2201,7 +2227,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < tini
+                        is_premature_exit = checkpoint_times(j) - time < myepsilon
                     end if
                 end if
 
@@ -2225,7 +2251,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, timestep, time, sim%reference_frame)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2256,7 +2282,7 @@ program main
 
                 ! Update dt
                 timestep = next_time - time
-                if (abs(timestep) < tini) exit loop2_until_second_filter !! Manual EXIT
+                if (abs(timestep) < myepsilon) exit loop2_until_second_filter !! Manual EXIT
 
                 ! INTEGRATE
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
@@ -2270,7 +2296,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < tini
+                        is_premature_exit = next_time - time < myepsilon
                     end if
 
                 end if
@@ -2298,7 +2324,7 @@ program main
                 end if
 
                 ! Update Chaos (triggers update elements)
-                call update_chaos(system, timestep, time, sim%reference_frame)
+                call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
@@ -2374,7 +2400,7 @@ program main
                 if (timestep > cero) then
                     is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                 else
-                    is_premature_exit = checkpoint_times(j) - time < tini
+                    is_premature_exit = checkpoint_times(j) - time < myepsilon
                 end if
             end if
 
@@ -2395,18 +2421,32 @@ program main
             if (new_Nactive < sim%Nactive) then
                 call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
                 y_nvalues = get_y_nvalues(system)  ! Update nvalues to use in y
-                call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
+                regenerate_arrays = .True.
             end if
 
             ! Update Chaos (triggers update elements)
-            call update_chaos(system, timestep, time, sim%reference_frame)
-
+            print*, system%particles(1)%var_dist
+            print*, system%particles(1)%variational
+            call update_chaos(system, sim%reference_frame)
+            
+            ! Update megno if needed
+            if (sim%use_megno) then
+                y_der(:y_nvalues) = dydt(time, y_arr(:y_nvalues))
+                call update_megno(system, y_der(:y_nvalues), checkpoint_is_output(j))
+                regenerate_arrays = .True.
+            end if
 
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)
 
+            ! Regenerate if needed
+            if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
+
             ! Output
             if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) call generate_output(system)
+            ! print*, system%particles%id
+            ! print*, system%particles%megno
+            ! print*, system%particles%lyapunov
 
             ! Percentage output
             if (sim%use_percentage) call percentage(time, sim%final_time)

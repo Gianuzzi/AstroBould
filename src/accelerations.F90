@@ -2,7 +2,7 @@
 
 module accelerations
     use auxiliary, only: cross2D_z
-    use constants, only: wp, cero, uno, uno2, uno3, dos, G, tini
+    use constants, only: wp, cero, uno, uno2, uno3, dos, G
 
     implicit none
 
@@ -345,7 +345,7 @@ contains
         damp_factor = uno2*(uno + tanh(1.e1_wp*(uno - time/damp_time)))
 
         !! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
-        acc_omega = acc_omega + damp_coef_1*(time - t0 + tini)**(damp_coef_2 - uno)*omega*damp_factor
+        acc_omega = acc_omega + damp_coef_1*(time - t0)**(damp_coef_2 - uno)*omega*damp_factor
     end subroutine damping_expoly
 
 end module accelerations

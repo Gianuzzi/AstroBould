@@ -14,6 +14,7 @@ module parameters
     character(len=150) :: PROGRAM_NAME = "UNKNOWN"
     integer(kind=4) :: simulation_number = 1
     logical :: keep_integrating = .False.
+    logical :: regenerate_arrays = .False.
     !! I/O
     integer(kind=4) :: arguments_number = 0  ! Amount of argument in command line
     logical :: configfile_exists = .False.  ! Wether if config file exists
@@ -96,7 +97,8 @@ module parameters
         real(wp) :: omega_damp_active_time = cero
         real(wp) :: mass_exp_damping_time = infinito
         ! Megno
-        logical :: use_megno = .False.
+        logical :: use_megno = .True.
+        real(wp) :: megno_eps = 1.e-10_wp
         ! Filter
         logical :: use_filter = .False.
         real(wp) :: filter_dt = cero
@@ -174,9 +176,6 @@ module parameters
         logical :: use_lin_omega_damp = .False.
         logical :: use_exp_omega_damp = .False.
         logical :: use_poly_omega_damp = .False.
-        ! Megno
-        integer (kind=4) :: megno_particle = 1
-        real(wp) :: megno_eps = 1.e-10_wp
         !! Filter
         integer(kind=4) :: filter_size = 0
         real(wp) :: filter_half_width = cero
@@ -552,6 +551,10 @@ contains
                         stop 1
                     end if
                     aux_integer = 1
+                case ("--megno")
+                    params%use_megno = .True.
+                case ("--nomegno")
+                    params%use_megno = .False.
                 case ("-parallel")
                     params%use_parallel = .True.
                     call get_command_argument(i + 1, aux_character20)
@@ -608,6 +611,8 @@ contains
                     write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos"
                     write (*, *) "    -stopif       : Detener la integración si no quedan más objetos del tipo [int]:"
                     write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
+                    write (*, *) "    --megno       : Calcular MEGNO para partículas."
+                    write (*, *) "    --nomegno     : No calcular MEGNO."
                     write (*, *) "    -parallel     : Cantida de thread a utilizar en paralelo [int]"
                     write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
                     write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
@@ -894,6 +899,14 @@ contains
                     read (value_str, *, iostat=ios) params%omega_damp_active_time
                 case ("mass exponentia")
                     read (value_str, *, iostat=ios) params%mass_exp_damping_time
+                case ("calculate megno")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_megno = .True.
+                    else
+                        params%use_megno = .False.
+                    end if
+                case ("displacement fo")
+                    read (value_str, *, iostat=ios) params%megno_eps
                 case ("use filtering (")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_filter = .True.
@@ -1103,7 +1116,7 @@ contains
                     call allocate_params_asteroid(Nboulders)
                     params%Nboulders = Nboulders
                     ! Backspace to read again
-                    do j = aux_integer(kind=4), nlines - 1  ! -1 por ser both included
+                    do j = aux_integer, nlines - 1  ! -1 por ser both included
                         backspace (10)
                     end do
                     ! Read again and store
@@ -1140,7 +1153,7 @@ contains
                         ! Alocate
                         call allocate_params_moons(Nmoons)
                         ! Backspace to read again
-                        do j = aux_integer(kind=4), nlines - 1  ! -1 por ser both included
+                        do j = aux_integer, nlines - 1  ! -1 por ser both included
                             backspace (10)
                         end do
                         ! Read again and store
@@ -1184,7 +1197,7 @@ contains
                         ! Alocate
                         call allocate_params_particles(Nparticles)
                         ! Backspace to read again
-                        do j = aux_integer(kind=4), nlines - 1  ! -1 por ser both included
+                        do j = aux_integer, nlines - 1  ! -1 por ser both included
                             backspace (10)
                         end do
                         ! Read again and store
@@ -1285,7 +1298,7 @@ contains
                 write (*, *) "ERROR: Can not set tri-axial model with boulders."
                 stop 1
             end if
-            if (derived%triax_a_primary - derived%triax_c_primary < tini) then
+            if (derived%triax_a_primary - derived%triax_c_primary < myepsilon) then
                 write (*, *) "WARNING: Tri-axial model with equal semi-axis."
                 write (*, *) "         Switching to single central sphere."
                 derived%radius_primary = (derived%triax_a_primary* &
@@ -1316,11 +1329,11 @@ contains
 
         !! Forces
         !!! stokes_a_damping_time y stokes_e_damping_time
-        if (abs(derived%stokes_a_damping_time) < tini) derived%stokes_a_damping_time = cero
-        if (abs(derived%stokes_e_damping_time) < tini) derived%stokes_e_damping_time = cero
+        if (abs(derived%stokes_a_damping_time) < myepsilon) derived%stokes_a_damping_time = cero
+        if (abs(derived%stokes_e_damping_time) < myepsilon) derived%stokes_e_damping_time = cero
         if (derived%stokes_active_time .le. cero) derived%stokes_active_time = infinito
-        if ((abs(derived%stokes_a_damping_time) < tini) .and. &
-          & (abs(derived%stokes_e_damping_time) < tini)) derived%use_stokes = .False.
+        if ((abs(derived%stokes_a_damping_time) < myepsilon) .and. &
+          & (abs(derived%stokes_e_damping_time) < myepsilon)) derived%use_stokes = .False.
         if (.not. derived%use_stokes) then
             derived%stokes_a_damping_time = cero
             derived%stokes_e_damping_time = cero
@@ -1331,7 +1344,7 @@ contains
         end if
 
         !!! Naive-stokes
-        if (abs(derived%drag_coefficient) < tini) then
+        if (abs(derived%drag_coefficient) < myepsilon) then
             derived%use_drag = .False.
             derived%drag_coefficient = cero
         end if
@@ -1346,10 +1359,10 @@ contains
 
         !!! tau_m y tau_o
         if (derived%omega_damp_active_time .le. cero) derived%omega_damp_active_time = infinito
-        derived%use_lin_omega_damp = abs(derived%omega_lin_damping_time) > tini
-        derived%use_exp_omega_damp = abs(derived%omega_exp_damping_time) > tini
-        derived%use_poly_omega_damp = (abs(derived%omega_exp_damp_poly_A) > tini .or. &
-                                       abs(derived%omega_exp_damp_poly_B) > tini)
+        derived%use_lin_omega_damp = abs(derived%omega_lin_damping_time) > myepsilon
+        derived%use_exp_omega_damp = abs(derived%omega_exp_damping_time) > myepsilon
+        derived%use_poly_omega_damp = (abs(derived%omega_exp_damp_poly_A) > myepsilon .or. &
+                                       abs(derived%omega_exp_damp_poly_B) > myepsilon)
         if ((.not. derived%use_lin_omega_damp) .and. &
           & (.not. derived%use_exp_omega_damp) .and. &
           & (.not. derived%use_poly_omega_damp)) then
@@ -1368,14 +1381,14 @@ contains
         end if
 
         !!! Boulders in Z
-        if ((.not. derived%use_boulder_z) .or. (abs(derived%mu_boulder_z) < tini)) then
+        if ((.not. derived%use_boulder_z) .or. (abs(derived%mu_boulder_z) < myepsilon)) then
             derived%mu_boulder_z = cero
             derived%use_boulder_z = .False.
         end if
 
         !!! manual J2
         if (derived%use_manual_J2) then
-            if (abs(derived%manual_J2) < tini) then
+            if (abs(derived%manual_J2) < myepsilon) then
                 derived%use_manual_J2 = .False.
                 derived%manual_J2 = cero
             else if (derived%use_J2_from_primary) then
@@ -1399,7 +1412,7 @@ contains
         end if
 
         ! ! Mass Damping [UNAVAILABLE YET]
-        ! if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinito
+        ! if (abs(derived%mass_exp_damping_time) < myepsilon) derived%mass_exp_damping_time = infinito
 
         ! Filter (fast check)
         if (derived%use_filter) then
@@ -1436,8 +1449,8 @@ contains
         !         stop 1
         !     end if
         ! !! Set default update values
-        !     derived%update_rmin_bins = derived%rmin_bins < - tini
-        !     derived%update_rmax_bins = derived%rmax_bins < - tini
+        !     derived%update_rmin_bins = derived%rmin_bins < - myepsilon
+        !     derived%update_rmax_bins = derived%rmax_bins < - myepsilon
         !     derived%update_bins = derived%update_rmin_bins .or. derived%update_rmax_bins .or. derived%binning_method == 3
         ! end if
 
