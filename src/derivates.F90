@@ -72,7 +72,7 @@ contains
         integer(kind=4) :: N_total, N_particles, last_moon, first_particle 
         real(wp) :: c2th, s2th  ! For triaxial
         real(wp) :: Q_eff, dQdx, dQdy  ! For triaxial
-        real(wp) :: inv_dr, inv_dr2, inv_dr3  ! For triaxial and extra forces
+        real(wp) :: inv_dr, inv_dr2, inv_dr3, inv_dr5, inv_dr7  ! For triaxial and extra forces
         real(wp) :: theta_moon  ! For triaxial
         real(wp) :: xy_rotated(2)  ! For triaxial
         real(wp) :: Gmast, Gmcomb  ! For extra/COM forces
@@ -283,6 +283,8 @@ contains
                     hard_exit = .True.
                 end if
 
+                aux_real = G*inv_dr3
+
                 inv_dr2 = inv_dr3*dr
                 ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
                 ! Q_eff = 5 Q / r⁴
@@ -292,30 +294,128 @@ contains
 
                 ! a_unit_massx = G / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴))
                 ! a_unit_massy = G / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴))
-                acc_grav_m(1) = (G*inv_dr3)*( &
-                                &  dr_vec(1) &
+                acc_grav_m(1) = ( dr_vec(1) &
                                 &  - K_coef*dr_vec(1)*inv_dr2 &
-                                &  - L_coef*(dQdx*inv_dr2 - dr_vec(1)*Q_eff) &
-                                &)
-                acc_grav_m(2) = (G*inv_dr3)*( &
-                                &  dr_vec(2) &
+                                &  - L_coef*(dQdx*inv_dr2 - dr_vec(1)*Q_eff) )
+                acc_grav_m(2) = ( dr_vec(2) &
                                 &  - K_coef*dr_vec(2)*inv_dr2 &
-                                &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_eff) &
-                                &)
+                                &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_eff) )
 
                 ! Acceleration to particle from asteroid
-                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - acc_grav_m*m_arr(1)  ! = a_unit_mass * mAsteroid            
+                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - aux_real*acc_grav_m*m_arr(1)  ! = a_unit_mass * mAsteroid
+                
+
+                ! if (sim%use_megno) then
+                !     vdx = get_variational_index(j, first_particle, N_total)
+                !     coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    
+
+                !     ! dvx = mu / r³ * (r² * (-dy (K - 3 r²) x y + dx (4 x⁴ + 5 x² y² + y⁴ - K (2 x² + y²))) &
+                !     !                 & + L (6 dx x⁴ - 17 dy x³ y + 9 dx x² y² - 7 dy x y³ - 7 dx y⁴) cos(2th) &
+                !     !                 & + 2 L (4 dy x⁴ + 4 dx x³ y - 3 dy x² y² + 9 dx x y³ - 2 dy y⁴) sin(2th))
+                !     der(vdx + 2) = der(vdx + 2) + aux_real*m_arr(1) * (&
+                !                 & dr2*( &
+                !                         & -coords_P(2)*(K_coef - 3*dr2)*dr_vec(1)*dr_vec(2) &
+                !                         & + coords_P(1)*(&
+                !                             & 3*dr_vec(1)**4 &
+                !                             & + 5*(dr_vec(1)*dr_vec(2))**2 &
+                !                             & + dr2*dr2 &
+                !                             & - K_coef*(dr_vec(1)**2 + dr2 ) &
+                !                             & ) &
+                !                         & ) &
+                !                 & + L_coef*( &
+                !                         & 6*coords_P(1)*dr_vec(1)**4 &
+                !                         & -17*coords_P(2)*dr_vec(1)**3*dr_vec(2) &
+                !                         & + 9*coords_P(1)*(dr_vec(1)*dr_vec(2))**2 &
+                !                         & -7*coords_P(2)*dr_vec(1)*dr_vec(2)**3 &
+                !                         & -7*coords_P(1)*dr_vec(2)**4 &
+                !                         & )*c2th &
+                !                 & + 2*L_coef*( &
+                !                           & 4*coords_P(2)*dr_vec(1)**4 &
+                !                           & + 4*coords_P(1)*dr_vec(1)**3*dr_vec(2) &
+                !                           & -3*coords_P(2)*(dr_vec(1)*dr_vec(2))**2 &
+                !                           & +9*coords_P(1)*dr_vec(1)*dr_vec(2)**3 &
+                !                           & -2*coords_P(2)*dr_vec(2)**4 &
+                !                           & )*s2th)
+                    
+                !     ! dvy = mu / r³ * (r² * (-dx (K - 3 r²) x y + dy (x⁴ + 5 x² y² + 4 y⁴ - K (x² + 2 y²))) &
+                !     !                 & + L (7 dy x⁴ + 7 dx x³ y - 9 dy x² y² + 17 dy x y³ - 6 dy y⁴) cos(2th) &
+                !     !                 & - 2 L (2 dx x⁴ - 9 dy x³ y + 3 dx x² y² - 4 dx x y³ - 4 dx y⁴) sin(2th))
+                !     der(vdx + 3) = der(vdx + 3) + aux_real*m_arr(1) * (&
+                !                 & dr2*( &
+                !                         & -coords_P(1)*(K_coef - 3*dr2)*dr_vec(1)*dr_vec(2) &
+                !                         & + coords_P(2)*(&
+                !                             & dr2*dr2 &
+                !                             & + 5*(dr_vec(1)*dr_vec(2))**2 &
+                !                             & + 3*dr_vec(2)**4 &
+                !                             & - K_coef*(dr2 + dr_vec(2)**2) &
+                !                             & ) &
+                !                         & ) &
+                !                 & + L_coef*( &
+                !                         & 7*coords_P(2)*dr_vec(1)**4 &
+                !                         & + 7*coords_P(1)*dr_vec(1)**3*dr_vec(2) &
+                !                         & -9*coords_P(2)*(dr_vec(1)*dr_vec(2))**2 &
+                !                         & + 17*coords_P(1)*dr_vec(1)*dr_vec(2)**3 &
+                !                         & -6*coords_P(2)*dr_vec(2)**4 &
+                !                         & )*c2th &
+                !                 & + 2*L_coef*( &
+                !                           & 2*coords_P(1)*dr_vec(1)**4 &
+                !                           & -9*coords_P(2)*dr_vec(1)**3*dr_vec(2) &
+                !                           & + 3*coords_P(1)*(dr_vec(1)*dr_vec(2))**2 &
+                !                           & -4*coords_P(2)*dr_vec(1)*dr_vec(2)**3 &
+                !                           & -4*coords_P(1)*dr_vec(2)**4 &
+                !                           & )*s2th)
+
+                ! end if
 
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
 
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- J2K / r²) / r³
 
+                if (sim%use_megno) then
+                    vdx = get_variational_index(j, first_particle, N_total)
+                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    
+                    inv_dr7 = inv_dr3 * inv_dr3 / dr
+                    
+                    aux_real = Gmast*J2K_coef*inv_dr7
+
+                    ! dvx = mu J2k / r⁷ * (-5 dy x y + dx (-4 x² + y²))
+                    der(vdx + 2) = der(vdx + 2) + aux_real*(&
+                            & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
+                            & + coords_P(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
+                    
+                    ! dvy = mu J2k / r⁷ * (-5 dx x y + dy (x² - 4 y²))
+                    der(vdx + 3) = der(vdx + 3) + aux_real*(&
+                            & -5*coords_P(1)*dr_vec(1)*dr_vec(2) &
+                            & + coords_P(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
+
+                end if
+
             ! ---> Manual boulder_z from asteroid CM <---
             else if (use_boulder_z) then
 
                 aux_inv_dr3_boulder_z = uno/(dr2 + dz2_boulder_z_coef)**(1.5e0_wp)
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - Gboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z  !! Add - 2 G (x, y) boulder_z / r³
+
+                if (sim%use_megno) then
+                    vdx = get_variational_index(j, first_particle, N_total)
+                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    
+                    aux_real = Gboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
+
+                    ! dvx = - mu / (r² + rz²)²·⁵ * (-3 dy x y + dx (-2 x² + y² + rz²))
+                    der(vdx + 2) = der(vdx + 2) + aux_real*(&
+                            & 3*coords_P(2)*dr_vec(1)*dr_vec(2) &
+                            & - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
+                    
+                    ! dvy = mu / (r² + rz²)²·⁵ * (3 dx x y - dy (x² - 2 y² + rz²))
+                    der(vdx + 3) = der(vdx + 3) + aux_real*(&
+                            & 3*coords_P(1)*dr_vec(1)*dr_vec(2) &
+                            & - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
+
+                end if
 
             end if
 
@@ -430,19 +530,57 @@ contains
 
                 ! Particle acceleration
                 if (use_manual_J2_from_primary) then  ! Possible extra J2
-                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(0, 1)*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  ! G m0 (x, y) (1 - J2K / r²) / r³
-                else
-                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(0, 1)*dr_vec/(dr2*dr)  ! G m0 (x, y) / r³
-                end if
 
-                ! MEGNO
-                if (sim%use_megno) then
-                    vdx = get_variational_index(j, first_particle, N_total)
-
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    aux_real =  G*boulders_data(0, 1)
                     
-                    der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - G*boulders_data(0, 1) * &
-                        & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - aux_real*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  ! G m0 (x, y) (1 - J2K / r²) / r³
+
+                    ! ! MEGNO
+                    ! if (sim%use_megno) then
+                    !     vdx = get_variational_index(j, first_particle, N_total)
+
+                    !     coords_P = y(vdx:vdx + 3)  ! Variational particle
+
+                    !     inv_dr7 = uno / (dr2*dr2*dr2*dr)
+                        
+                    !     ! dvx = mu / r⁷ * (dy (-5 K + 3 r²) x y + dx (2 x² (-2 K + x²) + (K + x²) y² - y⁴)
+                    !     der(vdx+2) = der(vdx+2) + aux_real*inv_dr7*(&
+                    !         & coords_P(2)*(-5*J2K_coef + 3*dr2)*dr_vec(1)*dr_vec(2) &
+                    !         & + coords_P(1)*( &
+                    !             & 3*dr_vec(1)**4 &
+                    !             & + (dr_vec(1)*dr_vec(2))**2 &
+                    !             & -dr2*dr2 &
+                    !             & + J2K_coef*(-5*dr_vec(1)*dr_vec(1) + dr2) &
+                    !             & ) &
+                    !         & )
+
+                    !     ! dvy = mu / r⁷ * (dx (-5 K + 3 l^2) x y + dy (-x^4 + x^2 y^2 + 2 y^4 + K (x^2 - 4 y^2)))
+                    !     der(vdx+3) = der(vdx+3) + aux_real*inv_dr7*(&
+                    !         & coords_P(1)*(-5*J2K_coef + 3*dr2)*dr_vec(1)*dr_vec(2) &
+                    !         & + coords_P(2)*( &
+                    !             & -dr2*dr2 &
+                    !             & + (dr_vec(1)*dr_vec(2))**2 &
+                    !             & + 3*dr_vec(2)**4 &
+                    !             & + J2K_coef*(-5*dr_vec(2)*dr_vec(2) + dr2) &
+                    !             & ) &
+                    !         & )
+
+                    ! end if
+
+                else
+
+                    der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(0, 1)*dr_vec/(dr2*dr)  ! G m0 (x, y) / r³
+
+                    ! MEGNO
+                    if (sim%use_megno) then
+                        vdx = get_variational_index(j, first_particle, N_total)
+
+                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        
+                        der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - G*boulders_data(0, 1) * &
+                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+
+                    end if
 
                 end if
 
@@ -630,7 +768,6 @@ contains
                 der(vdx + 5) = prod / dist * t / megno_factor
 
                 ! Calculate dot{<Y>}
-                if (t > 0) aux_real = dos * y(vdx + 5) / t
                 if (t > 0) der(vdx + 6) = dos * y(vdx + 5) / t
                 
                 ! print*, t, i-first_particle, y(vdx + 5), y(vdx + 5) / max(t, tini)
