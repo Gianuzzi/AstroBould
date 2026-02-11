@@ -47,7 +47,7 @@ def read_chaos(chaos_name="sump.out", work_dir=None, use_megno=True):
         if use_megno:
             df.columns = chaos_names[1:]
         else:
-            df.columns = chaos_names[1:]
+            df.columns = chaos_names[:-1]
     return df
 
 
