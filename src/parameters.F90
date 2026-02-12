@@ -1624,7 +1624,8 @@ contains
 
     ! Define IO pointers
     subroutine define_writing_pointers(simu)
-        use bodies, only: write_chaos, write_elem, write_coor, write_both, &
+        use bodies, only: write_chaos, write_elem_small, write_elem, write_coor, write_both, &
+                        & write_ast_elem_small, write_moon_i_elem_small, write_particle_i_elem_small, &
                         & write_ast_elem, write_moon_i_elem, write_particle_i_elem, &
                         & write_ast_coor, write_moon_i_coor, write_particle_i_coor, &
                         & write_geom, write_geomchaos
@@ -1634,7 +1635,7 @@ contains
         ! Screen
         if (simu%use_datascreen) then
             if (simu%int_elements_output > 0) then
-                write_to_screen => write_elem
+                write_to_screen => write_elem_small
             else
                 write_to_screen => write_coor
             end if

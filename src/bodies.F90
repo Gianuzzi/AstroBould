@@ -132,7 +132,8 @@ module bodies
     character(30), parameter :: i3r23 = "(I7, I7, I7, 23(1X, 1PE22.15))"  ! 3 int y 23 real
     character(30), parameter :: i3r24 = "(I7, I7, I7, 24(1X, 1PE22.15))"  ! 3 int y 24 real
     character(26), parameter :: i2r15 = "(I7, I7, 15(1X, 1PE22.15))"  ! 2 int y 15 real
-    character(26), parameter :: i2r16 = "(I7, I7, 16(1X, 1PE22.15))"  ! 2 int y 15 real
+    character(26), parameter :: i2r16 = "(I7, I7, 16(1X, 1PE22.15))"  ! 2 int y 16 real
+    character(25), parameter :: i2r8 = "(I7, I7, 8(1X, 1PE22.15))"  ! 2 int y 8 real
     character(25), parameter :: i2r9 = "(I7, I7, 9(1X, 1PE22.15))"  ! 3 int y 9 real
     character(18), parameter :: s1i5x5 = "(5(A, 1X, I5, 1X))"
     character(18), parameter :: r13 = "(13(1X, 1PE22.15))"
@@ -2558,6 +2559,105 @@ contains
     end subroutine resolve_collisions
 
     !  -------------------------   IO    ----------------------------------
+    
+    ! Write elements asteroid
+    subroutine write_ast_elem_small(self, unit_file)
+        implicit none
+        type(system_st), intent(in) :: self
+        integer(kind=4), intent(in) :: unit_file
+
+        write (unit_file, i2r9) &
+            & 0, &   ! ID
+            & -1, &  ! type
+            & self%time/unit_time &  ! time
+            &, self%asteroid%theta/radian &  ! theta
+            &, self%asteroid%omega*unit_time &  ! omega
+            &, self%asteroid%elements(1)/unit_dist &  ! a
+            &, self%asteroid%elements(2) &  ! e
+            &, self%asteroid%elements(3)/radian &  ! M
+            &, self%asteroid%elements(4)/radian &  ! w
+            &, cero &  ! MMR
+            &, cero ! MEGNO  
+    end subroutine write_ast_elem_small
+
+    ! Write elements moon i
+    subroutine write_moon_i_elem_small(self, i, unit_file)
+        implicit none
+        type(system_st), intent(in) :: self
+        integer(kind=4), intent(in) :: i, unit_file
+
+        write (unit_file, i2r9) &
+            & self%moons(i)%id, &   ! ID
+            & 1, &  ! type
+            & self%time/unit_time &  ! time
+            &, self%asteroid%theta/radian &  ! theta
+            &, self%asteroid%omega*unit_time &  ! omega
+            &, self%moons(i)%elements(1)/unit_dist &  ! a
+            &, self%moons(i)%elements(2) &  ! e
+            &, self%moons(i)%elements(3)/radian &  ! M
+            &, self%moons(i)%elements(4)/radian &  ! w
+            &, self%moons(i)%mmr &  ! MMR
+            &, cero ! MEGNO  
+    end subroutine write_moon_i_elem_small
+
+    ! Write elements particle i
+    subroutine write_particle_i_elem_small(self, i, unit_file)
+        implicit none
+        type(system_st), intent(in) :: self
+        integer(kind=4), intent(in) :: i, unit_file
+
+        write (unit_file, i2r9) &
+            & self%particles(i)%id, &   ! ID
+            & 2, &  ! type
+            & self%time/unit_time &  ! time
+            &, self%asteroid%theta/radian &  ! theta
+            &, self%asteroid%omega*unit_time &  ! omega
+            &, self%particles(i)%elements(1)/unit_dist &  ! a
+            &, self%particles(i)%elements(2) &  ! e
+            &, self%particles(i)%elements(3)/radian &  ! M
+            &, self%particles(i)%elements(4)/radian &  ! w
+            &, self%particles(i)%mmr &  ! MMR
+            &, self%particles(i)%megno ! MEGNO  
+    end subroutine write_particle_i_elem_small
+
+    ! Write elements ALL
+    subroutine write_elem_small(self, unit_file)
+        implicit none
+        type(system_st), intent(in) :: self
+        integer(kind=4), intent(in) :: unit_file
+        integer(kind=4) :: i
+        integer(kind=4), dimension(:), allocatable :: ids
+
+        allocate (ids(max(self%Nmoons_active, self%Nparticles_active)))
+        if (self%asteroid%chaos_a(2) > myepsilon) call write_ast_elem_small(self, unit_file)
+
+        if (self%Nmoons_active > 1) then
+            do i = 1, self%Nmoons_active
+                ids(i) = i
+            end do
+            call quickargsort_int(self%moons%id, ids, 1, self%Nmoons_active)
+            do i = 1, self%Nmoons_active
+                call write_moon_i_elem_small(self, ids(i), unit_file)
+            end do
+        else if (self%Nmoons_active == 1) then
+            call write_moon_i_elem_small(self, 1, unit_file)
+        end if
+
+        if (self%Nparticles_active > 1) then
+            do i = 1, self%Nparticles_active
+                ids(i) = i
+            end do
+            call quickargsort_int(self%particles%id, ids, 1, self%Nparticles_active)
+            do i = 1, self%Nparticles_active
+                call write_particle_i_elem_small(self, ids(i), unit_file)
+            end do
+        else if (self%Nparticles_active == 1) then
+            call write_particle_i_elem_small(self, 1, unit_file)
+        end if
+
+        deallocate (ids)
+
+    end subroutine write_elem_small
 
     ! Write elements asteroid
     subroutine write_ast_elem(self, unit_file)
@@ -2615,7 +2715,6 @@ contains
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: i, unit_file
         
-
         write (unit_file, i2r16) &
             & self%particles(i)%id, &   ! ID
             & 2, &  ! type
