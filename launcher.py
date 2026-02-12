@@ -93,7 +93,7 @@ tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 new_dir = True  # Directorio donde volcar las salidas.
 datafile = "salida"  # Archivo de salidas de datos (sin extensión)
 final_chaos = "chaos"  # Archivo de caos final (sin extensión)
-geomfile = "geometric"  # Archivo de elementos geométricos (sin extensión)
+geomfile = False  # Archivo de elementos geométricos (sin extensión)
 # Summary file
 summaryfile = "summary"  # Archivo con resumen de parámetros
 # Elements #
