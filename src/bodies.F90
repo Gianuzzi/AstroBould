@@ -1271,22 +1271,23 @@ contains
     ! Sort moons according to their mass
     pure subroutine sort_moons(self)
         implicit none    
-        type(moon_st), intent(inout) :: self(:)
-        integer(kind=4), dimension(size(self)) :: order
-        type(moon_st), dimension(size(self)) :: tmp_moon
-        integer(kind=4) :: i, Nmoons
+        type(system_st), intent(inout) :: self
+        integer(kind=4), dimension(self%Nmoons_active) :: order
+        type(moon_st), dimension(self%Nmoons_active) :: tmp_moon
+        integer(kind=4) :: i, Nmoons_active
 
-        Nmoons = size(self)
+        Nmoons_active = self%Nmoons_active
+        if (Nmoons_active .le. 1) return
         
         ! Get order
-        call quickargsort(self%mass, order, 1, Nmoons)
+        call quickargsort(self%moons%mass, order, 1, Nmoons_active)
 
         ! Get a copy
-        tmp_moon = self
+        tmp_moon = self%moons(1:Nmoons_active)
 
         ! Reorder
-        do i = 1, Nmoons
-            self(i) = tmp_moon(order(i))
+        do i = 1, Nmoons_active
+            self%moons(i) = tmp_moon(order(i))
         end do
     end subroutine sort_moons
 
@@ -2553,7 +2554,7 @@ contains
         end if
 
         ! Reorder if needed
-        if ((self%reference_frame == 1 ) .and. was_any_moon_something) call sort_moons(self%moons)
+        if ((self%reference_frame == 1 ) .and. was_any_moon_something) call sort_moons(self)
     end subroutine resolve_collisions
 
     !  -------------------------   IO    ----------------------------------
