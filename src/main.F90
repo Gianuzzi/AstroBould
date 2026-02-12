@@ -994,6 +994,7 @@ program main
 
         !! Ahora debemos combinar los checkpoints previos con los nuevos, y crear un nuevo vector de tiempos Checkpoints
         call expand_checkpoints(aux_1D, checkpoint_times, checkpoint_is_output, checkpoint_is_tom, sim%checkpoint_number)
+        deallocate (aux_1D)
 
         ! Message
         if (sim%use_screen) write (*, s1i1) "Checkpoint times amount expanded. Total:", sim%checkpoint_number
