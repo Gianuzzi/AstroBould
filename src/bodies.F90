@@ -944,18 +944,12 @@ contains
         self%asteroid%a_corotation = a_corot
         mmr_from_n = (a_corot < myepsilon) .or. (self%Nmoons_active > 0)
 
-        if ((ref_used == 0) .or. (ref_used == 1)) then  ! Baryc or Jacobi
+        ! In all cases, we start from the Asteroid
+        coords_shifted = cero
+        coords_cm_in = self%asteroid%coordinates
+        mass_cm_in = self%asteroid%mass
 
-            coords_shifted = cero
-            coords_cm_in = self%asteroid%coordinates
-            mass_cm_in = self%asteroid%mass
-            
-            ! ! Deprecated. Not used in reality
-            ! if ((self%asteroid%dist_to_cm > myepsilon) .and. (self%Nmoons_active > 0)) then
-            !     call elem(mass_cm_in, (/self%asteroid%coordinates(1:2), cero, self%asteroid%coordinates(3:4), cero/), &
-            !             & a, e, i, M, w, O)
-            !     self%asteroid%elements = (/a, e, M, w/)
-            ! end if
+        if ((ref_used == 0) .or. (ref_used == 1)) then  ! Baryc or Jacobi
 
             ! Assume mass ordered
             !!call sort_moons(self%moons)  ! If not ordered
@@ -990,11 +984,15 @@ contains
                 end if
             end do
 
-        else  ! Astrocentric
+            ! Last but not least, define the asteroid barycentric if needed, given the orbit of the first moon
+            if ((ref_used == 0) .and. (self%Nmoons_active > 0)) then
+                self%asteroid%elements(1) = self%moons(1)%elements(1) / self%asteroid%mass * self%moons(1)%mass
+                self%asteroid%elements(2) = self%moons(1)%elements(2)
+                self%asteroid%elements(3) = self%moons(1)%elements(3)
+                self%asteroid%elements(4) = modulo(self%moons(1)%elements(4) + pi, twopi)
+            end if
 
-            coords_shifted = cero
-            coords_cm_in = self%asteroid%coordinates
-            mass_cm_in = self%asteroid%mass
+        else  ! Astrocentric
 
             ! Moons
             do j = 1, self%Nmoons_active
@@ -2568,7 +2566,7 @@ contains
 
         write (unit_file, i2r9) &
             & 0, &   ! ID
-            & -1, &  ! type
+            & 0, &  ! type
             & self%time/unit_time &  ! time
             &, self%asteroid%theta/radian &  ! theta
             &, self%asteroid%omega*unit_time &  ! omega
@@ -2629,7 +2627,7 @@ contains
         integer(kind=4), dimension(:), allocatable :: ids
 
         allocate (ids(max(self%Nmoons_active, self%Nparticles_active)))
-        if (self%asteroid%chaos_a(2) > myepsilon) call write_ast_elem_small(self, unit_file)
+        if (self%reference_frame == 0) call write_ast_elem_small(self, unit_file)
 
         if (self%Nmoons_active > 1) then
             do i = 1, self%Nmoons_active
@@ -2667,7 +2665,7 @@ contains
 
         write (unit_file, i2r16) &
             & 0, &  ! ID
-            & -1, &  ! type
+            & 0, &  ! type
             & self%time/unit_time, &  ! time
             & self%asteroid%theta/radian, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
@@ -2743,7 +2741,7 @@ contains
         integer(kind=4), dimension(:), allocatable :: ids
 
         allocate (ids(max(self%Nmoons_active, self%Nparticles_active)))
-        if (self%asteroid%chaos_a(2) > myepsilon) call write_ast_elem(self, unit_file)
+        if (self%reference_frame == 0) call write_ast_elem(self, unit_file)
 
         if (self%Nmoons_active > 1) then
             do i = 1, self%Nmoons_active
@@ -2783,8 +2781,8 @@ contains
 
         ! Asteroid
         write (unit_file, i2r9) &
-                & - 1, &  ! ID
-                & -1, &  ! type
+                & 0, &  ! ID
+                & 0, &  ! type
                 & self%time/unit_time, &  !time
                 & self%asteroid%theta/radian, &  ! theta
                 & self%asteroid%omega*unit_time, &  ! omega
@@ -2799,8 +2797,8 @@ contains
         ! Primary
         coords = self%asteroid%primary%coordinates_CM + self%asteroid%coordinates
         write (unit_file, i2r9) &
-            & 0, &  ! ID
-            & 0, &  ! type
+            & -1, &  ! ID
+            & -1, &  ! type
             & self%time/unit_time, &  !time
             & (self%asteroid%theta + self%asteroid%primary%initial_theta)/radian, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
@@ -2813,8 +2811,8 @@ contains
         do i = 1, self%asteroid%Nboulders
             coords = self%asteroid%boulders(i)%coordinates_CM + self%asteroid%coordinates
             write (unit_file, i2r9) &
-                & i, &  ! ID
-                & 0, &  ! type
+                & -i-1, &  ! ID
+                & -1, &  ! type
                 & self%time/unit_time, &  !time
                 & (self%asteroid%theta + self%asteroid%boulders(i)%initial_theta)/radian, &  ! theta
                 & self%asteroid%omega*unit_time, &  ! omega
@@ -2833,7 +2831,7 @@ contains
         integer(kind=4), intent(in) :: i, unit_file
 
         write (unit_file, i2r9) &
-            & self%moons(i)%id + self%asteroid%Nboulders, &  ! ID + Nbould to avoid duplicates
+            & self%moons(i)%id, &  ! ID + Nbould to avoid duplicates
             & 1, &  ! type
             & self%time/unit_time, &  !time
             & self%asteroid%theta/radian, &  ! theta
@@ -2851,7 +2849,7 @@ contains
         integer(kind=4), intent(in) :: i, unit_file
 
         write (unit_file, i2r9) &
-            & self%particles(i)%id + self%asteroid%Nboulders, &  ! ID + Nbould to avoid duplicates
+            & self%particles(i)%id, &  ! ID + Nbould to avoid duplicates
             & 2, &  ! type
             & self%time/unit_time, &  !time
             & self%asteroid%theta/radian, &  ! theta
@@ -2919,7 +2917,7 @@ contains
 
         write (unit_file, i3r24) &
             & 0, &  ! ID
-            & -1, &  ! type
+            & 0, &  ! type
             & -1, &  ! merged_to
             & actual%time/unit_time, &  ! time
             & initial%asteroid%theta/radian, &  ! theta
