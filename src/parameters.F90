@@ -176,6 +176,8 @@ module parameters
         logical :: use_lin_omega_damp = .False.
         logical :: use_exp_omega_damp = .False.
         logical :: use_poly_omega_damp = .False.
+        ! MEGNO
+        logical :: megno_active = .False.
         !! Filter
         integer(kind=4) :: filter_size = 0
         real(wp) :: filter_half_width = cero
@@ -709,13 +711,12 @@ contains
         ios = 0 ! Set initial OK
         open (unit=u_configfile, file=trim(file_name), status='old', action='read')
         do
-            ! if (ios /= 0) then
-            !     write (*,*) "WARNING: Errror while reading parameter for", trim(auxch15)
-            !     write (*,*) "           with value:", value_str
-            !     write (*,*) "  Using default value."
-            !     write (*,*) ACHAR(5)
-            !     ios = 0
-            ! end if
+            if (ios /= 0) then
+                write (*,*) "WARNING: Errror while reading parameter for", trim(auxch15)
+                write (*,*) "           with value:", value_str
+                write (*,*) "  Exiting."
+                stop 1
+            end if
             ! Read the line from the file
             read (u_configfile, '(A)', END=98) line
             nlines = nlines + 1
@@ -1339,7 +1340,7 @@ contains
             derived%stokes_e_damping_time = cero
             derived%stokes_active_time = cero
             derived%use_stokes_with_moons = .False.
-        else if (derived%Nmoons .eq. 0) then
+        else if (derived%Nmoons == 0) then
             derived%use_stokes_with_moons = .False.
         end if
 
@@ -1353,7 +1354,7 @@ contains
             derived%drag_coefficient = cero
             derived%drag_active_time = cero
             derived%use_drag_with_moons = .False.
-        else if (derived%Nmoons .eq. 0) then
+        else if (derived%Nmoons == 0) then
             derived%use_drag_with_moons = .False.
         end if
 
@@ -1588,7 +1589,7 @@ contains
         end if
 
         ! Check no mutiple outputs and also both (elements and coordinates)
-        if (derived%use_multiple_outputs .and. derived%int_elements_output .eq. 2) then
+        if (derived%use_multiple_outputs .and. derived%int_elements_output == 2) then
             write (*, *) "ERROR: Can not use both outputs (elements and coordinates) and mutiple outpues at the same time."
             stop 1
         end if
@@ -1612,6 +1613,11 @@ contains
             stop 1
         else if (.not. derived%use_megno) then
             derived%megno_eps = cero
+        else if ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2)) then
+            write (*, *) "ERROR: MEGNO can not be set with LeapFrog integrator yet."
+            stop 1
+        else
+            derived%megno_active = .True.
         end if
 
     end subroutine set_derived_parameters
@@ -1640,9 +1646,9 @@ contains
 
         ! Datafile
         if (simu%use_datafile) then
-            if (simu%int_elements_output .eq. 0) then
+            if (simu%int_elements_output == 0) then
                 write_to_general => write_coor
-            else if (simu%int_elements_output .eq. 1) then
+            else if (simu%int_elements_output == 1) then
                 write_to_general => write_elem
             else
                 write_to_general => write_both
@@ -2059,5 +2065,29 @@ contains
         call check_after_esc(syst, sim, keep_integrating)
 
     end subroutine check_esc_and_col
+    
+    subroutine update_sim_from_system(simu, syst, ynvalues, regenerate)
+        use bodies, only: get_Nactive, get_y_nvalues
+        implicit none
+        type(sim_params_st), intent(inout) :: simu
+        type(system_st), intent(in) :: syst
+        integer(kind=4), intent(inout) :: ynvalues
+        logical, intent(inout) :: regenerate
+        integer(kind=4) :: new_Nactive
+        
+        ! Get new_Nactive
+        call get_Nactive(system, new_Nactive)
+
+        ! Is different from old?
+        if (new_Nactive < simu%Nactive) then
+            call update_sim_Nactive(simu, syst%Nparticles_active, syst%Nmoons_active)  ! Update sim Nactive
+            ynvalues = get_y_nvalues(syst)  ! Update nvalues to use in y
+            simu%megno_active = system%megno%active ! EXTRA: Update megno
+            regenerate = .True.
+        end if
+
+        regenerate = regenerate .and. simu%megno_active  ! If still active, regenerate
+        
+    end subroutine update_sim_from_system
 
 end module parameters

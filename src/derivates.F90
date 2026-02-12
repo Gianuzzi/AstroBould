@@ -72,7 +72,7 @@ contains
         integer(kind=4) :: N_total, N_particles, last_moon, first_particle 
         real(wp) :: c2th, s2th  ! For triaxial
         real(wp) :: Q_eff, dQdx, dQdy  ! For triaxial
-        real(wp) :: inv_dr, inv_dr2, inv_dr3, inv_dr5, inv_dr7  ! For triaxial and extra forces
+        real(wp) :: inv_dr, inv_dr2, inv_dr3, inv_dr7  ! For triaxial and extra forces
         real(wp) :: theta_moon  ! For triaxial
         real(wp) :: xy_rotated(2)  ! For triaxial
         real(wp) :: Gmast, Gmcomb  ! For extra/COM forces
@@ -305,7 +305,7 @@ contains
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - aux_real*acc_grav_m*m_arr(1)  ! = a_unit_mass * mAsteroid
                 
 
-                ! if (sim%use_megno) then
+                ! if (sim%megno_active) then
                 !     vdx = get_variational_index(j, first_particle, N_total)
                 !     coords_P = y(vdx:vdx + 3)  ! Variational particle
                     
@@ -373,7 +373,7 @@ contains
 
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (- J2K / r²) / r³
 
-                if (sim%use_megno) then
+                if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
                     coords_P = y(vdx:vdx + 3)  ! Variational particle
                     
@@ -399,7 +399,7 @@ contains
                 aux_inv_dr3_boulder_z = uno/(dr2 + dz2_boulder_z_coef)**(1.5e0_wp)
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - Gboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z  !! Add - 2 G (x, y) boulder_z / r³
 
-                if (sim%use_megno) then
+                if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
                     coords_P = y(vdx:vdx + 3)  ! Variational particle
                     
@@ -536,7 +536,7 @@ contains
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - aux_real*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  ! G m0 (x, y) (1 - J2K / r²) / r³
 
                     ! ! MEGNO
-                    ! if (sim%use_megno) then
+                    ! if (sim%megno_active) then
                     !     vdx = get_variational_index(j, first_particle, N_total)
 
                     !     coords_P = y(vdx:vdx + 3)  ! Variational particle
@@ -572,7 +572,7 @@ contains
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(0, 1)*dr_vec/(dr2*dr)  ! G m0 (x, y) / r³
 
                     ! MEGNO
-                    if (sim%use_megno) then
+                    if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
                         coords_P = y(vdx:vdx + 3)  ! Variational particle
@@ -647,7 +647,7 @@ contains
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*boulders_data(i, 1)*dr_vec/(dr2*dr)  ! G mBoul (x, y) / r³
 
                     ! MEGNO
-                    if (sim%use_megno) then
+                    if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
                         coords_P = y(vdx:vdx + 3)  ! Variational particle
@@ -690,7 +690,7 @@ contains
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - G*m_arr(i)*dr_vec/(dr2*dr)  ! G mMoon (x, y) / r³
 
                 ! MEGNO
-                if (sim%use_megno) then
+                if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
 
                     coords_P = y(vdx:vdx + 3)  ! Variational particle
@@ -739,7 +739,7 @@ contains
         end if
 
         ! Fourth, Extra variational if MEGNO
-        if (sim%use_megno) then
+        if (sim%megno_active) then
 
             ! Initialize to 0
             glob_prod = cero

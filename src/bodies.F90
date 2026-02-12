@@ -943,7 +943,7 @@ contains
         self%asteroid%a_corotation = a_corot
         mmr_from_n = (a_corot < myepsilon) .or. (self%Nmoons_active > 0)
 
-        if ((ref_used .eq. 0) .or. (ref_used .eq. 1)) then  ! Baryc or Jacobi
+        if ((ref_used == 0) .or. (ref_used == 1)) then  ! Baryc or Jacobi
 
             coords_shifted = cero
             coords_cm_in = self%asteroid%coordinates
@@ -968,7 +968,7 @@ contains
 
                 ! Update cm in
                 coords_cm_in = mass_cm_in*coords_cm_in + self%moons(j)%mass*self%moons(j)%coordinates
-                if (ref_used .eq. 0) then  ! If baryc
+                if (ref_used == 0) then  ! If baryc
                     self%moons(j)%elements(1) = a * mass_cm_in/(mass_cm_in + self%moons(j)%mass)
                 end if
                 mass_cm_in = mass_cm_in + self%moons(j)%mass
@@ -1186,7 +1186,7 @@ contains
         self%eta_col = eta_collision
         self%f_col = f_collision
         if ((abs(manual_J2) > cero) .and. self%asteroid%primary%is_sphere) then
-            if ((.not. J2_from_primary) .or. (self%asteroid%Nboulders .eq. 0)) then
+            if ((.not. J2_from_primary) .or. (self%asteroid%Nboulders == 0)) then
                 self%asteroid%C20 = -manual_J2  ! C20 = -J2
             else
                 self%asteroid%primary%C20 = -manual_J2  ! C20 = -J2
@@ -1206,7 +1206,7 @@ contains
         integer(kind=4) :: i
 
         self%megno%epsilon = eps
-        if ((self%Nparticles) > 0 .and. (eps > cero)) then
+        if ((self%Nparticles > 0) .and. (eps > cero)) then
 
             do i = 1, self%Nparticles
                 rndm_arr = uno
@@ -1224,6 +1224,7 @@ contains
         end if
 
         call rescale_variational(self)
+
         
     end subroutine init_megno
 
@@ -1408,6 +1409,9 @@ contains
             end do
         end if
         self%Nparticles_active = self%Nparticles_active - 1  ! Update NPARTICLES_ACTIVE
+
+        ! EXTRA: Update megno if needed
+        self%megno%active = self%megno%active .and. self%Nparticles_active > 0
     end subroutine deactivate_particle_i
 
     !  -------------------   UPDATE / GENERATION  -------------------------
@@ -1687,13 +1691,13 @@ contains
         mass_in = self%asteroid%mass
         coords_in = cero
 
-        if ((reference_frame .eq. 0) .or. (reference_frame .eq. 1)) then  ! Barycentric or Jacobi         
+        if ((reference_frame == 0) .or. (reference_frame == 1)) then  ! Barycentric or Jacobi         
 
             ! Moons (massive)
             do i = 2, self%Nmoons_active + 1
                 idx = 4*i - 1
                 mass_add = self%moons(i-1)%mass
-                if (reference_frame .eq. 0) then ! Barycenter
+                if (reference_frame == 0) then ! Barycenter
                     a_effect = array(idx) * (mass_in + mass_add) / mass_in
                 else
                     a_effect = array(idx)
@@ -2069,7 +2073,7 @@ contains
         self%moons(i)%merged_to = -2 ! Ejected
 
         ! Deactivate the moon
-        keep_order = self%reference_frame .eq. 1 ! Only if Jacobi
+        keep_order = self%reference_frame == 1 ! Only if Jacobi
         call deactivate_moon_i(self, i, keep_order, error)
 
         ! Update almost all
@@ -2549,7 +2553,7 @@ contains
         end if
 
         ! Reorder if needed
-        if ((self%reference_frame .eq. 1 ) .and. was_any_moon_something) call sort_moons(self%moons)
+        if ((self%reference_frame == 1 ) .and. was_any_moon_something) call sort_moons(self%moons)
     end subroutine resolve_collisions
 
     !  -------------------------   IO    ----------------------------------
