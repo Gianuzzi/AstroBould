@@ -14,6 +14,7 @@ module parameters
     character(len=150) :: PROGRAM_NAME = "UNKNOWN"
     integer(kind=4) :: simulation_number = 1
     logical :: keep_integrating = .False.
+    logical :: regenerate_arrays = .False.
     !! I/O
     integer(kind=4) :: arguments_number = 0  ! Amount of argument in command line
     logical :: configfile_exists = .False.  ! Wether if config file exists
@@ -78,7 +79,7 @@ module parameters
         real(wp) :: gamma_J2 = uno
         logical :: use_J2_from_primary = .False.
         logical :: use_boulder_z = .False.
-        real(wp) ::mu_boulder_z = cero
+        real(wp) :: mu_boulder_z = cero
         logical :: use_stokes = .False.
         real(wp) :: stokes_a_damping_time = infinito
         real(wp) :: stokes_e_damping_time = infinito
@@ -95,6 +96,9 @@ module parameters
         real(wp) :: omega_exp_damp_poly_B = cero
         real(wp) :: omega_damp_active_time = cero
         real(wp) :: mass_exp_damping_time = infinito
+        ! Megno
+        logical :: use_megno = .False.
+        real(wp) :: megno_eps = 1.e-6_wp
         ! Filter
         logical :: use_filter = .False.
         real(wp) :: filter_dt = cero
@@ -172,6 +176,8 @@ module parameters
         logical :: use_lin_omega_damp = .False.
         logical :: use_exp_omega_damp = .False.
         logical :: use_poly_omega_damp = .False.
+        ! MEGNO
+        logical :: megno_active = .False.
         !! Filter
         integer(kind=4) :: filter_size = 0
         real(wp) :: filter_half_width = cero
@@ -228,7 +234,7 @@ module parameters
     logical, dimension(:), allocatable :: checkpoint_is_output ! Array with whether each checkpoint is output
 
     ! ----  <<<<<    PARAMETERS ARRAYS     >>>>>   -----
-    integer, parameter :: equation_size = 4
+    integer(kind=4), parameter :: equation_size = 4
     integer(kind=4) :: y_nvalues = 0  ! Will change dynamically
     real(wp), dimension(:), allocatable :: m_arr         ! Mass array
     real(wp), dimension(:), allocatable :: R_arr         ! Radius array
@@ -547,6 +553,10 @@ contains
                         stop 1
                     end if
                     aux_integer = 1
+                case ("--megno")
+                    params%use_megno = .True.
+                case ("--nomegno")
+                    params%use_megno = .False.
                 case ("-parallel")
                     params%use_parallel = .True.
                     call get_command_argument(i + 1, aux_character20)
@@ -603,6 +613,8 @@ contains
                     write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos"
                     write (*, *) "    -stopif       : Detener la integración si no quedan más objetos del tipo [int]:"
                     write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
+                    write (*, *) "    --megno       : Calcular MEGNO para partículas."
+                    write (*, *) "    --nomegno     : No calcular MEGNO."
                     write (*, *) "    -parallel     : Cantida de thread a utilizar en paralelo [int]"
                     write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
                     write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
@@ -668,7 +680,7 @@ contains
         character(15) :: auxch30
         integer(kind=4)  :: colonPos, commentPos
         integer(kind=4) :: nlines
-        integer(kind=4) :: io
+        integer(kind=4) :: io, ios ! For error handling
         integer(kind=4) :: len_val
         integer(kind=4) :: j
         integer(kind=4) :: aux_integer
@@ -696,8 +708,15 @@ contains
         end if
 
         nlines = 0
+        ios = 0 ! Set initial OK
         open (unit=u_configfile, file=trim(file_name), status='old', action='read')
         do
+            if (ios /= 0) then
+                write (*,*) "WARNING: Errror while reading parameter for", trim(auxch15)
+                write (*,*) "           with value:", value_str
+                write (*,*) "  Exiting."
+                stop 1
+            end if
             ! Read the line from the file
             read (u_configfile, '(A)', END=98) line
             nlines = nlines + 1
@@ -716,20 +735,20 @@ contains
                 auxch15 = param_str(:15)
                 select case (auxch15)
                 case ("total integrati")
-                    read (value_str, *) params%final_time
+                    read (value_str, *, iostat=ios) params%final_time
                 case ("negative time p")
-                    read (value_str, *) params%negative_time_selector
+                    read (value_str, *, iostat=ios) params%negative_time_selector
                 case ("output time int")
-                    read (value_str, *) params%output_timestep
+                    read (value_str, *, iostat=ios) params%output_timestep
                 case ("number of outpu")
-                    read (value_str, *) params%output_number
+                    read (value_str, *, iostat=ios) params%output_number
                 case ("number of extra")
-                    read (value_str, *) params%extra_checkpoints
+                    read (value_str, *, iostat=ios) params%extra_checkpoints
                 case ("output distribu")
-                    read (value_str, *) params%case_output_type
+                    read (value_str, *, iostat=ios) params%case_output_type
                 case ("use parallel th")
-                    read (value_str, '(i10)', iostat=aux_integer) params%requested_threads
-                    if (aux_integer /= 0) then
+                    read (value_str, '(i10)', iostat=ios) params%requested_threads
+                    if (ios /= 0) then
                         if ((auxch1 == "y") .or. (auxch1 == "s")) then
                             params%use_parallel = .True.
                             params%requested_threads = -1
@@ -740,8 +759,9 @@ contains
                     else
                         params%use_parallel = .True.
                     end if
+                    ios = 0 ! return to ok
                 case ("integrator ID t")
-                    read (value_str, *) params%integrator_ID
+                    read (value_str, *, iostat=ios) params%integrator_ID
                 case ("use adaptive ti")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_adaptive = .True.
@@ -749,15 +769,15 @@ contains
                         params%use_adaptive = .False.
                     end if
                 case ("precision (digi")
-                    read (value_str, *) params%error_digits
+                    read (value_str, *, iostat=ios) params%error_digits
                 case ("learning rate")
-                    read (value_str, *) params%learning_rate
+                    read (value_str, *, iostat=ios) params%learning_rate
                 case ("minimum timeste")
-                    read (value_str, *) params%dt_min
+                    read (value_str, *, iostat=ios) params%dt_min
                 case ("mass of primary")
-                    read (value_str, *) params%mass_primary
+                    read (value_str, *, iostat=ios) params%mass_primary
                 case ("radius of prima")
-                    read (value_str, *) params%radius_primary
+                    read (value_str, *, iostat=ios) params%radius_primary
                 case ("use triaxial mo")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_triaxial = .True.
@@ -765,15 +785,15 @@ contains
                         params%use_triaxial = .False.
                     end if
                 case ("semi-axis a (km")
-                    read (value_str, *) params%triax_a_primary
+                    read (value_str, *, iostat=ios) params%triax_a_primary
                 case ("semi-axis b (km")
-                    read (value_str, *) params%triax_b_primary
+                    read (value_str, *, iostat=ios) params%triax_b_primary
                 case ("semi-axis c (km")
-                    read (value_str, *) params%triax_c_primary
+                    read (value_str, *, iostat=ios) params%triax_c_primary
                 case ("ratio of spin t")
-                    read (value_str, *) params%lambda_kep
+                    read (value_str, *, iostat=ios) params%lambda_kep
                 case ("rotational peri")
-                    read (value_str, *) params%asteroid_rotational_period
+                    read (value_str, *, iostat=ios) params%asteroid_rotational_period
                 case ("moons input fil")
                     if ((to_lower(trim(value_str)) == "n") .or. &
                       & (to_lower(trim(value_str)) == "no")) then
@@ -811,7 +831,7 @@ contains
                         params%use_manual_J2 = .False.
                     end if
                 case ("manual J2 value")
-                    read (value_str, *) params%manual_J2
+                    read (value_str, *, iostat=ios) params%manual_J2
                 case ("set J2 from pri")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_J2_from_primary = .True.
@@ -819,7 +839,7 @@ contains
                         params%use_J2_from_primary = .False.
                     end if
                 case ("primary radius ")
-                    read (value_str, *) params%gamma_J2
+                    read (value_str, *, iostat=ios) params%gamma_J2
                 case ("include two bou")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_boulder_z = .True.
@@ -827,7 +847,7 @@ contains
                         params%use_boulder_z = .False.
                     end if
                 case ("mass ratio of w")
-                    read (value_str, *) params%mu_boulder_z
+                    read (value_str, *, iostat=ios) params%mu_boulder_z
                 case ("include stokes-")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_stokes = .True.
@@ -835,11 +855,11 @@ contains
                         params%use_stokes = .False.
                     end if
                 case ("a damping chara")
-                    read (value_str, *) params%stokes_a_damping_time
+                    read (value_str, *, iostat=ios) params%stokes_a_damping_time
                 case ("e damping chara")
-                    read (value_str, *) params%stokes_e_damping_time
+                    read (value_str, *, iostat=ios) params%stokes_e_damping_time
                 case ("stokes force da")
-                    read (value_str, *) params%stokes_active_time
+                    read (value_str, *, iostat=ios) params%stokes_active_time
                 case ("apply stokes-li")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_stokes_with_moons = .True.
@@ -853,9 +873,9 @@ contains
                         params%use_drag = .False.
                     end if
                 case ("drag force coef")
-                    read (value_str, *) params%drag_coefficient
+                    read (value_str, *, iostat=ios) params%drag_coefficient
                 case ("drag force acti")
-                    read (value_str, *) params%drag_active_time
+                    read (value_str, *, iostat=ios) params%drag_active_time
                 case ("apply drag to m")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_drag_with_moons = .True.
@@ -869,17 +889,25 @@ contains
                         params%use_omega_damping = .False.
                     end if
                 case ("rotation linear")
-                    read (value_str, *) params%omega_lin_damping_time
+                    read (value_str, *, iostat=ios) params%omega_lin_damping_time
                 case ("rotation expone")
-                    read (value_str, *) params%omega_exp_damping_time
+                    read (value_str, *, iostat=ios) params%omega_exp_damping_time
                 case ("rotation A poly")
-                    read (value_str, *) params%omega_exp_damp_poly_A
+                    read (value_str, *, iostat=ios) params%omega_exp_damp_poly_A
                 case ("rotation B poly")
-                    read (value_str, *) params%omega_exp_damp_poly_B
+                    read (value_str, *, iostat=ios) params%omega_exp_damp_poly_B
                 case ("omega damping a")
-                    read (value_str, *) params%omega_damp_active_time
+                    read (value_str, *, iostat=ios) params%omega_damp_active_time
                 case ("mass exponentia")
-                    read (value_str, *) params%mass_exp_damping_time
+                    read (value_str, *, iostat=ios) params%mass_exp_damping_time
+                case ("calculate megno")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_megno = .True.
+                    else
+                        params%use_megno = .False.
+                    end if
+                case ("displacement fo")
+                    read (value_str, *, iostat=ios) params%megno_eps
                 case ("use filtering (")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_filter = .True.
@@ -887,11 +915,11 @@ contains
                         params%use_filter = .False.
                     end if
                 case ("time period to")
-                    read (value_str, *) params%filter_dt
+                    read (value_str, *, iostat=ios) params%filter_dt
                 case ("filter oversamp")
-                    read (value_str, *) params%filter_nsamples
+                    read (value_str, *, iostat=ios) params%filter_nsamples
                 case ("filter windows")
-                    read (value_str, *) params%filter_nwindows
+                    read (value_str, *, iostat=ios) params%filter_nwindows
                 case ("apply filter to")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%filter_use_KH = .True.
@@ -899,7 +927,7 @@ contains
                         params%filter_use_KH = .False.
                     end if
                 case ("kernel weights")
-                    read (value_str, *) params%filter_model
+                    read (value_str, *, iostat=ios) params%filter_model
                 case ("prefix for filt")
                     if ((to_lower(trim(value_str)) == "n") .or. &
                       & (to_lower(trim(value_str)) == "no")) then
@@ -914,19 +942,19 @@ contains
                         params%use_self_gravity = .False.
                     end if
                 case ("max Legendre ex")
-                    read (value_str, *) params%Norder_self_gravity
+                    read (value_str, *, iostat=ios) params%Norder_self_gravity
                 case ("total bins used")
-                    read (value_str, *) params%Nbins
+                    read (value_str, *, iostat=ios) params%Nbins
                 case ("binning method ")
-                    read (value_str, *) params%binning_method
+                    read (value_str, *, iostat=ios) params%binning_method
                 case ("inner bin edge")
-                    read (value_str, *) params%rmin_bins
+                    read (value_str, *, iostat=ios) params%rmin_bins
                 case ("outer bin edge")
-                    read (value_str, *) params%rmax_bins
+                    read (value_str, *, iostat=ios) params%rmax_bins
                 case ("min distance fr")
-                    read (value_str, *) params%min_distance
+                    read (value_str, *, iostat=ios) params%min_distance
                 case ("max distance fr")
-                    read (value_str, *) params%max_distance
+                    read (value_str, *, iostat=ios) params%max_distance
                 case ("particle-massiv")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_merge_part_mass = .True.
@@ -940,9 +968,9 @@ contains
                         params%use_merge_massive = .False.
                     end if
                 case ("collisional eta")
-                    read (value_str, *) params%eta_col
+                    read (value_str, *, iostat=ios) params%eta_col
                 case ("collisional f p")
-                    read (value_str, *) params%f_col
+                    read (value_str, *, iostat=ios) params%f_col
                 case ("stop if no part")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_stop_no_part_left = .True.
@@ -1055,17 +1083,17 @@ contains
                         params%mapfile = trim(value_str)
                     end if
                 case ("number x cells")
-                    read (value_str, *) params%map_grid_size_x
+                    read (value_str, *, iostat=ios) params%map_grid_size_x
                 case ("number y cells")
-                    read (value_str, *) params%map_grid_size_y
+                    read (value_str, *, iostat=ios) params%map_grid_size_y
                 case ("lower x bound (")
-                    read (value_str, *) params%map_min_x
+                    read (value_str, *, iostat=ios) params%map_min_x
                 case ("upper x bound (")
-                    read (value_str, *) params%map_max_x
+                    read (value_str, *, iostat=ios) params%map_max_x
                 case ("lower y bound (")
-                    read (value_str, *) params%map_min_y
+                    read (value_str, *, iostat=ios) params%map_min_y
                 case ("upper y bound (")
-                    read (value_str, *) params%map_max_y
+                    read (value_str, *, iostat=ios) params%map_max_y
                 case default
                     write (*,*) "WARNING: Skipping parameter not recongnized: ", trim(param_str)
                     write (*,*) "           with value:", value_str
@@ -1271,7 +1299,7 @@ contains
                 write (*, *) "ERROR: Can not set tri-axial model with boulders."
                 stop 1
             end if
-            if (derived%triax_a_primary - derived%triax_c_primary < tini) then
+            if (derived%triax_a_primary - derived%triax_c_primary < myepsilon) then
                 write (*, *) "WARNING: Tri-axial model with equal semi-axis."
                 write (*, *) "         Switching to single central sphere."
                 derived%radius_primary = (derived%triax_a_primary* &
@@ -1302,22 +1330,22 @@ contains
 
         !! Forces
         !!! stokes_a_damping_time y stokes_e_damping_time
-        if (abs(derived%stokes_a_damping_time) < tini) derived%stokes_a_damping_time = cero
-        if (abs(derived%stokes_e_damping_time) < tini) derived%stokes_e_damping_time = cero
+        if (abs(derived%stokes_a_damping_time) < myepsilon) derived%stokes_a_damping_time = cero
+        if (abs(derived%stokes_e_damping_time) < myepsilon) derived%stokes_e_damping_time = cero
         if (derived%stokes_active_time .le. cero) derived%stokes_active_time = infinito
-        if ((abs(derived%stokes_a_damping_time) < tini) .and. &
-          & (abs(derived%stokes_e_damping_time) < tini)) derived%use_stokes = .False.
+        if ((abs(derived%stokes_a_damping_time) < myepsilon) .and. &
+          & (abs(derived%stokes_e_damping_time) < myepsilon)) derived%use_stokes = .False.
         if (.not. derived%use_stokes) then
             derived%stokes_a_damping_time = cero
             derived%stokes_e_damping_time = cero
             derived%stokes_active_time = cero
             derived%use_stokes_with_moons = .False.
-        else if (derived%Nmoons .eq. 0) then
+        else if (derived%Nmoons == 0) then
             derived%use_stokes_with_moons = .False.
         end if
 
         !!! Naive-stokes
-        if (abs(derived%drag_coefficient) < tini) then
+        if (abs(derived%drag_coefficient) < myepsilon) then
             derived%use_drag = .False.
             derived%drag_coefficient = cero
         end if
@@ -1326,16 +1354,16 @@ contains
             derived%drag_coefficient = cero
             derived%drag_active_time = cero
             derived%use_drag_with_moons = .False.
-        else if (derived%Nmoons .eq. 0) then
+        else if (derived%Nmoons == 0) then
             derived%use_drag_with_moons = .False.
         end if
 
         !!! tau_m y tau_o
         if (derived%omega_damp_active_time .le. cero) derived%omega_damp_active_time = infinito
-        derived%use_lin_omega_damp = abs(derived%omega_lin_damping_time) > tini
-        derived%use_exp_omega_damp = abs(derived%omega_exp_damping_time) > tini
-        derived%use_poly_omega_damp = (abs(derived%omega_exp_damp_poly_A) > tini .or. &
-                                       abs(derived%omega_exp_damp_poly_B) > tini)
+        derived%use_lin_omega_damp = abs(derived%omega_lin_damping_time) > myepsilon
+        derived%use_exp_omega_damp = abs(derived%omega_exp_damping_time) > myepsilon
+        derived%use_poly_omega_damp = (abs(derived%omega_exp_damp_poly_A) > myepsilon .or. &
+                                       abs(derived%omega_exp_damp_poly_B) > myepsilon)
         if ((.not. derived%use_lin_omega_damp) .and. &
           & (.not. derived%use_exp_omega_damp) .and. &
           & (.not. derived%use_poly_omega_damp)) then
@@ -1354,14 +1382,14 @@ contains
         end if
 
         !!! Boulders in Z
-        if ((.not. derived%use_boulder_z) .or. (abs(derived%mu_boulder_z) < tini)) then
+        if ((.not. derived%use_boulder_z) .or. (abs(derived%mu_boulder_z) < myepsilon)) then
             derived%mu_boulder_z = cero
             derived%use_boulder_z = .False.
         end if
 
         !!! manual J2
         if (derived%use_manual_J2) then
-            if (abs(derived%manual_J2) < tini) then
+            if (abs(derived%manual_J2) < myepsilon) then
                 derived%use_manual_J2 = .False.
                 derived%manual_J2 = cero
             else if (derived%use_J2_from_primary) then
@@ -1385,7 +1413,7 @@ contains
         end if
 
         ! ! Mass Damping [UNAVAILABLE YET]
-        ! if (abs(derived%mass_exp_damping_time) < tini) derived%mass_exp_damping_time = infinito
+        ! if (abs(derived%mass_exp_damping_time) < myepsilon) derived%mass_exp_damping_time = infinito
 
         ! Filter (fast check)
         if (derived%use_filter) then
@@ -1422,8 +1450,8 @@ contains
         !         stop 1
         !     end if
         ! !! Set default update values
-        !     derived%update_rmin_bins = derived%rmin_bins < - tini
-        !     derived%update_rmax_bins = derived%rmax_bins < - tini
+        !     derived%update_rmin_bins = derived%rmin_bins < - myepsilon
+        !     derived%update_rmax_bins = derived%rmax_bins < - myepsilon
         !     derived%update_bins = derived%update_rmin_bins .or. derived%update_rmax_bins .or. derived%binning_method == 3
         ! end if
 
@@ -1561,7 +1589,7 @@ contains
         end if
 
         ! Check no mutiple outputs and also both (elements and coordinates)
-        if (derived%use_multiple_outputs .and. derived%int_elements_output .eq. 2) then
+        if (derived%use_multiple_outputs .and. derived%int_elements_output == 2) then
             write (*, *) "ERROR: Can not use both outputs (elements and coordinates) and mutiple outpues at the same time."
             stop 1
         end if
@@ -1579,11 +1607,25 @@ contains
             stop 1
         end if
 
+        ! Check MEGNO with positive epsilon
+        if (derived%use_megno .and. ((derived%megno_eps < myepsilon) .or. (derived%megno_eps > uno2))) then
+            write (*, *) "ERROR: MEGNO epsilon must be a small positive, non infinitesimal number."
+            stop 1
+        else if (.not. derived%use_megno) then
+            derived%megno_eps = cero
+        else if ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2)) then
+            write (*, *) "ERROR: MEGNO can not be set with LeapFrog integrator yet."
+            stop 1
+        else
+            derived%megno_active = .True.
+        end if
+
     end subroutine set_derived_parameters
 
     ! Define IO pointers
     subroutine define_writing_pointers(simu)
-        use bodies, only: write_chaos, write_elem, write_coor, write_both, &
+        use bodies, only: write_chaos, write_elem_small, write_elem, write_coor, write_both, &
+                        & write_ast_elem_small, write_moon_i_elem_small, write_particle_i_elem_small, &
                         & write_ast_elem, write_moon_i_elem, write_particle_i_elem, &
                         & write_ast_coor, write_moon_i_coor, write_particle_i_coor, &
                         & write_geom, write_geomchaos
@@ -1593,7 +1635,7 @@ contains
         ! Screen
         if (simu%use_datascreen) then
             if (simu%int_elements_output > 0) then
-                write_to_screen => write_elem
+                write_to_screen => write_elem_small
             else
                 write_to_screen => write_coor
             end if
@@ -1605,9 +1647,9 @@ contains
 
         ! Datafile
         if (simu%use_datafile) then
-            if (simu%int_elements_output .eq. 0) then
+            if (simu%int_elements_output == 0) then
                 write_to_general => write_coor
-            else if (simu%int_elements_output .eq. 1) then
+            else if (simu%int_elements_output == 1) then
                 write_to_general => write_elem
             else
                 write_to_general => write_both
@@ -2024,5 +2066,29 @@ contains
         call check_after_esc(syst, sim, keep_integrating)
 
     end subroutine check_esc_and_col
+    
+    subroutine update_sim_from_system(simu, syst, ynvalues, regenerate)
+        use bodies, only: get_Nactive, get_y_nvalues
+        implicit none
+        type(sim_params_st), intent(inout) :: simu
+        type(system_st), intent(in) :: syst
+        integer(kind=4), intent(inout) :: ynvalues
+        logical, intent(inout) :: regenerate
+        integer(kind=4) :: new_Nactive
+        
+        ! Get new_Nactive
+        call get_Nactive(system, new_Nactive)
+
+        ! Is different from old?
+        if (new_Nactive < simu%Nactive) then
+            call update_sim_Nactive(simu, syst%Nparticles_active, syst%Nmoons_active)  ! Update sim Nactive
+            ynvalues = get_y_nvalues(syst)  ! Update nvalues to use in y
+            simu%megno_active = system%megno%active ! EXTRA: Update megno
+            regenerate = .True.
+        end if
+
+        regenerate = regenerate .or. simu%megno_active  ! If still active, regenerate
+        
+    end subroutine update_sim_from_system
 
 end module parameters

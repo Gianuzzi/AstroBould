@@ -34,6 +34,7 @@
 # 14-22! final body: theta (ast), omega (ast), a, e, M, w, MMR, mass, radius
 # 23-24! a_min, a_max
 # 25-26! e_min, e_max
+# 27   ! MEGNO single
 
 # Excepto <final_chaos>, el resto de los archivos estarán en carpetas creadas
 # con nombre 'dpi[pid]' asociado al ID del procesador que ejecutó el sistema.
@@ -74,6 +75,9 @@ merge = 3  # Tipo de merge
 ## 0: No detener, 1: Luna, 2: Partícula, 3: Ambos
 stopif = 0  # Tipo de stop if
 
+# MEGNO
+megno = True  # Usar megno para partículas
+
 # # Drag parameter
 # drag_eta = 1e-3  # 0 means no drag
 
@@ -89,11 +93,9 @@ tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
 new_dir = True  # Directorio donde volcar las salidas.
 datafile = "salida"  # Archivo de salidas de datos (sin extensión)
 final_chaos = "chaos"  # Archivo de caos final (sin extensión)
-geomfile = "geometric"  # Archivo de elementos geométricos (sin extensión)
+geomfile = False  # Archivo de elementos geométricos (sin extensión)
 # Summary file
 summaryfile = "summary"  # Archivo con resumen de parámetros
-# Screen #
-screen_info = True  # Información en pantalla (para integración individual)
 # Elements #
 elements = True  # Si se quiere devolver elementos orbitales (en datafile)
 
@@ -324,6 +326,7 @@ args += f" -tomfile {tomfile}" if tomfile else " --notomfile"
 args += " --elem" if elements else " --noelem"
 args += f" -merge {merge}"
 args += f" -stopif {stopif}"
+args += " --megno" if megno else " --nomegno"
 
 
 # # Change drag and or spin down

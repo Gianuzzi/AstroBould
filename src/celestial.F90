@@ -1,6 +1,6 @@
 !> Module with coordinates/elements, and some extra cel-mech routines.
 module celestial
-    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, tini, myepsilon, sqepsilon
+    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, tini, sqepsilon
 
     implicit none
 
@@ -22,7 +22,7 @@ contains
         real(wp), intent(in) :: mass, omega
         real(wp) :: acorot
 
-        if (omega < tini) then
+        if (omega < myepsilon) then
             acorot = cero
         else
             acorot = (G*mass/(omega*omega))**(1/3.)
@@ -61,7 +61,7 @@ contains
         dr2 = dx*dx + dy*dy
         dr = sqrt(dr2)
 
-        if (dr > tini) then
+        if (dr > myepsilon) then
             acc = acc - G*mass/(dr2*dr)*(/dx, dy/)
             pot = pot - G*mass/dr
         end if
@@ -83,7 +83,7 @@ contains
         dr2 = dx*dx + dy*dy
         dr = sqrt(dr2)
 
-        if (dr > tini) then
+        if (dr > myepsilon) then
             acc = acc - G*mass/(dr2*dr)*(/dx, dy/)*(uno - J2K_coef/dr2)
             pot = pot - G*mass/dr*(uno - J2K_coef*uno3/dr2)
         end if
@@ -434,7 +434,7 @@ contains
         real(wp) :: a_prev
 
         ! Check
-        if (abs(J2) < tini) then
+        if (abs(J2) < myepsilon) then
             call elem(mass, xc, a, e, inc, capm, omega, capom)
             return
         end if
@@ -447,7 +447,7 @@ contains
         vy = xc(5)
         vz = xc(6)
 
-        coplanar = (abs(z) < tini) .and. (abs(vz) < tini)
+        coplanar = (abs(z) < myepsilon) .and. (abs(vz) < myepsilon)
 
         r = sqrt(x*x + y*y)
         L = atan2(y, x)

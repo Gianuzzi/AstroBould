@@ -6,7 +6,7 @@
 
 The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
 
-If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [41 and 207](./src/main.F90#L41#207).
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [39 and 209](./src/main.F90#L39#209).
 
 ---
 
@@ -100,6 +100,8 @@ $ ./ASTROBOULD --help
                     0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos
     -stopif       : Detener la integración si no quedan más objetos del tipo [int]:
                     0: No detener, 1: Luna, 2: Partícula, 3: Ambos
+    --megno       : Calcular MEGNO para partículas.
+    --nomegno     : No calcular MEGNO.
     -parallel     : Cantida de thread a utilizar en paralelo [int]
     --parallel    : Paralelizar usando todos los threads disponibles
     --noparallel  : No usar paralelización para lunas/partículas
@@ -147,7 +149,7 @@ $ ./ASTROBOULD [args]
 - Each integration is executed in parallel (e.g., across multiple CPU cores).
 - Does not require _-fopenmp_.
 
-The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [62 to 105](./launcher.py#L62#105). More information (in spannish) is available at the top of the file(see lines [3 to 49](./launcher.py#L3#L49)).
+The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [63 to 107](./launcher.py#L63#107). More information (in spannish) is available at the top of the file(see lines [3 to 49](./launcher.py#L3#L49)).
 
 To run:
 ```console

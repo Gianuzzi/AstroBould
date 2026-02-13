@@ -51,7 +51,7 @@ contains
     character(len=*), intent(in), optional :: program_name
     character(len=50) :: my_package_name
 
-    if ((trim(package_name) .eq. "UNKNOWN") .and. present(program_name)) then
+    if ((trim(package_name) == "UNKNOWN") .and. present(program_name)) then
         my_package_name = program_name
     else
         my_package_name = package_name

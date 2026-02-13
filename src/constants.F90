@@ -15,14 +15,15 @@ module constants
     real(wp), parameter :: cero = 0.0e0_wp
     real(wp), parameter :: uno = 1.0e0_wp
     real(wp), parameter :: dos = 2.0e0_wp
+    real(wp), parameter :: tres = 3.0e0_wp
     real(wp), parameter :: uno2 = 0.5e0_wp
-    real(wp), parameter :: uno3 = uno/3.0e0_wp
+    real(wp), parameter :: uno3 = uno/tres
     real(wp), parameter :: pi = uno2*twopi
     real(wp), parameter :: radian = twopi/360.0e0_wp
     real(wp), parameter :: infinito = 1.0e50_wp  ! Infinito
     real(wp), parameter :: myepsilon = epsilon(1.0_wp) ! Precisión / Error [Usado en elem y coord]
     real(wp), parameter :: sqepsilon = sqrt(myepsilon) ! Error usado para checkeos
-    real(wp), parameter :: tini = sqepsilon ! Lowest value to compare
+    real(wp), parameter :: tini = tiny(1.0_wp) ! Lowest value to compare
     real(wp), parameter :: unit_mass = 1.e0_wp   ! in [kg]
     real(wp), parameter :: unit_dist = 1.e0_wp   ! in [km]
     real(wp), parameter :: unit_time = 1.e0_wp   ! in [day]
@@ -36,4 +37,5 @@ module constants
     real(wp), parameter :: metro = unit_dist/1.e3_wp ! [km]
     real(wp), parameter :: G_aux = 4.9823394e-10_wp ! [km³ kg⁻¹ day⁻²]
     real(wp), parameter :: G = G_aux*(unit_dist**3)/unit_mass/unit_time ! [unit_r³ unit_m⁻¹ unit_t⁻²]
+    real(wp), parameter :: megno_factor = uno !
 end module constants

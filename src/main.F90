@@ -19,12 +19,10 @@ program main
     character(20) :: aux_character20
     logical :: aux_logical
     real(wp) :: aux_real
-    real(wp), dimension(4) :: aux_real4
     real(wp), dimension(:), allocatable :: aux_1D
     real(wp), dimension(:, :), allocatable :: aux_2D  ! To read files
 
     integer(kind=4) :: i, j  ! Loops
-    integer(kind=4) :: new_Nactive = 0  ! When escapes/collisions occur
     integer(kind=4) :: unit_file = -1  ! Where to write escapes/collisions
 
     ! Set program name
@@ -171,6 +169,10 @@ program main
         input%dt_min = -1.e-2_wp          ! Minimum dt to use. (if negative, |dt| * min_period)
         input%learning_rate = 0.85e0_wp   ! [For adaptive step integrators] Learning rate
         input%error_digits = 12           ! [For adaptive step integrators] Digits for relative error
+
+        ! MEGNO
+        input%use_megno = .False.
+        input%megno_eps = 1e-6_wp       ! initial displacement for shadows
 
         ! Map
         input%use_potential_map = .False.
@@ -761,7 +763,7 @@ program main
             stop 1
         end if
         sim%min_distance = system%asteroid%radius*abs(sim%min_distance)
-    else if (sim%min_distance > tini) then
+    else if (sim%min_distance > myepsilon) then
         sim%min_distance = max(sim%min_distance*unit_dist, system%asteroid%radius)
     else  ! Assume its cero
         sim%min_distance = cero
@@ -779,7 +781,7 @@ program main
     end if
     if (sim%use_screen) then
         write (*, *) "Conditions for escape / collision"
-        if (sim%min_distance > tini) then
+        if (sim%min_distance > myepsilon) then
             write (*, s1r1) "   rmin : ", sim%min_distance/unit_dist, "[km] =", sim%min_distance/system%asteroid%radius, "[Rast]"
         else
             write (*, s1r1) "   rmin : Asteroid surface ~", system%asteroid%radius/unit_dist, "[km]"
@@ -852,6 +854,34 @@ program main
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! MEGNO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !! Initial message
+    if (sim%use_screen) then
+        write (*, *) ACHAR(5)
+        write (*, *) "---------- MEGNO  ----------"
+    end if
+
+    !! Configuration
+    if (sim%use_megno) then
+        call init_megno(system, sim%megno_eps)
+        if (sim%use_screen) then
+            if (sim%Npart_active == 0) then
+                write (*, *) " WARNING: MEGNO Activated but no particles found."
+                sim%megno_active = .False.
+            else 
+                write (*, *) " ACTIVATED. Applied only in particles"
+            end if
+            write (*, s1r1) "   Epsilon used:", system%megno%epsilon
+            write (*, *) ACHAR(5)
+        end if
+    else if (sim%use_screen)then
+        write (*, *) " NOT Activated."
+        write (*, *) ACHAR(5)
+    end if
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRACIÓN !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -867,7 +897,7 @@ program main
     ! Get minimum and maximum periods (already have internal units)
     sim%min_period = infinito
     sim%max_period = system%asteroid%rotational_period  ! No problem if it is 0
-    if (system%asteroid%rotational_period > tini) sim%min_period = system%asteroid%rotational_period
+    if (system%asteroid%rotational_period > myepsilon) sim%min_period = system%asteroid%rotational_period
     do i = 1, system%Nmoons_active
         aux_real = get_Period(system%asteroid%mass + system%moons(i)%mass, system%moons(i)%elements(1))
         sim%min_period = min(sim%min_period, aux_real)
@@ -881,14 +911,14 @@ program main
 
     ! <<<< Integration times >>>>
     if (sim%final_time < cero) then
-        if (sim%negative_time_selector .eq. 0) then
-            if (abs(system%asteroid%rotational_period) < tini) then
+        if (sim%negative_time_selector == 0) then
+            if (abs(system%asteroid%rotational_period) < myepsilon) then
                 write (*, *) ACHAR(10)
                 write (*, *) "Error: Setting total integration time with non-rotating asteroid."
                 stop 1
             end if
             sim%final_time = abs(sim%final_time)*system%asteroid%rotational_period
-        else if (sim%negative_time_selector .eq. 1) then
+        else if (sim%negative_time_selector == 1) then
             sim%final_time = abs(sim%final_time)*sim%max_period
         else
             sim%final_time = abs(sim%final_time)*sim%min_period
@@ -964,6 +994,7 @@ program main
 
         !! Ahora debemos combinar los checkpoints previos con los nuevos, y crear un nuevo vector de tiempos Checkpoints
         call expand_checkpoints(aux_1D, checkpoint_times, checkpoint_is_output, checkpoint_is_tom, sim%checkpoint_number)
+        deallocate (aux_1D)
 
         ! Message
         if (sim%use_screen) write (*, s1i1) "Checkpoint times amount expanded. Total:", sim%checkpoint_number
@@ -980,7 +1011,7 @@ program main
     else if (sim%dt_min > cero) then
         sim%dt_min = sim%dt_min*unit_time
     end if
-    if (sim%dt_min < tini) sim%dt_min = sim%min_period*1e-5_wp  ! Heuristic
+    if (sim%dt_min < myepsilon) sim%dt_min = sim%min_period*1e-5_wp  ! Heuristic
 
     ! Set initial adaptive and fixed timestep  (already has units)
     adaptive_timestep = sim%dt_min
@@ -989,7 +1020,7 @@ program main
     !! Mensaje
     if (sim%use_screen) then
         write (*, *) "Times:"
-        if (system%asteroid%rotational_period > tini) then
+        if (system%asteroid%rotational_period > myepsilon) then
             write (*, s1r1) "  tf    : ", sim%final_time/system%asteroid%rotational_period, "[Prot] = ", &
             & sim%final_time/unit_time, "[day]"
             write (*, s1r1) "  dt_out: ", sim%output_timestep/system%asteroid%rotational_period, "[Prot] = ", &
@@ -1018,12 +1049,15 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!! Integration Arrays !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    ! <<<< Amount of values of Y to use >>>>
+    y_nvalues = get_y_nvalues(system)  ! Get nvalues to use in y
+
     ! <<<< Allocate >>>>
     allocate (m_arr(sim%Ntotal))  ! Masses
     allocate (R_arr(sim%Ntotal))  ! Radii
-    allocate (y_arr(2 + sim%Ntotal*4))     ! Theta, Omega, Positions
-    allocate (y_arr_new(2 + sim%Ntotal*4)) ! Theta, Omega, Positions
-    allocate (y_der(2 + sim%Ntotal*4))     ! derivate(Theta, Omega, Positions)
+    allocate (y_arr(y_nvalues))     ! Theta, Omega, Positions
+    allocate (y_arr_new(y_nvalues)) ! Theta, Omega, Positions
+    allocate (y_der(y_nvalues))     ! derivate(Theta, Omega, Positions)
 
     ! <<<< Init to 0 >>>>
     m_arr = cero
@@ -1032,13 +1066,10 @@ program main
     y_arr_new = cero
     y_der = cero
 
-    ! <<<< Amount of values of Y to use >>>>
-    y_nvalues = get_index(sim%Nactive) + 3  ! Update nvalues to use in y
-
-
     ! <<<< Arrays to integrate >>>>
     call center_sytem(system)
     call generate_arrays(system, m_arr, R_arr, y_arr)
+
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! FILTER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1164,9 +1195,9 @@ program main
             write (*, *) "Data will not be printed on screen."
         end if
         write (*, *) ACHAR(5)
-        if (sim%reference_frame .eq. 0) then
+        if (sim%reference_frame == 0) then
             write (*, *) "Elements reference frame: Barycentric"
-        else if (sim%reference_frame .eq. 2) then
+        else if (sim%reference_frame == 2) then
             write (*, *) "Elements reference frame: Astrocentric"
         else
             write (*, *) "Elements reference frame: Jacobi"
@@ -1259,7 +1290,7 @@ program main
 
     !! Archivo de salida general
     if (sim%use_datafile) then
-        if (sim%int_elements_output .eq. 2) then
+        if (sim%int_elements_output == 2) then
             open (unit=u_datafile, file="elem_"//trim(sim%datafile), status='replace', action='write')
             open (unit=u_datafile+1, file="coor_"//trim(sim%datafile), status='replace', action='write')
         else
@@ -1340,20 +1371,14 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    !!!!!! MAIN LOOP INTEGRATION !!!!!!!
-    keep_integrating = .True.  ! Init flag
+    !!!!!! MAIN LOOP INTEGRATION FLAGS !!!!!!!
+    hard_exit = .False. ! Initial flag
+    keep_integrating = .True.  ! Initial flag
+    regenerate_arrays = .False.  ! Initial flag
 
     ! CHECK INITIAL CONDITIONS
-    ! Apply colissions/escapes and checks
+    ! Apply colissions/escapes and checks. This is first (only here) bc we want to remove possible duplcates
     call check_esc_and_col(system, unit_file)
-
-    ! Update Nactive and y_arr if necessary
-    call get_Nactive(system, new_Nactive)
-    if (new_Nactive < sim%Nactive) then
-        call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-        y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-        call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-    end if
 
     ! Update Chaos (triggers update elements)
     call update_chaos(system, sim%reference_frame)
@@ -1377,6 +1402,13 @@ program main
     ! Output initial conditions
     call generate_output(system)
 
+    ! Update Nactive and y_nvalues if necessary
+    call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+    ! Regenerate if needed
+    if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
+
+    ! Set filtered system
     if (sim%use_filter) then
         call copy_objects(system, system_filtered)
         call generate_output(system_filtered, .True.)
@@ -1414,6 +1446,7 @@ program main
 
             hard_exit = .False. ! Resetear HardExit
             is_premature_exit = .False. ! Resetear premature
+            regenerate_arrays = .False. ! Resetear regenerar
 
             ! Check if Particles/Moons left
             if (sim%Nactive == 1) then
@@ -1449,7 +1482,7 @@ program main
                 if (timestep > cero) then
                     is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                 else  ! Weird case of timestep 0
-                    is_premature_exit = next_time - time < tini
+                    is_premature_exit = next_time - time < myepsilon
                 end if
 
             end if
@@ -1462,22 +1495,14 @@ program main
             ! Update from y_new
             call update_system_from_array(system, time, y_arr)
 
-            ! Apply escapes and colissions and check
-            call check_esc_and_col(system, unit_file)
-
-            ! Update Nactive and y_arr if necessary
-            call get_Nactive(system, new_Nactive)
-            if (new_Nactive < sim%Nactive) then
-                call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-            end if
-
             ! Update Chaos (triggers update elements)
             call update_chaos(system, sim%reference_frame)
 
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+            ! Apply escapes and colissions and check
+            call check_esc_and_col(system, unit_file)
 
             ! Output and Update j; only if not premature
             if (.not. is_premature_exit) then
@@ -1487,6 +1512,12 @@ program main
                 end if
                 j = j + 1
             end if
+
+            ! Update Nactive and y_nvalues if necessary
+            call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+            ! Regenerate if needed
+            if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
             ! Reset adaptive if needed
             if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
@@ -1507,6 +1538,7 @@ program main
 
                 hard_exit = .False. ! Resetear HardExit
                 is_premature_exit = .False. ! Resetear premature
+                regenerate_arrays = .False. ! Resetear regenerar
 
                 ! Check if Particles/Moons left
                 if (sim%Nactive == 1) then
@@ -1527,7 +1559,7 @@ program main
 
                 ! Update dt
                 timestep = next_time - time
-                if (abs(timestep) < tini) exit loop_until_first_filter !! Manual CHECK
+                if (abs(timestep) < myepsilon) exit loop_until_first_filter !! Manual CHECK
 
                 ! INTEGRATE
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
@@ -1541,7 +1573,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < tini
+                        is_premature_exit = next_time - time < myepsilon
                     end if
 
                 end if
@@ -1555,24 +1587,20 @@ program main
                 ! Update from y_new
                 call update_system_from_array(system, time, y_arr)
 
-                ! Apply escapes and colissions and check
-                call check_esc_and_col(system, unit_file)
-
-                ! Update Nactive and y_arr if necessary
-                call get_Nactive(system, new_Nactive)
-                if (new_Nactive < sim%Nactive) then
-
-                    call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                    call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-
-                end if
-
                 ! Update Chaos (triggers update elements)
                 call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                ! Apply escapes and colissions and check
+                call check_esc_and_col(system, unit_file)
+
+                ! Update Nactive and y_nvalues if necessary
+                call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+                ! Regenerate if needed
+                if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
                 ! Reset adaptive if needed
                 if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
@@ -1656,6 +1684,7 @@ program main
 
                 hard_exit = .False. ! Resetear HardExit
                 is_premature_exit = .False. ! Resetear premature
+                regenerate_arrays = .False. ! Resetear regenerar
 
                 ! Check if Particles/Moons left
                 if (sim%Nactive == 1) then
@@ -1691,7 +1720,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < tini
+                        is_premature_exit = next_time - time < myepsilon
                     end if
 
                 end if
@@ -1704,22 +1733,14 @@ program main
                 ! Update from y_new
                 call update_system_from_array(system, time, y_arr)
 
-                ! Apply escapes and colissions and check
-                call check_esc_and_col(system, unit_file)
-
-                ! Update Nactive and y_arr if necessary
-                call get_Nactive(system, new_Nactive)
-                if (new_Nactive < sim%Nactive) then
-                    call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                    call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-                end if
-
                 ! Update Chaos (triggers update elements)
                 call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                ! Apply escapes and colissions and check
+                call check_esc_and_col(system, unit_file)
 
                 ! Output and Update j; only if not premature
                 if (.not. is_premature_exit) then
@@ -1729,6 +1750,12 @@ program main
                     end if
                     j = j + 1
                 end if
+
+                ! Update Nactive and y_nvalues if necessary
+                call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+                ! Regenerate if needed
+                if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
                 ! Reset adaptive if needed
                 if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
@@ -1758,7 +1785,7 @@ program main
                 next_t_filt = checkpoint_times(next_output) - filter%half_width
 
                 ! -- Find the next checkpoint after that filtering time --
-                aux_int = next_checkpoint
+                aux_int = first_idx_yes_filter
                 do i = aux_int, next_output
                     if (checkpoint_times(i) > next_t_filt) then
                         next_checkpoint = i
@@ -1792,6 +1819,7 @@ program main
 
                     hard_exit = .False. ! Resetear HardExit
                     is_premature_exit = .False. ! Resetear premature
+                    regenerate_arrays = .False. ! Resetear regenerar
 
                     ! Check if Particles/Moons left
                     if (sim%Nactive == 1) then
@@ -1825,7 +1853,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                         else
-                            is_premature_exit = checkpoint_times(j) - time < tini
+                            is_premature_exit = checkpoint_times(j) - time < myepsilon
                         end if
                     end if
 
@@ -1837,22 +1865,20 @@ program main
                     ! Update from y_new
                     call update_system_from_array(system, time, y_arr)
 
-                    ! Apply escapes and colissions and check
-                    call check_esc_and_col(system, aux_int)
-
-                    ! Update Nactive and y_arr if necessary
-                    call get_Nactive(system, new_Nactive)
-                    if (new_Nactive < sim%Nactive) then
-                        call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                        y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                        call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-                    end if
-
                     ! Update Chaos (triggers update elements)
                     call update_chaos(system, sim%reference_frame)
 
                     ! Update geometric Chaos (triggers update geometric elements)
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                    ! Apply escapes and colissions and check
+                    call check_esc_and_col(system, aux_int)
+
+                    ! Update Nactive and y_nvalues if necessary
+                    call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+                    ! Regenerate if needed
+                    if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
                     ! Update j; only if not premature
                     if (.not. is_premature_exit) j = j + 1
@@ -1868,6 +1894,7 @@ program main
 
                     hard_exit = .False. ! Resetear HardExit
                     is_premature_exit = .False. ! Resetear premature
+                    regenerate_arrays = .False.
 
                     ! Check if Particles/Moons left
                     if (sim%Nactive == 1) then
@@ -1888,7 +1915,7 @@ program main
 
                     ! Update dt
                     timestep = next_time - time
-                    if (abs(timestep) < tini) exit loop_until_second_filter !! Manual CHECK
+                    if (abs(timestep) < myepsilon) exit loop_until_second_filter !! Manual CHECK
 
                     ! INTEGRATE
                     call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
@@ -1902,7 +1929,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                         else  ! Weird case of timestep 0
-                            is_premature_exit = next_time - time < tini
+                            is_premature_exit = next_time - time < myepsilon
                         end if
 
                     end if
@@ -1916,24 +1943,20 @@ program main
                     ! Update from y_new
                     call update_system_from_array(system, time, y_arr)
 
-                    ! Apply escapes and colissions and check
-                    call check_esc_and_col(system, unit_file)
-
-                    ! Update Nactive and y_arr if necessary
-                    call get_Nactive(system, new_Nactive)
-                    if (new_Nactive < sim%Nactive) then
-
-                        call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                        y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                        call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-
-                    end if
-
                     ! Update Chaos (triggers update elements)
                     call update_chaos(system, sim%reference_frame)
 
                     ! Update geometric Chaos (triggers update geometric elements)
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                    ! Apply escapes and colissions and check
+                    call check_esc_and_col(system, unit_file)
+
+                    ! Update Nactive and y_nvalues if necessary
+                    call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+                    ! Regenerate if needed
+                    if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
                     ! Reset adaptive if needed
                     if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
@@ -2047,6 +2070,7 @@ program main
 
                 hard_exit = .False. ! Resetear HardExit
                 is_premature_exit = .False. ! Resetear premature
+                regenerate_arrays = .False. ! Resetear regenerar
 
                 ! Check if all done
                 !! Time end
@@ -2076,7 +2100,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < tini
+                        is_premature_exit = checkpoint_times(j) - time < myepsilon
                     end if
                 end if
 
@@ -2089,22 +2113,14 @@ program main
                 ! Update from y_new
                 call update_system_from_array(system, time, y_arr)
 
-                ! Apply escapes and colissions and check
-                call check_esc_and_col(system, unit_file)
-
-                ! Update Nactive and y_arr if necessary
-                call get_Nactive(system, new_Nactive)
-                if (new_Nactive < sim%Nactive) then
-                    call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                    call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-                end if
-
                 ! Update Chaos (triggers update elements)
                 call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                ! Apply escapes and colissions and check
+                call check_esc_and_col(system, unit_file)
 
                 ! Update j and Output
                 if (.not. is_premature_exit) then
@@ -2114,6 +2130,12 @@ program main
                     end if
                     j = j + 1
                 end if
+
+                ! Update Nactive and y_nvalues if necessary
+                call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+                ! Regenerate if needed
+                if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
                 ! Reset adaptive if needed
                 if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
@@ -2175,6 +2197,7 @@ program main
 
                 hard_exit = .False. ! Resetear HardExit
                 is_premature_exit = .False. ! Resetear premature
+                regenerate_arrays = .False. ! Resetear regenerar
 
                 ! Check if Particles/Moons left
                 if (sim%Nactive == 1) then
@@ -2201,7 +2224,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < tini
+                        is_premature_exit = checkpoint_times(j) - time < myepsilon
                     end if
                 end if
 
@@ -2213,22 +2236,20 @@ program main
                 ! Update from y_new
                 call update_system_from_array(system, time, y_arr)
 
-                ! Apply escapes and colissions and check
-                call check_esc_and_col(system, aux_int)
-
-                ! Update Nactive and y_arr if necessary
-                call get_Nactive(system, new_Nactive)
-                if (new_Nactive < sim%Nactive) then
-                    call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                    call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-                end if
-
                 ! Update Chaos (triggers update elements)
                 call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                ! Apply escapes and colissions and check
+                call check_esc_and_col(system, aux_int)
+
+                ! Update Nactive and y_nvalues if necessary
+                call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+                ! Regenerate if needed
+                if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
                 ! Update j; only if not premature
                 if (.not. is_premature_exit) j = j + 1
@@ -2244,6 +2265,7 @@ program main
 
                 hard_exit = .False. ! Resetear HardExit
                 is_premature_exit = .False. ! Resetear premature
+                regenerate_arrays = .False. ! Resetear regenerar
 
                 ! Check if Particles/Moons left
                 if (sim%Nactive == 1) then
@@ -2256,7 +2278,7 @@ program main
 
                 ! Update dt
                 timestep = next_time - time
-                if (abs(timestep) < tini) exit loop2_until_second_filter !! Manual EXIT
+                if (abs(timestep) < myepsilon) exit loop2_until_second_filter !! Manual EXIT
 
                 ! INTEGRATE
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
@@ -2270,7 +2292,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < tini
+                        is_premature_exit = next_time - time < myepsilon
                     end if
 
                 end if
@@ -2284,24 +2306,20 @@ program main
                 ! Update from y_new
                 call update_system_from_array(system, time, y_arr)
 
-                ! Apply escapes and colissions and check
-                call check_esc_and_col(system, unit_file)
-
-                ! Update Nactive and y_arr if necessary
-                call get_Nactive(system, new_Nactive)
-                if (new_Nactive < sim%Nactive) then
-
-                    call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                    call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-
-                end if
-
                 ! Update Chaos (triggers update elements)
                 call update_chaos(system, sim%reference_frame)
 
                 ! Update geometric Chaos (triggers update geometric elements)
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+                ! Apply escapes and colissions and check
+                call check_esc_and_col(system, unit_file)
+
+                ! Update Nactive and y_nvalues if necessary
+                call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+                ! Regenerate if needed
+                if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
                 ! Reset adaptive if needed
                 if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
@@ -2327,7 +2345,7 @@ program main
         ! -----------------------------------------------------------------------------
 
         ! Final time restoration
-        if (j .eq. sim%checkpoint_number + 1) time = sim%final_time
+        if (j == sim%checkpoint_number + 1) time = sim%final_time
 
     else
 
@@ -2336,6 +2354,7 @@ program main
 
             hard_exit = .False. ! Resetear HardExit
             is_premature_exit = .False. ! Resetear premature
+            regenerate_arrays = .False. ! Resetear regenerar
 
             ! Check if all done
             !! Time end
@@ -2374,7 +2393,7 @@ program main
                 if (timestep > cero) then
                     is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                 else
-                    is_premature_exit = checkpoint_times(j) - time < tini
+                    is_premature_exit = checkpoint_times(j) - time < myepsilon
                 end if
             end if
 
@@ -2387,23 +2406,14 @@ program main
             ! Update from y_new
             call update_system_from_array(system, time, y_arr)
 
-            ! Apply escapes and colissions and check
-            call check_esc_and_col(system, unit_file)
-
-            ! Update Nactive and y_arr if necessary
-            call get_Nactive(system, new_Nactive)
-            if (new_Nactive < sim%Nactive) then
-                call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-            end if
-
-            ! Update Chaos (triggers update elements)
+            ! Update Chaos (triggers update orbital elements, chaos, and MEGNO)
             call update_chaos(system, sim%reference_frame)
-
 
             ! Update geometric Chaos (triggers update geometric elements)
             if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+            ! Apply escapes and colissions and check
+            call check_esc_and_col(system, unit_file)
 
             ! Output
             if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) call generate_output(system)
@@ -2424,18 +2434,16 @@ program main
                     write (*, *) ACHAR(5)
                 end if
 
-                ! Apply colissions/escapes and checks
-                call check_esc_and_col(system, unit_file)
+                ! Mandatory regeneration because of new asteroid
+                regenerate_arrays = .True.
 
-                ! Update Nactive and y_arr if necessary
-                call get_Nactive(system, new_Nactive)
-                if (new_Nactive < sim%Nactive) then
-                    call update_sim_Nactive(sim, system%Nparticles_active, system%Nmoons_active)  ! Update sim Nactive
-                    y_nvalues = get_index(new_Nactive) + 3  ! Update nvalues to use in y
-                end if
-
-                call generate_arrays(system, m_arr, R_arr, y_arr)  ! Mandatory bc of new asteroid
             end if
+        
+            ! Update Nactive and y_nvalues if necessary
+            call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+            ! Regenerate if needed
+            if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
 
             ! Reset adaptive if needed
             if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
@@ -2453,7 +2461,7 @@ program main
     !! Cerrar archivo de salida
     if (sim%use_datafile) then
         close (u_datafile)
-        if (sim%int_elements_output .eq. 2) then
+        if (sim%int_elements_output == 2) then
             close (u_datafile + 1)
             if (sim%use_screen) then
                 write (*, *) ACHAR(10)
@@ -2489,6 +2497,10 @@ program main
             write (*, *) ACHAR(10)
             write (*, *) "Chaos:"
             call write_chaos(initial_system, system, 6)
+            if (sim%use_megno) then
+                write (*, *) ACHAR(5)
+                write (*, s1r1) "  Global MEGNO:", system%megno%megno
+            end if
         end if
     end if
 
@@ -2707,14 +2719,14 @@ end subroutine create_map
 ! !     implicit none
 ! !     public
 
-! !     integer, parameter :: Character_Storage_Size = 8
-! !     integer, parameter :: Error_Unit = 0
-! !     integer, parameter :: File_Storage_Size = 8
-! !     integer, parameter :: Input_Unit = 5
-! !     integer, parameter :: IOSTAT_END = -1
-! !     integer, parameter :: IOSTAT_EOR = -2
-! !     integer, parameter :: Numeric_Storage_Size = 32
-! !     integer, parameter :: Output_Unit = 6
+! !     integer(kind=4), parameter :: Character_Storage_Size = 8
+! !     integer(kind=4), parameter :: Error_Unit = 0
+! !     integer(kind=4), parameter :: File_Storage_Size = 8
+! !     integer(kind=4), parameter :: Input_Unit = 5
+! !     integer(kind=4), parameter :: IOSTAT_END = -1
+! !     integer(kind=4), parameter :: IOSTAT_EOR = -2
+! !     integer(kind=4), parameter :: Numeric_Storage_Size = 32
+! !     integer(kind=4), parameter :: Output_Unit = 6
 
 ! !   end module iso_fortran_env
 

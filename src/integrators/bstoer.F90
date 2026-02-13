@@ -209,7 +209,7 @@ contains
         mmid_ym(1:sizey) = y
         mmid_yn(1:sizey) = y + h*dydx ! First step.
         x = xs + h
-        yout = dydt(x, mmid_yn) ! Will use yout for temporary storage of derivatives.
+        yout = dydt(x, mmid_yn(1:sizey)) ! Will use yout for temporary storage of derivatives.
         h2 = TWO*h
         do n = 2, nstep ! General step.
             do i = 1, sizey

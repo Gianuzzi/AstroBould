@@ -1,6 +1,6 @@
 !> Module with filtering methods.
 module filtering
-    use constants, only: wp, pi, twopi, cero, uno, uno2, dos, tini
+    use constants, only: wp, pi, twopi, cero, uno, uno2, dos, myepsilon
 
     implicit none
 
@@ -37,7 +37,7 @@ contains
         !------------------------
         ! Assign parameters
         !------------------------
-        if (dt_cutoff < tini) then
+        if (dt_cutoff < myepsilon) then
             write (*, *) "ERROR: Filter dt can not be too low."
             stop 1
         end if
@@ -66,7 +66,7 @@ contains
         N = real(self%size - 1, kind=wp)
         do j = -self%half_size, self%half_size
             t_j = real(j, kind=wp)*self%dt
-            if (abs(t_j) < tini) then
+            if (abs(t_j) < myepsilon) then
                 val = self%omega_pass/pi
             else
                 val = sin(self%omega_pass*t_j)/(pi*t_j)

@@ -1,6 +1,6 @@
 !> Module with bins routines. Unused yet.
 module bins
-    use constants, only: wp, cero, uno2, G, pi, tini
+    use constants, only: wp, cero, uno2, G, pi, myepsilon
 
     implicit none
 
@@ -265,7 +265,7 @@ contains
         else if (dist > self%edges(self%Nbins + 1)) then ! Out of bounds
             bin = self%Nbins + 1
             return
-        else if (self%edges(self%Nbins + 1) - dist < tini) then ! If exactly rightmost edge, bin = Nbins
+        else if (self%edges(self%Nbins + 1) - dist < myepsilon) then ! If exactly rightmost edge, bin = Nbins
             bin = self%Nbins
             return
         end if
