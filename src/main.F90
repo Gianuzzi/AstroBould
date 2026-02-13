@@ -2434,26 +2434,16 @@ program main
                     write (*, *) ACHAR(5)
                 end if
 
-                ! Apply colissions/escapes and checks
-                call check_esc_and_col(system, unit_file)
-
-                ! Update Nactive and y_arr if necessary
-                call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
-
                 ! Mandatory regeneration because of new asteroid
-                call generate_arrays(system, m_arr, R_arr, y_arr)  
-            
-            
-            ! No TOM
-            else
-
-                ! Update Nactive and y_nvalues if necessary
-                call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
-
-                ! Regenerate if needed
-                if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
+                regenerate_arrays = .True.
 
             end if
+        
+            ! Update Nactive and y_nvalues if necessary
+            call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+            ! Regenerate if needed
+            if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
 
             ! Reset adaptive if needed
             if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
