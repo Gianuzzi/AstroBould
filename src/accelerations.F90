@@ -16,7 +16,7 @@ module accelerations
     logical :: use_manual_J2_from_cm = .False., use_manual_J2_from_primary = .False. ! Manual J2
     real(wp) :: J2K_coef = cero ! Manual J2 basics
     logical :: use_boulder_z = .False. ! Boulder_z
-    real(wp) :: Gboulder_z_coef = cero, dz2_boulder_z_coef = cero ! Manual boulder_z basics
+    real(wp) :: Gmboulder_z_coef = cero, dz2_boulder_z_coef = cero ! Manual boulder_z basics
     logical :: use_damp = .False.
     real(wp) :: damp_coef_1 = cero, damp_coef_2 = cero, damp_time = cero ! Omega Damping
     integer(kind=4) :: damp_model = -1 ! Omega Damping
@@ -161,20 +161,20 @@ contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     !!! Init Parameters
-    subroutine init_boulder_z(mu_boulder_z, m0, radius, r0)
+    subroutine init_boulder_z(mu_boulder_z, m0, radius, rcm0)
         implicit none
-        real(wp), intent(in) :: mu_boulder_z, m0, radius, r0
+        real(wp), intent(in) :: mu_boulder_z, m0, radius, rcm0
         real(wp) :: mass_boulder_z
 
         mass_boulder_z = mu_boulder_z * m0
 
         if ((abs(mass_boulder_z) > cero) .and. (radius > cero)) then
             use_boulder_z = .True.
-            Gboulder_z_coef = G * mass_boulder_z
-            dz2_boulder_z_coef = radius * radius - r0 * r0
+            Gmboulder_z_coef = G * mass_boulder_z
+            dz2_boulder_z_coef = radius * radius - rcm0 * rcm0
         else
             use_boulder_z = .False.
-            Gboulder_z_coef = cero
+            Gmboulder_z_coef = cero
             dz2_boulder_z_coef = cero
         end if
     end subroutine init_boulder_z
@@ -183,7 +183,7 @@ contains
         implicit none
         real(wp), intent(in) :: mass_z
         
-        Gboulder_z_coef = G * mass_z
+        Gmboulder_z_coef = G * mass_z
     end subroutine update_boulder_z
 
     !!! Acceleration Example
@@ -197,8 +197,8 @@ contains
 
         ! a_unit_massx = 2 G boulder_z x / r³
         ! a_unit_massy = 2 G boulder_z x / r³
-        acc(1) = acc(1) - Gboulder_z_coef*dr_vec(1)*inv_dr3
-        acc(2) = acc(2) - Gboulder_z_coef*dr_vec(2)*inv_dr3
+        acc(1) = acc(1) - Gmboulder_z_coef*dr_vec(1)*inv_dr3
+        acc(2) = acc(2) - Gmboulder_z_coef*dr_vec(2)*inv_dr3
     end subroutine boulder_z_acceleration
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -269,7 +269,7 @@ contains
         real(wp), intent(in) :: time, total_mass, dr_vec(2), dv_vec(2), dr
         real(wp), intent(inout) :: acc(2)
         real(wp) :: drag_factor, aux_real
-        real(wp) :: Gmcm, v2, acc_radial, vel_radial, mean_movement
+        real(wp) :: Gmcm, v2, acc_radial_drag, vel_radial, mean_movement
 
         drag_factor = uno2*(uno + tanh(1.e1_wp*(uno - time/drag_time)))
         Gmcm = G*total_mass
@@ -281,9 +281,9 @@ contains
 
         mean_movement = aux_real**(1.5e0_wp)/Gmcm ! n
         vel_radial = dot_product(dr_vec, dv_vec)/dr
-        acc_radial = -drag_coef*mean_movement*vel_radial
+        acc_radial_drag = -drag_coef*mean_movement*vel_radial
 
-        acc = acc + acc_radial*dr_vec/dr*drag_factor ! = -a_r * (x, y) / r * factor
+        acc = acc + acc_radial_drag*dr_vec/dr*drag_factor ! = -a_r_drag * (x, y) / r * factor
     end subroutine drag
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
