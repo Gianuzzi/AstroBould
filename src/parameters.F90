@@ -2087,7 +2087,7 @@ contains
             regenerate = .True.
         end if
 
-        regenerate = regenerate .and. simu%megno_active  ! If still active, regenerate
+        regenerate = regenerate .or. simu%megno_active  ! If still active, regenerate
         
     end subroutine update_sim_from_system
 
