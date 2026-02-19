@@ -8,6 +8,7 @@ module filtering
         ! filter parameters
         real(wp) :: dt = cero
         real(wp) :: half_width = cero
+        real(wp) :: total_dt = cero
         integer(kind=4) :: size = 0
         integer(kind=4) :: half_size = 0
         integer(kind=4) :: n_windows = 0
@@ -22,14 +23,13 @@ module filtering
 
 contains
 
-    subroutine create_filter(self, dt_cutoff, oversample, window_factor, low_pass, model)
+    subroutine create_filter(self, cutoff_period, samples_per_cutoff, support_factor, low_pass, model)
         implicit none
         type(filter_st), intent(inout) :: self
-        real(wp), intent(in) :: dt_cutoff
-        integer(kind=4), intent(in) :: oversample, window_factor
+        real(wp), intent(in) :: cutoff_period
+        integer(kind=4), intent(in) :: samples_per_cutoff, support_factor
         logical, intent(in) :: low_pass
         integer(kind=4), intent(in) :: model
-        real(wp) :: filter_long_dt
         real(wp) :: t_j
         real(wp) :: val, weight, N
         integer(kind=4) :: j
@@ -37,23 +37,23 @@ contains
         !------------------------
         ! Assign parameters
         !------------------------
-        if (dt_cutoff < myepsilon) then
+        if (cutoff_period < myepsilon) then
             write (*, *) "ERROR: Filter dt can not be too low."
             stop 1
         end if
 
-        filter_long_dt = dt_cutoff*window_factor
+        self%total_dt = cutoff_period*support_factor
 
-        self%n_samples = oversample
-        self%n_windows = window_factor
-        if (mod(window_factor, 2) == 1) self%n_windows = window_factor + 1  ! even
+        self%n_samples = samples_per_cutoff
+        self%n_windows = support_factor
+        if (mod(support_factor, 2) == 1) self%n_windows = support_factor + 1  ! even
 
         self%size = self%n_samples*self%n_windows + 1  ! +1 for the first condition  ! odd
         self%half_size = int((self%size - 1)/2, 4)
-        self%dt = real(filter_long_dt/(self%size - 1), kind=wp)
-        self%half_width = filter_long_dt*uno2
+        self%dt = real(self%total_dt/(self%size - 1), kind=wp)
+        self%half_width = self%total_dt*uno2
 
-        self%omega_pass = twopi/dt_cutoff  ! Frequency allowed
+        self%omega_pass = twopi/cutoff_period  ! Frequency allowed
 
         ! Allocate kernel
         allocate (self%kernel(self%size))
@@ -124,14 +124,14 @@ contains
 
     end subroutine allocate_filter
 
-    subroutine setup_filter(self, dt_cutoff, oversample, window_factor, low_pass, model, data_size)
+    subroutine setup_filter(self, cutoff_period, samples_per_cutoff, support_factor, low_pass, model, data_size)
         implicit none
         type(filter_st), intent(inout) :: self
-        real(wp), intent(in) :: dt_cutoff
-        integer(kind=4), intent(in) :: oversample, window_factor, model, data_size
+        real(wp), intent(in) :: cutoff_period
+        integer(kind=4), intent(in) :: samples_per_cutoff, support_factor, model, data_size
         logical, intent(in) :: low_pass
 
-        call create_filter(self, dt_cutoff, oversample, window_factor, low_pass, model)
+        call create_filter(self, cutoff_period, samples_per_cutoff, support_factor, low_pass, model)
 
         call allocate_filter(self, data_size)
 
