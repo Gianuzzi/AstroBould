@@ -432,9 +432,9 @@ program main
     call add_boulder_z(asteroid, sim%mu_boulder_z)  ! Add boulders in Z
     do i = 1, sim%Nboulders ! Add boulders
         call add_boulder(asteroid, &
-                        & boulders_in(i, 1), &              ! mu
+                        & boulders_in(i, 1), &            ! mu
                         & boulders_in(i, 2)*unit_dist, &  ! radius
-                        & boulders_in(i, 3)*radian)       ! theta
+                        & boulders_in(i, 3)*radian)       ! theta (degrees)
     end do
 
     !!!!!!!!!!!!!! Moons !!!!!!!!!!!!!!
@@ -442,12 +442,12 @@ program main
     call allocate_moons(moons_arr, sim%Nmoons)
     do i = 1, sim%Nmoons  ! Add boulders
         call add_moon(moons_arr, &
-                     & moons_in(i, 1), &              ! mu
+                     & moons_in(i, 1), &            ! mu
                      & moons_in(i, 2)*unit_dist, &  ! a
-                     & moons_in(i, 3), &              ! e
-                     & moons_in(i, 4)*radian, &    ! M
-                     & moons_in(i, 5)*radian, &    ! w
-                     & moons_in(i, 6), &              ! MMR
+                     & moons_in(i, 3), &            ! e
+                     & moons_in(i, 4)*radian, &     ! M (degrees)
+                     & moons_in(i, 5)*radian, &     ! w (degrees)
+                     & moons_in(i, 6), &            ! MMR
                      & moons_in(i, 7)*unit_dist)    ! radius
     end do
 
@@ -458,11 +458,11 @@ program main
     do i = 1, sim%Nparticles  ! Add particles
         call add_particle(particles_arr, &
                          & particles_in(i, 1)*unit_dist, &  ! a
-                         & particles_in(i, 2), &              ! e
-                         & particles_in(i, 3)*radian, &     ! M
-                         & particles_in(i, 4)*radian, &     ! w
-                         & particles_in(i, 5), &              ! MMR
-                         sim%Nmoons)                         ! ID to star from
+                         & particles_in(i, 2), &            ! e
+                         & particles_in(i, 3)*radian, &     ! M (degrees)
+                         & particles_in(i, 4)*radian, &     ! w (degrees)
+                         & particles_in(i, 5), &            ! MMR
+                         sim%Nmoons)                        ! ID to star from
     end do
 
     !!!!!!!!!!!!!! SYSTEM !!!!!!!!!!!!!!
@@ -1093,7 +1093,7 @@ program main
         allocate (tmp_y_arr(size(y_arr)))
 
         ! Set paramters
-        if (sim%filter_dt < cero) sim%filter_dt = abs(sim%filter_dt)*twopi/system%asteroid%omega/unit_time
+        if (sim%filter_dt < cero) sim%filter_dt = abs(sim%filter_dt)*system%asteroid%rotational_period / unit_time
         call setup_filter(filter, &
                 & sim%filter_dt*unit_time, &
                 & sim%filter_nsamples, &
@@ -1112,7 +1112,7 @@ program main
                 & 'dt', 'dt/Prot', 'n_samples', 'n_windows', 'size', 'total_dt', 'total_dt/Prot'
         write (u_filterfile, '(2(1PE22.15,1X),I10,1X,I8,1X,I7,2(1X,1PE22.15))') &
                 & filter%dt, filter%dt/system%asteroid%rotational_period, filter%n_samples, filter%n_windows, filter%size, &
-                & filter%dt*filter%size, filter%dt*filter%size/system%asteroid%rotational_period
+                & filter%total_dt, filter%total_dt/system%asteroid%rotational_period
         write(u_filterfile,'(/,A)') 'Kernel (index, value):'
         do i = 1, size(filter%kernel)
             write(u_filterfile,'(I7,1X,1PE22.15)') i, filter%kernel(i)
@@ -1120,7 +1120,7 @@ program main
         close (u_filterfile)
 
         ! CHECK
-        if (filter%dt*filter%size > sim%final_time) then
+        if (filter%total_dt > sim%final_time) then
             write (*, *) ACHAR(10)
             write (*, *) "ERROR: Filter has more window timespan than simulation final time."
             stop 1
@@ -1128,13 +1128,14 @@ program main
 
         if (sim%use_screen) then
             write (*, *) "Filter ON"
-            write (*, s1r1) "  dt    :", filter%dt/system%asteroid%omega, "[Prot] = ", &
+            write (*, s1r1) "  dt    :", filter%dt/system%asteroid%rotational_period, "[Prot] = ", &
                           & filter%dt/unit_time, "[day]"
-            write (*, s1i1) "  size  :", filter%size
-            write (*, s1r1) "  width :", filter%dt*filter%size/system%asteroid%omega, "[Prot] = ", &
-                          & filter%dt*filter%size/unit_time, "[day]"
-            write (*, s1r1) "  cut_off freq:", filter%omega_pass*radian/unit_time, "[day⁻¹] =>", &
-                          & uno/(filter%omega_pass*radian/unit_time), "[day]"
+            write (*, s1i1) "  size  :", filter%size-1  ! -1 because these are the vertices
+            write (*, s1r1) "  total width :", filter%total_dt/system%asteroid%rotational_period, "[Prot] = ", &
+                          & filter%total_dt/unit_time, "[day]"
+            write (*, s1r1) "  cutoff freq:", filter%omega_pass*unit_time, "[rad day⁻¹]"
+            write (*, s1r1) "              =>", twopi/(filter%omega_pass*unit_time), "[day] =", &
+                          & filter%omega_pass/system%asteroid%omega, "[Prot]"
             write (*, *) ACHAR(5)
         end if
 
@@ -1236,6 +1237,7 @@ program main
 
     ! <<<< Free initial arrays >>>>
     call free_initial_arays()
+    
 
     !! <<<< CHECK IF GO ON >>>>
     if (sim%only_print) then
@@ -1652,9 +1654,10 @@ program main
 
                 ! INTEGRATE (without check)
                 call integrate(time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt, y_arr_new(:y_nvalues))
-
+                
                 !! Update time
                 time_filt = time_filt + filter%dt
+                
 
                 y_arr_new(1) = modulo(y_arr_new(1), twopi)  ! Modulate theta
 
@@ -1665,6 +1668,7 @@ program main
                 y_pre_filter(:y_nvalues) = y_arr_new(:y_nvalues)
 
             end do
+               
 
             ! Create filtered and do post-processing
             call apply_filter(y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
@@ -1676,6 +1680,7 @@ program main
             call update_chaos(system_filtered, sim%reference_frame)
             ! Filtered output
             call generate_output(system_filtered, .True.)
+            
 
             ! =======> SECOND STEP <==========
 
@@ -1969,6 +1974,7 @@ program main
             end if
 
         end if  ! keep integrating
+        
 
         !!!! Now we are in the second filter (j = next_checkpoint)
 
