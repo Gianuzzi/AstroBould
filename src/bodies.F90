@@ -1,7 +1,7 @@
 !> Module with System, Asteroid, Moons, and Particles structures and routines
 module bodies
     use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, sqepsilon, tini, infinito, &
-                         & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, radian, megno_factor
+                         & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, degree, megno_factor
     use celestial, only: get_a_corot, get_acc_and_pot_single, get_acc_and_pot_single_with_J2, elem, coord, coord2geom
     use auxiliary, only: quickargsort, quickargsort_int, rotate2D
 
@@ -2568,12 +2568,12 @@ contains
             & 0, &   ! ID
             & 0, &  ! type
             & self%time/unit_time &  ! time
-            &, self%asteroid%theta/radian &  ! theta
+            &, self%asteroid%theta*degree &  ! theta
             &, self%asteroid%omega*unit_time &  ! omega
             &, self%asteroid%elements(1)/unit_dist &  ! a
             &, self%asteroid%elements(2) &  ! e
-            &, self%asteroid%elements(3)/radian &  ! M
-            &, self%asteroid%elements(4)/radian &  ! w
+            &, self%asteroid%elements(3)*degree &  ! M
+            &, self%asteroid%elements(4)*degree &  ! w
             &, cero &  ! MMR
             &, cero ! MEGNO  
     end subroutine write_ast_elem_small
@@ -2588,12 +2588,12 @@ contains
             & self%moons(i)%id, &   ! ID
             & 1, &  ! type
             & self%time/unit_time &  ! time
-            &, self%asteroid%theta/radian &  ! theta
+            &, self%asteroid%theta*degree &  ! theta
             &, self%asteroid%omega*unit_time &  ! omega
             &, self%moons(i)%elements(1)/unit_dist &  ! a
             &, self%moons(i)%elements(2) &  ! e
-            &, self%moons(i)%elements(3)/radian &  ! M
-            &, self%moons(i)%elements(4)/radian &  ! w
+            &, self%moons(i)%elements(3)*degree &  ! M
+            &, self%moons(i)%elements(4)*degree &  ! w
             &, self%moons(i)%mmr &  ! MMR
             &, cero ! MEGNO  
     end subroutine write_moon_i_elem_small
@@ -2608,12 +2608,12 @@ contains
             & self%particles(i)%id, &   ! ID
             & 2, &  ! type
             & self%time/unit_time &  ! time
-            &, self%asteroid%theta/radian &  ! theta
+            &, self%asteroid%theta*degree &  ! theta
             &, self%asteroid%omega*unit_time &  ! omega
             &, self%particles(i)%elements(1)/unit_dist &  ! a
             &, self%particles(i)%elements(2) &  ! e
-            &, self%particles(i)%elements(3)/radian &  ! M
-            &, self%particles(i)%elements(4)/radian &  ! w
+            &, self%particles(i)%elements(3)*degree &  ! M
+            &, self%particles(i)%elements(4)*degree &  ! w
             &, self%particles(i)%mmr &  ! MMR
             &, self%particles(i)%megno ! MEGNO  
     end subroutine write_particle_i_elem_small
@@ -2667,12 +2667,12 @@ contains
             & 0, &  ! ID
             & 0, &  ! type
             & self%time/unit_time, &  ! time
-            & self%asteroid%theta/radian, &  ! theta
+            & self%asteroid%theta*degree, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
             & self%asteroid%elements(1)/unit_dist, &  ! a
             & self%asteroid%elements(2), &  ! e
-            & self%asteroid%elements(3)/radian, &  ! M
-            & self%asteroid%elements(4)/radian, &  ! w
+            & self%asteroid%elements(3)*degree, &  ! M
+            & self%asteroid%elements(4)*degree, &  ! w
             & cero, &   ! MMR
             & self%asteroid%mass/unit_mass, &  ! mass
             & self%asteroid%radius/unit_dist, &  ! radius
@@ -2692,12 +2692,12 @@ contains
             & self%moons(i)%id, &  ! ID
             & 1, &  ! type
             & self%time/unit_time, &  ! time
-            & self%asteroid%theta/radian, &  ! theta
+            & self%asteroid%theta*degree, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
             & self%moons(i)%elements(1)/unit_dist, &  ! a
             & self%moons(i)%elements(2), &  ! e
-            & self%moons(i)%elements(3)/radian, &  ! M
-            & self%moons(i)%elements(4)/radian, &  ! w
+            & self%moons(i)%elements(3)*degree, &  ! M
+            & self%moons(i)%elements(4)*degree, &  ! w
             & self%moons(i)%mmr, &  ! MMR
             & self%moons(i)%mass/unit_mass, &  ! mass
             & self%moons(i)%radius/unit_dist, &  ! radius
@@ -2717,12 +2717,12 @@ contains
             & self%particles(i)%id, &   ! ID
             & 2, &  ! type
             & self%time/unit_time, &  ! time
-            & self%asteroid%theta/radian, &  ! theta
+            & self%asteroid%theta*degree, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
             & self%particles(i)%elements(1)/unit_dist, &  ! a
             & self%particles(i)%elements(2), &  ! e
-            & self%particles(i)%elements(3)/radian, &  ! M
-            & self%particles(i)%elements(4)/radian, &  ! w
+            & self%particles(i)%elements(3)*degree, &  ! M
+            & self%particles(i)%elements(4)*degree, &  ! w
             & self%particles(i)%mmr, &  ! MMR
             & cero, &  ! mass
             & cero, &  ! radius
@@ -2784,7 +2784,7 @@ contains
                 & 0, &  ! ID
                 & 0, &  ! type
                 & self%time/unit_time, &  !time
-                & self%asteroid%theta/radian, &  ! theta
+                & self%asteroid%theta*degree, &  ! theta
                 & self%asteroid%omega*unit_time, &  ! omega
                 & self%asteroid%coordinates(1:2)/unit_dist, &  ! x y
                 & self%asteroid%coordinates(3:4)/unit_vel, &  ! vx vy
@@ -2800,7 +2800,7 @@ contains
             & -1, &  ! ID
             & -1, &  ! type
             & self%time/unit_time, &  !time
-            & (self%asteroid%theta + self%asteroid%primary%initial_theta)/radian, &  ! theta
+            & (self%asteroid%theta + self%asteroid%primary%initial_theta)*degree, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
             & coords(1:2)/unit_dist, &  ! x y
             & coords(3:4)/unit_vel, &  ! vx vy
@@ -2814,7 +2814,7 @@ contains
                 & -i-1, &  ! ID
                 & -1, &  ! type
                 & self%time/unit_time, &  !time
-                & (self%asteroid%theta + self%asteroid%boulders(i)%initial_theta)/radian, &  ! theta
+                & (self%asteroid%theta + self%asteroid%boulders(i)%initial_theta)*degree, &  ! theta
                 & self%asteroid%omega*unit_time, &  ! omega
                 & coords(1:2)/unit_dist, &  ! x y
                 & coords(3:4)/unit_vel, &  ! vx vy
@@ -2834,7 +2834,7 @@ contains
             & self%moons(i)%id, &  ! ID + Nbould to avoid duplicates
             & 1, &  ! type
             & self%time/unit_time, &  !time
-            & self%asteroid%theta/radian, &  ! theta
+            & self%asteroid%theta*degree, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
             & self%moons(i)%coordinates(1:2)/unit_dist, &  ! x y
             & self%moons(i)%coordinates(3:4)/unit_vel, &  ! vx vy
@@ -2852,7 +2852,7 @@ contains
             & self%particles(i)%id, &  ! ID + Nbould to avoid duplicates
             & 2, &  ! type
             & self%time/unit_time, &  !time
-            & self%asteroid%theta/radian, &  ! theta
+            & self%asteroid%theta*degree, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
             & self%particles(i)%coordinates(1:2)/unit_dist, &  ! x y
             & self%particles(i)%coordinates(3:4)/unit_vel, &  ! vx vy
@@ -2920,21 +2920,21 @@ contains
             & 0, &  ! type
             & -1, &  ! merged_to
             & actual%time/unit_time, &  ! time
-            & initial%asteroid%theta/radian, &  ! theta
+            & initial%asteroid%theta*degree, &  ! theta
             & initial%asteroid%omega*unit_time, &  ! omega
             & initial%asteroid%elements(1)/unit_dist, &  ! a
             & initial%asteroid%elements(2), &  ! e
-            & initial%asteroid%elements(3)/radian, &  ! M
-            & initial%asteroid%elements(4)/radian, &  ! w
+            & initial%asteroid%elements(3)*degree, &  ! M
+            & initial%asteroid%elements(4)*degree, &  ! w
             & cero, &   ! MMR
             & initial%asteroid%mass/unit_mass, &  ! mass
             & initial%asteroid%radius/unit_dist, &  ! radius
-            & actual%asteroid%theta/radian, &  ! theta
+            & actual%asteroid%theta*degree, &  ! theta
             & actual%asteroid%omega*unit_time, &  ! omega
             & actual%asteroid%elements(1)/unit_dist, &  ! a
             & actual%asteroid%elements(2), &  ! e
-            & actual%asteroid%elements(3)/radian, &  ! M
-            & actual%asteroid%elements(4)/radian, &  ! w
+            & actual%asteroid%elements(3)*degree, &  ! M
+            & actual%asteroid%elements(4)*degree, &  ! w
             & cero, &   ! MMR
             & actual%asteroid%mass/unit_mass, &  ! mass
             & actual%asteroid%radius/unit_dist, &  ! radius
@@ -2965,21 +2965,21 @@ contains
             & 1, &  ! type
             & actual%moons(i)%merged_to, &  ! merged_to
             & actual%moons(i)%tmax/unit_time, &  ! time
-            & initial%asteroid%theta/radian, &  ! theta
+            & initial%asteroid%theta*degree, &  ! theta
             & initial%asteroid%omega*unit_time, &  ! omega
             & initial%moons(i_initial)%elements(1)/unit_dist, &  ! a
             & initial%moons(i_initial)%elements(2), &  ! e
-            & initial%moons(i_initial)%elements(3)/radian, &  ! M
-            & initial%moons(i_initial)%elements(4)/radian, &  ! w
+            & initial%moons(i_initial)%elements(3)*degree, &  ! M
+            & initial%moons(i_initial)%elements(4)*degree, &  ! w
             & initial%moons(i_initial)%mmr, &   ! MMR
             & initial%moons(i_initial)%mass/unit_mass, &  ! mass
             & initial%moons(i_initial)%radius/unit_dist, &  ! radius
-            & actual%asteroid%theta/radian, &  ! theta
+            & actual%asteroid%theta*degree, &  ! theta
             & actual%asteroid%omega*unit_time, &  ! omega
             & actual%moons(i)%elements(1)/unit_dist, &  ! a
             & actual%moons(i)%elements(2), &  ! e
-            & actual%moons(i)%elements(3)/radian, &  ! M
-            & actual%moons(i)%elements(4)/radian, &  ! w
+            & actual%moons(i)%elements(3)*degree, &  ! M
+            & actual%moons(i)%elements(4)*degree, &  ! w
             & actual%moons(i)%mmr, &   ! MMR
             & actual%moons(i)%mass/unit_mass, &  ! mass
             & actual%moons(i)%radius/unit_dist, &  ! radius
@@ -3010,21 +3010,21 @@ contains
             & 2, &  ! type
             & actual%particles(i)%merged_to, &  ! merged_to
             & actual%particles(i)%tmax/unit_time, &  ! time
-            & initial%asteroid%theta/radian, &  ! theta
+            & initial%asteroid%theta*degree, &  ! theta
             & initial%asteroid%omega*unit_time, &  ! omega
             & initial%particles(i_initial)%elements(1)/unit_dist, &  ! a
             & initial%particles(i_initial)%elements(2), &  ! e
-            & initial%particles(i_initial)%elements(3)/radian, &  ! M
-            & initial%particles(i_initial)%elements(4)/radian, &  ! w
+            & initial%particles(i_initial)%elements(3)*degree, &  ! M
+            & initial%particles(i_initial)%elements(4)*degree, &  ! w
             & initial%particles(i_initial)%mmr, &   ! MMR
             & cero, &  ! mass
             & cero, &  ! radius
-            & actual%asteroid%theta/radian, &  ! theta
+            & actual%asteroid%theta*degree, &  ! theta
             & actual%asteroid%omega*unit_time, &  ! omega
             & actual%particles(i)%elements(1)/unit_dist, &  ! a
             & actual%particles(i)%elements(2), &  ! e
-            & actual%particles(i)%elements(3)/radian, &  ! M
-            & actual%particles(i)%elements(4)/radian, &  ! w
+            & actual%particles(i)%elements(3)*degree, &  ! M
+            & actual%particles(i)%elements(4)*degree, &  ! w
             & actual%particles(i)%mmr, &   ! MMR
             & cero, &  ! mass
             & cero, &  ! radius
@@ -3084,12 +3084,12 @@ contains
             & self%moons(i)%id, &  ! ID
             & 1, &  ! type
             & self%time/unit_time, &  ! time
-            & self%asteroid%theta/radian, &  ! theta
+            & self%asteroid%theta*degree, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
             & self%moons(i)%geometric(1)/unit_dist, &  ! a
             & self%moons(i)%geometric(2), &  ! e
-            & self%moons(i)%geometric(3)/radian, &  ! M
-            & self%moons(i)%geometric(4)/radian, &  ! w
+            & self%moons(i)%geometric(3)*degree, &  ! M
+            & self%moons(i)%geometric(4)*degree, &  ! w
             & self%moons(i)%mmr_geom, &  ! MMR
             & self%moons(i)%mass/unit_mass, &  ! mass
             & self%moons(i)%radius/unit_dist, &  ! radius
@@ -3109,12 +3109,12 @@ contains
             & self%particles(i)%id, &   ! ID
             & 2, &  ! type
             & self%time/unit_time, &  ! time
-            & self%asteroid%theta/radian, &  ! theta
+            & self%asteroid%theta*degree, &  ! theta
             & self%asteroid%omega*unit_time, &  ! omega
             & self%particles(i)%geometric(1)/unit_dist, &  ! a
             & self%particles(i)%geometric(2), &  ! e
-            & self%particles(i)%geometric(3)/radian, &  ! M
-            & self%particles(i)%geometric(4)/radian, &  ! w
+            & self%particles(i)%geometric(3)*degree, &  ! M
+            & self%particles(i)%geometric(4)*degree, &  ! w
             & self%particles(i)%mmr_geom, &  ! MMR
             & cero, &  ! mass
             & cero, &  ! radius
@@ -3184,21 +3184,21 @@ contains
             & 1, &  ! type
             & actual%moons(i)%merged_to, &  ! merged_to
             & actual%moons(i)%tmax/unit_time, &  ! time
-            & initial%asteroid%theta/radian, &  ! theta
+            & initial%asteroid%theta*degree, &  ! theta
             & initial%asteroid%omega*unit_time, &  ! omega
             & initial%moons(i_initial)%geometric(1)/unit_dist, &  ! a
             & initial%moons(i_initial)%geometric(2), &  ! e
-            & initial%moons(i_initial)%geometric(3)/radian, &  ! M
-            & initial%moons(i_initial)%geometric(4)/radian, &  ! w
+            & initial%moons(i_initial)%geometric(3)*degree, &  ! M
+            & initial%moons(i_initial)%geometric(4)*degree, &  ! w
             & initial%moons(i_initial)%mmr_geom, &   ! MMR
             & initial%moons(i_initial)%mass/unit_mass, &  ! mass
             & initial%moons(i_initial)%radius/unit_dist, &  ! radius
-            & actual%asteroid%theta/radian, &  ! theta
+            & actual%asteroid%theta*degree, &  ! theta
             & actual%asteroid%omega*unit_time, &  ! omega
             & actual%moons(i)%geometric(1)/unit_dist, &  ! a
             & actual%moons(i)%geometric(2), &  ! e
-            & actual%moons(i)%geometric(3)/radian, &  ! M
-            & actual%moons(i)%geometric(4)/radian, &  ! w
+            & actual%moons(i)%geometric(3)*degree, &  ! M
+            & actual%moons(i)%geometric(4)*degree, &  ! w
             & actual%moons(i)%mmr_geom, &   ! MMR
             & actual%moons(i)%mass/unit_mass, &  ! mass
             & actual%moons(i)%radius/unit_dist, &  ! radius
@@ -3229,21 +3229,21 @@ contains
             & 2, &  ! type
             & actual%particles(i)%merged_to, &  ! merged_to
             & actual%particles(i)%tmax/unit_time, &  ! time
-            & initial%asteroid%theta/radian, &  ! theta
+            & initial%asteroid%theta*degree, &  ! theta
             & initial%asteroid%omega*unit_time, &  ! omega
             & initial%particles(i_initial)%geometric(1)/unit_dist, &  ! a
             & initial%particles(i_initial)%geometric(2), &  ! e
-            & initial%particles(i_initial)%geometric(3)/radian, &  ! M
-            & initial%particles(i_initial)%geometric(4)/radian, &  ! w
+            & initial%particles(i_initial)%geometric(3)*degree, &  ! M
+            & initial%particles(i_initial)%geometric(4)*degree, &  ! w
             & initial%particles(i_initial)%mmr_geom, &   ! MMR
             & cero, &  ! mass
             & cero, &  ! radius
-            & actual%asteroid%theta/radian, &  ! theta
+            & actual%asteroid%theta*degree, &  ! theta
             & actual%asteroid%omega*unit_time, &  ! omega
             & actual%particles(i)%geometric(1)/unit_dist, &  ! a
             & actual%particles(i)%geometric(2), &  ! e
-            & actual%particles(i)%geometric(3)/radian, &  ! M
-            & actual%particles(i)%geometric(4)/radian, &  ! w
+            & actual%particles(i)%geometric(3)*degree, &  ! M
+            & actual%particles(i)%geometric(4)*degree, &  ! w
             & actual%particles(i)%mmr_geom, &   ! MMR
             & cero, &  ! mass
             & cero, &  ! radius

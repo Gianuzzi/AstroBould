@@ -20,6 +20,7 @@ module constants
     real(wp), parameter :: uno3 = uno/tres
     real(wp), parameter :: pi = uno2*twopi
     real(wp), parameter :: radian = twopi/360.0e0_wp
+    real(wp), parameter :: degree = uno/radian
     real(wp), parameter :: infinito = 1.0e50_wp  ! Infinito
     real(wp), parameter :: myepsilon = epsilon(1.0_wp) ! Precisión / Error [Usado en elem y coord]
     real(wp), parameter :: sqepsilon = sqrt(myepsilon) ! Error usado para checkeos
