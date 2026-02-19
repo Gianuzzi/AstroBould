@@ -914,11 +914,11 @@ contains
                     else
                         params%use_filter = .False.
                     end if
-                case ("time period to")
+                case ("cutoff period (")
                     read (value_str, *, iostat=ios) params%filter_dt
-                case ("filter oversamp")
+                case ("samples per cut")
                     read (value_str, *, iostat=ios) params%filter_nsamples
-                case ("filter windows")
+                case ("kernel support ")
                     read (value_str, *, iostat=ios) params%filter_nwindows
                 case ("apply filter to")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then

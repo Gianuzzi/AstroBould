@@ -1237,7 +1237,6 @@ program main
 
     ! <<<< Free initial arrays >>>>
     call free_initial_arays()
-    
 
     !! <<<< CHECK IF GO ON >>>>
     if (sim%only_print) then
@@ -1654,10 +1653,9 @@ program main
 
                 ! INTEGRATE (without check)
                 call integrate(time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt, y_arr_new(:y_nvalues))
-                
+
                 !! Update time
                 time_filt = time_filt + filter%dt
-                
 
                 y_arr_new(1) = modulo(y_arr_new(1), twopi)  ! Modulate theta
 
@@ -1668,7 +1666,6 @@ program main
                 y_pre_filter(:y_nvalues) = y_arr_new(:y_nvalues)
 
             end do
-               
 
             ! Create filtered and do post-processing
             call apply_filter(y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
@@ -1680,7 +1677,6 @@ program main
             call update_chaos(system_filtered, sim%reference_frame)
             ! Filtered output
             call generate_output(system_filtered, .True.)
-            
 
             ! =======> SECOND STEP <==========
 
@@ -1974,7 +1970,6 @@ program main
             end if
 
         end if  ! keep integrating
-        
 
         !!!! Now we are in the second filter (j = next_checkpoint)
 
