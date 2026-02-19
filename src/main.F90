@@ -1106,26 +1106,6 @@ program main
         sim%filter_nsamples = filter%n_samples
         sim%filter_nwindows = filter%n_windows
 
-        ! Create filter file
-        open (unit=u_filterfile, file=trim(trim(sim%filter_prefix)), status='replace', action='write', position="append")
-        write (u_filterfile, '(2(A22,1X),A10,1X,A8,1X,A7,1X,A22,1X,A22)') &
-                & 'dt', 'dt/Prot', 'n_samples', 'n_windows', 'size', 'total_dt', 'total_dt/Prot'
-        write (u_filterfile, '(2(1PE22.15,1X),I10,1X,I8,1X,I7,2(1X,1PE22.15))') &
-                & filter%dt, filter%dt/system%asteroid%rotational_period, filter%n_samples, filter%n_windows, filter%size, &
-                & filter%total_dt, filter%total_dt/system%asteroid%rotational_period
-        write(u_filterfile,'(/,A)') 'Kernel (index, value):'
-        do i = 1, size(filter%kernel)
-            write(u_filterfile,'(I7,1X,1PE22.15)') i, filter%kernel(i)
-        end do
-        close (u_filterfile)
-
-        ! CHECK
-        if (filter%total_dt > sim%final_time) then
-            write (*, *) ACHAR(10)
-            write (*, *) "ERROR: Filter has more window timespan than simulation final time."
-            stop 1
-        end if
-
         if (sim%use_screen) then
             write (*, *) "Filter ON"
             write (*, s1r1) "  dt    :", filter%dt/system%asteroid%rotational_period, "[Prot] = ", &
@@ -1138,6 +1118,26 @@ program main
                           & system%asteroid%omega/filter%omega_pass, "[Prot]"
             write (*, *) ACHAR(5)
         end if
+
+        ! CHECK
+        if (filter%total_dt > sim%final_time) then
+            write (*, *) ACHAR(10)
+            write (*, *) "ERROR: Filter has more window timespan than simulation final time."
+            stop 1
+        end if
+
+        ! Create filter file
+        open (unit=u_filterfile, file=trim(trim(sim%filter_prefix)), status='replace', action='write', position="append")
+        write (u_filterfile, '(2(A22,1X),A10,1X,A8,1X,A7,1X,A22,1X,A22)') &
+                & 'dt', 'dt/Prot', 'n_samples', 'n_windows', 'size', 'total_dt', 'total_dt/Prot'
+        write (u_filterfile, '(2(1PE22.15,1X),I10,1X,I8,1X,I7,2(1X,1PE22.15))') &
+                & filter%dt, filter%dt/system%asteroid%rotational_period, filter%n_samples, filter%n_windows, filter%size, &
+                & filter%total_dt, filter%total_dt/system%asteroid%rotational_period
+        write(u_filterfile,'(/,A)') 'Kernel (index, value):'
+        do i = 1, size(filter%kernel)
+            write(u_filterfile,'(I7,1X,1PE22.15)') i, filter%kernel(i)
+        end do
+        close (u_filterfile)
 
     else if (sim%use_screen) then  ! NO FILTER
         write (*, *) "Filter OFF"
