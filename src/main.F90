@@ -1135,7 +1135,7 @@ program main
                           & filter%total_dt/unit_time, "[day]"
             write (*, s1r1) "  cutoff freq:", filter%omega_pass*unit_time, "[rad day⁻¹]"
             write (*, s1r1) "              =>", twopi/(filter%omega_pass*unit_time), "[day] =", &
-                          & filter%omega_pass/system%asteroid%omega, "[Prot]"
+                          & system%asteroid%omega/filter%omega_pass, "[Prot]"
             write (*, *) ACHAR(5)
         end if
 
