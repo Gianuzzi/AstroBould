@@ -1409,11 +1409,6 @@ program main
     ! Regenerate if needed
     if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
-    ! Set filtered system
-    if (sim%use_filter) then
-        call copy_objects(system, system_filtered)
-        call generate_output(system_filtered, .True.)
-    end if
 
     ! >>>>>>>>>>>>>>>>>>----------------- MAIN LOOP  ---------------<<<<<<<<<<<<<<<<<<<<<<<<
     tom%index_number = 2  !!!! Inicializamos en 2 porque el primer checkpoint es el IC (t0)
@@ -1641,6 +1636,10 @@ program main
             ! Get system and y_arr filtering
             call copy_objects(system, system_filtered)  ! From system to filtered; but no chaos (only objects)
             y_pre_filter(:y_nvalues) = y_arr(:y_nvalues)
+            
+            ! Reset chaos as it is the first filtered value
+            call reset_chaos(system_filtered)
+            
 
             !! Store it
             call store_to_filter(filter, time_filt, y_pre_filter, y_nvalues, 1)

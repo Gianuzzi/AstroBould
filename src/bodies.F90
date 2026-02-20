@@ -1444,6 +1444,41 @@ contains
 
     end subroutine rescale_variational
 
+    ! Reset chaos indicators
+    pure subroutine reset_chaos(self)
+        implicit none
+        type(system_st), intent(inout) :: self
+        integer(kind=4) :: i
+        logical :: use_megno
+
+        ! Check if megno needed
+        use_megno = self%time > cero .and. self%megno%active
+        if (use_megno) call rescale_variational(self)
+
+        ! Asteroid
+        self%asteroid%chaos_a = self%asteroid%elements(1)
+        self%asteroid%chaos_e = self%asteroid%elements(2)
+
+        ! Moons
+        do i = 1, self%Nmoons_active
+            self%moons(i)%chaos_a(1) = self%moons(i)%elements(1)
+            self%moons(i)%chaos_a(2) = self%moons(i)%elements(1)
+            self%moons(i)%chaos_e(1) = self%moons(i)%elements(2)
+            self%moons(i)%chaos_e(2) = self%moons(i)%elements(2)
+        end do
+
+        ! Particles
+        do i = 1, self%Nparticles_active
+            self%particles(i)%chaos_a(1) = self%particles(i)%elements(1)
+            self%particles(i)%chaos_a(2) = self%particles(i)%elements(1)
+            self%particles(i)%chaos_e(1) = self%particles(i)%elements(2)
+            self%particles(i)%chaos_e(2) = self%particles(i)%elements(2)
+            !! MEGNO
+            if (use_megno) self%particles(i)%megno = self%particles(i)%chaos_megno(3) / self%time * megno_factor
+        end do
+
+    end subroutine reset_chaos
+
     ! Update bodies chaos and MENGO at system
     pure subroutine update_chaos(self, reference_frame)
         implicit none
