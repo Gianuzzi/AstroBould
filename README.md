@@ -75,6 +75,8 @@ $ ./ASTROBOULD --help
     --nochaosf    : No guardar salida de caos
     -geomfile     : Nombre de archivo de salida de elementos geométricos
     --nogeomf     : No guardar salida de elementos geométricos
+    -filtfile     : Prefijo a agregar en archivos con filtro (y activar).
+    --nofilter    : No utilizar filtro
     --screen      : Imprimir información en pantalla
     --noscreen    : No imprimir en pantalla
     --perc        : Imprimir porcentaje de integración
@@ -149,7 +151,7 @@ $ ./ASTROBOULD [args]
 - Each integration is executed in parallel (e.g., across multiple CPU cores).
 - Does not require _-fopenmp_.
 
-The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [63 to 107](./launcher.py#L63#L107). More information (in spannish) is available at the top of the file(see lines [3 to 49](./launcher.py#L3#L49)).
+The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [63 to 108](./launcher.py#L63#L108). More information (in spannish) is available at the top of the file(see lines [1 to 50](./launcher.py#L1#L50)).
 
 To run:
 ```console

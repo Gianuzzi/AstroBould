@@ -1,5 +1,3 @@
-# Version: 10.0
-
 # DENTRO DE UN ENTORNO PYTHON
 # Ejecución: $ python launcher.py
 
@@ -35,6 +33,8 @@
 # 23-24! a_min, a_max
 # 25-26! e_min, e_max
 # 27   ! MEGNO single
+
+# Lo mismo ocurre para el archivo filtrado, en caso se haya activado.
 
 # Excepto <final_chaos>, el resto de los archivos estarán en carpetas creadas
 # con nombre 'dpi[pid]' asociado al ID del procesador que ejecutó el sistema.
@@ -94,6 +94,7 @@ new_dir = True  # Directorio donde volcar las salidas.
 datafile = "salida"  # Archivo de salidas de datos (sin extensión)
 final_chaos = "chaos"  # Archivo de caos final (sin extensión)
 geomfile = False  # Archivo de elementos geométricos (sin extensión)
+filter_prefix = False  # Prefijo de archivo de salidas filtradas
 # Summary file
 summaryfile = "summary"  # Archivo con resumen de parámetros
 # Elements #
@@ -138,6 +139,9 @@ if isinstance(geomfile, bool) and geomfile:
 # Redefine summary if bool
 if isinstance(summaryfile, bool) and summaryfile:
     summaryfile = "summary"
+# Redefine filter_prefix if bool
+if isinstance(filter_prefix, bool) and filter_prefix:
+    filter_prefix = "filt"
 
 
 # Archivos
@@ -193,6 +197,10 @@ if geomfile is None:
 # Summaryfile
 if summaryfile is None:
     summaryfile = ""
+
+# Filterfile
+if filter_prefix is None:
+    filter_prefix = ""
 
 # Redefine chaos
 if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
@@ -327,6 +335,7 @@ args += " --elem" if elements else " --noelem"
 args += f" -merge {merge}"
 args += f" -stopif {stopif}"
 args += " --megno" if megno else " --nomegno"
+args += f" -filtfile {filter_prefix}" if filter_prefix else " --nofilter"
 
 
 # # Change drag and or spin down
@@ -492,6 +501,32 @@ def integrate_n(i):
         os.path.join(dirp, f"{old_geomchaosfile}_undone.out"),
         os.path.join(dirp, f"{new_geomchaosfile}.out"),
     )
+
+    # All the same, with filter
+    if filter_prefix:
+        # Renombramos el archivo de salida
+        rename_file(
+            os.path.join(dirp, f"{filter_prefix}{this_datafile}_undone.out"),
+            os.path.join(dirp, f"{filter_prefix}{this_datafile}.out"),
+        )
+
+        # Renombramos el archivo de caos
+        rename_file(
+            os.path.join(dirp, f"{filter_prefix}{this_chaosfile}_undone.out"),
+            os.path.join(dirp, f"{filter_prefix}{this_chaosfile}.out"),
+        )
+
+        # Renombramos el archivo de geométricos
+        rename_file(
+            os.path.join(dirp, f"{filter_prefix}{this_geomfile}_undone.out"),
+            os.path.join(dirp, f"{filter_prefix}{this_geomfile}.out"),
+        )
+
+        # Renombramos el archivo de chaos geométrico
+        rename_file(
+            os.path.join(dirp, f"{filter_prefix}{old_geomchaosfile}_undone.out"),
+            os.path.join(dirp, f"{filter_prefix}{new_geomchaosfile}.out"),
+        )
 
     return True
 
@@ -722,6 +757,18 @@ if __name__ == "__main__":
             )
 
         make_chaos(final_chaos)
+
+        # Same if filtered
+        if filter_prefix:
+            print("")
+            print(f"Creando archivo de caos filtrado '{filter_prefix}{final_chaos}.out'")
+            if os.path.isfile(os.path.join(wrk_dir, f"{filter_prefix}{final_chaos}.out")):
+                print(
+                    "WARNING: Se está reemplazando el archivo "
+                    + f"{filter_prefix}{final_chaos}.out ya existente."
+                )
+
+            make_chaos(f"{filter_prefix}{final_chaos}")
 
     # Creamos el archivo de chaos de geométricos
     if geomchaosfile:

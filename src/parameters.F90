@@ -198,6 +198,8 @@ module parameters
         logical :: use_chaos = .False.  ! Need to output chaos values
         character(30) :: geomchaosfile = ""
         logical :: use_geomchaosfile = .False.  ! Need to output geometric chaos values
+        ! Elements
+        logical :: use_elements = .False.  ! Need elements
         ! Error
         real(wp) :: error_tolerance = cero
         !!! Command line body
@@ -450,6 +452,12 @@ contains
                 case ("--nogeomf")
                     params%use_geometricfile = .False.
                     params%geometricfile = ""
+                case ("-filtfile")
+                    params%use_filter = .True.
+                    call get_command_argument(i + 1, params%filter_prefix)
+                    aux_integer = 1
+                case ("--nofilter")
+                    params%use_filter = .False.
                 case ("--screen")
                     params%use_screen = .True.
                 case ("--noscreen")
@@ -588,6 +596,8 @@ contains
                     write (*, *) "    --nochaosf    : No guardar salida de caos"
                     write (*, *) "    -geomfile     : Nombre de archivo de salida de elementos geométricos"
                     write (*, *) "    --nogeomf     : No guardar salida de elementos geométricos"
+                    write (*, *) "    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)."
+                    write (*, *) "    --nofilter    : No utilizar filtro"
                     write (*, *) "    --screen      : Imprimir información en pantalla"
                     write (*, *) "    --noscreen    : No imprimir en pantalla"
                     write (*, *) "    --perc        : Imprimir porcentaje de integración"
@@ -1618,6 +1628,15 @@ contains
             stop 1
         else
             derived%megno_active = .True.
+        end if
+
+        ! Check if elements needed (includes MEGNO)
+        derived%use_elements = derived%use_chaos .or. derived%use_megno .or. (derived%int_elements_output > 0)
+
+        ! Second check: If filter, then elements should be true bc of chaos or elems output...
+        if (derived%use_filter .and. ((derived%int_elements_output == 0) .or. (.not. derived%use_chaos))) then
+            write (*, *) "ERROR: If filter is activated, elements output or chaos must be activeted"
+            stop 1
         end if
 
     end subroutine set_derived_parameters
