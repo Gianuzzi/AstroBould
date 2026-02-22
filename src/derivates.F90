@@ -808,8 +808,6 @@ contains
 
                 ! Calculate dot{<Y>}
                 if (t > 0) der(vdx + 6) = dos * y(vdx + 5) / t
-                
-                ! print*, t, i-first_particle, y(vdx + 5), y(vdx + 5) / max(t, tini)
 
             end do
 
