@@ -1627,6 +1627,12 @@ program main
         !  Second: Integrate the checkpoints up to the principal (including). j is updated here
         !  Third: Set the array and time to next filter first time.
 
+        ! Get system filtered
+        call copy_objects(system, system_filtered)  ! From system to filtered
+
+        ! Reset chaos as it will be the first filtered value
+        call reset_chaos(system_filtered)     
+
         if (keep_integrating) then  ! Only integrate if needed
 
             ! =======> FISRT STEP <==========
@@ -1634,12 +1640,7 @@ program main
             adaptive_timestep_filt = adaptive_timestep
 
             ! Get system and y_arr filtering
-            call copy_objects(system, system_filtered)  ! From system to filtered; but no chaos (only objects)
-            y_pre_filter(:y_nvalues) = y_arr(:y_nvalues)
-            
-            ! Reset chaos as it is the first filtered value
-            call reset_chaos(system_filtered)
-            
+            y_pre_filter(:y_nvalues) = y_arr(:y_nvalues) 
 
             !! Store it
             call store_to_filter(filter, time_filt, y_pre_filter, y_nvalues, 1)
@@ -2025,7 +2026,7 @@ program main
             adaptive_timestep_filt = adaptive_timestep
 
             ! Get system and y_arr filtering
-            call copy_objects(system, system_filtered)  ! From system to filtered; but no chaos (only objects)
+            call copy_objects(system, system_filtered, .False.)  ! From system to filtered; but no chaos (only objects)
             y_pre_filter(:y_nvalues) = y_arr(:y_nvalues)
 
             !! Store it
@@ -2347,6 +2348,9 @@ program main
         ! Final time restoration
         if (j == sim%checkpoint_number + 1) time = sim%final_time
 
+        ! Final copy, just to fix possible merges
+        call copy_objects(system, system_filtered, .False.)  ! From system to filtered
+
     else
 
         ! LOOP WITH NO FILTER
@@ -2499,7 +2503,7 @@ program main
             call write_chaos(initial_system, system, 6)
             if (sim%use_megno) then
                 write (*, *) ACHAR(5)
-                write (*, s1r1) "  Global MEGNO:", system%megno%megno
+                write (*, s1r1) "  Global MEGNO:", system%megno%averaged
             end if
         end if
     end if

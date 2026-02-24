@@ -44,7 +44,7 @@ module parameters
         integer(kind=4) :: negative_time_selector = 0
         real(wp) :: output_timestep = cero
         integer(kind=4) :: output_number = 0
-        integer(kind=4) :: case_output_type = 2
+        integer(kind=4) :: case_output_type = 2  ! 0: Linear, 1: Log, 2: Combined
         integer(kind=4) :: extra_checkpoints = 0
         ! Extra parameters for the Integration -
         logical :: use_parallel = .False.

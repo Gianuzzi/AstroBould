@@ -7,6 +7,16 @@ module bodies
 
     implicit none
 
+    type :: chaos_st
+        real(wp), dimension(2) :: a = (/infinito, cero/) ! (a_min, a_max)
+        real(wp), dimension(2) :: e = (/infinito, cero/) ! (e_min, e_max)
+        real(wp), dimension(2) :: a_geom = (/infinito, cero/) ! (a_geom_min, a_geom_max)
+        real(wp), dimension(2) :: e_geom = (/infinito, cero/) ! (e_geom_min, e_geom_max)
+        real(wp), dimension(4) :: variational = cero ! dx, dy, dvx, dvy  ! For Lyap and MEGNO
+        real(wp), dimension(3) :: megno_data = cero ! (λ [LCE], Y [MEGNO Integral], <Y> [MEGNO Averaged] * time)
+        real(wp) :: megno = cero ! averaged megno
+    end type chaos_st
+
     type :: sphere_st
         integer(kind=4) :: id = -1  ! Identifier
         real(wp) :: mu_to_primary = cero ! Mass ratio to primary body [config]
@@ -64,8 +74,7 @@ module bodies
         real(wp) :: C20 = cero  ! C20 of the asteroid as a whole
         real(wp) :: e_rot = cero ! Rotational energy [dynamic]
         real(wp) :: e_kin = cero ! Kinetic energy [dynamic]
-        real(wp) :: chaos_a(2) = (/infinito, cero/) ! (a_min, a_max)
-        real(wp) :: chaos_e(2) = (/infinito, cero/) ! (e_min, e_max)
+        type(chaos_st) :: chaos
     end type asteroid_st
 
     type :: particle_st
@@ -77,13 +86,7 @@ module bodies
         real(wp), dimension(4) :: geometric = cero  ! a_geom, e_geom, M_geom, w_geom [config]
         real(wp) :: mmr = cero  ! mean motion ratio to asteroid  [config]
         real(wp) :: mmr_geom = cero  ! geometric mean motion ratio to asteroid
-        real(wp), dimension(2) :: chaos_a = (/infinito, cero/) ! (a_min, a_max)
-        real(wp), dimension(2) :: chaos_e = (/infinito, cero/) ! (e_min, e_max)
-        real(wp), dimension(2) :: chaos_a_geom = (/infinito, cero/) ! (a_geom_min, a_geom_max)
-        real(wp), dimension(2) :: chaos_e_geom = (/infinito, cero/) ! (e_geom_min, e_geom_max)
-        real(wp), dimension(4) :: variational = cero ! dx, dy, dvx, dvy  ! For Lyap and MEGNO
-        real(wp), dimension(3) :: chaos_megno = cero ! (λ [LCE], Y [MEGNO Integral], <Y> [MEGNO Averaged] * time)
-        real(wp) :: megno = cero ! averaged megno
+        type(chaos_st) :: chaos
         real(wp) :: tmax = cero ! max time integrated
         integer(kind=4) :: merged_to = -1  ! IDX of body it was merged to
     end type particle_st
@@ -103,8 +106,8 @@ module bodies
     type :: megno_st
         logical :: active = .False.
         real(wp) :: epsilon = cero
-        real(wp), dimension(3) :: chaos ! (λ [LCE], Y [MEGNO Integral], <Y> [MEGNO Averaged] * time)
-        real(wp) :: megno = cero
+        real(wp), dimension(3) :: data ! (λ [LCE], Y [MEGNO Integral], <Y> [MEGNO Averaged] * time)
+        real(wp) :: averaged = cero  ! Total averaged megno
     end type megno_st
     
 
@@ -1213,7 +1216,7 @@ contains
                 rndm_arr = rndm_arr - uno2
                 norma = sqrt(sum(rndm_arr*rndm_arr))
                 rndm_arr = rndm_arr / norma
-                self%particles(i)%variational = rndm_arr * eps
+                self%particles(i)%chaos%variational = rndm_arr * eps
             end do
             self%megno%active = .True.
 
@@ -1222,7 +1225,7 @@ contains
 
         end if
 
-        call rescale_variational(self)
+        call rescale_chaosvariational(self)
 
         
     end subroutine init_megno
@@ -1416,7 +1419,7 @@ contains
 
     !  -------------------   UPDATE / GENERATION  -------------------------
 
-    pure subroutine rescale_variational(self)
+    pure subroutine rescale_chaosvariational(self)
         implicit none
         type(system_st), intent(inout) :: self
         real(wp) :: glob_dist2, glob_dist, scale
@@ -1428,7 +1431,7 @@ contains
         ! Compute global distance
         glob_dist2 = cero
         do i = 1, self%Nparticles_active
-            glob_dist2 = glob_dist2 + sum(self%particles(i)%variational*self%particles(i)%variational)
+            glob_dist2 = glob_dist2 + sum(self%particles(i)%chaos%variational*self%particles(i)%chaos%variational)
         end do
 
         ! Check if to tini
@@ -1439,10 +1442,10 @@ contains
 
         ! Rescale all particles
         do i = 1, self%Nparticles_active
-            self%particles(i)%variational = self%particles(i)%variational * scale
+            self%particles(i)%chaos%variational = self%particles(i)%chaos%variational * scale
         end do  
 
-    end subroutine rescale_variational
+    end subroutine rescale_chaosvariational
 
     ! Reset chaos indicators
     pure subroutine reset_chaos(self)
@@ -1453,28 +1456,28 @@ contains
 
         ! Check if megno needed
         use_megno = self%time > cero .and. self%megno%active
-        if (use_megno) call rescale_variational(self)
+        if (use_megno) call rescale_chaosvariational(self)
 
         ! Asteroid
-        self%asteroid%chaos_a = self%asteroid%elements(1)
-        self%asteroid%chaos_e = self%asteroid%elements(2)
+        self%asteroid%chaos%a = self%asteroid%elements(1)
+        self%asteroid%chaos%e = self%asteroid%elements(2)
 
         ! Moons
         do i = 1, self%Nmoons_active
-            self%moons(i)%chaos_a(1) = self%moons(i)%elements(1)
-            self%moons(i)%chaos_a(2) = self%moons(i)%elements(1)
-            self%moons(i)%chaos_e(1) = self%moons(i)%elements(2)
-            self%moons(i)%chaos_e(2) = self%moons(i)%elements(2)
+            self%moons(i)%chaos%a(1) = self%moons(i)%elements(1)
+            self%moons(i)%chaos%a(2) = self%moons(i)%elements(1)
+            self%moons(i)%chaos%e(1) = self%moons(i)%elements(2)
+            self%moons(i)%chaos%e(2) = self%moons(i)%elements(2)
         end do
 
         ! Particles
         do i = 1, self%Nparticles_active
-            self%particles(i)%chaos_a(1) = self%particles(i)%elements(1)
-            self%particles(i)%chaos_a(2) = self%particles(i)%elements(1)
-            self%particles(i)%chaos_e(1) = self%particles(i)%elements(2)
-            self%particles(i)%chaos_e(2) = self%particles(i)%elements(2)
+            self%particles(i)%chaos%a(1) = self%particles(i)%elements(1)
+            self%particles(i)%chaos%a(2) = self%particles(i)%elements(1)
+            self%particles(i)%chaos%e(1) = self%particles(i)%elements(2)
+            self%particles(i)%chaos%e(2) = self%particles(i)%elements(2)
             !! MEGNO
-            if (use_megno) self%particles(i)%megno = self%particles(i)%chaos_megno(3) / self%time * megno_factor
+            if (use_megno) self%particles(i)%chaos%megno = self%particles(i)%chaos%megno_data(3) / self%time * megno_factor
         end do
 
     end subroutine reset_chaos
@@ -1492,8 +1495,8 @@ contains
         use_megno = self%time > cero .and. self%megno%active
 
         if (use_megno) then
-            call rescale_variational(self)
-            self%megno%megno = self%megno%chaos(3) / self%time
+            call rescale_chaosvariational(self)
+            self%megno%averaged = self%megno%data(3) / self%time
         end if
 
         ! UPDATE ELEMENTS
@@ -1501,24 +1504,24 @@ contains
 
         ! Asteroid
         !! a
-        aux_real2(1) = min(self%asteroid%chaos_a(1), self%asteroid%elements(1))
-        aux_real2(2) = max(self%asteroid%chaos_a(2), self%asteroid%elements(1))
-        self%asteroid%chaos_a = aux_real2
+        aux_real2(1) = min(self%asteroid%chaos%a(1), self%asteroid%elements(1))
+        aux_real2(2) = max(self%asteroid%chaos%a(2), self%asteroid%elements(1))
+        self%asteroid%chaos%a = aux_real2
         !! e
-        aux_real2(1) = min(self%asteroid%chaos_e(1), self%asteroid%elements(2))
-        aux_real2(2) = max(self%asteroid%chaos_e(2), self%asteroid%elements(2))
-        self%asteroid%chaos_e = aux_real2
+        aux_real2(1) = min(self%asteroid%chaos%e(1), self%asteroid%elements(2))
+        aux_real2(2) = max(self%asteroid%chaos%e(2), self%asteroid%elements(2))
+        self%asteroid%chaos%e = aux_real2
 
         ! Moons
         do i = 1, self%Nmoons_active
             !! a
-            aux_real2(1) = min(self%moons(i)%chaos_a(1), self%moons(i)%elements(1))
-            aux_real2(2) = max(self%moons(i)%chaos_a(2), self%moons(i)%elements(1))
-            self%moons(i)%chaos_a = aux_real2
+            aux_real2(1) = min(self%moons(i)%chaos%a(1), self%moons(i)%elements(1))
+            aux_real2(2) = max(self%moons(i)%chaos%a(2), self%moons(i)%elements(1))
+            self%moons(i)%chaos%a = aux_real2
             !! e
-            aux_real2(1) = min(self%moons(i)%chaos_e(1), self%moons(i)%elements(2))
-            aux_real2(2) = max(self%moons(i)%chaos_e(2), self%moons(i)%elements(2))
-            self%moons(i)%chaos_e = aux_real2
+            aux_real2(1) = min(self%moons(i)%chaos%e(1), self%moons(i)%elements(2))
+            aux_real2(2) = max(self%moons(i)%chaos%e(2), self%moons(i)%elements(2))
+            self%moons(i)%chaos%e = aux_real2
             !! time
             self%moons(i)%tmax = self%time
         end do
@@ -1526,18 +1529,18 @@ contains
         ! Particles
         do i = 1, self%Nparticles_active
             !! a
-            aux_real2(1) = min(self%particles(i)%chaos_a(1), self%particles(i)%elements(1))
-            aux_real2(2) = max(self%particles(i)%chaos_a(2), self%particles(i)%elements(1))
-            self%particles(i)%chaos_a = aux_real2
+            aux_real2(1) = min(self%particles(i)%chaos%a(1), self%particles(i)%elements(1))
+            aux_real2(2) = max(self%particles(i)%chaos%a(2), self%particles(i)%elements(1))
+            self%particles(i)%chaos%a = aux_real2
             !! e
-            aux_real2(1) = min(self%particles(i)%chaos_e(1), self%particles(i)%elements(2))
-            aux_real2(2) = max(self%particles(i)%chaos_e(2), self%particles(i)%elements(2))
-            self%particles(i)%chaos_e = aux_real2
+            aux_real2(1) = min(self%particles(i)%chaos%e(1), self%particles(i)%elements(2))
+            aux_real2(2) = max(self%particles(i)%chaos%e(2), self%particles(i)%elements(2))
+            self%particles(i)%chaos%e = aux_real2
             !! time
             self%particles(i)%tmax = self%time
 
             !! MEGNO
-            if (use_megno) self%particles(i)%megno = self%particles(i)%chaos_megno(3) / self%time * megno_factor
+            if (use_megno) self%particles(i)%chaos%megno = self%particles(i)%chaos%megno_data(3) / self%time * megno_factor
         end do
 
     end subroutine update_chaos
@@ -1554,13 +1557,13 @@ contains
         ! Moons
         do i = 1, self%Nmoons_active
             !! a
-            aux_real2(1) = min(self%moons(i)%chaos_a_geom(1), self%moons(i)%geometric(1))
-            aux_real2(2) = max(self%moons(i)%chaos_a_geom(2), self%moons(i)%geometric(1))
-            self%moons(i)%chaos_a_geom = aux_real2
+            aux_real2(1) = min(self%moons(i)%chaos%a_geom(1), self%moons(i)%geometric(1))
+            aux_real2(2) = max(self%moons(i)%chaos%a_geom(2), self%moons(i)%geometric(1))
+            self%moons(i)%chaos%a_geom = aux_real2
             !! e
-            aux_real2(1) = min(self%moons(i)%chaos_e_geom(1), self%moons(i)%geometric(2))
-            aux_real2(2) = max(self%moons(i)%chaos_e_geom(2), self%moons(i)%geometric(2))
-            self%moons(i)%chaos_e_geom = aux_real2
+            aux_real2(1) = min(self%moons(i)%chaos%e_geom(1), self%moons(i)%geometric(2))
+            aux_real2(2) = max(self%moons(i)%chaos%e_geom(2), self%moons(i)%geometric(2))
+            self%moons(i)%chaos%e_geom = aux_real2
             !! time
             self%moons(i)%tmax = self%time
         end do
@@ -1568,13 +1571,13 @@ contains
         ! Particles
         do i = 1, self%Nparticles_active
             !! a
-            aux_real2(1) = min(self%particles(i)%chaos_a_geom(1), self%particles(i)%geometric(1))
-            aux_real2(2) = max(self%particles(i)%chaos_a_geom(2), self%particles(i)%geometric(1))
-            self%particles(i)%chaos_a_geom = aux_real2
+            aux_real2(1) = min(self%particles(i)%chaos%a_geom(1), self%particles(i)%geometric(1))
+            aux_real2(2) = max(self%particles(i)%chaos%a_geom(2), self%particles(i)%geometric(1))
+            self%particles(i)%chaos%a_geom = aux_real2
             !! e
-            aux_real2(1) = min(self%particles(i)%chaos_e_geom(1), self%particles(i)%geometric(2))
-            aux_real2(2) = max(self%particles(i)%chaos_e_geom(2), self%particles(i)%geometric(2))
-            self%particles(i)%chaos_e_geom = aux_real2
+            aux_real2(1) = min(self%particles(i)%chaos%e_geom(1), self%particles(i)%geometric(2))
+            aux_real2(2) = max(self%particles(i)%chaos%e_geom(2), self%particles(i)%geometric(2))
+            self%particles(i)%chaos%e_geom = aux_real2
             !! time
             self%particles(i)%tmax = self%time
         end do
@@ -1630,11 +1633,11 @@ contains
         ! If MEGNO present, we have to add the extra equations
         if (self%megno%active) then
             do i = 1, self%Nparticles_active
-                self%particles(i)%variational = array(idx:idx + 3)
-                self%particles(i)%chaos_megno = array(idx + 4:idx + 6)
+                self%particles(i)%chaos%variational = array(idx:idx + 3)
+                self%particles(i)%chaos%megno_data = array(idx + 4:idx + 6)
                 idx = idx + 7
             end do
-            self%megno%chaos = array(idx:idx+2)
+            self%megno%data = array(idx:idx+2)
         end if
 
     end subroutine update_system_from_array
@@ -1675,11 +1678,11 @@ contains
         ! If MEGNO present, we have to add the extra equations
         if (self%megno%active) then
             do i = 1, self%Nparticles_active
-                array(idx:idx + 3) = self%particles(i)%variational
-                array(idx + 4:idx + 6) = self%particles(i)%chaos_megno
+                array(idx:idx + 3) = self%particles(i)%chaos%variational
+                array(idx + 4:idx + 6) = self%particles(i)%chaos%megno_data
                 idx = idx + 7
             end do
-            array(idx:idx+2) = self%megno%chaos
+            array(idx:idx+2) = self%megno%data
         end if
 
     end subroutine generate_arrays
@@ -2650,7 +2653,7 @@ contains
             &, self%particles(i)%elements(3)*degree &  ! M
             &, self%particles(i)%elements(4)*degree &  ! w
             &, self%particles(i)%mmr &  ! MMR
-            &, self%particles(i)%megno ! MEGNO  
+            &, self%particles(i)%chaos%megno ! MEGNO  
     end subroutine write_particle_i_elem_small
 
     ! Write elements ALL
@@ -2712,8 +2715,8 @@ contains
             & self%asteroid%mass/unit_mass, &  ! mass
             & self%asteroid%radius/unit_dist, &  ! radius
             & self%asteroid%dist_to_cm/unit_dist, &  ! distance
-            & self%asteroid%chaos_a/unit_dist, &  ! da
-            & self%asteroid%chaos_e, & ! de
+            & self%asteroid%chaos%a/unit_dist, &  ! da
+            & self%asteroid%chaos%e, & ! de
             & cero  ! MEGNO
     end subroutine write_ast_elem
 
@@ -2737,8 +2740,8 @@ contains
             & self%moons(i)%mass/unit_mass, &  ! mass
             & self%moons(i)%radius/unit_dist, &  ! radius
             & self%moons(i)%dist_to_cm/unit_dist, &  ! distance
-            & self%moons(i)%chaos_a/unit_dist, &  ! da
-            & self%moons(i)%chaos_e, & ! de
+            & self%moons(i)%chaos%a/unit_dist, &  ! da
+            & self%moons(i)%chaos%e, & ! de
             & cero  ! MEGNO
     end subroutine write_moon_i_elem
 
@@ -2762,9 +2765,9 @@ contains
             & cero, &  ! mass
             & cero, &  ! radius
             & self%particles(i)%dist_to_cm/unit_dist, &  ! distance
-            & self%particles(i)%chaos_a/unit_dist, &  ! da
-            & self%particles(i)%chaos_e, & ! de
-            & self%particles(i)%megno ! MEGNO
+            & self%particles(i)%chaos%a/unit_dist, &  ! da
+            & self%particles(i)%chaos%e, & ! de
+            & self%particles(i)%chaos%megno ! MEGNO
     end subroutine write_particle_i_elem
 
     ! Write elements ALL
@@ -2892,7 +2895,7 @@ contains
             & self%particles(i)%coordinates(1:2)/unit_dist, &  ! x y
             & self%particles(i)%coordinates(3:4)/unit_vel, &  ! vx vy
             & cero, &  ! mass
-            & self%particles(i)%megno ! radius
+            & self%particles(i)%chaos%megno ! radius
     end subroutine write_particle_i_coor
 
     ! Write coordinates ALL
@@ -2973,8 +2976,8 @@ contains
             & cero, &   ! MMR
             & actual%asteroid%mass/unit_mass, &  ! mass
             & actual%asteroid%radius/unit_dist, &  ! radius
-            & actual%asteroid%chaos_a/unit_dist, &  ! da
-            & actual%asteroid%chaos_e, & ! de
+            & actual%asteroid%chaos%a/unit_dist, &  ! da
+            & actual%asteroid%chaos%e, & ! de
             & cero  ! MEGNO
     end subroutine write_ast_chaos
 
@@ -3018,8 +3021,8 @@ contains
             & actual%moons(i)%mmr, &   ! MMR
             & actual%moons(i)%mass/unit_mass, &  ! mass
             & actual%moons(i)%radius/unit_dist, &  ! radius
-            & actual%moons(i)%chaos_a/unit_dist, &  ! da
-            & actual%moons(i)%chaos_e, & ! de
+            & actual%moons(i)%chaos%a/unit_dist, &  ! da
+            & actual%moons(i)%chaos%e, & ! de
             & cero  ! MEGNO
     end subroutine write_moon_i_chaos
 
@@ -3063,9 +3066,9 @@ contains
             & actual%particles(i)%mmr, &   ! MMR
             & cero, &  ! mass
             & cero, &  ! radius
-            & actual%particles(i)%chaos_a/unit_dist, &  ! da
-            & actual%particles(i)%chaos_e, & ! de
-            & actual%particles(i)%megno ! MEGNO
+            & actual%particles(i)%chaos%a/unit_dist, &  ! da
+            & actual%particles(i)%chaos%e, & ! de
+            & actual%particles(i)%chaos%megno ! MEGNO
     end subroutine write_particle_i_chaos
 
     ! Write chaos ALL
@@ -3079,7 +3082,7 @@ contains
 
         allocate (ids(max(actual%Nmoons, actual%Nparticles)))
 
-        if (actual%asteroid%chaos_a(2) > myepsilon) call write_ast_chaos(initial, actual, unit_file)
+        if (actual%asteroid%chaos%a(2) > myepsilon) call write_ast_chaos(initial, actual, unit_file)
 
         if (actual%Nmoons > 1) then
             do i = 1, actual%Nmoons
@@ -3129,8 +3132,8 @@ contains
             & self%moons(i)%mass/unit_mass, &  ! mass
             & self%moons(i)%radius/unit_dist, &  ! radius
             & self%moons(i)%dist_to_cm/unit_dist, &  ! distance
-            & self%moons(i)%chaos_a_geom/unit_dist, &  ! da
-            & self%moons(i)%chaos_e_geom, & ! de
+            & self%moons(i)%chaos%a_geom/unit_dist, &  ! da
+            & self%moons(i)%chaos%e_geom, & ! de
             & cero  ! MEGNO
     end subroutine write_moon_i_geom
 
@@ -3154,9 +3157,9 @@ contains
             & cero, &  ! mass
             & cero, &  ! radius
             & self%particles(i)%dist_to_cm/unit_dist, &  ! distance
-            & self%particles(i)%chaos_a_geom/unit_dist, &  ! da
-            & self%particles(i)%chaos_e_geom, & ! de
-            & self%particles(i)%megno ! MEGNO
+            & self%particles(i)%chaos%a_geom/unit_dist, &  ! da
+            & self%particles(i)%chaos%e_geom, & ! de
+            & self%particles(i)%chaos%megno ! MEGNO
     end subroutine write_particle_i_geom
 
     ! Write geometric elements ALL
@@ -3237,8 +3240,8 @@ contains
             & actual%moons(i)%mmr_geom, &   ! MMR
             & actual%moons(i)%mass/unit_mass, &  ! mass
             & actual%moons(i)%radius/unit_dist, &  ! radius
-            & actual%moons(i)%chaos_a_geom/unit_dist, &  ! da
-            & actual%moons(i)%chaos_e_geom, & ! de
+            & actual%moons(i)%chaos%a_geom/unit_dist, &  ! da
+            & actual%moons(i)%chaos%e_geom, & ! de
             & cero  ! MEGNO
     end subroutine write_moon_i_geomchaos
 
@@ -3282,9 +3285,9 @@ contains
             & actual%particles(i)%mmr_geom, &   ! MMR
             & cero, &  ! mass
             & cero, &  ! radius
-            & actual%particles(i)%chaos_a_geom/unit_dist, &  ! da
-            & actual%particles(i)%chaos_e_geom, & ! de
-            & actual%particles(i)%megno ! MEGNO
+            & actual%particles(i)%chaos%a_geom/unit_dist, &  ! da
+            & actual%particles(i)%chaos%e_geom, & ! de
+            & actual%particles(i)%chaos%megno ! MEGNO
     end subroutine write_particle_i_geomchaos
 
     ! Write geometric chaos ALL
@@ -3354,19 +3357,54 @@ contains
     !  --------------------------   COPY    -------------------------------
 
     ! Copy the objects from another system
-    subroutine copy_objects(other, self)
+    subroutine copy_objects(other, self, deep_copy)
         implicit none
         type(system_st), intent(in) :: other
         type(system_st), intent(inout) :: self
+        logical, intent(in), optional :: deep_copy
+        logical :: deep
+        type(chaos_st) :: tmp_chaos
+        type(particle_st) :: tmp_particles(self%Nparticles)
+        type(moon_st) :: tmp_moons(self%Nmoons)
+        integer(kind=4) :: i, j
 
+        deep = .True.
+        if (present(deep_copy)) deep = deep_copy
+
+        if (.not. deep) tmp_chaos = self%asteroid%chaos
         self%asteroid = other%asteroid
+        if (.not. deep) self%asteroid%chaos = tmp_chaos
+
         if (self%Nmoons > 0) then
+            if (.not. deep) tmp_moons = self%moons
             self%moons = other%moons
             self%Nmoons_active = other%Nmoons_active
+            if (.not. deep) then
+                do i = 1, self%Nmoons
+                    inner_m: do j = 1, self%Nmoons
+                        if (self%moons(i)%id == tmp_moons(j)%id) then
+                            self%moons(i)%chaos = tmp_moons(j)%chaos
+                            exit inner_m
+                        end if
+                    end do inner_m
+                end do
+            end if
         end if
+
         if (self%Nparticles > 0) then
+            if (.not. deep) tmp_particles = self%particles
             self%particles = other%particles
             self%Nparticles_active = other%Nparticles_active
+            if (.not. deep) then
+                do i = 1, self%Nparticles
+                    inner_p: do j = 1, self%Nparticles
+                        if (self%particles(i)%id == tmp_particles(j)%id) then
+                            self%particles(i)%chaos = tmp_particles(j)%chaos
+                            exit inner_p
+                        end if
+                    end do inner_p
+                end do
+            end if
         end if
 
         call recalculate_all(self)
