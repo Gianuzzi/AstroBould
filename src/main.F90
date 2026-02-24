@@ -1036,14 +1036,14 @@ program main
         write (*, s1i1) "  n_out         : ", sim%output_number
         write (*, s1i1) "  n_checkpoints : ", sim%checkpoint_number
         write (*, *) ACHAR(5)
+        !! Possible Warning
+        if ((sim%dt_min > sim%output_timestep) .and. (sim%case_output_type == 0)) then
+            write (*, *) ACHAR(5)
+            write (*, *) " WARNING: Min dt is greater than output dt."
+            write (*, *) ACHAR(5)
+        end if
     end if
 
-    !! Possible Warning
-    if (sim%dt_min > sim%output_timestep) then
-        write (*, *) ACHAR(5)
-        write (*, *) " WARNING: Min dt is greater than output dt."
-        write (*, *) ACHAR(5)
-    end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!! Integration Arrays !!!!!!!!!!!!!!!!!!!!!!!!!!!!
