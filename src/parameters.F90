@@ -100,7 +100,7 @@ module parameters
         logical :: use_megno = .False.
         real(wp) :: megno_eps = 1.e-6_wp
         ! Jacobi
-        logical :: use_jacobi = .True.
+        logical :: use_jacobi = .False.
         real(wp) :: jacobi_time_eps = 1e-10_wp
         ! Filter
         logical :: use_filter = .False.
