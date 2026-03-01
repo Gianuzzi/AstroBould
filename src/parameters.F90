@@ -99,6 +99,9 @@ module parameters
         ! Megno
         logical :: use_megno = .False.
         real(wp) :: megno_eps = 1.e-6_wp
+        ! Jacobi
+        logical :: use_jacobi = .True.
+        logical :: jacobi_time_eps = 1e-10_wp
         ! Filter
         logical :: use_filter = .False.
         real(wp) :: filter_dt = cero
@@ -242,7 +245,6 @@ module parameters
     real(wp), dimension(:), allocatable :: R_arr         ! Radius array
     real(wp), dimension(:), allocatable :: y_arr         ! Coordinates array
     real(wp), dimension(:), allocatable :: y_arr_new     ! Coordinates array (2.0)
-    real(wp), dimension(:), allocatable :: y_der         ! Derivate of coordinates array
 
     ! ----  <<<<<    FILTERING     >>>>>   -----
     type(filter_st) :: filter
@@ -261,7 +263,8 @@ module parameters
     integer(kind=4) :: tmp_j  ! Temporal j checkpoint
     type(sim_params_st) :: tmp_sim  ! Temporal simulation state
     real(wp) :: tmp_time  ! Temporal time
-    real(wp) :: tmp_adaptive_timestep  ! Temporal time
+    real(wp) :: tmp_timestep  ! Temporal timestep
+    real(wp) :: tmp_adaptive_timestep  ! Temporal adaptive timestep
     type(system_st) :: tmp_system  ! Temporal system
     integer(kind=4) :: tmp_y_nvalues  ! Temporal y nvalues
     real(wp), dimension(:), allocatable :: tmp_y_arr  ! Temporal coordinates array
@@ -1773,7 +1776,6 @@ contains
         if (allocated(R_arr)) deallocate (R_arr)
         if (allocated(y_arr)) deallocate (y_arr)
         if (allocated(y_arr_new)) deallocate (y_arr_new)
-        if (allocated(y_der)) deallocate (y_der)
         if (allocated(output_times)) deallocate (output_times)
         if (allocated(checkpoint_times)) deallocate (checkpoint_times)
         if (allocated(checkpoint_is_tom)) deallocate (checkpoint_is_tom)
