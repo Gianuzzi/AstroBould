@@ -100,8 +100,11 @@ module parameters
         logical :: use_megno = .False.
         real(wp) :: megno_eps = 1.e-6_wp
         ! Jacobi
-        logical :: use_jacobi = .False.
-        real(wp) :: jacobi_time_eps = 1e-10_wp
+        logical :: use_surface = .False.
+        real(wp) :: surface_time_eps = 1e-10_wp
+        character(30) :: surfacefile = ""
+        ! Sinodic
+        logical :: use_sinodic = .False.
         ! Filter
         logical :: use_filter = .False.
         real(wp) :: filter_dt = cero
@@ -290,6 +293,7 @@ module parameters
     integer(kind=4), parameter :: u_chaosfile = 23
     integer(kind=4), parameter :: u_geometricfile = 24
     integer(kind=4), parameter :: u_geomchaosfile = 25
+    integer(kind=4), parameter :: u_surfacefile = 26
 
     integer(kind=4), parameter :: pad_with_filter_units = 20
     integer(kind=4), parameter :: u_filterfile = u_datafile + pad_with_filter_units - 1  ! Filter configuration
@@ -831,6 +835,12 @@ contains
                         params%use_particlesfile = .False.
                         params%particlesfile = ""
                     end if
+                case ("use rotating re")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_sinodic = .True.
+                    else
+                        params%use_sinodic = .False.
+                    end if
                 case ("deactivate grav")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_moon_gravity = .False.
@@ -921,6 +931,16 @@ contains
                     end if
                 case ("displacement fo")
                     read (value_str, *, iostat=ios) params%megno_eps
+                case ("calculate surfa")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_surface = .True.
+                    else
+                        params%use_surface = .False.
+                    end if
+                case ("timestep criter")
+                    read (value_str, *, iostat=ios) params%surface_time_eps
+                case ("surface output ")
+                    params%surfacefile = trim(value_str)
                 case ("use filtering (")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_filter = .True.
@@ -1639,6 +1659,36 @@ contains
         ! Second check: If filter, then elements should be true bc of chaos or elems output...
         if (derived%use_filter .and. ((derived%int_elements_output == 0) .or. (.not. derived%use_chaos))) then
             write (*, *) "ERROR: If filter is activated, elements output or chaos must be activeted"
+            stop 1
+        end if
+        
+        ! First surface check: If surface, then no filter
+        if (derived%use_filter .and. sim%use_surface) then
+            write (*, *) "ERROR: Can not create surface sections with activated filter."
+            stop 1
+        end if
+
+        ! Second surface check: No more than 1 particle/moon
+        if (derived%use_surface .and. sim%Nactive > 2) then
+            write (*, *) "ERROR: Surface section is available with a single moon/particle."
+            stop 1
+        end if
+
+        ! Third surface check
+        if ((trim(derived%surfacefile) == "") .and. derived%use_surface) then
+            write (*, *) "ERROR: Surface file name not set."
+            stop 1
+        end if
+
+        ! First sinodic check: If sinodic, no moon
+        if (derived%use_sinodic .and. sim%Nmoons > 0) then
+            write (*, *) "ERROR: Sinodic system is available for systems with particles only."
+            stop 1
+        end if
+
+        ! Second sinodic check: If sinodic, no damping
+        if (derived%use_sinodic .and. sim%use_omega_damping) then
+            write (*, *) "ERROR: Sinodic system is not compatible with Omega damping."
             stop 1
         end if
 

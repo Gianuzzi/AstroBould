@@ -1099,7 +1099,7 @@ contains
     !  -------------------   INIT MAIN SYSTEM   ---------------------------
 
     ! Init whole system
-    subroutine init_system(self, asteroid, moons, particles, lambda_kep, rotational_period, reference_frame)
+    subroutine init_system(self, asteroid, moons, particles, lambda_kep, rotational_period, reference_frame, is_sinodic)
         implicit none
         type(system_st), intent(inout) :: self
         type(asteroid_st), intent(inout) :: asteroid
@@ -1107,11 +1107,15 @@ contains
         type(particle_st), allocatable, intent(inout) :: particles(:)
         real(wp), intent(in) :: lambda_kep, rotational_period
         integer(kind=4), intent(in) :: reference_frame
+        logical, intent(in) :: is_sinodic
         integer(kind=4) :: i, j
         integer(kind=4), allocatable :: id_list(:)
 
         ! Set main reference frame
         self%reference_frame = reference_frame
+
+        ! Set if sinodic
+        self%is_sinodic = is_sinodic
 
         ! Initialize the objects and Create the system
         !! Asteroid

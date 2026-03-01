@@ -33,13 +33,13 @@ module derivates
 
 contains
 
-    subroutine set_dydt(inertial)
-        logical, intent(in) :: inertial
+    subroutine set_dydt(sinodic)
+        logical, intent(in) :: sinodic
         
-        if (inertial) then
-            dydt => dydt_inertial
-        else
+        if (sinodic) then
             dydt => dydt_sinodic
+        else
+            dydt => dydt_inertial
         end if
     end subroutine set_dydt
 
