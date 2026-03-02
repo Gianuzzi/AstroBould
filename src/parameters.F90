@@ -4,9 +4,9 @@ module parameters
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
     use accelerations, only: init_ellipsoid, init_boulder_z, init_manual_J2, init_stokes, init_drag, init_damping, update_boulder_z
-    use filtering
+    use filtering, only: filter_st
     use omp_lib
-    use tomodule
+    use tomodule, only: tom_st
 
     implicit none
 

@@ -1,6 +1,7 @@
 !> Module with LeapFrog integrators (standard only useful for [X, V] systems)
 module leapfrog
     use shared
+    
     implicit none
     private
     public :: init_leapfrog, free_leapfrog, leapfrog_caller, leapfrog_fixed_caller

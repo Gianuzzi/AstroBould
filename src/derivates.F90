@@ -16,6 +16,10 @@ module derivates
                             & use_boulder_z, Gmboulder_z_coef, dz2_boulder_z_coef
 
     implicit none
+    private
+    public :: dydt, set_dydt
+
+    
 
     abstract interface
         ! Here must be every f_i defined explicitly

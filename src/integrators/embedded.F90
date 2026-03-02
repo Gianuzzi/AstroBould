@@ -1,6 +1,7 @@
 !> Module with embedded RK integrators
 module embedded
     use shared
+    
     implicit none
     private
     public :: init_embedded, free_embedded, embedded_caller, embedded_fixed_caller

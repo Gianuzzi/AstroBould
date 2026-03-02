@@ -1,12 +1,13 @@
 program main
-    use version_info
+    use version_info, only: print_version
     use parameters
-    use integrators
+    use integrators, only: integrate, init_integrator, free_integrator
     use celestial, only: get_Period, coord2geom
     use bodies
-    use times
-    use derivates
-    use filtering
+    use times, only: set_output_times, expand_checkpoints
+    use derivates, only: dydt, set_dydt
+    use filtering, only: setup_filter, store_to_filter, free_filter
+    use tomodule, only: read_tomfile, setup_TOM, free_tom
 
     implicit none
 
@@ -2476,7 +2477,7 @@ program main
                 end if
 
                 ! Check if crossed
-                aux_logical = (y_arr(8) * y_arr_new(8) < cero) .and. (y_arr_new(10) > cero)
+                aux_logical = (y_arr(8) < cero) .and. (y_arr_new(8) > cero) .and. (y_arr_new(10) > cero)
                 if (aux_logical .and. timestep > tmp_timestep) then  ! Crossed but too large
                     timestep = timestep * uno2  ! Redo with half timestep
 

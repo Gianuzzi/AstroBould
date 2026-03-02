@@ -1,7 +1,9 @@
 !> Module with shared variables and routines for integrators
 module shared
     use iso_fortran_env, only: real64, real32  ! or int32, etc.
+    
     implicit none
+    public
 
     ! Default precision
 #ifdef WP

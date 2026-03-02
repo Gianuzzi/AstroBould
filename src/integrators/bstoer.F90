@@ -1,6 +1,7 @@
 !> Module with BStoer integrator
 module bstoer
     use shared
+    
     implicit none
     private
     public :: init_BS, free_BS, BStoer_caller
