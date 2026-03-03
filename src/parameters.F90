@@ -100,6 +100,8 @@ module parameters
         ! Megno
         logical :: use_megno = .False.
         real(wp) :: megno_eps = 1.e-6_wp
+        ! Sinodic
+        logical :: use_sinodic = .False.
         ! Jacobi
         logical :: use_surface = .False.
         integer(kind=4) :: surface_coord = -1
@@ -109,8 +111,6 @@ module parameters
         real(wp) :: surface_secon_min_value = cero     
         real(wp) :: surface_time_eps = 1e-9_wp
         character(30) :: surfacefile = ""
-        ! Sinodic
-        logical :: use_sinodic = .False.
         ! Filter
         logical :: use_filter = .False.
         real(wp) :: filter_dt = cero
@@ -273,7 +273,7 @@ module parameters
     type(sim_params_st) :: tmp_sim  ! Temporal simulation state
     real(wp) :: tmp_time  ! Temporal time
     real(wp) :: tmp_timestep  ! Temporal timestep
-    real(wp) :: tmp_adaptive_timestep  ! Temporal adaptive timestep
+    real(wp) :: tmp_adapt_timestep  ! Temporal adaptive timestep
     type(system_st) :: tmp_system  ! Temporal system
     integer(kind=4) :: tmp_y_nvalues  ! Temporal y nvalues
     real(wp), dimension(:), allocatable :: tmp_y_arr  ! Temporal coordinates array
@@ -282,7 +282,7 @@ module parameters
     type(section_st) :: section
     logical :: has_crossed_surface = .False.
     ! ==========    EXTRA SURFACE SECTION    ==========
-    ! Uses tmp_timestep and tmp_adaptive_timestep
+    ! Uses tmp_timestep and tmp_adapt_timestep
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
     logical :: is_premature_exit = .False.
@@ -584,6 +584,10 @@ contains
                     params%use_megno = .True.
                 case ("--nomegno")
                     params%use_megno = .False.
+                case ("--sinodic")
+                    params%use_sinodic = .True.
+                case ("--nosinodic")
+                    params%use_sinodic = .False.
                 case ("-parallel")
                     params%use_parallel = .True.
                     call get_command_argument(i + 1, aux_character20)
@@ -644,6 +648,8 @@ contains
                     write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
                     write (*, *) "    --megno       : Calcular MEGNO para partículas."
                     write (*, *) "    --nomegno     : No calcular MEGNO."
+                    write (*, *) "    --sinodic     : Integar en sistema rotante."
+                    write (*, *) "    --nosinodic   : Integar en sistema NO rotante."
                     write (*, *) "    -parallel     : Cantida de thread a utilizar en paralelo [int]"
                     write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
                     write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
@@ -847,12 +853,6 @@ contains
                         params%use_particlesfile = .False.
                         params%particlesfile = ""
                     end if
-                case ("use rotating re")
-                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
-                        params%use_sinodic = .True.
-                    else
-                        params%use_sinodic = .False.
-                    end if
                 case ("deactivate grav")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_moon_gravity = .False.
@@ -943,6 +943,12 @@ contains
                     end if
                 case ("displacement fo")
                     read (value_str, *, iostat=ios) params%megno_eps
+                case ("use rotating re")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_sinodic = .True.
+                    else
+                        params%use_sinodic = .False.
+                    end if
                 case ("calculate surfa")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_surface = .True.
