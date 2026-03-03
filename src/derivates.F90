@@ -618,6 +618,7 @@ contains
                             & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
+
                 end if
 
                 ! Acceleration of particle j by boulder 0
@@ -845,9 +846,10 @@ contains
         real(wp) :: acc_grav(2), torque
         integer(kind=4) :: i, idx
         integer(kind=4) :: j, jdx
+        integer(kind=4) :: vdx  ! For variational
         integer(kind=4) :: N_total, N_particles, last_moon, first_particle 
         real(wp) :: Q_eff! For triaxial
-        real(wp) :: inv_dr, inv_dr2, inv_dr3  ! For triaxial and extra forces
+        real(wp) :: inv_dr, inv_dr2, inv_dr3, inv_dr7  ! For triaxial and extra forces
         real(wp) :: Gmast, Gmi  ! For extra/COM forces
         real(wp) :: dr_ver(2), dv_vec(2)  ! For extra forces
         real(wp) :: vel_circ(2), v2  ! For extra forces
@@ -856,6 +858,8 @@ contains
         real(wp) :: mean_movement  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: drag_f, stokes_f  ! For extra forces
+        real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
+        real(wp) :: aux_real
 
         der = cero  ! init der at cero
 
@@ -940,6 +944,26 @@ contains
                 ! Acceleration of particle j by J2
                 acc_grav = Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (J2K / r²) / r³
 
+                ! Variational [MEGNO]
+                if (sim%megno_active) then
+                    vdx = get_variational_index(j, first_particle, N_total)
+                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    
+                    inv_dr7 = inv_dr3 * inv_dr3 / dr
+                    aux_real = Gmast*J2K_coef*inv_dr7
+
+                    ! dvx = mu J2k / r⁷ * (-5 dy x y + dx (-4 x² + y²))
+                    der(vdx + 2) = der(vdx + 2) + aux_real*(&
+                            & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
+                            & + coords_P(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
+                    
+                    ! dvy = mu J2k / r⁷ * (-5 dx x y + dy (x² - 4 y²))
+                    der(vdx + 3) = der(vdx + 3) + aux_real*(&
+                            & -5*coords_P(1)*dr_vec(1)*dr_vec(2) &
+                            & + coords_P(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
+
+                end if
+
             ! ---> Manual boulder_z from asteroid CM <---
             else if (use_boulder_z) then
 
@@ -947,6 +971,25 @@ contains
 
                 ! Acceleration of particle j by boulders Z
                 acc_grav = - Gmboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z  !! Add - 2 G (x, y) boulder_z / r³
+
+                ! Variational [MEGNO]
+                if (sim%megno_active) then
+                    vdx = get_variational_index(j, first_particle, N_total)
+                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    
+                    aux_real = Gmboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
+
+                    ! dvx = - mu / (r² + rz²)²·⁵ * (-3 dy x y + dx (-2 x² + y² + rz²))
+                    der(vdx + 2) = der(vdx + 2) + aux_real*(&
+                            & 3*coords_P(2)*dr_vec(1)*dr_vec(2) &
+                            & - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
+                    
+                    ! dvy = mu / (r² + rz²)²·⁵ * (3 dx x y - dy (x² - 2 y² + rz²))
+                    der(vdx + 3) = der(vdx + 3) + aux_real*(&
+                            & 3*coords_P(1)*dr_vec(1)*dr_vec(2) &
+                            & - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
+
+                end if
 
             end if
 
@@ -956,6 +999,21 @@ contains
             ! -------- Coriolis and centrifugal -------
             !ax​ = 2Ω vy​ + Ω² x ; ay = −2Ω vx ​ + Ω²y​​
             der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + dos * y(2) * (/y(jdx + 3), -y(jdx + 2)/) + y(2)**2 * y(jdx:jdx + 1)
+
+            ! Variational [MEGNO]
+            if (sim%megno_active) then
+                vdx = get_variational_index(j, first_particle, N_total)
+                coords_P = y(vdx:vdx + 3)  ! Variational particle
+
+                ! Coriolis
+                der(vdx + 2) = der(vdx + 2) - 2 * omega * coords_P(4)
+                der(vdx + 3) = der(vdx + 3) + 2 * omega * coords_P(3)
+
+                ! Centrifugal
+                der(vdx + 2) = der(vdx + 2) + omega*omega * coords_P(1)
+                der(vdx + 3) = der(vdx + 3) + omega*omega * coords_P(2)
+
+            end if
 
             ! -------- NON CONSERVATIVE -------
 
@@ -1047,6 +1105,17 @@ contains
                     ! Purely central
                     acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G m0 (x, y) / r³
 
+                    ! Variational [MEGNO]
+                    if (sim%megno_active) then
+                        vdx = get_variational_index(j, first_particle, N_total)
+
+                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        
+                        der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
+                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+
+                    end if
+
                 end if
 
                 ! Acceleration of particle j by boulder 0
@@ -1089,12 +1158,69 @@ contains
                     ! Acceleration of particle j by boulder i
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
 
+                    ! Variational [MEGNO]
+                    if (sim%megno_active) then
+                        vdx = get_variational_index(j, first_particle, N_total)
+
+                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        
+                        der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
+                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+
+                    end if
+
                 end do
             
             end do
 
         end if
 
+        ! Extra variational if MEGNO
+        if (sim%megno_active) then
+
+            ! Initialize to 0
+            glob_prod = cero
+            glob_dist = cero
+
+            ! Loop trhough particles
+            do i = first_particle, N_total
+                vdx = get_variational_index(i, first_particle, N_total)
+                ! Update 'd positions' with 'd velocities'
+                der(vdx:vdx + 1) = y(vdx + 2:vdx + 3)
+
+                ! Get and update prod  and dist
+                prod = y(vdx)*der(vdx) + y(vdx+1)*der(vdx+1) + y(vdx+2)*der(vdx+2) + y(vdx+3)*der(vdx+3)
+                if (.not. ieee_is_finite(prod) .or. abs(prod) < tini) prod = cero
+
+                dist = y(vdx)*y(vdx) + y(vdx+1)*y(vdx+1) + y(vdx+2)*y(vdx+2) + y(vdx+3)*y(vdx+3)
+                if (.not. ieee_is_finite(dist) .or. dist < tini) dist = tini
+                
+                glob_prod = glob_prod + prod
+                glob_dist = glob_dist + dist
+
+                ! Calculate dot{lambda}
+                der(vdx + 4) = prod / dist
+
+                ! Calculate dot{Y}
+                der(vdx + 5) = prod / dist * t / megno_factor
+
+                ! Calculate dot{<Y>}
+                if (t > 0) der(vdx + 6) = dos * y(vdx + 5) / t
+
+            end do
+
+            ! Now, we compute the global 
+
+            ! Calculate dot{lambda}
+            der(vdx + 7) = glob_prod / glob_dist
+
+            ! Calculate dot{Y}
+            der(vdx + 8) = glob_prod / glob_dist * t / megno_factor
+
+            ! Calculate dot{<Y>}
+            if (t > 0) der(vdx + 9) = dos * y(vdx + 8) / t
+
+        endif
 
     end function dydt_sinodic
 
