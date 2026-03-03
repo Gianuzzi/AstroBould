@@ -41,6 +41,10 @@
 # El máximo de carpetas creadas será igual a
 # MAX (número de procesadores disponibles en el sistema, workers).
 
+# En caso de configurar uan superficie de sección, se debe dejar en config.ini
+# el nombre de archivo de superficie con nombre: "surface.out". Luego, se
+# creará un archivo concatenando todos los surfaces.
+
 # Si no son necesarias, se recomienda BORRAR las carpetas creadas luego de
 # terminar la ejecución.
 # Esto puede hacerse con: $ rm -rf dpy*
@@ -78,6 +82,9 @@ stopif = 0  # Tipo de stop if
 # MEGNO
 megno = False  # Usar megno para partículas
 
+# Rotating frame
+sinodic = False  # Integrar en el sistema rotante (solo partículas)
+
 # # Drag parameter
 # drag_eta = 1e-3  # 0 means no drag
 
@@ -94,6 +101,7 @@ new_dir = True  # Directorio donde volcar las salidas.
 datafile = "salida"  # Archivo de salidas de datos (sin extensión)
 final_chaos = "chaos"  # Archivo de caos final (sin extensión)
 geomfile = False  # Archivo de elementos geométricos (sin extensión)
+final_surface = "surface"  # Archivo de sección de superficie final (sin extensión)
 filter_prefix = False  # Prefijo de archivo de salidas filtradas
 # Summary file
 summaryfile = "summary"  # Archivo con resumen de parámetros
@@ -136,6 +144,9 @@ if isinstance(final_chaos, bool) and final_chaos:
 # Redefine geomfile if bool
 if isinstance(geomfile, bool) and geomfile:
     geomfile = "geometric"
+# Redefine final_surface if bool
+if isinstance(final_surface, bool) and final_surface:
+    final_surface = "surface"
 # Redefine summary if bool
 if isinstance(summaryfile, bool) and summaryfile:
     summaryfile = "summary"
@@ -194,6 +205,10 @@ if final_chaos is None:
 if geomfile is None:
     geomfile = ""
 
+# Chaosfile
+if final_surface is None:
+    final_surface = ""
+
 # Summaryfile
 if summaryfile is None:
     summaryfile = ""
@@ -209,10 +224,10 @@ if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
         print(f"  Independently, '{datafile}' will be replaced (if exists).")
     if geomfile:
         print(f"  Independently, '{geomfile}' will be replaced (if exists).")
+    if final_surface:
+        print(f"  Independently, '{final_surface}' will be replaced (if exists).")
     if summaryfile:
-        print(
-            f"  Independently, '{summaryfile}' will be replaced (if exists)."
-        )
+        print(f"  Independently, '{summaryfile}' will be replaced (if exists).")
     if ask_overwrite:
         yes_no = input("Do you want to overwrite it? [y/[n]]: ")
     else:
@@ -335,6 +350,7 @@ args += " --elem" if elements else " --noelem"
 args += f" -merge {merge}"
 args += f" -stopif {stopif}"
 args += " --megno" if megno else " --nomegno"
+args += " --sinodic" if sinodic else " --nosinodic"
 args += f" -filtfile {filter_prefix}" if filter_prefix else " --nofilter"
 
 
@@ -419,21 +435,15 @@ def integrate_n(i):
     this_args = f"-nsim {i}"
 
     this_args += "%s" % (
-        " --nodataf"
-        if not datafile
-        else f" -datafile {this_datafile}_undone.out"
+        " --nodataf" if not datafile else f" -datafile {this_datafile}_undone.out"
     )
 
     this_args += "%s" % (
-        " --nochaosf"
-        if not final_chaos
-        else f" -chaosfile {this_chaosfile}_undone.out"
+        " --nochaosf" if not final_chaos else f" -chaosfile {this_chaosfile}_undone.out"
     )
 
     this_args += "%s" % (
-        " --nogeomf"
-        if not geomfile
-        else f" -geomfile {this_geomfile}_undone.out"
+        " --nogeomf" if not geomfile else f" -geomfile {this_geomfile}_undone.out"
     )
 
     # Extract the data from the lines
@@ -502,6 +512,14 @@ def integrate_n(i):
         os.path.join(dirp, f"{new_geomchaosfile}.out"),
     )
 
+    # Renombramos el archivo de surface section
+    old_surfacefile = "surface"  # Asumimos el nombre default
+    new_surfacefile = f"surface{i}"
+    rename_file(
+        os.path.join(dirp, f"{old_surfacefile}.out"),
+        os.path.join(dirp, f"{new_surfacefile}.out"),
+    )
+
     # All the same, with filter
     if filter_prefix:
         # Renombramos el archivo de salida
@@ -558,9 +576,7 @@ def make_chaos(final_chaos, base="chaos", suffix=""):
     else:
         file_list = sorted(
             file_list,
-            key=lambda x: int(
-                x.split(base)[1].split(".out")[0].split(suffix)[0]
-            ),
+            key=lambda x: int(x.split(base)[1].split(".out")[0].split(suffix)[0]),
         )
 
     # Check
@@ -587,9 +603,7 @@ def make_chaos(final_chaos, base="chaos", suffix=""):
             start_for_chunk = (
                 chunk_idx * chunk_size + 1
             )  # 1-based index for first file in this chunk
-            mode = (
-                "wb" if chunk_idx == 0 else "ab"
-            )  # write first chunk, append others
+            mode = "wb" if chunk_idx == 0 else "ab"  # write first chunk, append others
 
             cmd = [
                 "awk",
@@ -663,8 +677,7 @@ if __name__ == "__main__":
             # Chequeamos si existe el archivo de configuración
             if os.path.isfile(ncini) and ask_overwrite:
                 print(
-                    f"Configuration file '{ncini}' "
-                    + f"already exists in {wrk_dir}."
+                    f"Configuration file '{ncini}' " + f"already exists in {wrk_dir}."
                 )
                 print("Do you want to overwrite it?")
                 print("If NOT, the existing one will be used.")
@@ -683,10 +696,7 @@ if __name__ == "__main__":
 
         # Chequeamos si existe el archivo de partículas
         if os.path.isfile(nparticles) and ask_overwrite:
-            print(
-                f"Particles file '{nparticles}' "
-                + f"already exists in {wrk_dir}."
-            )
+            print(f"Particles file '{nparticles}' " + f"already exists in {wrk_dir}.")
             print("Do you want to overwrite it?")
             print("If NOT, the existing one will be used.")
             yes_no = input("[y/[n]]: ")
@@ -761,8 +771,12 @@ if __name__ == "__main__":
         # Same if filtered
         if filter_prefix:
             print("")
-            print(f"Creando archivo de caos filtrado '{filter_prefix}{final_chaos}.out'")
-            if os.path.isfile(os.path.join(wrk_dir, f"{filter_prefix}{final_chaos}.out")):
+            print(
+                f"Creando archivo de caos filtrado '{filter_prefix}{final_chaos}.out'"
+            )
+            if os.path.isfile(
+                os.path.join(wrk_dir, f"{filter_prefix}{final_chaos}.out")
+            ):
                 print(
                     "WARNING: Se está reemplazando el archivo "
                     + f"{filter_prefix}{final_chaos}.out ya existente."
@@ -774,7 +788,7 @@ if __name__ == "__main__":
     if geomchaosfile:
 
         print("")
-        print(f"Creando archivo de caos '{geomchaosfile}.out'")
+        print(f"Creando archivo de caos geométrico '{geomchaosfile}.out'")
         if os.path.isfile(os.path.join(wrk_dir, f"{geomchaosfile}.out")):
             print(
                 "WARNING: Se está reemplazando el archivo "
@@ -782,5 +796,18 @@ if __name__ == "__main__":
             )
 
         make_chaos(geomchaosfile, base="geom_chaos")
+
+    # Creamos el archivo de surface section
+    if final_surface:
+
+        print("")
+        print(f"Creando archivo de superficie de sección '{final_surface}.out'")
+        if os.path.isfile(os.path.join(wrk_dir, f"{final_surface}.out")):
+            print(
+                "WARNING: Se está reemplazando el archivo "
+                + f"{final_surface}.out ya existente."
+            )
+
+        make_chaos(final_surface, base="surface")
 
     print("LISTO!")

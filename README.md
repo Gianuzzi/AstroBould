@@ -104,6 +104,8 @@ $ ./ASTROBOULD --help
                     0: No detener, 1: Luna, 2: Partícula, 3: Ambos
     --megno       : Calcular MEGNO para partículas.
     --nomegno     : No calcular MEGNO.
+    --sinodic     : Integar en sistema rotante.
+    --nosinodic   : Integar en sistema NO rotante.
     -parallel     : Cantida de thread a utilizar en paralelo [int]
     --parallel    : Paralelizar usando todos los threads disponibles
     --noparallel  : No usar paralelización para lunas/partículas
@@ -151,7 +153,7 @@ $ ./ASTROBOULD [args]
 - Each integration is executed in parallel (e.g., across multiple CPU cores).
 - Does not require _-fopenmp_.
 
-The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [63 to 108](./launcher.py#L63#L108). More information (in spannish) is available at the top of the file(see lines [1 to 50](./launcher.py#L1#L50)).
+The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [67 to 116](./launcher.py#L67#L116). More information (in spannish) is available at the top of the file(see lines [1 to 54](./launcher.py#L1#L54)).
 
 To run:
 ```console
