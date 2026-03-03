@@ -76,7 +76,7 @@ merge = 3  # Tipo de merge
 stopif = 0  # Tipo de stop if
 
 # MEGNO
-megno = True  # Usar megno para partículas
+megno = False  # Usar megno para partículas
 
 # # Drag parameter
 # drag_eta = 1e-3  # 0 means no drag
@@ -768,7 +768,7 @@ if __name__ == "__main__":
                     + f"{filter_prefix}{final_chaos}.out ya existente."
                 )
 
-            make_chaos(f"{filter_prefix}{final_chaos}")
+            make_chaos(f"{filter_prefix}{final_chaos}", f"{filter_prefix}chaos")
 
     # Creamos el archivo de chaos de geométricos
     if geomchaosfile:
