@@ -180,8 +180,14 @@ program main
         input%megno_eps = 1e-6_wp       ! initial displacement for shadows
 
         ! Surface section
-        input%use_surface = .False.
-        input%surface_time_eps = 1e-10_wp  ! Timestep criteria for setting the plane
+        input%use_surface = .False.            ! Whether to use surface section
+        input%surface_coord = -1               ! 1 => x , 2 => y, 3 => vx, 4 => vy, 5 => r, 6 => vr
+        input%surface_direction = 0            ! -1: Negative, 0: Any, +1: Positive
+        input%surface_value = cero             ! Value for the surface, with units
+        input%surface_secon_coord = -1         ! 1 => x , 2 => y, 3 => vx, 4 => vy, 5 => r, 6 => vr, Other=> NOT USED
+        input%surface_secon_min_value = cero   ! Value for the secondary condition surface, with units
+        input%surface_time_eps = 1e-10_wp      ! Timestep criteria for setting the plane
+        input%surfacefile = ""                 ! Output file with surface data
 
         ! Map
         input%use_potential_map = .False.
