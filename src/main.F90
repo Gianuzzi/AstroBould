@@ -1702,7 +1702,7 @@ program main
         tmp_time = time
         tmp_system = system
         tmp_y_nvalues = y_nvalues
-        tmp_adaptive_timestep = adaptive_timestep
+        tmp_adapt_timestep = adaptive_timestep
         tmp_y_arr(:y_nvalues) = y_arr(:y_nvalues)
 
         ! -----------------------------------------------------------------------------
@@ -1890,7 +1890,7 @@ program main
                     time = tmp_time
                     system = tmp_system
                     y_nvalues = tmp_y_nvalues
-                    adaptive_timestep = tmp_adaptive_timestep
+                    adaptive_timestep = tmp_adapt_timestep
                     y_arr(:y_nvalues) = tmp_y_arr(:y_nvalues)
                     aux_int = unit_file  ! For coll/escp writing
 
@@ -2069,7 +2069,7 @@ program main
         tmp_time = time
         tmp_system = system
         tmp_y_nvalues = y_nvalues
-        tmp_adaptive_timestep = adaptive_timestep
+        tmp_adapt_timestep = adaptive_timestep
         tmp_y_arr(:y_nvalues) = y_arr(:y_nvalues)
 
         ! From now on, all following filtering methods are the same
@@ -2268,7 +2268,7 @@ program main
                 time = tmp_time
                 system = tmp_system
                 y_nvalues = tmp_y_nvalues
-                adaptive_timestep = tmp_adaptive_timestep
+                adaptive_timestep = tmp_adapt_timestep
                 y_arr(:y_nvalues) = tmp_y_arr(:y_nvalues)
                 aux_int = unit_file  ! For coll/escp writing
 
@@ -2426,7 +2426,7 @@ program main
             tmp_time = time
             tmp_system = system
             tmp_y_nvalues = y_nvalues
-            tmp_adaptive_timestep = adaptive_timestep
+            tmp_adapt_timestep = adaptive_timestep
             tmp_y_arr(:y_nvalues) = y_arr(:y_nvalues)
 
         end do loop_filter
@@ -2437,127 +2437,8 @@ program main
 
         ! Final copy, just to fix possible merges
         call copy_objects(system, system_filtered, .False.)  ! From system to filtered
-
-
-    else if (sim%use_surface) then
-
-        ! LOOP CONSIDERING SURFACE SECTION
-        main_loop_surface: do while (.True.)
-
-            hard_exit = .False. ! Resetear HardExit
-            is_premature_exit = .False. ! Resetear premature
-            regenerate_arrays = .False. ! Resetear regenerar
-            has_crossed_surface = .False. ! Resetear surface cross
-
-            ! Check if all done
-            !! Time end
-            if (j == sim%checkpoint_number + 1) keep_integrating = .False.
-
-            ! Check if Particles/Moons left
-            if (sim%Nactive == 1) then
-                if (sim%use_screen) then
-                    write (*, *) ACHAR(5)
-                    write (*, *) " No more active particles/moons left."
-                end if
-                keep_integrating = .False.
-            end if
-
-            ! Keep going?
-            if (.not. keep_integrating) then
-                if (sim%use_screen) then
-                    write (*, *) ACHAR(5)
-                    write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
-                end if
-                exit main_loop_surface
-            end if
-
-            ! Update dt
-            timestep = checkpoint_times(j) - time
-            
-            tmp_adaptive_timestep = timestep
-            tmp_timestep = sim%surface_time_eps
-            if (j <= sim%checkpoint_number-1) tmp_timestep = min(checkpoint_times(j+1) - checkpoint_times(j), tmp_timestep)
-            loop_surface: do while (timestep > uno3*tmp_timestep)
-            
-                ! INTEGRATE
-                call integrate(time, y_arr(:y_nvalues), tmp_adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
-
-                ! Check if it might be hard_exit
-                if (hard_exit) then
-                    !! If so, the dt used is in dt_adap
-                    timestep = tmp_adaptive_timestep
-
-                    !! Check if premature_exit: If exit at less than 0.1% of finishing timestep
-                    if (timestep > cero) then
-                        is_premature_exit = ((checkpoint_times(j) - (time + timestep)) / timestep > 1e-3_wp) &
-                                            & .or. (timestep > tmp_timestep) 
-                    else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
-                    end if
-
-                    !! Do we leave?
-                    if (is_premature_exit) then
-                        ! Update parameters
-                        time = time + timestep
-                        y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
-                        exit loop_surface
-                    end if
-                end if
-
-                ! Check if crossed
-                has_crossed_surface = crossed_section(section, y_arr, y_arr_new)
-                if (has_crossed_surface .and. timestep > tmp_timestep) then  ! Crossed but too large
-                    timestep = timestep * uno2  ! Redo with half timestep
-
-                else ! Accepted step. Might have crossed, but we would be at y~0
-                    
-                    ! Update parameters and timestep
-                    y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
-                    time = time + timestep
-                    
-                    ! Check if y = 0 
-                    if (has_crossed_surface .and. timestep < tmp_timestep) then  ! At y=0
-                        write(u_surfacefile,'(7F12.5)') time, y_arr_new(1:2), y_arr_new(7:10)
-                    end if
-
-                    ! Update timestep
-                    timestep = checkpoint_times(j) - time
-                end if
-
-            end do loop_surface
-
-            ! Update y_arr
-            y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
-
-            ! Update from y_arr
-            call update_system_from_array(system, time, y_arr)
-
-            ! Update Chaos (triggers update orbital elements, chaos, and MEGNO)
-            if (sim%use_elements) call update_chaos(system, sim%reference_frame)
-
-            ! Update geometric Chaos (triggers update geometric elements)
-            if (sim%use_geometricfile) call update_chaos_geometric(system)
-
-            ! Apply escapes and colissions and check
-            call check_esc_and_col(system, unit_file)
-
-            ! Output
-            if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) call generate_output(system)
-
-            ! Percentage output
-            if (sim%use_percentage) call percentage(time, sim%final_time)
-        
-            ! Update Nactive and y_nvalues if necessary
-            call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
-
-            ! Regenerate if needed
-            if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-
-            ! Update j; only if not premature
-            if (.not. is_premature_exit) j = j + 1
-
-        end do main_loop_surface
     
+        
     else
 
         ! LOOP WITH NO FILTER
@@ -2566,6 +2447,7 @@ program main
             hard_exit = .False. ! Resetear HardExit
             is_premature_exit = .False. ! Resetear premature
             regenerate_arrays = .False. ! Resetear regenerar
+            has_crossed_surface = .False. ! Resetear surface cross
 
             ! Check if all done
             !! Time end
@@ -2592,27 +2474,90 @@ program main
             ! Update dt
             timestep = checkpoint_times(j) - time
 
-            ! INTEGRATE
-            call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
+            ! Surface?
+            if (sim%use_surface) then
+                
+                ! Get tmp times
+                tmp_adapt_timestep = timestep
+                tmp_timestep = sim%surface_time_eps
+                if (j <= sim%checkpoint_number-1) tmp_timestep = min(checkpoint_times(j+1) - checkpoint_times(j), tmp_timestep)
+                
+                loop_surface: do while (timestep > uno3*tmp_timestep)
+                
+                    ! INTEGRATE
+                    call integrate(time, y_arr(:y_nvalues), tmp_adapt_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
-            ! Check if it might be hard_exit
-            if (hard_exit) then
-                !! If so, the dt used is in dt_adap
-                timestep = adaptive_timestep
+                    ! Check if it might be hard_exit
+                    if (hard_exit) then
+                        !! If so, the dt used is in dt_adap
+                        timestep = tmp_adapt_timestep
 
-                !! Check if premature_exit: If exit at less than 1% of finishing timestep
-                if (timestep > cero) then
-                    is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
-                else
-                    is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        !! Check if premature_exit: If exit at less than 0.1% of finishing timestep
+                        if (timestep > cero) then
+                            is_premature_exit = ((checkpoint_times(j) - (time + timestep)) / timestep > 1e-3_wp) &
+                                                & .or. (timestep > tmp_timestep) 
+                        else
+                            is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        end if
+
+                        !! Do we leave?
+                        if (is_premature_exit) then
+                            ! Update parameters
+                            time = time + timestep
+                            y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
+                            exit loop_surface
+                        end if
+                    end if
+
+                    ! Check if crossed
+                    has_crossed_surface = crossed_section(section, y_arr, y_arr_new)
+                    if (has_crossed_surface .and. timestep > tmp_timestep) then  ! Crossed but too large
+                        timestep = timestep * uno2  ! Redo with half timestep
+
+                    else ! Accepted step. Might have crossed, but we would be at y~0
+                        
+                        ! Update parameters and timestep
+                        y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
+                        time = time + timestep
+                        
+                        ! Check if y = 0 
+                        if (has_crossed_surface .and. timestep < tmp_timestep) then  ! At y=0
+                            write(u_surfacefile,'(7F12.5)') time, y_arr_new(1:2), y_arr_new(7:10)
+                        end if
+
+                        ! Update timestep
+                        timestep = checkpoint_times(j) - time
+                    end if
+
+                end do loop_surface
+
+            else
+
+                ! INTEGRATE
+                call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
+
+                ! Check if it might be hard_exit
+                if (hard_exit) then
+                    !! If so, the dt used is in dt_adap
+                    timestep = adaptive_timestep
+
+                    !! Check if premature_exit: If exit at less than 1% of finishing timestep
+                    if (timestep > cero) then
+                        is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
+                    else
+                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                    end if
                 end if
+
+
+                ! Update parameters
+                time = time + timestep
+                y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
+
             end if
 
-            ! Update parameters
-            time = time + timestep
-            y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
-
-            y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
+            ! Modulate theta
+            y_arr(1) = modulo(y_arr(1), twopi)
 
             ! Update from y_new
             call update_system_from_array(system, time, y_arr)
