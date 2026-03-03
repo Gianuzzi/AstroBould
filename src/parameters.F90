@@ -7,6 +7,7 @@ module parameters
     use filtering, only: filter_st
     use omp_lib
     use tomodule, only: tom_st
+    use surface, only: section_st
 
     implicit none
 
@@ -101,7 +102,12 @@ module parameters
         real(wp) :: megno_eps = 1.e-6_wp
         ! Jacobi
         logical :: use_surface = .False.
-        real(wp) :: surface_time_eps = 1e-10_wp
+        integer(kind=4) :: surface_coord = -1
+        integer(kind=4) :: surface_direction = 0
+        real(wp) :: surface_value = cero
+        integer(kind=4) :: surface_secon_coord = -1
+        real(wp) :: surface_secon_min_value = cero     
+        real(wp) :: surface_time_eps = 1e-9_wp
         character(30) :: surfacefile = ""
         ! Sinodic
         logical :: use_sinodic = .False.
@@ -271,6 +277,12 @@ module parameters
     type(system_st) :: tmp_system  ! Temporal system
     integer(kind=4) :: tmp_y_nvalues  ! Temporal y nvalues
     real(wp), dimension(:), allocatable :: tmp_y_arr  ! Temporal coordinates array
+
+    ! ----  <<<<<    SURFACE SECTION     >>>>>   -----
+    type(section_st) :: section
+    logical :: has_crossed_surface = .False.
+    ! ==========    EXTRA SURFACE SECTION    ==========
+    ! Uses tmp_timestep and tmp_adaptive_timestep
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
     logical :: is_premature_exit = .False.
@@ -937,6 +949,16 @@ contains
                     else
                         params%use_surface = .False.
                     end if
+                case ("coordinate to d")
+                    read (value_str, *, iostat=ios) params%surface_coord
+                case ("direction of su")
+                    read (value_str, *, iostat=ios) params%surface_direction
+                case ("value of surfac")
+                    read (value_str, *, iostat=ios) params%surface_value
+                case ("secondary coord")
+                    read (value_str, *, iostat=ios) params%surface_secon_coord
+                case ("minimum value f")
+                    read (value_str, *, iostat=ios) params%surface_secon_min_value
                 case ("timestep criter")
                     read (value_str, *, iostat=ios) params%surface_time_eps
                 case ("surface output ")
@@ -1661,15 +1683,21 @@ contains
             write (*, *) "ERROR: If filter is activated, elements output or chaos must be activeted"
             stop 1
         end if
+
+        ! Check if valid surface
+        if (derived%use_surface .and. (derived%surface_coord < 1 .or. derived%surface_coord > 6)) then
+            write (*, *) "ERROR: Surface section coordinate must be in [1, 6]. "
+            stop 1
+        end if
         
         ! First surface check: If surface, then no filter
-        if (derived%use_filter .and. sim%use_surface) then
+        if (derived%use_filter .and. derived%use_surface) then
             write (*, *) "ERROR: Can not create surface sections with activated filter."
             stop 1
         end if
 
         ! Second surface check: No more than 1 particle/moon
-        if (derived%use_surface .and. sim%Nactive > 2) then
+        if (derived%use_surface .and. derived%Nactive > 2) then
             write (*, *) "ERROR: Surface section is available with a single moon/particle."
             stop 1
         end if
@@ -1681,13 +1709,13 @@ contains
         end if
 
         ! First sinodic check: If sinodic, no moon
-        if (derived%use_sinodic .and. sim%Nmoons > 0) then
+        if (derived%use_sinodic .and. derived%Nmoons > 0) then
             write (*, *) "ERROR: Sinodic system is available for systems with particles only."
             stop 1
         end if
 
         ! Second sinodic check: If sinodic, no damping
-        if (derived%use_sinodic .and. sim%use_omega_damping) then
+        if (derived%use_sinodic .and. derived%use_omega_damping) then
             write (*, *) "ERROR: Sinodic system is not compatible with Omega damping."
             stop 1
         end if

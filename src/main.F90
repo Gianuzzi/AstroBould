@@ -8,6 +8,7 @@ program main
     use derivates, only: dydt, set_dydt
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
+    use surface, only: init_section, crossed_section
 
     implicit none
 
@@ -626,9 +627,9 @@ program main
         write (*, *) "----- Integration reference frame ------"
         write (*, *) ACHAR(5)
         if (sim%use_sinodic) then
-            write (*, *) " SINODIC"
+            write (*, *) "SINODIC"
         else
-            write (*, *) " BARYCENTRIC"
+            write (*, *) "BARYCENTRIC"
         end if
     end if
 
@@ -893,17 +894,17 @@ program main
         call init_megno(system, sim%megno_eps)
         if (sim%use_screen) then
             if (sim%Npart_active == 0) then
-                write (*, *) " WARNING: MEGNO Activated but no particles found."
+                write (*, *) "WARNING: MEGNO Activated but no particles found."
                 sim%megno_active = .False.
             else 
-                write (*, *) " ACTIVATED. Applied only in particles"
+                write (*, *) "ACTIVATED. Applied only in particles"
             end if
-            write (*, s1r1) "   Epsilon used:", system%megno%epsilon
+            write (*, s1r1) "  Epsilon used:", system%megno%epsilon
             write (*, *) ACHAR(5)
         end if
     else if (sim%use_screen)then
         write (*, *) ACHAR(5)
-        write (*, *) " NOT Activated."
+        write (*, *) "NOT Activated."
     end if
 
 
@@ -920,15 +921,35 @@ program main
     !! Configuration
     if (sim%use_surface) then
         sim%surface_time_eps = sim%surface_time_eps * unit_time
+        call init_section(section, &
+                       & sim%surface_coord, &
+                       & sim%surface_value, &
+                       & sim%surface_direction, &
+                       & sim%surface_secon_coord, &
+                       & sim%surface_secon_min_value)
         if (sim%use_screen) then
             write (*, *) ACHAR(5)
-            write (*, *) " ACTIVATED."
-            write (*, s1r1) "   Timestep cutoff used:", sim%surface_time_eps, "[day]"
+            write (*, *) "ACTIVATED."
+            if (sim%use_sinodic) then
+                write (*, *) " Working on inertial frame."
+            else
+                write (*, *) " Working on rotating frame."
+            end if
+            write (*, *) ACHAR(5)
+            write (*, *)    " Surface coordiante selected: " // section%name
+            write (*, s1r1) "   Value (code units): ", section%valor
+            write (*, s1i1) "   Direction: ", section%direction
+            if (section%use_condition) then
+                write (*, *) " Secondary condition selected: " // section%condition_name
+                write (*, s1r1) "   Minimum value (code units): ", section%condition_min
+            end if
+            write (*, *) ACHAR(5)
+            write (*, s1r1) "  Timestep cutoff used:", sim%surface_time_eps, "[day]"
             write (*, *) ACHAR(5)
         end if
     else if (sim%use_screen)then
         write (*, *) ACHAR(5)
-        write (*, *) " NOT Activated."
+        write (*, *) "NOT Activated."
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2414,12 +2435,13 @@ program main
 
     else if (sim%use_surface) then
 
-        ! LOOP WITH NO FILTER
+        ! LOOP CONSIDERING SURFACE SECTION
         main_loop_surface: do while (.True.)
 
             hard_exit = .False. ! Resetear HardExit
             is_premature_exit = .False. ! Resetear premature
             regenerate_arrays = .False. ! Resetear regenerar
+            has_crossed_surface = .False. ! Resetear surface cross
 
             ! Check if all done
             !! Time end
@@ -2477,8 +2499,8 @@ program main
                 end if
 
                 ! Check if crossed
-                aux_logical = (y_arr(8) < cero) .and. (y_arr_new(8) > cero) .and. (y_arr_new(10) > cero)
-                if (aux_logical .and. timestep > tmp_timestep) then  ! Crossed but too large
+                has_crossed_surface = crossed_section(section, y_arr, y_arr_new)
+                if (has_crossed_surface .and. timestep > tmp_timestep) then  ! Crossed but too large
                     timestep = timestep * uno2  ! Redo with half timestep
 
                 else ! Accepted step. Might have crossed, but we would be at y~0
@@ -2488,8 +2510,8 @@ program main
                     time = time + timestep
                     
                     ! Check if y = 0 
-                    if (aux_logical .and. timestep < tmp_timestep) then  ! At y=0
-                        write(u_surfacefile,'(5F12.5)') time, y_arr_new(7:10)
+                    if (has_crossed_surface .and. timestep < tmp_timestep) then  ! At y=0
+                        write(u_surfacefile,'(7F12.5)') time, y_arr_new(1:2), y_arr_new(7:10)
                     end if
 
                     ! Update timestep
@@ -2524,9 +2546,6 @@ program main
 
             ! Regenerate if needed
             if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
-
-            ! Reset adaptive if needed
-            if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep
 
             ! Update j; only if not premature
             if (.not. is_premature_exit) j = j + 1
