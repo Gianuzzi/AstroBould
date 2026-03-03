@@ -6,7 +6,7 @@
 
 The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
 
-If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [39 and 209](./src/main.F90#L39#L209).
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [39 and 224](./src/main.F90#L39#L224).
 
 ---
 
