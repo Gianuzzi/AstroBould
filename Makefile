@@ -220,7 +220,7 @@ deps:
 	@if ! command -v fortdepend >/dev/null 2>&1; then \
 	  echo "Error: fortdepend is not installed."; exit 1; \
 	fi
-	@fortdepend -w -o $(DEP_FILE) -f $(FREE_SOURCES) -b $(OBJ_DIR) -i omp_lib
+	@fortdepend -w -o $(DEP_FILE) -f $(FREE_SOURCES) -b $(OBJ_DIR) -i omp_lib ieee_arithmetic
 	@# Post-process: for each source under src/... replace build/basename.o -> build/subdir/basename.o
 	@for f in $(FREE_SOURCES); do \
 	  rel=$${f#$(SRC_DIR)/}; \

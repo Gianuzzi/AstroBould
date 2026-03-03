@@ -3,6 +3,7 @@ module auxiliary
     use constants, only: wp
 
     implicit none
+    public
 
 contains
 

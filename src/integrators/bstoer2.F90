@@ -1,6 +1,7 @@
 !> Module with BStoer2 integrator (standard only useful for [x0, v0, x1, v1, ...] systems)
 module bstoer2
     use shared
+    
     implicit none
     private
     public :: init_BS2, free_BS2, BStoer2_caller

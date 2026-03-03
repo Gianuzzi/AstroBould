@@ -1,12 +1,14 @@
 program main
-    use version_info
+    use version_info, only: print_version
     use parameters
-    use integrators
+    use integrators, only: integrate, init_integrator, free_integrator
     use celestial, only: get_Period, coord2geom
     use bodies
-    use times
-    use derivates
-    use filtering
+    use times, only: set_output_times, expand_checkpoints
+    use derivates, only: dydt, set_dydt
+    use filtering, only: setup_filter, store_to_filter, free_filter
+    use tomodule, only: read_tomfile, setup_TOM, free_tom
+    use surface, only: init_section, crossed_section
 
     implicit none
 
@@ -121,6 +123,9 @@ program main
         input%use_stop_no_moon_left = .True. ! Stop if no more moons left
         input%use_stop_no_part_left = .True. ! Stop if no more particles left
 
+        ! Inertial or rotating frame
+        input%use_sinodic = .False.
+
         ! Additional forces
 
         !! Manual J2 (for primary or asteroid)
@@ -173,6 +178,16 @@ program main
         ! MEGNO
         input%use_megno = .False.
         input%megno_eps = 1e-6_wp       ! initial displacement for shadows
+
+        ! Surface section
+        input%use_surface = .False.            ! Whether to use surface section
+        input%surface_coord = -1               ! 1 => x , 2 => y, 3 => vx, 4 => vy, 5 => r, 6 => vr
+        input%surface_direction = 0            ! -1: Negative, 0: Any, +1: Positive
+        input%surface_value = cero             ! Value for the surface, with units
+        input%surface_secon_coord = -1         ! 1 => x , 2 => y, 3 => vx, 4 => vy, 5 => r, 6 => vr, Other=> NOT USED
+        input%surface_secon_min_value = cero   ! Value for the secondary condition surface, with units
+        input%surface_time_eps = 1e-10_wp      ! Timestep criteria for setting the plane
+        input%surfacefile = ""                 ! Output file with surface data
 
         ! Map
         input%use_potential_map = .False.
@@ -470,7 +485,8 @@ program main
     call init_system(system, asteroid, moons_arr, particles_arr, &
                     & sim%lambda_kep, &                           ! keplerian omega
                     & sim%asteroid_rotational_period*unit_time, & ! asteroid period
-                    & sim%reference_frame) ! Reference frame for elements
+                    & sim%reference_frame, &                      ! Reference frame for elements
+                    & sim%use_sinodic )                           ! Sinodic frame for particles ?
 
     call set_system_extra(system, cero, sim%eta_col, sim%f_col, sim%manual_J2, sim%use_J2_from_primary)  ! Extra parameters
 
@@ -607,6 +623,23 @@ program main
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRATOR FRAME !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    call set_dydt(sim%use_sinodic)
+
+    ! Initial message
+    if (sim%use_screen) then
+        write (*, *) "----- Integration reference frame ------"
+        write (*, *) ACHAR(5)
+        if (sim%use_sinodic) then
+            write (*, *) "SINODIC"
+        else
+            write (*, *) "BARYCENTRIC"
+        end if
+    end if
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXTRA EFFECTS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -740,7 +773,6 @@ program main
     ! Final message
     if (sim%use_screen .and. .not. any_extra_effect) then
         write (*, *) "No extra internal / external effects activated."
-        write (*, *) ACHAR(5)
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -868,17 +900,62 @@ program main
         call init_megno(system, sim%megno_eps)
         if (sim%use_screen) then
             if (sim%Npart_active == 0) then
-                write (*, *) " WARNING: MEGNO Activated but no particles found."
+                write (*, *) "WARNING: MEGNO Activated but no particles found."
                 sim%megno_active = .False.
             else 
-                write (*, *) " ACTIVATED. Applied only in particles"
+                write (*, *) "ACTIVATED. Applied only in particles"
             end if
-            write (*, s1r1) "   Epsilon used:", system%megno%epsilon
+            write (*, s1r1) "  Epsilon used:", system%megno%epsilon
             write (*, *) ACHAR(5)
         end if
     else if (sim%use_screen)then
-        write (*, *) " NOT Activated."
         write (*, *) ACHAR(5)
+        write (*, *) "NOT Activated."
+    end if
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!! SURFACE SECTION !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !! Message
+    if (sim%use_screen) then
+        write (*, *) ACHAR(5)
+        write (*, *) "---------- SURFACE SECTION  ----------"
+    end if
+
+    !! Configuration
+    if (sim%use_surface) then
+        sim%surface_time_eps = sim%surface_time_eps * unit_time
+        call init_section(section, &
+                       & sim%surface_coord, &
+                       & sim%surface_value, &
+                       & sim%surface_direction, &
+                       & sim%surface_secon_coord, &
+                       & sim%surface_secon_min_value)
+        if (sim%use_screen) then
+            write (*, *) ACHAR(5)
+            write (*, *) "ACTIVATED."
+            if (sim%use_sinodic) then
+                write (*, *) " Working on inertial frame."
+            else
+                write (*, *) " Working on rotating frame."
+            end if
+            write (*, *) ACHAR(5)
+            write (*, *)    " Surface coordiante selected: " // section%name
+            write (*, s1r1) "   Value (code units): ", section%valor
+            write (*, s1i1) "   Direction: ", section%direction
+            if (section%use_condition) then
+                write (*, *) " Secondary condition selected: " // section%condition_name
+                write (*, s1r1) "   Minimum value (code units): ", section%condition_min
+            end if
+            write (*, *) ACHAR(5)
+            write (*, s1r1) "  Timestep cutoff used:", sim%surface_time_eps, "[day]"
+            write (*, *) ACHAR(5)
+        end if
+    else if (sim%use_screen)then
+        write (*, *) ACHAR(5)
+        write (*, *) "NOT Activated."
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1057,14 +1134,12 @@ program main
     allocate (R_arr(sim%Ntotal))  ! Radii
     allocate (y_arr(y_nvalues))     ! Theta, Omega, Positions
     allocate (y_arr_new(y_nvalues)) ! Theta, Omega, Positions
-    allocate (y_der(y_nvalues))     ! derivate(Theta, Omega, Positions)
 
     ! <<<< Init to 0 >>>>
     m_arr = cero
     R_arr = cero
     y_arr = cero
     y_arr_new = cero
-    y_der = cero
 
     ! <<<< Arrays to integrate >>>>
     call center_sytem(system)
@@ -1141,7 +1216,6 @@ program main
 
     else if (sim%use_screen) then  ! NO FILTER
         write (*, *) "Filter OFF"
-        write (*, *) ACHAR(5)
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1151,7 +1225,7 @@ program main
     ! Initial message
     if (sim%use_screen) then
         write (*, *) ACHAR(5)
-        write (*, *) "---------- OUTPUT ----------"
+        write (*, *) "---------- Output ----------"
         write (*, *) ACHAR(5)
     end if
 
@@ -1207,13 +1281,21 @@ program main
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRATOR !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    ! SET INTEGRATOR
+    call init_integrator(sim%integrator_ID, size(y_arr), 2, 1, sim%dt_min, sim%error_tolerance, sim%learning_rate, &
+                        & .not. sim%use_adaptive)
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! FINAL CHECKS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     ! Initial message
     if (sim%use_screen) then
         write (*, *) ACHAR(5)
-        write (*, *) "---------- FINAL CHECKS ----------"
+        write (*, *) "---------- Final Checks ----------"
         write (*, *) ACHAR(5)
     end if
 
@@ -1256,10 +1338,6 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    ! SET INTEGRATOR
-    call init_integrator(sim%integrator_ID, size(y_arr), 2, 1, sim%dt_min, sim%error_tolerance, sim%learning_rate, &
-                        & .not. sim%use_adaptive)
-
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Integration  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1267,7 +1345,7 @@ program main
     !!!! Initial message
     if (sim%use_screen) then
         write (*, *) ACHAR(5)
-        write (*, *) "---------- INTEGRATING ----------"
+        write (*, *) "---------- Integrating ----------"
         write (*, *) ACHAR(5)
     end if
 
@@ -1279,12 +1357,15 @@ program main
     !     11:  initial moons/particles (columns) file
     !     12:  TOM file
     !     21:  data
-    !     22:  chaos
-    !     23:  geometric
-    !     24:  chaos geometric
+    !     23:  chaos
+    !     24:  geometric
+    !     25:  chaos geometric
+    !     26:  surface section
     !     30:  filter summary
     !     31:  filtered data
-    !     32:  filtered chaos
+    !     33:  filtered chaos
+    !     34:  filtered geometric
+    !     35:  filtered chaos geometric
     !     50:  potential map
     !  100+i:  individual bodies data
     ! 3100+i:  filtered individual bodies data
@@ -1357,6 +1438,12 @@ program main
             end do
         end if
 
+    end if
+
+    !! Surface file
+    !! Archivo de salida general
+    if (sim%use_surface) then
+        open (unit=u_surfacefile, file=trim(sim%surfacefile), status='replace', action='write')
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2351,10 +2438,130 @@ program main
         ! Final copy, just to fix possible merges
         call copy_objects(system, system_filtered, .False.)  ! From system to filtered
 
+
+    else if (sim%use_surface) then
+
+        ! LOOP CONSIDERING SURFACE SECTION
+        main_loop_surface: do while (.True.)
+
+            hard_exit = .False. ! Resetear HardExit
+            is_premature_exit = .False. ! Resetear premature
+            regenerate_arrays = .False. ! Resetear regenerar
+            has_crossed_surface = .False. ! Resetear surface cross
+
+            ! Check if all done
+            !! Time end
+            if (j == sim%checkpoint_number + 1) keep_integrating = .False.
+
+            ! Check if Particles/Moons left
+            if (sim%Nactive == 1) then
+                if (sim%use_screen) then
+                    write (*, *) ACHAR(5)
+                    write (*, *) " No more active particles/moons left."
+                end if
+                keep_integrating = .False.
+            end if
+
+            ! Keep going?
+            if (.not. keep_integrating) then
+                if (sim%use_screen) then
+                    write (*, *) ACHAR(5)
+                    write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
+                end if
+                exit main_loop_surface
+            end if
+
+            ! Update dt
+            timestep = checkpoint_times(j) - time
+            
+            tmp_adaptive_timestep = timestep
+            tmp_timestep = sim%surface_time_eps
+            if (j <= sim%checkpoint_number-1) tmp_timestep = min(checkpoint_times(j+1) - checkpoint_times(j), tmp_timestep)
+            loop_surface: do while (timestep > uno3*tmp_timestep)
+            
+                ! INTEGRATE
+                call integrate(time, y_arr(:y_nvalues), tmp_adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
+
+                ! Check if it might be hard_exit
+                if (hard_exit) then
+                    !! If so, the dt used is in dt_adap
+                    timestep = tmp_adaptive_timestep
+
+                    !! Check if premature_exit: If exit at less than 0.1% of finishing timestep
+                    if (timestep > cero) then
+                        is_premature_exit = ((checkpoint_times(j) - (time + timestep)) / timestep > 1e-3_wp) &
+                                            & .or. (timestep > tmp_timestep) 
+                    else
+                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                    end if
+
+                    !! Do we leave?
+                    if (is_premature_exit) then
+                        ! Update parameters
+                        time = time + timestep
+                        y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
+                        exit loop_surface
+                    end if
+                end if
+
+                ! Check if crossed
+                has_crossed_surface = crossed_section(section, y_arr, y_arr_new)
+                if (has_crossed_surface .and. timestep > tmp_timestep) then  ! Crossed but too large
+                    timestep = timestep * uno2  ! Redo with half timestep
+
+                else ! Accepted step. Might have crossed, but we would be at y~0
+                    
+                    ! Update parameters and timestep
+                    y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
+                    time = time + timestep
+                    
+                    ! Check if y = 0 
+                    if (has_crossed_surface .and. timestep < tmp_timestep) then  ! At y=0
+                        write(u_surfacefile,'(7F12.5)') time, y_arr_new(1:2), y_arr_new(7:10)
+                    end if
+
+                    ! Update timestep
+                    timestep = checkpoint_times(j) - time
+                end if
+
+            end do loop_surface
+
+            ! Update y_arr
+            y_arr(1) = modulo(y_arr(1), twopi)  ! Modulate theta
+
+            ! Update from y_arr
+            call update_system_from_array(system, time, y_arr)
+
+            ! Update Chaos (triggers update orbital elements, chaos, and MEGNO)
+            if (sim%use_elements) call update_chaos(system, sim%reference_frame)
+
+            ! Update geometric Chaos (triggers update geometric elements)
+            if (sim%use_geometricfile) call update_chaos_geometric(system)
+
+            ! Apply escapes and colissions and check
+            call check_esc_and_col(system, unit_file)
+
+            ! Output
+            if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) call generate_output(system)
+
+            ! Percentage output
+            if (sim%use_percentage) call percentage(time, sim%final_time)
+        
+            ! Update Nactive and y_nvalues if necessary
+            call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
+
+            ! Regenerate if needed
+            if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)  ! Regenerate arrays
+
+            ! Update j; only if not premature
+            if (.not. is_premature_exit) j = j + 1
+
+        end do main_loop_surface
+    
     else
 
         ! LOOP WITH NO FILTER
-        main_loop_no_filter: do while (.True.)
+        main_loop_normal: do while (.True.)
 
             hard_exit = .False. ! Resetear HardExit
             is_premature_exit = .False. ! Resetear premature
@@ -2379,7 +2586,7 @@ program main
                     write (*, *) ACHAR(5)
                     write (*, s1r1) "Integration finished at time = ", time/unit_time, "[days]"
                 end if
-                exit main_loop_no_filter
+                exit main_loop_normal
             end if
 
             ! Update dt
@@ -2455,7 +2662,7 @@ program main
             ! Update j; only if not premature
             if (.not. is_premature_exit) j = j + 1
 
-        end do main_loop_no_filter
+        end do main_loop_normal
 
     end if
 
@@ -2609,6 +2816,15 @@ program main
         if (sim%use_screen) then
             write (*, *) ACHAR(10)
             write (*, *) "Individual output data saved to files: ", trim(sim%multfile)//"_*"
+        end if
+    end if
+
+    !! Cerrar archivo de surface section
+    if (sim%use_surface) then
+        close (u_surfacefile)
+        if (sim%use_screen) then
+            write (*, *) ACHAR(10)
+            write (*, *) "Surface section data saved to file: ", trim(sim%surfacefile)
         end if
     end if
 

@@ -2,7 +2,11 @@
 module times
     use constants, only: wp, cero, uno, uno2, tini
     use auxiliary, only: quicksort, merge_sort_and_unique
+    
     implicit none
+    private
+    public :: set_output_times, expand_checkpoints
+
 
 contains
 

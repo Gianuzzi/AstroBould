@@ -17,6 +17,7 @@ build/main :  \
 	build/integrators/shared.o \
 	build/main.o \
 	build/parameters.o \
+	build/surface.o \
 	build/times.o \
 	build/tomodule.o \
 	build/version_info.o
@@ -82,7 +83,9 @@ build/main.o :  \
 	build/filtering.o \
 	build/integrators/integrators.o \
 	build/parameters.o \
+	build/surface.o \
 	build/times.o \
+	build/tomodule.o \
 	build/version_info.o
 
 build/parameters.o :  \
@@ -91,7 +94,11 @@ build/parameters.o :  \
 	build/bodies.o \
 	build/constants.o \
 	build/filtering.o \
+	build/surface.o \
 	build/tomodule.o
+
+build/surface.o :  \
+	build/constants.o
 
 build/times.o :  \
 	build/auxiliary.o \

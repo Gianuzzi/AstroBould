@@ -118,8 +118,8 @@ module bodies
         real(wp) :: energy = cero
         real(wp) :: ang_mom = cero
         real(wp) :: inertia = cero
-        real(wp) :: eta_col = uno
-        real(wp) :: f_col = uno
+        real(wp) :: eta_col = uno  ! For collisions
+        real(wp) :: f_col = uno  ! For collisions
         type(asteroid_st) :: asteroid
         integer(kind=4) :: Nmoons = 0
         integer(kind=4) :: Nmoons_active = 0
@@ -129,6 +129,7 @@ module bodies
         type(particle_st), allocatable :: particles(:)
         type(megno_st) :: megno
         integer(kind=4) :: reference_frame = 0  ! Just to have an idea. 0:B, 1:J, 2:A
+        logical :: is_sinodic = .False.  ! In case the integrations are sinodic
     end type system_st
 
     !!!!!!!!!!!   Used I/O formats   !!!!!!!!!
@@ -1098,7 +1099,7 @@ contains
     !  -------------------   INIT MAIN SYSTEM   ---------------------------
 
     ! Init whole system
-    subroutine init_system(self, asteroid, moons, particles, lambda_kep, rotational_period, reference_frame)
+    subroutine init_system(self, asteroid, moons, particles, lambda_kep, rotational_period, reference_frame, is_sinodic)
         implicit none
         type(system_st), intent(inout) :: self
         type(asteroid_st), intent(inout) :: asteroid
@@ -1106,11 +1107,15 @@ contains
         type(particle_st), allocatable, intent(inout) :: particles(:)
         real(wp), intent(in) :: lambda_kep, rotational_period
         integer(kind=4), intent(in) :: reference_frame
+        logical, intent(in) :: is_sinodic
         integer(kind=4) :: i, j
         integer(kind=4), allocatable :: id_list(:)
 
         ! Set main reference frame
         self%reference_frame = reference_frame
+
+        ! Set if sinodic
+        self%is_sinodic = is_sinodic
 
         ! Initialize the objects and Create the system
         !! Asteroid
@@ -1593,6 +1598,7 @@ contains
         integer(kind=4), intent(inout), optional :: error
         real(wp), dimension(4) :: aux_coordinates
         real(wp) :: energy, ang_mom, inertia
+        real(wp) :: ct, st
         integer(kind=4) :: i, idx
 
         ! Update TIME
@@ -1613,12 +1619,30 @@ contains
             idx = idx + 4
         end do
 
-        ! Update Particles Position and derived parameters
-        do i = 1, self%Nparticles_active
-            aux_coordinates = array(idx:idx + 3)
-            call shift_single_particle(self%particles(i), aux_coordinates)
-            idx = idx + 4
-        end do
+        ! If sinodic, set particles to inertial
+        if (self%is_sinodic) then
+            ct = cos(array(1))
+            st = sin(array(1))
+            do i = 1, self%Nparticles_active
+                ! --- rotate position and velocity ---
+                aux_coordinates(1) = array(idx) * ct - array(idx + 1) * st
+                aux_coordinates(2) = array(idx) * st + array(idx + 1) * ct
+                aux_coordinates(3) = array(idx + 2) * ct - array(idx + 3) * st
+                aux_coordinates(4) = array(idx + 2) * st + array(idx + 3) * ct
+                ! --- add Ω × r_I ---
+                aux_coordinates(3) = aux_coordinates(3) - array(2) * aux_coordinates(2)
+                aux_coordinates(4) = aux_coordinates(4) + array(2) * aux_coordinates(1)
+                call shift_single_particle(self%particles(i), aux_coordinates)
+                idx = idx + 4
+            end do
+        else
+            ! Update Particles Position and derived parameters
+            do i = 1, self%Nparticles_active
+                aux_coordinates = array(idx:idx + 3)
+                call shift_single_particle(self%particles(i), aux_coordinates)
+                idx = idx + 4
+            end do
+        end if
 
         ! Check CM
         call check_coordinates(self, error)
@@ -1650,6 +1674,8 @@ contains
         real(wp), dimension(:), intent(inout) :: radius_arr
         real(wp), dimension(:), intent(inout) :: array  ! Includes Theta and Omega
         integer(kind=4) :: i, idx
+        real(wp) :: ct, st
+        real(wp), dimension(2) :: aux_real2
 
         ! Set asteroid values
         mass_arr(1) = self%asteroid%mass
@@ -1668,12 +1694,30 @@ contains
         end do
 
         ! Set particles values
-        do i = 1, self%Nparticles_active
-            mass_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
-            radius_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
-            array(idx:idx + 3) = self%particles(i)%coordinates
-            idx = idx + 4
-        end do
+        if (self%is_sinodic) then
+            ct = cos(self%asteroid%theta)
+            st = sin(self%asteroid%theta)
+            do i = 1, self%Nparticles_active
+                mass_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
+                radius_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
+                ! --- subtract Ω × r_I ---
+                aux_real2(1) = self%particles(i)%coordinates(3) + self%asteroid%omega * self%particles(i)%coordinates(2)
+                aux_real2(2) = self%particles(i)%coordinates(4) - self%asteroid%omega * self%particles(i)%coordinates(1)
+                ! --- rotate position and velocity ---
+                array(idx) = self%particles(i)%coordinates(1) * ct + self%particles(i)%coordinates(2) * st
+                array(idx + 1) = -self%particles(i)%coordinates(1) * st + self%particles(i)%coordinates(2) * ct
+                array(idx + 2) = aux_real2(1) * ct + aux_real2(2) * st
+                array(idx + 3) = -aux_real2(1) * st + aux_real2(2) * ct
+                idx = idx + 4
+            end do
+        else
+            do i = 1, self%Nparticles_active
+                mass_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
+                radius_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
+                array(idx:idx + 3) = self%particles(i)%coordinates
+                idx = idx + 4
+            end do
+        end if
 
         ! If MEGNO present, we have to add the extra equations
         if (self%megno%active) then

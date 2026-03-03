@@ -4,9 +4,10 @@ module parameters
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
     use accelerations, only: init_ellipsoid, init_boulder_z, init_manual_J2, init_stokes, init_drag, init_damping, update_boulder_z
-    use filtering
+    use filtering, only: filter_st
     use omp_lib
-    use tomodule
+    use tomodule, only: tom_st
+    use surface, only: section_st
 
     implicit none
 
@@ -99,6 +100,17 @@ module parameters
         ! Megno
         logical :: use_megno = .False.
         real(wp) :: megno_eps = 1.e-6_wp
+        ! Jacobi
+        logical :: use_surface = .False.
+        integer(kind=4) :: surface_coord = -1
+        integer(kind=4) :: surface_direction = 0
+        real(wp) :: surface_value = cero
+        integer(kind=4) :: surface_secon_coord = -1
+        real(wp) :: surface_secon_min_value = cero     
+        real(wp) :: surface_time_eps = 1e-9_wp
+        character(30) :: surfacefile = ""
+        ! Sinodic
+        logical :: use_sinodic = .False.
         ! Filter
         logical :: use_filter = .False.
         real(wp) :: filter_dt = cero
@@ -242,7 +254,6 @@ module parameters
     real(wp), dimension(:), allocatable :: R_arr         ! Radius array
     real(wp), dimension(:), allocatable :: y_arr         ! Coordinates array
     real(wp), dimension(:), allocatable :: y_arr_new     ! Coordinates array (2.0)
-    real(wp), dimension(:), allocatable :: y_der         ! Derivate of coordinates array
 
     ! ----  <<<<<    FILTERING     >>>>>   -----
     type(filter_st) :: filter
@@ -261,10 +272,17 @@ module parameters
     integer(kind=4) :: tmp_j  ! Temporal j checkpoint
     type(sim_params_st) :: tmp_sim  ! Temporal simulation state
     real(wp) :: tmp_time  ! Temporal time
-    real(wp) :: tmp_adaptive_timestep  ! Temporal time
+    real(wp) :: tmp_timestep  ! Temporal timestep
+    real(wp) :: tmp_adaptive_timestep  ! Temporal adaptive timestep
     type(system_st) :: tmp_system  ! Temporal system
     integer(kind=4) :: tmp_y_nvalues  ! Temporal y nvalues
     real(wp), dimension(:), allocatable :: tmp_y_arr  ! Temporal coordinates array
+
+    ! ----  <<<<<    SURFACE SECTION     >>>>>   -----
+    type(section_st) :: section
+    logical :: has_crossed_surface = .False.
+    ! ==========    EXTRA SURFACE SECTION    ==========
+    ! Uses tmp_timestep and tmp_adaptive_timestep
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
     logical :: is_premature_exit = .False.
@@ -287,6 +305,7 @@ module parameters
     integer(kind=4), parameter :: u_chaosfile = 23
     integer(kind=4), parameter :: u_geometricfile = 24
     integer(kind=4), parameter :: u_geomchaosfile = 25
+    integer(kind=4), parameter :: u_surfacefile = 26
 
     integer(kind=4), parameter :: pad_with_filter_units = 20
     integer(kind=4), parameter :: u_filterfile = u_datafile + pad_with_filter_units - 1  ! Filter configuration
@@ -828,6 +847,12 @@ contains
                         params%use_particlesfile = .False.
                         params%particlesfile = ""
                     end if
+                case ("use rotating re")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_sinodic = .True.
+                    else
+                        params%use_sinodic = .False.
+                    end if
                 case ("deactivate grav")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_moon_gravity = .False.
@@ -918,6 +943,26 @@ contains
                     end if
                 case ("displacement fo")
                     read (value_str, *, iostat=ios) params%megno_eps
+                case ("calculate surfa")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_surface = .True.
+                    else
+                        params%use_surface = .False.
+                    end if
+                case ("coordinate to d")
+                    read (value_str, *, iostat=ios) params%surface_coord
+                case ("direction of su")
+                    read (value_str, *, iostat=ios) params%surface_direction
+                case ("value of surfac")
+                    read (value_str, *, iostat=ios) params%surface_value
+                case ("secondary coord")
+                    read (value_str, *, iostat=ios) params%surface_secon_coord
+                case ("minimum value f")
+                    read (value_str, *, iostat=ios) params%surface_secon_min_value
+                case ("timestep criter")
+                    read (value_str, *, iostat=ios) params%surface_time_eps
+                case ("surface output ")
+                    params%surfacefile = trim(value_str)
                 case ("use filtering (")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_filter = .True.
@@ -1639,6 +1684,42 @@ contains
             stop 1
         end if
 
+        ! Check if valid surface
+        if (derived%use_surface .and. (derived%surface_coord < 1 .or. derived%surface_coord > 6)) then
+            write (*, *) "ERROR: Surface section coordinate must be in [1, 6]. "
+            stop 1
+        end if
+        
+        ! First surface check: If surface, then no filter
+        if (derived%use_filter .and. derived%use_surface) then
+            write (*, *) "ERROR: Can not create surface sections with activated filter."
+            stop 1
+        end if
+
+        ! Second surface check: No more than 1 particle/moon
+        if (derived%use_surface .and. derived%Nactive > 2) then
+            write (*, *) "ERROR: Surface section is available with a single moon/particle."
+            stop 1
+        end if
+
+        ! Third surface check
+        if ((trim(derived%surfacefile) == "") .and. derived%use_surface) then
+            write (*, *) "ERROR: Surface file name not set."
+            stop 1
+        end if
+
+        ! First sinodic check: If sinodic, no moon
+        if (derived%use_sinodic .and. derived%Nmoons > 0) then
+            write (*, *) "ERROR: Sinodic system is available for systems with particles only."
+            stop 1
+        end if
+
+        ! Second sinodic check: If sinodic, no damping
+        if (derived%use_sinodic .and. derived%use_omega_damping) then
+            write (*, *) "ERROR: Sinodic system is not compatible with Omega damping."
+            stop 1
+        end if
+
     end subroutine set_derived_parameters
 
     ! Define IO pointers
@@ -1773,7 +1854,6 @@ contains
         if (allocated(R_arr)) deallocate (R_arr)
         if (allocated(y_arr)) deallocate (y_arr)
         if (allocated(y_arr_new)) deallocate (y_arr_new)
-        if (allocated(y_der)) deallocate (y_der)
         if (allocated(output_times)) deallocate (output_times)
         if (allocated(checkpoint_times)) deallocate (checkpoint_times)
         if (allocated(checkpoint_is_tom)) deallocate (checkpoint_is_tom)

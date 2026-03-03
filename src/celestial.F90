@@ -3,6 +3,8 @@ module celestial
     use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, tini, sqepsilon
 
     implicit none
+    private :: aver
+    public
 
 contains
 

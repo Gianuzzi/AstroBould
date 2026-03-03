@@ -1,7 +1,9 @@
 !> Module with constant values.
 module constants
     use iso_fortran_env, only: real64, real32  ! or int32, etc.
+    
     implicit none
+    public
 
     ! Default precision
 #ifdef WP
@@ -39,4 +41,5 @@ module constants
     real(wp), parameter :: G_aux = 4.9823394e-10_wp ! [km³ kg⁻¹ day⁻²]
     real(wp), parameter :: G = G_aux*(unit_dist**3)/unit_mass/unit_time ! [unit_r³ unit_m⁻¹ unit_t⁻²]
     real(wp), parameter :: megno_factor = uno !
+
 end module constants

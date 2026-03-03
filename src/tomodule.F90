@@ -1,7 +1,10 @@
 !> Module with TimesOmegaMass routines.
 module tomodule
     use constants, only: wp, cero, uno
+    
     implicit none
+    private
+    public :: tom_st, read_tomfile, setup_TOM, free_tom
 
     type :: tom_st  !!! This contains only the input parameters
         integer(kind=4) :: index_number = -1  ! Index to count which TOM row is active

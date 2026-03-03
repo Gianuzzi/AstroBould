@@ -1,6 +1,7 @@
 !> Module with fixed RK integrators
 module runge_kutta
     use shared
+    
     implicit none
     private
     public :: init_runge_kutta, free_runge_kutta, runge_kutta_caller, runge_kutta_fixed_caller

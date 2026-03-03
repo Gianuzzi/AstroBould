@@ -3,6 +3,8 @@ module filtering
     use constants, only: wp, pi, twopi, cero, uno, uno2, dos, myepsilon
 
     implicit none
+    private
+    public :: filter_st, setup_filter, store_to_filter, free_filter
 
     type :: filter_st
         ! filter parameters
