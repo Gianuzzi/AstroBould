@@ -623,23 +623,6 @@ program main
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRATOR FRAME !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-    call set_dydt(sim%use_sinodic)
-
-    ! Initial message
-    if (sim%use_screen) then
-        write (*, *) "----- Integration reference frame ------"
-        write (*, *) ACHAR(5)
-        if (sim%use_sinodic) then
-            write (*, *) "SINODIC"
-        else
-            write (*, *) "BARYCENTRIC"
-        end if
-    end if
-
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! EXTRA EFFECTS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -913,6 +896,22 @@ program main
         write (*, *) "NOT Activated."
     end if
 
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRATOR FRAME !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    call set_dydt(sim%use_sinodic)
+
+    ! Initial message
+    if (sim%use_screen) then
+        write (*, *) "----- Integration reference frame ------"
+        write (*, *) ACHAR(5)
+        if (sim%use_sinodic) then
+            write (*, *) "SINODIC"
+        else
+            write (*, *) "BARYCENTRIC"
+        end if
+    end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!! SURFACE SECTION !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
