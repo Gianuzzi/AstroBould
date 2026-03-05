@@ -159,9 +159,9 @@ contains
         ! ---- Direction control ----
         select case (sec%direction)
             case (1)
-                direction_ok = (f_old < cero) .and. (f_new > cero)
+                direction_ok = (f_old <= cero) .and. (f_new > cero)
             case (-1)
-                direction_ok = (f_old > cero) .and. (f_new < cero)
+                direction_ok = (f_old >= cero) .and. (f_new < cero)
             case default
                 direction_ok = .True.
         end select
