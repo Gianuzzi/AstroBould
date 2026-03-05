@@ -51,9 +51,9 @@ contains
     end subroutine get_center_of_mass
 
     ! Get acceleration and potential energy from single mass
-    pure subroutine get_acc_and_pot_single(mass, rib, xy_target, dr_max, acc, pot, inside)
+    pure subroutine get_acc_and_pot_single(mass, rib, xy_target, dr_min, acc, pot, inside)
         implicit none
-        real(wp), intent(in) :: mass, rib(2), xy_target(2), dr_max
+        real(wp), intent(in) :: mass, rib(2), xy_target(2), dr_min
         real(wp), intent(inout) :: acc(2), pot
         logical, intent(inout), optional :: inside
         real(wp) :: dx, dy, dr, dr2
@@ -68,14 +68,14 @@ contains
             pot = pot - G*mass/dr
         end if
 
-        if (present(inside)) inside = dr < max(dr_max, tini)
+        if (present(inside)) inside = dr < max(dr_min, tini)
 
     end subroutine get_acc_and_pot_single
 
     ! Get acceleration and potential energy from single mass
-    pure subroutine get_acc_and_pot_single_with_J2(mass, rib, xy_target, dr_max, J2K_coef, acc, pot, inside)
+    pure subroutine get_acc_and_pot_single_with_J2(mass, rib, xy_target, dr_min, J2K_coef, acc, pot, inside)
         implicit none
-        real(wp), intent(in) :: mass, rib(2), xy_target(2), dr_max, J2K_coef
+        real(wp), intent(in) :: mass, rib(2), xy_target(2), dr_min, J2K_coef
         real(wp), intent(inout) :: acc(2), pot
         logical, intent(inout), optional :: inside
         real(wp) :: dx, dy, dr, dr2
@@ -90,7 +90,7 @@ contains
             pot = pot - G*mass/dr*(uno - J2K_coef*uno3/dr2)
         end if
 
-        if (present(inside)) inside = dr < max(dr_max, tini)
+        if (present(inside)) inside = dr < max(dr_min, tini)
 
     end subroutine get_acc_and_pot_single_with_J2
 
