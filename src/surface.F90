@@ -1,10 +1,10 @@
 !> Module with surface section calculation routines.
 module surface
-    use constants, only: wp, cero, myepsilon, unit_dist, unit_vel
+    use constants, only: wp, cero, dos, myepsilon, unit_dist, unit_vel, G
 
     implicit none
     private
-    public :: section_st, init_section, crossed_section
+    public :: section_st, init_section, crossed_section, get_jacobi_constant
 
     type section_st
         logical :: active = .False.            ! Flag is the surface is active
@@ -184,5 +184,51 @@ contains
         has_crossed = .True.
 
     end function
+
+    !----------------------------------------------------------
+    ! Gravitational potential
+    !----------------------------------------------------------
+    pure function get_gravitational_potential(x, y, masses, pos) result(U)
+        implicit none
+        real(wp), intent(in) :: x, y
+        real(wp), intent(in) :: masses(:)   ! masses(N)
+        real(wp), intent(in) :: pos(:, :)   ! pos(N, 2)
+        real(wp) :: U, r
+        integer(kind=4) :: i, N
+
+        U = cero
+        N = size(masses)
+
+        do i = 1, N
+            r = sqrt( (x - pos(i,1))**2 &
+                    + (y - pos(i,2))**2 )
+
+            U = U + G*masses(i) / r
+        end do
+
+    end function get_gravitational_potential
+
+
+    !----------------------------------------------------------
+    ! Jacobi constant
+    !----------------------------------------------------------
+    pure function get_jacobi_constant(x, y, vx, vy, masses, pos, lam) result(J)
+        implicit none
+
+        real(wp), intent(in) :: x, y
+        real(wp), intent(in) :: vx, vy
+        real(wp), intent(in) :: lam
+        real(wp), intent(in) :: masses(:)
+        real(wp), intent(in) :: pos(:, :)
+        real(wp) :: J
+        real(wp) :: U
+
+        U = get_gravitational_potential(x, y, masses, pos)
+
+        J = lam**2 * (x**2 + y**2) &
+            + dos * U &
+            - (vx**2 + vy**2)
+
+    end function get_jacobi_constant
 
 end module surface

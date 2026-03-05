@@ -8,7 +8,7 @@ program main
     use derivates, only: dydt, set_dydt
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
-    use surface, only: init_section, crossed_section
+    use surface, only: init_section, crossed_section, get_jacobi_constant
 
     implicit none
 
@@ -2521,7 +2521,13 @@ program main
                         
                         ! Check if y = 0 
                         if (has_crossed_surface .and. timestep < tmp_timestep) then  ! At y=0
-                            write(u_surfacefile,'(7F12.5)') time, y_arr_new(1:2), y_arr_new(7:10)
+
+                            jacobi_constant = get_jacobi_constant(&
+                                            & y_arr_new(7), y_arr_new(8), y_arr_new(9), y_arr_new(10), &
+                                            & boulders_data(0:, 1), &
+                                            & boulders_coords(0:, :), &
+                                            & system%asteroid%omega)
+                            write(u_surfacefile,'(8E23.15,1X)') time, y_arr_new(1:2), y_arr_new(7:10), jacobi_constant
                         end if
 
                         ! Update timestep

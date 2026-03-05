@@ -283,6 +283,7 @@ module parameters
     logical :: has_crossed_surface = .False.
     ! ==========    EXTRA SURFACE SECTION    ==========
     ! Uses tmp_timestep and tmp_adapt_timestep
+    real(wp) :: jacobi_constant  ! Self explained
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
     logical :: is_premature_exit = .False.
