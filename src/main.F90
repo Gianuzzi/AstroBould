@@ -123,9 +123,6 @@ program main
         input%use_stop_no_moon_left = .True. ! Stop if no more moons left
         input%use_stop_no_part_left = .True. ! Stop if no more particles left
 
-        ! Inertial or rotating frame
-        input%use_sinodic = .False.
-
         ! Additional forces
 
         !! Manual J2 (for primary or asteroid)
@@ -178,6 +175,9 @@ program main
         ! MEGNO
         input%use_megno = .False.
         input%megno_eps = 1e-6_wp       ! initial displacement for shadows
+
+        ! Inertial or rotating frame
+        input%use_sinodic = .False.     ! Affects surface too!
 
         ! Surface section
         input%use_surface = .False.            ! Whether to use surface section
