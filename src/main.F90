@@ -498,7 +498,7 @@ program main
     allocate (boulders_coords(0:sim%Nboulders, 4)) ! To use in dydt
 
     !! Asteroid
-    asteroid_data(1:2) = system%asteroid%primary%semi_axis(1:2)
+    asteroid_data(1:2) = system%asteroid%primary%semi_axis(1:2)  ! a, b
     asteroid_data(3) = system%asteroid%inertia
 
     !! Primary
@@ -2521,12 +2521,23 @@ program main
                         
                         ! Check if y = 0 
                         if (has_crossed_surface .and. timestep < tmp_timestep) then  ! At y=0
-
-                            jacobi_constant = get_jacobi_constant(&
-                                            & y_arr_new(7), y_arr_new(8), y_arr_new(9), y_arr_new(10), &
-                                            & boulders_data(0:, 1), &
-                                            & boulders_coords(0:, :), &
-                                            & system%asteroid%omega)
+                            if (sim%use_sinodic) then
+                                jacobi_constant = get_jacobi_constant(&
+                                                & y_arr_new(7), y_arr_new(8), &
+                                                & y_arr_new(9), y_arr_new(10), &
+                                                & boulders_data(0:, 1), &
+                                                & boulders_coords(0:, :), &
+                                                & system%asteroid%omega)
+                            else
+                                ! Go to rotating frame to calculate jacobi
+                                jacobi_constant = get_jacobi_constant(&
+                                                & y_arr_new(7), y_arr_new(8), &
+                                                & y_arr_new(9) + y_arr_new(8) * system%asteroid%omega, &
+                                                & y_arr_new(10) - y_arr_new(7) * system%asteroid%omega, &
+                                                & boulders_data(0:, 1), &
+                                                & boulders_coords(0:, :), &
+                                                & system%asteroid%omega)
+                            end if
                             write(u_surfacefile,'(8E23.15,1X)') time, y_arr_new(1:2), y_arr_new(7:10), jacobi_constant
                         end if
 

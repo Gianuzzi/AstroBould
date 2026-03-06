@@ -1,6 +1,6 @@
 !> Module with coordinates/elements, and some extra cel-mech routines.
 module celestial
-    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, tini, sqepsilon
+    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, tini
 
     implicit none
     private :: aver
@@ -217,7 +217,7 @@ contains
         vdotr = x*vx + y*vy + z*vz
         energy = uno2*v2 - gmsum/r
 
-        if (abs(energy*r/gmsum) < sqepsilon) then
+        if (abs(energy*r/gmsum) < myepsilon) then
             ialpha = 0
         else
             if (energy < cero) then
