@@ -31,29 +31,6 @@ endif
 
 
 #--------------------------------------------------------------------------
-# Git version information (uses CPP)
-
-GIT_DESCRIBE_BASE := $(shell git describe --always --tags 2>/dev/null)
-GIT_HASH     := $(shell git rev-parse --short HEAD 2>/dev/null)
-GIT_DATE     := $(shell git log -1 --format=%cd --date=short 2>/dev/null)
-GIT_BRANCH   := $(shell git branch --show-current 2>/dev/null)
-
-# Dirty only if Fortran sources changed
-GIT_F90_DIRTY := $(shell git diff --quiet HEAD -- $(FREE_SOURCES) 2>/dev/null || echo "-dirty")
-
-# Define GIT DESCRIBE
-GIT_DESCRIBE := $(GIT_DESCRIBE_BASE)$(GIT_F90_DIRTY)
-
-# Fallbacks for non-git builds
-ifeq ($(strip $(GIT_DESCRIBE)),)
-  GIT_DESCRIBE := unknown
-endif
-ifeq ($(strip $(GIT_DATE)),)
-  GIT_DATE := unknown
-endif
-
-
-#--------------------------------------------------------------------------
 # Standard / Architecture / Warnings
 
 # Base settings
@@ -172,6 +149,30 @@ OBJECTS       = $(FIXED_OBJECTS) $(FREE_OBJECTS)
 
 MODULES       = $(filter-out main.mod,$(notdir $(OBJECTS:.o=.mod))) \
                 $(filter-out main.smod,$(notdir $(OBJECTS:.o=.smod)))
+
+
+#--------------------------------------------------------------------------
+# Git version information (uses CPP)
+
+GIT_DESCRIBE_BASE := $(shell git describe --always --tags 2>/dev/null)
+GIT_HASH     := $(shell git rev-parse --short HEAD 2>/dev/null)
+GIT_DATE     := $(shell git log -1 --format=%cd --date=short 2>/dev/null)
+GIT_BRANCH   := $(shell git branch --show-current 2>/dev/null)
+
+# Dirty only if Fortran sources changed
+GIT_F90_DIRTY := $(shell git diff --quiet HEAD -- $(SRCS) 2>/dev/null || echo "-dirty")
+
+# Define GIT DESCRIBE
+GIT_DESCRIBE := $(GIT_DESCRIBE_BASE)$(GIT_F90_DIRTY)
+
+# Fallbacks for non-git builds
+ifeq ($(strip $(GIT_DESCRIBE)),)
+  GIT_DESCRIBE := unknown
+endif
+ifeq ($(strip $(GIT_DATE)),)
+  GIT_DATE := unknown
+endif
+
 
 #--------------------------------------------------------------------------
 # Rules
