@@ -33,10 +33,16 @@ endif
 #--------------------------------------------------------------------------
 # Git version information (uses CPP)
 
-GIT_DESCRIBE := $(shell git describe --dirty --always --tags 2>/dev/null)
+GIT_DESCRIBE_BASE := $(shell git describe --always --tags 2>/dev/null)
 GIT_HASH     := $(shell git rev-parse --short HEAD 2>/dev/null)
 GIT_DATE     := $(shell git log -1 --format=%cd --date=short 2>/dev/null)
 GIT_BRANCH   := $(shell git branch --show-current 2>/dev/null)
+
+# Dirty only if Fortran sources changed
+GIT_F90_DIRTY := $(shell git diff --quiet HEAD -- $(FREE_SOURCES) 2>/dev/null || echo "-dirty")
+
+# Define GIT DESCRIBE
+GIT_DESCRIBE := $(GIT_DESCRIBE_BASE)$(GIT_F90_DIRTY)
 
 # Fallbacks for non-git builds
 ifeq ($(strip $(GIT_DESCRIBE)),)
