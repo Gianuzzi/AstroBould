@@ -281,8 +281,14 @@ module parameters
     ! ----  <<<<<    SURFACE SECTION     >>>>>   -----
     type(section_st) :: section
     logical :: has_crossed_surface = .False.
+    real(wp), dimension(:), allocatable :: y_cross    ! Coordinates array at the crossing time (interpolated with alpha)
     ! ==========    EXTRA SURFACE SECTION    ==========
-    ! Uses tmp_timestep and tmp_adapt_timestep
+    ! Uses tmp_adapt_timestep
+    real(wp) :: surf_min_timestep  ! Minimum timestep to consider surface crossing
+    real(wp) :: val_old  ! value of the surface function at the previous step
+    real(wp) :: val_new  ! value of the surface function at the new step
+    real(wp) :: surf_alpha  ! alpha for interpolation to find crossing time
+    logical :: surf_at_edge  ! Flag if we are at the edge of crossing
     real(wp) :: jacobi_constant  ! Self explained
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
@@ -1868,6 +1874,7 @@ contains
         if (allocated(y_pre_filter)) deallocate (y_pre_filter)
         if (allocated(elem_filtered)) deallocate (elem_filtered)
         if (allocated(tmp_y_arr)) deallocate (tmp_y_arr)
+        if (allocated(y_cross)) deallocate (y_cross)
     end subroutine free_parameters_arays
 
     ! Nullify pointers

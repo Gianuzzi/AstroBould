@@ -99,7 +99,7 @@ contains
 
     end subroutine
 
-    function compute_r(y) result(r)
+    pure function compute_r(y) result(r)
         implicit none
         real(wp), intent(in) :: y(:)
         real(wp) :: r
@@ -108,7 +108,7 @@ contains
 
     end function compute_r
 
-    function compute_vr(y) result(vr)
+    pure function compute_vr(y) result(vr)
         implicit none
         real(wp), intent(in) :: y(:)
         real(wp) :: r
@@ -124,15 +124,18 @@ contains
 
     end function compute_vr
 
-    function crossed_section(sec, y_old, y_new) result(has_crossed)
+    pure subroutine crossed_section(sec, y_old, y_new, f_old, f_new, has_crossed)
         implicit none
         type(section_st), intent(in) :: sec
         real(wp), intent(in) :: y_old(:), y_new(:)
-        real(wp) :: val_old, val_new, f_old, f_new
+        real(wp), intent(inout) :: f_old, f_new
+        logical, intent(inout) :: has_crossed
+        real(wp) :: val_old, val_new
         logical :: direction_ok, condition_ok
-        logical :: has_crossed
 
         ! Default
+        val_old = cero
+        val_new = cero
         has_crossed = .False.
 
         ! No surface
@@ -150,6 +153,7 @@ contains
             val_new = y_new(sec%idx_surface)
         end if
 
+        ! Get values
         f_old = val_old - sec%valor
         f_new = val_new - sec%valor
 
@@ -183,7 +187,8 @@ contains
 
         has_crossed = .True.
 
-    end function
+    end subroutine crossed_section
+
 
     !----------------------------------------------------------
     ! Gravitational potential
