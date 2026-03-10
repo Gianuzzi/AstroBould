@@ -958,7 +958,7 @@ program main
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRACIÓN !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! TIMES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     ! Initial message
@@ -1144,6 +1144,11 @@ program main
     call center_sytem(system)
     call generate_arrays(system, m_arr, R_arr, y_arr)
 
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! SURFACE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    if (sim%use_surface) allocate (y_cross(y_nvalues))  ! Array to store the crossing state (theta, omega, coord, secon_coord)
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! FILTER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2446,7 +2451,6 @@ program main
             hard_exit = .False. ! Resetear HardExit
             is_premature_exit = .False. ! Resetear premature
             regenerate_arrays = .False. ! Resetear regenerar
-            has_crossed_surface = .False. ! Resetear surface cross
 
             ! Check if all done
             !! Time end
@@ -2478,10 +2482,12 @@ program main
                 
                 ! Get tmp times
                 tmp_adapt_timestep = timestep
-                tmp_timestep = sim%surface_time_eps
-                if (j <= sim%checkpoint_number-1) tmp_timestep = min(checkpoint_times(j+1) - checkpoint_times(j), tmp_timestep)
+                surf_min_timestep = sim%surface_time_eps
+                if (j <= sim%checkpoint_number-1) then
+                    surf_min_timestep = min(checkpoint_times(j+1) - checkpoint_times(j), surf_min_timestep)
+                end if
                 
-                loop_surface: do while (timestep > uno3*tmp_timestep)
+                loop_surface: do while (timestep > uno3*surf_min_timestep)
                 
                     ! INTEGRATE
                     call integrate(time, y_arr(:y_nvalues), tmp_adapt_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
@@ -2494,7 +2500,7 @@ program main
                         !! Check if premature_exit: If exit at less than 0.1% of finishing timestep
                         if (timestep > cero) then
                             is_premature_exit = ((checkpoint_times(j) - (time + timestep)) / timestep > 1e-3_wp) &
-                                                & .or. (timestep > tmp_timestep) 
+                                                & .or. (timestep > surf_min_timestep) 
                         else
                             is_premature_exit = checkpoint_times(j) - time < myepsilon
                         end if
@@ -2509,37 +2515,53 @@ program main
                     end if
 
                     ! Check if crossed
-                    has_crossed_surface = crossed_section(section, y_arr, y_arr_new)
-                    if (has_crossed_surface .and. timestep > tmp_timestep) then  ! Crossed but too large
-                        timestep = timestep * uno2  ! Redo with half timestep
+                    call crossed_section(section, y_arr, y_arr_new, val_old, val_new, has_crossed_surface)
 
-                    else ! Accepted step. Might have crossed, but we would be at y~0
+                    ! Get alpha
+                    if (has_crossed_surface) then
+                        surf_alpha = -val_old / (val_new - val_old)
+                        surf_at_edge = surf_alpha < tini .or. abs(uno - surf_alpha) < tini  ! Check if alpha is too small or close to 1
+                    else
+                        surf_alpha = uno  ! Just to avoid warnings
+                        surf_at_edge = .False.
+                    end if
+                    
+                    ! Two possibilities:
+                    if (has_crossed_surface .and. timestep > surf_min_timestep .and. (.not. surf_at_edge)) then  ! Crossed too large
+                        timestep = uno2 * timestep  ! Redo with alpha timestep
+
+                    else ! Accepted step. Might have crossed, but we would be at y ~ surface
                         
-                        ! Update parameters and timestep
-                        y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
-                        time = time + timestep
-                        
-                        ! Check if y = 0 
-                        if (has_crossed_surface .and. timestep < tmp_timestep) then  ! At y=0
+                        ! Check if y = surface
+                        if (has_crossed_surface .and. ((timestep < surf_min_timestep) .or. surf_at_edge)) then  ! At y = surface
+                            y_cross = y_arr + surf_alpha * (y_arr_new - y_arr)  ! Interpolated crossing point
                             if (sim%use_sinodic) then
                                 jacobi_constant = get_jacobi_constant(&
-                                                & y_arr_new(7), y_arr_new(8), &
-                                                & y_arr_new(9), y_arr_new(10), &
+                                                & y_cross(7), y_cross(8), &
+                                                & y_cross(9), y_cross(10), &
                                                 & boulders_data(0:, 1), &
                                                 & boulders_coords(0:, :), &
                                                 & system%asteroid%omega)
                             else
                                 ! Go to rotating frame to calculate jacobi
                                 jacobi_constant = get_jacobi_constant(&
-                                                & y_arr_new(7), y_arr_new(8), &
-                                                & y_arr_new(9) + y_arr_new(8) * system%asteroid%omega, &
-                                                & y_arr_new(10) - y_arr_new(7) * system%asteroid%omega, &
+                                                & y_cross(7), y_cross(8), &
+                                                & y_cross(9) + y_cross(8) * system%asteroid%omega, &
+                                                & y_cross(10) - y_cross(7) * system%asteroid%omega, &
                                                 & boulders_data(0:, 1), &
                                                 & boulders_coords(0:, :), &
                                                 & system%asteroid%omega)
                             end if
-                            write(u_surfacefile,'(8E23.15,1X)') time, y_arr_new(1:2), y_arr_new(7:10), jacobi_constant
+                            ! Write surface crossing to file, with interpolated values
+                            write(u_surfacefile,'(8E23.15,1X)') time + surf_alpha * timestep, &
+                            & y_cross(1:2), &
+                            & y_cross(7:10), &
+                            & jacobi_constant
                         end if
+                        
+                        ! Update parameters and timestep
+                        y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
+                        time = time + timestep
 
                         ! Update timestep
                         timestep = checkpoint_times(j) - time
