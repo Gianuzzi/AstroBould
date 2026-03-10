@@ -6,7 +6,7 @@
 
 The initial configuration and integration parameters can be set in the file: [config.ini](./config.ini)
 
-If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [39 and 224](./src/main.F90#L39#L224).
+If this file is not used, the default parameters are those defined in [main.F90](./src/main.F90), between lines [39 and 227](./src/main.F90#L39#L227).
 
 ---
 
@@ -75,7 +75,7 @@ $ ./ASTROBOULD --help
     --nochaosf    : No guardar salida de caos
     -geomfile     : Nombre de archivo de salida de elementos geométricos
     --nogeomf     : No guardar salida de elementos geométricos
-    -filtfile     : Prefijo a agregar en archivos con filtro (y activar).
+    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)
     --nofilter    : No utilizar filtro
     --screen      : Imprimir información en pantalla
     --noscreen    : No imprimir en pantalla
@@ -102,14 +102,14 @@ $ ./ASTROBOULD --help
                     0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos
     -stopif       : Detener la integración si no quedan más objetos del tipo [int]:
                     0: No detener, 1: Luna, 2: Partícula, 3: Ambos
-    --megno       : Calcular MEGNO para partículas.
-    --nomegno     : No calcular MEGNO.
-    --sinodic     : Integar en sistema rotante.
-    --nosinodic   : Integar en sistema NO rotante.
+    --megno       : Calcular MEGNO para partículas
+    --nomegno     : No calcular MEGNO
+    --sinodic     : Integar en sistema rotante
+    --nosinodic   : Integar en sistema NO rotante
     -parallel     : Cantida de thread a utilizar en paralelo [int]
     --parallel    : Paralelizar usando todos los threads disponibles
     --noparallel  : No usar paralelización para lunas/partículas
-    --version     : Imprimir versión del código al iniciar la ejecución.
+    --version     : Imprimir versión del código al iniciar la ejecución
     --help        : Mostrar esta ayuda
 
 ``` 
@@ -130,7 +130,21 @@ There are two modes for parallel execution:
 
 Both modes require the existence of a particles/moons file (e.g. _particles.in_) containing all bodies (initial conditions) to be integrated in parallel. You can generate this file using [make_particles.py](./tools/make_particles.py). Configuration is found between lines [78 and 118](./tools/make_particles.py#L78#L118).
 
-### 1. **Dependent Mode**
+### 1. **Independent Mode**
+
+- Multiple independent integrations are performed, one particle/moon per run.
+- Each integration is executed in parallel (e.g., across multiple CPU cores).
+- Does not require _-fopenmp_.
+
+The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [67 to 116](./launcher.py#L67#L116). More information (in spannish) is available at the top of the file(see lines [1 to 54](./launcher.py#L1#L54)).
+
+To run:
+```console
+$ python launcher.py
+```
+💡 Make sure to run inside a Python virtual environment. 🐍
+
+### 2. **~~Dependent Mode~~ (DEPRECATED)**
 
 - A single integration is performed, including the asteroid and many particles/moons simultaneously.
 - Tasks related to each particle (e.g., force calculations, orbital elements, etc.) are parallelized internally.
@@ -146,20 +160,6 @@ or edit [config.ini](./config.ini) and set "use parallel threads" to the desired
 ```console
 $ ./ASTROBOULD [args]
 ```
-
-### 2. **Independent Mode (default)**
-
-- Multiple independent integrations are performed, one particle/moon per run.
-- Each integration is executed in parallel (e.g., across multiple CPU cores).
-- Does not require _-fopenmp_.
-
-The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [67 to 116](./launcher.py#L67#L116). More information (in spannish) is available at the top of the file(see lines [1 to 54](./launcher.py#L1#L54)).
-
-To run:
-```console
-$ python launcher.py
-```
-💡 Make sure to run inside a Python virtual environment. 🐍
 
 
 ## 🔗 Integrators avaiable
