@@ -108,8 +108,11 @@ module parameters
         integer(kind=4) :: surface_direction = 0
         real(wp) :: surface_value = cero
         integer(kind=4) :: surface_secon_coord = -1
-        real(wp) :: surface_secon_min_value = cero     
-        real(wp) :: surface_time_eps = 1e-9_wp
+        real(wp) :: surface_secon_min_value = cero
+        real(wp) :: surface_abs_tol = cero
+        real(wp) :: surface_time_eps = cero
+        logical :: surface_use_adaptive = .False.
+        logical :: surface_use_interpolated = .False.
         character(30) :: surfacefile = ""
         ! Filter
         logical :: use_filter = .False.
@@ -284,12 +287,16 @@ module parameters
     real(wp), dimension(:), allocatable :: y_cross    ! Coordinates array at the crossing time (interpolated with alpha)
     ! ==========    EXTRA SURFACE SECTION    ==========
     ! Uses tmp_adapt_timestep
+    logical :: had_crossed_surface = .False.
+    real(wp) :: surf_old_timestep  ! Previous timestep before crossing attempt
     real(wp) :: surf_min_timestep  ! Minimum timestep to consider surface crossing
-    real(wp) :: val_old  ! value of the surface function at the previous step
-    real(wp) :: val_new  ! value of the surface function at the new step
     real(wp) :: surf_alpha  ! alpha for interpolation to find crossing time
+    real(wp) :: surf_error  ! Error of the linear interpolation to find crossing time. 
     logical :: surf_at_edge  ! Flag if we are at the edge of crossing
+    logical :: surf_accepted_step  ! Flag if the step is accepted after crossing check
     real(wp) :: jacobi_constant  ! Self explained
+    integer(kind=4) :: surf_counter = 0  ! Counter of how many times we tried to cross the surface
+    integer(kind=4), parameter :: surf_max_counter = 250  ! Maximum number of times to try to cross the surface before giving up
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
     logical :: is_premature_exit = .False.
@@ -626,7 +633,7 @@ contains
                     write (*, *) "    --nochaosf    : No guardar salida de caos"
                     write (*, *) "    -geomfile     : Nombre de archivo de salida de elementos geométricos"
                     write (*, *) "    --nogeomf     : No guardar salida de elementos geométricos"
-                    write (*, *) "    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)."
+                    write (*, *) "    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)"
                     write (*, *) "    --nofilter    : No utilizar filtro"
                     write (*, *) "    --screen      : Imprimir información en pantalla"
                     write (*, *) "    --noscreen    : No imprimir en pantalla"
@@ -653,10 +660,10 @@ contains
                     write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos"
                     write (*, *) "    -stopif       : Detener la integración si no quedan más objetos del tipo [int]:"
                     write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
-                    write (*, *) "    --megno       : Calcular MEGNO para partículas."
-                    write (*, *) "    --nomegno     : No calcular MEGNO."
-                    write (*, *) "    --sinodic     : Integar en sistema rotante."
-                    write (*, *) "    --nosinodic   : Integar en sistema NO rotante."
+                    write (*, *) "    --megno       : Calcular MEGNO para partículas"
+                    write (*, *) "    --nomegno     : No calcular MEGNO"
+                    write (*, *) "    --sinodic     : Integar en sistema rotante"
+                    write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
                     write (*, *) "    -parallel     : Cantida de thread a utilizar en paralelo [int]"
                     write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
                     write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
@@ -972,8 +979,22 @@ contains
                     read (value_str, *, iostat=ios) params%surface_secon_coord
                 case ("minimum value f")
                     read (value_str, *, iostat=ios) params%surface_secon_min_value
+                case ("absolute tolera")
+                    read (value_str, *, iostat=ios) params%surface_abs_tol
                 case ("timestep criter")
                     read (value_str, *, iostat=ios) params%surface_time_eps
+                case ("use interpolate")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%surface_use_adaptive = .True.
+                    else
+                        params%surface_use_adaptive = .False.
+                    end if
+                case ("store interpola")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%surface_use_interpolated = .True.
+                    else
+                        params%surface_use_interpolated = .False.
+                    end if
                 case ("surface output ")
                     params%surfacefile = trim(value_str)
                 case ("use filtering (")
@@ -1715,9 +1736,15 @@ contains
             stop 1
         end if
 
-        ! Third surface check
+        ! Third surface check: filename must be set
         if ((trim(derived%surfacefile) == "") .and. derived%use_surface) then
             write (*, *) "ERROR: Surface file name not set."
+            stop 1
+        end if
+
+        ! Fourth surface check: abs tolerance and time criteria can not both be 0
+        if (derived%use_surface .and. (derived%surface_abs_tol < tini) .and. derived%surface_time_eps < tini) then
+            write (*, *) "ERROR: Surface section must have either positive abs tol or timestep crit."
             stop 1
         end if
 

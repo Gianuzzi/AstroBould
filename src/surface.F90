@@ -1,6 +1,6 @@
 !> Module with surface section calculation routines.
 module surface
-    use constants, only: wp, cero, dos, myepsilon, unit_dist, unit_vel, G
+    use constants, only: wp, cero, dos, uno2, myepsilon, infinito, unit_dist, unit_vel, G
 
     implicit none
     private
@@ -124,18 +124,18 @@ contains
 
     end function compute_vr
 
-    pure subroutine crossed_section(sec, y_old, y_new, f_old, f_new, has_crossed)
+    pure subroutine crossed_section(sec, y_old, y_new, alpha, error, has_crossed)
         implicit none
         type(section_st), intent(in) :: sec
         real(wp), intent(in) :: y_old(:), y_new(:)
-        real(wp), intent(inout) :: f_old, f_new
+        real(wp), intent(inout) :: alpha, error
         logical, intent(inout) :: has_crossed
-        real(wp) :: val_old, val_new
+        real(wp) :: val_old, val_new, f_old, f_new
         logical :: direction_ok, condition_ok
 
         ! Default
-        val_old = cero
-        val_new = cero
+        alpha = uno2
+        error = infinito
         has_crossed = .False.
 
         ! No surface
@@ -185,7 +185,11 @@ contains
             if (.not. condition_ok) return
         end if
 
+
+        ! Crossed!
         has_crossed = .True.
+        alpha = abs(-f_old / (f_new - f_old))  ! abs just in case, but should be positive since they have different signs
+        error = min(abs(f_old), abs(f_new))  ! Estimate of the error in the crossing point (the smaller of the two values)
 
     end subroutine crossed_section
 

@@ -180,14 +180,17 @@ program main
         input%use_sinodic = .False.     ! Affects surface too!
 
         ! Surface section
-        input%use_surface = .False.            ! Whether to use surface section
-        input%surface_coord = -1               ! 1 => x , 2 => y, 3 => vx, 4 => vy, 5 => r, 6 => vr
-        input%surface_direction = 0            ! -1: Negative, 0: Any, +1: Positive
-        input%surface_value = cero             ! Value for the surface, with units
-        input%surface_secon_coord = -1         ! 1 => x , 2 => y, 3 => vx, 4 => vy, 5 => r, 6 => vr, Other=> NOT USED
-        input%surface_secon_min_value = cero   ! Value for the secondary condition surface, with units
-        input%surface_time_eps = 1e-10_wp      ! Timestep criteria for setting the plane
-        input%surfacefile = ""                 ! Output file with surface data
+        input%use_surface = .False.             ! Whether to use surface section
+        input%surface_coord = -1                ! 1 => x , 2 => y, 3 => vx, 4 => vy, 5 => r, 6 => vr
+        input%surface_direction = 0             ! -1: Positive to Negative, 0: Any, +1: Negative to Positive
+        input%surface_value = cero              ! Value for the surface, with units
+        input%surface_secon_coord = -1          ! 1 => x , 2 => y, 3 => vx, 4 => vy, 5 => r, 6 => vr, Other=> NOT USED
+        input%surface_secon_min_value = cero    ! Value for the secondary condition surface, with units
+        input%surface_abs_tol = cero            ! Absolute tolerance for crossing (in units of the coordinate)
+        input%surface_time_eps = cero           ! Timestep criteria for setting the plane
+        input%surface_use_adaptive = .True.     ! Whether to use adaptive timestepping for surface crossing
+        input%surface_use_interpolated = .True. ! Whether to store interpolated crossing points (if false, stores real values)
+        input%surfacefile = ""                  ! Output file with surface data
 
         ! Map
         input%use_potential_map = .False.
@@ -2486,8 +2489,13 @@ program main
                 if (j <= sim%checkpoint_number-1) then
                     surf_min_timestep = min(checkpoint_times(j+1) - checkpoint_times(j), surf_min_timestep)
                 end if
+
+                ! Restart dynamic variables
+                surf_counter = 0
+                had_crossed_surface = .False.
+                surf_old_timestep = cero  ! Just to be sure, not really needed now
                 
-                loop_surface: do while (timestep > uno3*surf_min_timestep)
+                loop_surface: do while (timestep > tini)
                 
                     ! INTEGRATE
                     call integrate(time, y_arr(:y_nvalues), tmp_adapt_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
@@ -2515,26 +2523,54 @@ program main
                     end if
 
                     ! Check if crossed
-                    call crossed_section(section, y_arr, y_arr_new, val_old, val_new, has_crossed_surface)
+                    call crossed_section(section, y_arr, y_arr_new, surf_alpha, surf_error, has_crossed_surface)
 
                     ! Get alpha
                     if (has_crossed_surface) then
-                        surf_alpha = -val_old / (val_new - val_old)
-                        surf_at_edge = surf_alpha < tini .or. abs(uno - surf_alpha) < tini  ! Check if alpha is too small or close to 1
+                        surf_at_edge = surf_error < myepsilon
                     else
-                        surf_alpha = uno  ! Just to avoid warnings
                         surf_at_edge = .False.
                     end if
-                    
+
+                    ! Check if accepted step
+                    surf_accepted_step = (timestep < surf_min_timestep) .or. &
+                                         & surf_at_edge .or. &
+                                         & (surf_error < sim%surface_abs_tol) &
+                                         & .or. (surf_counter > surf_max_counter)
+
                     ! Two possibilities:
-                    if (has_crossed_surface .and. timestep > surf_min_timestep .and. (.not. surf_at_edge)) then  ! Crossed too large
-                        timestep = uno2 * timestep  ! Redo with alpha timestep
+                    if (has_crossed_surface .and. .not. surf_accepted_step) then  ! Crossed too large
+
+                        ! Update past
+                        had_crossed_surface = .True.
+                        surf_old_timestep = timestep
+
+                        ! Update timestep
+                        if (sim%surface_use_adaptive) then
+                            timestep = surf_alpha * timestep  ! Redo with smaller timestep, but not too small
+                        else
+                            timestep = uno2 * timestep  ! Redo with half timestep
+                        end if
+
+                        ! Update counter
+                        surf_counter = surf_counter + 1
 
                     else ! Accepted step. Might have crossed, but we would be at y ~ surface
                         
                         ! Check if y = surface
-                        if (has_crossed_surface .and. ((timestep < surf_min_timestep) .or. surf_at_edge)) then  ! At y = surface
-                            y_cross = y_arr + surf_alpha * (y_arr_new - y_arr)  ! Interpolated crossing point
+                        if (has_crossed_surface .and. surf_accepted_step) then  ! At y = surface
+
+                            ! Get crossing point, interpolated or not
+                            if (sim%surface_use_interpolated) then
+                                ! Interpolated crossing point
+                                y_cross(:y_nvalues) = y_arr(:y_nvalues) + surf_alpha * (y_arr_new(:y_nvalues) - y_arr(:y_nvalues))
+                            else if (surf_alpha > uno2) then
+                                y_cross(:y_nvalues) = y_arr_new(:y_nvalues)  ! Non-interpolated next crossing point
+                            else
+                                y_cross(:y_nvalues) = y_arr(:y_nvalues)  ! Non-interpolated previous crossing point
+                            end if
+
+                            ! Get jacobi constant
                             if (sim%use_sinodic) then
                                 jacobi_constant = get_jacobi_constant(&
                                                 & y_cross(7), y_cross(8), &
@@ -2552,19 +2588,35 @@ program main
                                                 & boulders_coords(0:, :), &
                                                 & system%asteroid%omega)
                             end if
+
                             ! Write surface crossing to file, with interpolated values
                             write(u_surfacefile,'(8E23.15,1X)') time + surf_alpha * timestep, &
                             & y_cross(1:2), &
                             & y_cross(7:10), &
                             & jacobi_constant
+
+                            ! Restart counter
+                            surf_counter = 0
+
+                            ! Restart past
+                            had_crossed_surface = .False.
+                            surf_old_timestep = cero
+
                         end if
                         
                         ! Update parameters and timestep
                         y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
                         time = time + timestep
 
-                        ! Update timestep
-                        timestep = checkpoint_times(j) - time
+                        ! Update timestep, according to the past
+                        if (had_crossed_surface .and. surf_old_timestep > timestep) then
+                            ! Try to keep the same timestep as before crossing, but not too large
+                            timestep = min(surf_old_timestep - timestep, checkpoint_times(j) - time)
+                            had_crossed_surface = .False.                        
+                        else
+                            timestep = checkpoint_times(j) - time
+                        end if
+
                     end if
 
                 end do loop_surface
