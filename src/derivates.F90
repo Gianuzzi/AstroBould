@@ -1004,8 +1004,8 @@ contains
                 coords_P = y(vdx:vdx + 3)  ! Variational particle
 
                 ! Coriolis
-                der(vdx + 2) = der(vdx + 2) - 2 * omega * coords_P(4)
-                der(vdx + 3) = der(vdx + 3) + 2 * omega * coords_P(3)
+                der(vdx + 2) = der(vdx + 2) + 2 * omega * coords_P(4)
+                der(vdx + 3) = der(vdx + 3) - 2 * omega * coords_P(3)
 
                 ! Centrifugal
                 der(vdx + 2) = der(vdx + 2) + omega*omega * coords_P(1)
