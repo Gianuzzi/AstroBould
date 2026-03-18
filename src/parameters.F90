@@ -1713,8 +1713,8 @@ contains
         derived%use_elements = derived%use_chaos .or. derived%use_megno .or. (derived%int_elements_output > 0)
 
         ! Second check: If filter, then elements should be true bc of chaos or elems output...
-        if (derived%use_filter .and. ((derived%int_elements_output == 0) .or. (.not. derived%use_chaos))) then
-            write (*, *) "ERROR: If filter is activated, elements output or chaos must be activeted"
+        if (derived%use_filter .and. ((derived%int_elements_output == 0) .and. (.not. derived%use_chaos))) then
+            write (*, *) "ERROR: If filter is activated, elements output or chaos must be activated"
             stop 1
         end if
 
