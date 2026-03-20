@@ -1725,7 +1725,7 @@ program main
         call copy_objects(system, system_filtered)  ! From system to filtered
 
         ! Reset chaos as it will be the first filtered value
-        call reset_chaos(system_filtered)     
+        call reset_chaos(system_filtered)
 
         if (keep_integrating) then  ! Only integrate if needed
 
@@ -1880,7 +1880,7 @@ program main
                 next_t_filt = checkpoint_times(next_output) - filter%half_width
 
                 ! -- Find the next checkpoint after that filtering time --
-                aux_int = first_idx_yes_filter
+                aux_int = tmp_j
                 do i = aux_int, next_output
                     if (checkpoint_times(i) > next_t_filt) then
                         next_checkpoint = i
@@ -2259,7 +2259,7 @@ program main
             next_t_filt = checkpoint_times(next_output) - filter%half_width
 
             ! -- Find the next checkpoint after that filtering time --
-            aux_int = next_checkpoint
+            aux_int = tmp_j
             do i = aux_int, next_output
                 if (checkpoint_times(i) > next_t_filt) then
                     next_checkpoint = i
