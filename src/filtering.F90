@@ -34,6 +34,8 @@ contains
         integer(kind=4), intent(in) :: model
         real(wp) :: t_j
         real(wp) :: val, weight, N
+        real(wp) :: aux_j
+        integer(kind=4) :: center
         integer(kind=4) :: j
 
         !------------------------
@@ -57,8 +59,13 @@ contains
 
         self%omega_pass = twopi/cutoff_period  ! Frequency allowed
 
+        self%weight_model = model
+
         ! Allocate kernel
         allocate (self%kernel(self%size))
+
+        ! Set center
+        center = self%half_size + 1
 
         !------------------------
         ! Build sinc low-pass kernel
@@ -68,34 +75,35 @@ contains
         N = real(self%size - 1, kind=wp)
         do j = -self%half_size, self%half_size
             t_j = real(j, kind=wp)*self%dt
+            aux_j = (j + self%half_size) / N
             if (abs(t_j) < myepsilon) then
                 val = self%omega_pass/pi
             else
                 val = sin(self%omega_pass*t_j)/(pi*t_j)
             end if
-            modelo:select case(model)
+            modelo:select case(self%weight_model)
             case (0)  ! boxcar
             weight = uno
             case (1)  ! Hann
             weight = uno2 - &
-                   & uno2*cos(twopi*(j + self%half_size)/N)
+                   & uno2*cos(twopi*aux_j)
             case (2)  ! Hamming
             weight = 0.54e0_wp - &
-                   & 0.46e0_wp*cos(twopi*(j + self%half_size)/N)
+                   & 0.46e0_wp*cos(twopi*aux_j)
             case (3)  ! Blackman
             weight = 0.42e0_wp - &
-                   & uno2*cos(twopi*(j + self%half_size)/N) + &
-                   & 0.08e0_wp*cos(dos*twopi*(j + self%half_size)/N)
+                   & uno2*cos(twopi*aux_j) + &
+                   & 0.08e0_wp*cos(dos*twopi*aux_j)
             case (4)  ! Flat top
             weight = uno - &
-                   & 1.93e0_wp*cos(twopi*(j + self%half_size)/N) + &
-                   & 1.29e0_wp*cos(dos*twopi*(j + self%half_size)/N) - &
-                   & 0.388e0_wp*cos(3.e0_wp*twopi*(j + self%half_size)/N) + &
-                   & 0.032e0_wp*cos(4.e0_wp*twopi*(j + self%half_size)/N)
+                   & 1.93e0_wp*cos(twopi*aux_j) + &
+                   & 1.29e0_wp*cos(dos*twopi*aux_j) - &
+                   & 0.388e0_wp*cos(3.e0_wp*twopi*aux_j) + &
+                   & 0.032e0_wp*cos(4.e0_wp*twopi*aux_j)
             case default  ! boxcar
             weight = uno
             end select modelo
-            self%kernel(j + self%half_size + 1) = val*weight
+            self%kernel(j + center) = val*weight
         end do
 
         !------------------------
@@ -108,7 +116,7 @@ contains
             ! Reverse to obtain high-pass kernel
             !------------------------
             self%kernel = -self%kernel
-            self%kernel(self%half_size + 1) = uno + self%kernel(self%half_size + 1)
+            self%kernel(center) = uno + self%kernel(center)
             self%low_pass = .False.
         else
             self%low_pass = .True.
