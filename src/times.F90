@@ -5,7 +5,7 @@ module times
     
     implicit none
     private
-    public :: set_output_times, expand_checkpoints
+    public :: set_output_times, expand_checkpoints, select_fraction_symmetric
 
 
 contains
@@ -146,5 +146,41 @@ contains
 
         new_checkp_num = kfin
     end subroutine expand_checkpoints
+
+    ! Create a new array with a percentage of the old checkpoints
+    subroutine select_fraction_symmetric(a, x, b)
+        implicit none
+        logical, intent(in)  :: a(:)
+        real(wp), intent(in)  :: x
+        logical, intent(out) :: b(size(a))
+
+        integer(kind=4) :: ntrue, nkeep, k
+        integer(kind=4), allocatable :: idx(:)
+        real(wp) :: step, pos
+
+        b = .False.
+
+        ! number of TRUE elements
+        ntrue = count(a)
+        if (ntrue == 0) return
+
+        ! indices of TRUE elements
+        idx = pack([(k, k=1,size(a))], a)
+
+        ! how many to keep
+        nkeep = int(ntrue * x, kind=4)
+        if (nkeep <= 0) return
+
+        step = real(ntrue, kind=wp) / real(nkeep, kind=wp)
+
+        do k = 1, nkeep
+            pos = (k - uno2) * step
+            b(idx(int(pos) + 1)) = .True.
+        end do
+
+        ! Free the memory of idx
+        deallocate(idx)
+
+    end subroutine select_fraction_symmetric
 
 end module times

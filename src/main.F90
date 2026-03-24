@@ -4,7 +4,7 @@ program main
     use integrators, only: integrate, init_integrator, free_integrator
     use celestial, only: get_Period, coord2geom
     use bodies
-    use times, only: set_output_times, expand_checkpoints
+    use times, only: set_output_times, expand_checkpoints, select_fraction_symmetric
     use derivates, only: dydt, set_dydt
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
@@ -1174,6 +1174,9 @@ program main
         allocate (elem_filtered(size(y_arr)))
         allocate (tmp_y_arr(size(y_arr)))
 
+        ! Allocate checkpoint array
+        allocate (checkpoint_is_filter(size(checkpoint_is_output)))
+
         ! Set paramters
         if (sim%filter_dt < cero) sim%filter_dt = abs(sim%filter_dt)*system%asteroid%rotational_period / unit_time
         call setup_filter(filter, &
@@ -1188,6 +1191,9 @@ program main
         sim%filter_nsamples = filter%n_samples
         sim%filter_nwindows = filter%n_windows
 
+        !! Fill checkpoint_is_filter
+        call select_fraction_symmetric(checkpoint_is_output, sim%filter_output_ratio, checkpoint_is_filter)
+
         if (sim%use_screen) then
             write (*, *) "Filter ON"
             write (*, s1r1) "  dt    :", filter%dt/system%asteroid%rotational_period, "[Prot] = ", &
@@ -1198,6 +1204,8 @@ program main
             write (*, s1r1) "  cutoff freq:", filter%omega_pass*unit_time, "[rad day⁻¹]"
             write (*, s1r1) "              =>", twopi/(filter%omega_pass*unit_time), "[day] =", &
                           & system%asteroid%omega/filter%omega_pass, "[Prot]"
+            write (*, s1i1) "  N filtered outputs:", count(checkpoint_is_filter), " (", &
+                          & int(1.e2_wp*count(checkpoint_is_filter)/size(checkpoint_is_filter)), "% of total checkpoints)"
             write (*, *) ACHAR(5)
         end if
 
@@ -1514,7 +1522,7 @@ program main
         ! Identify which will have filter, and which don't
         do first_idx_yes_filter = 2, sim%checkpoint_number
             ! If too short, cycle to next
-            if (checkpoint_is_output(first_idx_yes_filter) .and. &
+            if (checkpoint_is_filter(first_idx_yes_filter) .and. &
              & (checkpoint_times(first_idx_yes_filter) .ge. filter%half_width)) exit
         end do
 
@@ -1523,8 +1531,7 @@ program main
 
         ! Find the last checkpoint before first filtering process
         do last_idx_no_filter = first_idx_yes_filter - 1, 1, -1  ! Backwards look
-            if (checkpoint_is_output(first_idx_yes_filter) .and. &
-             & (checkpoint_times(last_idx_no_filter) .le. next_t_filt)) exit
+            if (checkpoint_times(last_idx_no_filter) .le. next_t_filt) exit
         end do
 
         ! Define last output done
@@ -1867,25 +1874,17 @@ program main
             ! If not needed, skip
             if (keep_integrating) then
 
-                ! -- Find the next output checkpoint index --
-                next_output = j
-                do i = j, sim%checkpoint_number
-                    if (checkpoint_is_output(i)) then
-                        next_output = i
-                        exit
-                    end if
+                ! -- Find the next filter checkpoint index --
+                do next_filter = j, sim%checkpoint_number
+                    if (checkpoint_is_filter(next_filter)) exit
                 end do
 
                 ! -- Compute the time at which filtering should start --
-                next_t_filt = checkpoint_times(next_output) - filter%half_width
+                next_t_filt = checkpoint_times(next_filter) - filter%half_width
 
-                ! -- Find the next checkpoint after that filtering time --
-                aux_int = tmp_j
-                do i = aux_int, next_output
-                    if (checkpoint_times(i) > next_t_filt) then
-                        next_checkpoint = i
-                        exit
-                    end if
+                ! -- Find the first checkpoint right after that filtering time --
+                do next_checkpoint = tmp_j, next_filter
+                    if (checkpoint_times(next_checkpoint) >= next_t_filt) exit
                 end do
 
                 !! In this case, then next filter time has already passed
@@ -1983,7 +1982,7 @@ program main
 
                 end do loop_until_next_checkpoint_minus_1
 
-                !!! Now, we integrate up to next_filter
+                !!! Now, we integrate up to next_filter time
                 next_time = next_t_filt
                 loop_until_second_filter: do while (keep_integrating)
 
@@ -2065,7 +2064,7 @@ program main
 
         end if  ! keep integrating
 
-        !!!! Now we are in the second filter (j = next_checkpoint)
+        !!!! Now we are at the start of the second filter (j = next_checkpoint)
 
         ! ===============================
         ! -----------------------------------------------------------------------------
@@ -2116,6 +2115,7 @@ program main
             end if
 
             ! =============> Integrate and store filtered values <=============
+
             time_filt = time
             adaptive_timestep_filt = adaptive_timestep
 
@@ -2150,7 +2150,7 @@ program main
             ! Create filtered
             call apply_filter(y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
             call update_system_from_elements(system_filtered, &
-                                        & checkpoint_times(next_output), &
+                                        & checkpoint_times(next_filter), &
                                         & elem_filtered, &
                                         & sim%reference_frame)
             ! Update Chaos (triggers update elements)
@@ -2158,10 +2158,11 @@ program main
             ! Filtered output
             call generate_output(system_filtered, .True.)
 
-            ! =============> Get to Checkpoint j (with output) and process <=============
+
+            ! =============> Get to the filter checkpoint itself (with output) and process it <=============
 
             ! LOOP WITH NO FILTER
-            loop_until_checkp: do while ((j .le. next_output) .and. keep_integrating)
+            loop_until_checkp: do while ((j .le. next_filter) .and. keep_integrating)
 
                 hard_exit = .False. ! Resetear HardExit
                 is_premature_exit = .False. ! Resetear premature
@@ -2247,24 +2248,16 @@ program main
             if (j > sim%checkpoint_number) cycle  ! Will exit above
 
             ! -- Find the next output checkpoint index --
-            next_output = j
-            do i = j, sim%checkpoint_number
-                if (checkpoint_is_output(i)) then
-                    next_output = i
-                    exit
-                end if
+            do next_filter = j, sim%checkpoint_number
+                if (checkpoint_is_filter(next_filter)) exit
             end do
 
             ! -- Compute the time at which filtering should start --
-            next_t_filt = checkpoint_times(next_output) - filter%half_width
+            next_t_filt = checkpoint_times(next_filter) - filter%half_width
 
             ! -- Find the next checkpoint after that filtering time --
-            aux_int = tmp_j
-            do i = aux_int, next_output
-                if (checkpoint_times(i) > next_t_filt) then
-                    next_checkpoint = i
-                    exit
-                end if
+            do next_checkpoint = tmp_j, next_filter
+                if (checkpoint_times(next_checkpoint) > next_t_filt) exit
             end do
 
             !! In this case, then next filter time has already passed
@@ -2287,7 +2280,6 @@ program main
             !! Now we just need to integrate the normal system up to next filter time
 
             !!! First, we go until next checkpoint - 1
-            !!! No output here. At most, only extra checkpoints
             loop2_until_next_checkpoint_minus_1: do while ((j < next_checkpoint) .and. keep_integrating)
 
                 hard_exit = .False. ! Resetear HardExit
@@ -2346,8 +2338,14 @@ program main
                 ! Regenerate if needed
                 if (regenerate_arrays) call generate_arrays(system, m_arr, R_arr, y_arr)
 
-                ! Update j; only if not premature
-                if (.not. is_premature_exit) j = j + 1
+                ! Update j and Output
+                if (.not. is_premature_exit) then
+                    if (checkpoint_is_output(j) .and. (j > last_output)) then
+                        call generate_output(system)
+                        last_output = j
+                    end if
+                    j = j + 1
+                end if
 
                 ! Reset adaptive if needed
                 if (.not. sim%use_adaptive) adaptive_timestep = fixed_timestep

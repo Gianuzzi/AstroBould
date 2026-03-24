@@ -119,6 +119,7 @@ module parameters
         real(wp) :: filter_dt = cero
         integer(kind=4) :: filter_nsamples = 0
         integer(kind=4) :: filter_nwindows = 0
+        real(wp) :: filter_output_ratio = uno
         logical :: filter_use_KH = .False.
         integer(kind=4) :: filter_model = 0
         character(30) :: filter_prefix = ""
@@ -249,6 +250,7 @@ module parameters
     real(wp), dimension(:), allocatable :: checkpoint_times  ! Vector con checkpoints
     logical, dimension(:), allocatable :: checkpoint_is_tom  ! Array with whether each checkpoint is TOM
     logical, dimension(:), allocatable :: checkpoint_is_output ! Array with whether each checkpoint is output
+    logical, dimension(:), allocatable :: checkpoint_is_filter ! Array with whether each checkpoint is filter
 
     ! ----  <<<<<    PARAMETERS ARRAYS     >>>>>   -----
     integer(kind=4), parameter :: equation_size = 4
@@ -271,6 +273,7 @@ module parameters
     real(wp) :: adaptive_timestep_filt  ! Adaptive timestep of the filtering integration
     integer(kind=4) :: last_output  ! Last output checkpoint
     integer(kind=4) :: next_output  ! Next output checkpoint
+    integer(kind=4) :: next_filter  ! Next filter checkpoint
     integer(kind=4) :: next_checkpoint  ! Next pure checkpoint
     integer(kind=4) :: tmp_j  ! Temporal j checkpoint
     type(sim_params_st) :: tmp_sim  ! Temporal simulation state
@@ -1009,6 +1012,8 @@ contains
                     read (value_str, *, iostat=ios) params%filter_nsamples
                 case ("kernel support ")
                     read (value_str, *, iostat=ios) params%filter_nwindows
+                case ("fraction of out")
+                    read (value_str, *, iostat=ios) params%filter_output_ratio
                 case ("apply filter to")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%filter_use_KH = .True.
@@ -1523,6 +1528,10 @@ contains
                 write (*, *) "ERROR: Filter model must be between 0 and 4 (included)."
                 stop 1
             end if
+            if (derived%filter_output_ratio <= 0 .or. derived%filter_output_ratio > 1) then
+                write (*, *) "ERROR: Filter output ratio must be between 0 and 1 (included)."
+                stop 1
+            end if
         end if
 
         ! ! [BINS]
@@ -1898,6 +1907,7 @@ contains
         if (allocated(checkpoint_times)) deallocate (checkpoint_times)
         if (allocated(checkpoint_is_tom)) deallocate (checkpoint_is_tom)
         if (allocated(checkpoint_is_output)) deallocate (checkpoint_is_output)
+        if (allocated(checkpoint_is_filter)) deallocate (checkpoint_is_filter)
         if (allocated(y_pre_filter)) deallocate (y_pre_filter)
         if (allocated(elem_filtered)) deallocate (elem_filtered)
         if (allocated(tmp_y_arr)) deallocate (tmp_y_arr)
