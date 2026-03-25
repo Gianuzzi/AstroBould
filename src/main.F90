@@ -1875,7 +1875,7 @@ program main
             if (keep_integrating) then
 
                 ! -- Find the next filter checkpoint index --
-                do next_filter = j, sim%checkpoint_number
+                do next_filter = j, sim%checkpoint_number - 1  ! -1 to avoid going out of bounds
                     if (checkpoint_is_filter(next_filter)) exit
                 end do
 
@@ -2248,7 +2248,7 @@ program main
             if (j > sim%checkpoint_number) cycle  ! Will exit above
 
             ! -- Find the next output checkpoint index --
-            do next_filter = j, sim%checkpoint_number
+            do next_filter = j, sim%checkpoint_number - 1  ! -1 to avoid going out of bounds
                 if (checkpoint_is_filter(next_filter)) exit
             end do
 
