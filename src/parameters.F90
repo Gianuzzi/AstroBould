@@ -209,6 +209,8 @@ module parameters
         logical :: update_bins = .False.
         ! Merges
         logical :: use_any_merge = .False.
+        ! Collisions
+        logical :: use_collisions_part = .False.
         ! Stops
         logical :: use_any_stop = .False.
         ! Chaos
@@ -1844,6 +1846,15 @@ contains
         if (derived%use_sinodic .and. derived%Nmoons > 0) then
             write (*, *) "ERROR: Sinodic system is available for systems with particles only."
             stop 1
+        end if
+
+        ! Collisions of particles
+        if (derived%Nparticles == 0) then
+            derived%use_collisions_part = .False.
+        else if (derived%eta_col .ge. uno) then
+            derived%use_collisions_part = .False.
+        else
+            derived%use_collisions_part = .True.
         end if
 
     end subroutine set_derived_parameters_post_bodies

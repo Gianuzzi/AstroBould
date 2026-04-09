@@ -788,7 +788,7 @@ contains
         end if
 
         ! Fourth, particles to particles (if requested, for collisions)
-        if (sim%eta_col < uno) then
+        if (sim%use_collisions_part) then
             do i = first_particle, N_total - 1
                 idx = get_index(i)
                 coords_M = y(idx:idx + 3)  ! Particle i (M)

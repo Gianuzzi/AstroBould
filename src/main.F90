@@ -850,6 +850,15 @@ program main
                 write (*, *) "Colliding particles into massive bodies will stop the integration."
             end if
             write (*, *) ACHAR(5)
+            if (sim%use_collisions_part) then
+                sim%use_collisions_part = sim%use_collisions_part .and. any(system%particles(:sim%Nparticles)%radius > cero)
+            end if
+            if (sim%use_collisions_part) then
+                write (*, *) "Particle-particle collisions activated."
+            else
+                write (*, *) "Particle-particle collisions deactivated."
+            end if
+            write (*, *) ACHAR(5)
         end if
         if (sim%use_moons) then
             if (sim%eta_col == uno) then

@@ -2468,6 +2468,9 @@ contains
         ! Result
         outcome = 0
 
+        ! CHECK
+        if (self%eta_col .ge. uno) return  ! Nothing to do
+
         ! Individual attrs
         ri = self%particles(i)%coordinates(1:2)
         rj = self%particles(j)%coordinates(1:2)
