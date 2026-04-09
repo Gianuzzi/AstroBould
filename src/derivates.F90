@@ -285,7 +285,8 @@ contains
             dr = sqrt(dr2)
 
             ! Check if collision or Escape
-            if ((dr < sim%min_distance) .or. &
+            if ((dr < R_arr(1) + R_arr(j)) .or. &
+              & (dr < sim%min_distance) .or. &
               & (dr > sim%max_distance .and. sim%max_distance > cero)) then
                 hard_exit = .True.
             end if
@@ -303,8 +304,8 @@ contains
 
                 ! Anti-rotate target to check if inside
                 xy_rotated = rotate2D(dr_vec, -theta)
-                if ((xy_rotated(1)/asteroid_data(1))**2 &
-                & + (xy_rotated(2)/asteroid_data(2))**2 < uno) then
+                if (((xy_rotated(1)+ R_arr(j))/asteroid_data(1))**2 &
+                & + ((xy_rotated(2)+ R_arr(j))/asteroid_data(2))**2 < uno) then
                     hard_exit = .True.
                 end if
 
@@ -564,7 +565,7 @@ contains
                 if (dr < myepsilon) cycle  ! Skip to avoid NaNs
 
                 ! Check if collision
-                if (dr < boulders_data(0, 2)) hard_exit = .True.
+                if (dr < boulders_data(0, 2) + R_arr(j)) hard_exit = .True.
 
                 ! Gravitational acceleration of particle j by boulder 0 (and possible J2)
                 if (use_manual_J2_from_primary) then  
@@ -683,7 +684,7 @@ contains
                     if (dr < myepsilon) cycle  ! Skip to avoid NaNs
 
                     ! Check if collision
-                    if (dr < boulders_data(i, 2)) hard_exit = .True.
+                    if (dr < boulders_data(i, 2) + R_arr(j)) hard_exit = .True.
 
                     ! Gravitational acceleration of particle j by boulder i
                     acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G mi (x, y) / r³
@@ -729,7 +730,7 @@ contains
                 if (dr < myepsilon) cycle  ! Skip to avoid NaNs
 
                 ! Check if collision
-                if (dr < R_arr(i)) hard_exit = .True.
+                if (dr < R_arr(i) + R_arr(j)) hard_exit = .True.
 
                 ! Auxiliar
                 aux_real = -G*m_arr(i)/(dr2*dr)
@@ -786,7 +787,31 @@ contains
 
         end if
 
-        ! Fourth, Extra variational if MEGNO
+        ! Fourth, particles to particles (if requested, for collisions)
+        if (sim%eta_col < uno) then
+            do i = first_particle, N_total - 1
+                idx = get_index(i)
+                coords_M = y(idx:idx + 3)  ! Particle i (M)
+
+                !! Other Particles (massless)
+                do j = i + 1, N_total
+                    jdx = get_index(j)
+                    coords_P = y(jdx:jdx + 3)  ! Particle j (P)
+
+                    !! PARTICLE 1 (P) AND PARTICLE 2 (M)
+                    dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Particle i (P) to Particle j (M)
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                    dr = sqrt(dr2)
+
+                    if (dr < (R_arr(i) + R_arr(j))) hard_exit = .True.
+
+                end do
+
+            end do
+
+        end if
+
+        ! Fifth, Extra variational if MEGNO
         if (sim%megno_active) then
 
             ! Initialize to 0

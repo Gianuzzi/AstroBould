@@ -45,11 +45,12 @@ To execute the code with a single particle, use the following command:
 
 Here:
 
-- `<a>`   = semi-major axis
-- `<e>`   = eccentricity
-- `<M>`   = mean anomaly
-- `<w>`   = argument of periapsis
-- `<mmr>` = initial spin-orbit ratio ($$\Omega_\text{ast}  / n_\text{part}$$) (optional)
+- `<a>`   = semi-major axis of the particle (km)
+- `<e>`   = eccentricity of the particle
+- `<M>`   = mean anomaly of the particle (degrees)
+- `<w>`   = argument of periapsis of the particle (degrees)
+- `<mmr>` = initial spin-orbit ratio ($$\Omega_\text{ast}  / n_\text
+{part}$$) (optional)
 
 > If `<mmr>` is provided, it overrides the value of `<a>`.
 
@@ -59,16 +60,16 @@ For basic help in Spanish just run:
 ``` console
 $ ./ASTROBOULD --help
 
- Uso: .\ASTROBOULD <ea> <ee> <eM> <ew> <eR> [args]"
+ Uso: .\ASTROBOULD <ea> <ee> <eM> <ew> <mmr> [args]"
     ea  : Elemento a de la partícula/luna (km)
     ee  : Elemento e de la partícula/luna
     eM  : Elemento M de la partícula/luna (deg)
     ew  : Elemento w de la partícula/luna (deg)
-    mmr : Valor de MMR de la partícula/luna [Optional]
+    mmr : Valor de MMR de la partícula/luna [Opcional. 0 si no se utiliza.]
     --onlyprint   : No integrar; solo imprimir configuraciones
     -nsim         : Número de simulación [int]
     -mumoon       : Cociente de masa entre la luna individual y el asteroide
-    -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0
+    -radius       : Radio de la partícula/luna individual (km)
     -datafile     : Nombre de archivo de salida de datos
     --nodataf     : No guardar datos de salida
     -chaosfile    : Nombre de archivo de salida caos
@@ -100,7 +101,7 @@ $ ./ASTROBOULD --help
     --noconfig    : No leer archivo de configuración
     -merge        : Tipo de colisiones (merges) permitidas [int]: 
                     0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos
-    -stopif       : Detener la integración si no quedan más objetos del tipo [int]:
+    -stopif       : Detener la integración sin más objetos del tipo [int]:
                     0: No detener, 1: Luna, 2: Partícula, 3: Ambos
     --megno       : Calcular MEGNO para partículas
     --nomegno     : No calcular MEGNO

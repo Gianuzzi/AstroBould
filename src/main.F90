@@ -102,6 +102,7 @@ program main
             particles_in(1, 3) = cero      ! M [deg]
             particles_in(1, 4) = cero      ! w [deg]
             particles_in(1, 5) = 8.1e0_wp  ! MMR
+            particles_in(1, 6) = cero      ! radius [km]
 
         end if
 
@@ -214,6 +215,7 @@ program main
         !! Screen
         input%use_screen = .True. ! Print info in screen
         input%use_datascreen = .True. ! Print data in screen
+        input%use_screen_collis_escap = .True. ! Print collisions and escapes on screen
         input%use_diagnostics = .False. ! Print diagnostic data on screen
 
         ! Input: "" or "no", if not used
@@ -271,8 +273,12 @@ program main
     sim%input_params_st = input ! Create sim with input parameters
     call set_derived_parameters_pre_bodies(sim) ! Inicializamos parámetros derivados pre bodies
     if (sim%use_screen) then
-        unit_file = 6  ! Unit_file to std out (for collisions and escapes)
-        if (sim%use_version) call print_version(unit_file, PROGRAM_NAME)
+        if (sim%use_version) call print_version(6, PROGRAM_NAME)  ! 6 is the unit for std out
+        if (sim%use_screen_collis_escap) then
+            unit_file = 6  ! Unit_file to std out (for collisions and escapes)
+        else
+            unit_file = -1  ! No print collisions and escapes on screen
+        end if
     end if
 
     ! <> Check Output
@@ -356,7 +362,7 @@ program main
         end if
         call allocate_params_particles(1)
         ! Fill the array
-        particles_in(1, :) = cl_body_in(2:6)
+        particles_in(1, :) = cl_body_in(2:7)
     else if (sim%use_particlesfile) then
         if (sim%Nparticles > 0) then
             write (*, *) ACHAR(10)
@@ -364,7 +370,7 @@ program main
             stop 1
         end if
         if (sim%use_screen) write (*, *) "Reading particles from file: ", trim(sim%particlesfile)
-        !!!! Formato: [mu, a, e, M, w, MMR]
+        !!!! Formato: [mu, a, e, M, w, MMR, radius]
         call read_columns_file(sim%particlesfile, aux_2D)
         sim%Nparticles = size(aux_2D, 1)
         if (sim%Nparticles == 0) then
@@ -381,18 +387,38 @@ program main
         call allocate_params_particles(sim%Nparticles)
         ! Fill the arrays
         particles_in = cero
-        do i = 1, min(aux_int, 5)
+        do i = 1, min(aux_int, 6)
             particles_in(:sim%Nparticles, i) = aux_2D(:, i)
         end do
         deallocate (aux_2D)
     end if
 
+    ! We have moons_in, particles_in, and sim%Nmoons, sim%Nparticles ready to be used to create the system;
+    ! but we have to rearange in case of massless moons. The total amount of bodies is the same, but we recreate moons and
+    ! particles (in) in case of massless moons, to put massless moons as particles, and avoid problems in the integrator.
+    !! Set the total number of bodies to integrate (for the integrator)
+    sim%Ntotal = 1 + sim%Nmoons + sim%Nparticles
+
+    ! Rearrange in case of massless moons (the mass is the fist column of moons_in)
+    if (sim%Nmoons > 0) then
+        ! Check if there are massless moons
+        if (any(moons_in(:sim%Nmoons, 1) == cero)) then
+            if (sim%use_screen) then
+                write (*, *) ACHAR(10)
+                write (*, s1i1) "WARNING: Treating massless moons as particles for the integration."
+            end if
+            ! Create new arrays for moons and particles, with the same total size, but massless moons as particles
+            call recreate_moons_particles_in(moons_in, particles_in)
+            ! Now we have the correct moons_in and particles_in. We have to correct now the total number of moons and particles.
+            sim%Nmoons = size(moons_in, 1)
+            sim%Nparticles = size(particles_in, 1)
+        end if
+    end if
+
     ! Update parameters post bodies
-    call set_derived_parameters_pre_bodies(sim) ! Inicializamos parámetros derivados pre bodies
+    call set_derived_parameters_post_bodies(sim) ! Inicializamos parámetros derivados post bodies
 
     ! <> Set and check numbers
-    !! Set
-    sim%Ntotal = 1 + sim%Nmoons + sim%Nparticles
     call update_sim_Nactive(sim, sim%Nparticles, sim%Nmoons)
     
 
@@ -484,6 +510,7 @@ program main
                          & particles_in(i, 3)*radian, &     ! M (degrees)
                          & particles_in(i, 4)*radian, &     ! w (degrees)
                          & particles_in(i, 5), &            ! MMR
+                         & particles_in(i, 6)*unit_dist, &  ! radius
                          sim%Nmoons)                        ! ID to star from
     end do
 
@@ -587,25 +614,27 @@ program main
 
     ! Moons positions
     if (sim%use_screen .and. sim%use_moons) then
-        write (*, *) "   Barycentric moons: [x, y, vx, vy, mass, distance]"
+        write (*, *) "   Barycentric moons: [x, y, vx, vy, mass, distance, radius]"
         do i = 1, sim%Nmoons
             write (*, i1r7) i, &
                 & system%moons(i)%coordinates(1:2)/unit_dist, &
                 & system%moons(i)%coordinates(3:4)/unit_vel, &
                 & system%moons(i)%mass/unit_mass, &
-                & system%moons(i)%dist_to_cm/unit_dist
+                & system%moons(i)%dist_to_cm/unit_dist, &
+                & system%moons(i)%radius/unit_dist
         end do
         write (*, *) ACHAR(5)
     end if
 
     ! Particles positions
     if (sim%use_screen .and. sim%use_particles) then
-        write (*, *) "   Barycentric particles: [x, y, vx, vy, distance]"
+        write (*, *) "   Barycentric particles: [x, y, vx, vy, distance, radius]"
         do i = 1, sim%Nparticles
             write (*, i1r7) i, &
                      & system%particles(i)%coordinates(1:2)/unit_dist, &
                      & system%particles(i)%coordinates(3:4)/unit_vel, &
-                     & system%particles(i)%dist_to_cm/unit_dist
+                     & system%particles(i)%dist_to_cm/unit_dist, &
+                     & system%particles(i)%radius/unit_dist
         end do
         write (*, *) ACHAR(5)
     end if
@@ -1288,6 +1317,12 @@ program main
             write (*, *) "Data will be printed on screen."
         else
             write (*, *) "Data will not be printed on screen."
+        end if
+        write (*, *) ACHAR(5)
+        if (sim%use_screen_collis_escap) then
+            write (*, *) "Collisions/Escapes will be printed on screen."
+        else
+            write (*, *) "Collisions/Escapes will not be printed on screen."
         end if
         write (*, *) ACHAR(5)
         if (sim%reference_frame == 0) then

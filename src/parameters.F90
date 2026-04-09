@@ -145,6 +145,7 @@ module parameters
         ! Output -
         logical :: use_version = .False.
         logical :: use_screen = .False.
+        logical :: use_screen_collis_escap = .False.
         logical :: use_datafile = .False.
         character(30) :: datafile = ""
         logical :: use_multiple_outputs = .False.
@@ -228,7 +229,7 @@ module parameters
     ! ----  <<<<<    INITIAL BODIES     >>>>>   -----
     real(wp), dimension(:, :), allocatable :: boulders_in !! mu, radius, theta  | (Nb, 3)
     real(wp), dimension(:, :), allocatable :: moons_in !! mass, a, e, M, w, MMR, radius  | (Nm, 7)
-    real(wp), dimension(:, :), allocatable :: particles_in !! a, e, M, w, MMR  | (Np, 5)
+    real(wp), dimension(:, :), allocatable :: particles_in !! a, e, M, w, MMR, radius  | (Np, 6)
     real(wp) :: cl_body_in(7) = cero  !! mass, a, e, M, w, MMR, radius  | (7)  | COMMAND LINE Input
 
     ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
@@ -423,7 +424,7 @@ contains
             STOP 1
         end if
 
-        allocate (particles_in(Nparticles, 5))  ! FROM 1 to Nparticles
+        allocate (particles_in(Nparticles, 6))  ! FROM 1 to Nparticles
     end subroutine allocate_params_particles
 
     ! 1. Read command line input
@@ -463,7 +464,7 @@ contains
                     call get_command_argument(i + 1, aux_character20)
                     read (aux_character20, *) cl_body_in(1)  ! Global variable
                     aux_integer = 1
-                case ("-rmoon")
+                case ("-radius")
                     call get_command_argument(i + 1, aux_character20)
                     read (aux_character20, *) cl_body_in(7)  ! Global variable
                     aux_integer = 1
@@ -620,16 +621,16 @@ contains
                     params%use_version = .True.
                 case ("--help")
                     call get_command_argument(0, aux_character30)
-                    write (*, *) "Uso: "//trim(aux_character30)//" <ea> <ee> <eM> <ew> <eR> [args]"
-                    write (*, *) "    ea  : Elemento a de la partícula/luna (km)"
-                    write (*, *) "    ee  : Elemento e de la partícula/luna"
-                    write (*, *) "    eM  : Elemento M de la partícula/luna (deg)"
-                    write (*, *) "    ew  : Elemento w de la partícula/luna (deg)"
-                    write (*, *) "    eR  : Elemento R de la partícula/luna [Opcional]"
+                    write (*, *) "Uso: "//trim(aux_character30)//" <ea> <ee> <eM> <ew> <mmr> [args]"
+                    write (*, *) "    ea   : Elemento a de la partícula/luna (km)"
+                    write (*, *) "    ee   : Elemento e de la partícula/luna"
+                    write (*, *) "    eM   : Elemento M de la partícula/luna (deg)"
+                    write (*, *) "    ew   : Elemento w de la partícula/luna (deg)"
+                    write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional. 0 si no se utiliza.]"
                     write (*, *) "    --onlyprint   : No integrar; solo imprimir configuraciones"
                     write (*, *) "    -nsim         : Número de simulación [int]"
                     write (*, *) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
-                    write (*, *) "    -rmoon        : Radio de la luna individual (km). Solo si mumoon > 0"
+                    write (*, *) "    -radius       : Radio de la partícula/luna individual (km)."
                     write (*, *) "    -datafile     : Nombre de archivo de salida de datos"
                     write (*, *) "    --nodataf     : No guardar datos de salida"
                     write (*, *) "    -chaosfile    : Nombre de archivo de salida caos"
@@ -661,7 +662,7 @@ contains
                     write (*, *) "    --noconfig    : No leer archivo de configuración"
                     write (*, *) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
                     write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos"
-                    write (*, *) "    -stopif       : Detener la integración si no quedan más objetos del tipo [int]:"
+                    write (*, *) "    -stopif       : Detener la integración sin más objetos del tipo [int]:"
                     write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
                     write (*, *) "    --megno       : Calcular MEGNO para partículas"
                     write (*, *) "    --nomegno     : No calcular MEGNO"
@@ -1095,6 +1096,31 @@ contains
                     else
                         params%use_screen = .False.
                     end if
+                case ("output data on")
+                    if ((auxch1 == "y") .or. (auxch1 == "s")) then
+                        params%use_datascreen = .True.
+                        params%use_percentage = .False.
+                        params%use_diagnostics = .False.
+                    else if (auxch1 == "%") then
+                        params%use_datascreen = .False.
+                        params%use_percentage = .True.
+                        params%use_diagnostics = .False.
+                    else if (auxch1 == "d") then
+                        params%use_diagnostics = .True.
+                        params%use_datascreen = .False.
+                        params%use_percentage = .False.
+                    else
+                        params%use_diagnostics = .False.
+                        params%use_percentage = .False.
+                        params%use_datascreen = .False.
+                    end if
+                case ("collis/escapes")
+                    if ((to_lower(trim(value_str)) == "n") .or. &
+                      & (to_lower(trim(value_str)) == "no")) then
+                        params%use_screen_collis_escap = .False.
+                    else
+                        params%use_screen_collis_escap = .True.
+                    end if
                 case ("general output")
                     if ((to_lower(trim(value_str)) == "n") .or. &
                       & (to_lower(trim(value_str)) == "no")) then
@@ -1130,24 +1156,6 @@ contains
                     else
                         params%use_geometricfile = .True.
                         params%geometricfile = trim(value_str)
-                    end if
-                case ("output data on")
-                    if ((auxch1 == "y") .or. (auxch1 == "s")) then
-                        params%use_datascreen = .True.
-                        params%use_percentage = .False.
-                        params%use_diagnostics = .False.
-                    else if (auxch1 == "%") then
-                        params%use_datascreen = .False.
-                        params%use_percentage = .True.
-                        params%use_diagnostics = .False.
-                    else if (auxch1 == "d") then
-                        params%use_diagnostics = .True.
-                        params%use_datascreen = .False.
-                        params%use_percentage = .False.
-                    else
-                        params%use_diagnostics = .False.
-                        params%use_percentage = .False.
-                        params%use_datascreen = .False.
                     end if
                 case ("output variable")
                     if (auxch1 == "c") then
@@ -1303,12 +1311,15 @@ contains
                             if ((auxch1 == "c") .or. (auxch1 == "!")) cycle  ! Skip commented
                             ! Set MMR to 0
                             particles_in(j, 5) = cero
+                            ! Set radius to 0
+                            particles_in(j, 6) = cero
                             read (line, *, iostat=io) &
                                 & particles_in(j, 1), &
                                 & particles_in(j, 2), &
                                 & particles_in(j, 3), &
                                 & particles_in(j, 4), &
-                                & particles_in(j, 5)
+                                & particles_in(j, 5), &
+                                & particles_in(j, 6)
                             if (io /= 0) then
                                 write (*, *) "ERROR: Al leer partícula:", j
                                 stop 1
@@ -1618,6 +1629,9 @@ contains
             derived%use_geomchaosfile = .False.  ! Do not output geometric chaos values
         end if
 
+        ! Collisions
+        if (.not. derived%use_screen) derived%use_screen_collis_escap = .False.  ! No screen, no collis/escap on screen
+
         !! Names
         if ((trim(derived%datafile) /= "") .and. (trim(derived%datafile) /= "no")) then
             derived%use_datafile = .True.
@@ -1728,6 +1742,58 @@ contains
         end if
 
     end subroutine set_derived_parameters_pre_bodies
+
+    ! Rearrange in case of massless moons
+    subroutine recreate_moons_particles_in(moons_in, particles_in)
+        implicit none
+        real(wp), allocatable, intent(inout) :: moons_in(:, :)
+        real(wp), allocatable, intent(inout) :: particles_in(:, :)
+        real(wp), allocatable :: moons_tmp(:, :)
+        real(wp), allocatable :: particles_tmp(:, :)
+        integer(kind=4) :: i, Nm, Np, n_moons, n_particles
+        integer(kind=4) :: im, ip
+
+        ! Original sizes
+        n_moons     = size(moons_in, 1)
+        n_particles = size(particles_in, 1)
+
+        !----------------------------------------
+        ! Count
+        Nm = count(moons_in(:,1) /= cero)
+        Np = n_particles + count(moons_in(:,1) == cero)
+
+        !----------------------------------------
+        ! Allocate new arrays
+        allocate(moons_tmp(Nm, 7))
+        allocate(particles_tmp(Np, 6))
+
+        !----------------------------------------
+        ! Fill arrays
+        im = 0
+        ip = 0
+
+        ! First copy original particles
+        if (n_particles > 0) then
+            particles_tmp(1:n_particles, :) = particles_in
+            ip = n_particles
+        end if
+
+        do i = 1, n_moons
+            if (moons_in(i,1) /= cero) then
+                im = im + 1
+                moons_tmp(im, :) = moons_in(i, :)
+            else
+                ip = ip + 1
+                particles_tmp(ip, :) = moons_in(i, 1:6)
+            end if
+        end do
+
+        !----------------------------------------
+        ! Move back (no copy, no leak)
+        call move_alloc(moons_tmp, moons_in)
+        call move_alloc(particles_tmp, particles_in)
+
+    end subroutine recreate_moons_particles_in
 
     ! 4. Set derived parameters
     subroutine set_derived_parameters_post_bodies(derived)
@@ -2222,13 +2288,28 @@ contains
         type(system_st), intent(inout) :: syst
         integer(kind=4), intent(in) :: unit_out
 
-        ! Apply colissions and check
-        call resolve_collisions(syst, simu%min_distance, unit_out)
-        call check_after_col(syst, simu, keep_integrating)
+        if (unit_out < 0) then ! Use to avoid writing file
 
-        ! Apply escapes and check
-        call resolve_escapes(syst, simu%max_distance, unit_out)
-        call check_after_esc(syst, simu, keep_integrating)
+            ! Apply colissions and check
+            call resolve_collisions(syst, simu%min_distance)
+            call check_after_col(syst, simu, keep_integrating)
+
+            ! Apply escapes and check
+            call resolve_escapes(syst, simu%max_distance)
+            call check_after_esc(syst, simu, keep_integrating)
+
+
+        else
+
+            ! Apply colissions and check
+            call resolve_collisions(syst, simu%min_distance, unit_out)
+            call check_after_col(syst, simu, keep_integrating)
+
+            ! Apply escapes and check
+            call resolve_escapes(syst, simu%max_distance, unit_out)
+            call check_after_esc(syst, simu, keep_integrating)
+
+        end if
 
     end subroutine check_esc_and_col
     
