@@ -1323,7 +1323,7 @@ contains
     end subroutine read_config_file
 
     ! 3. Set derived parameters
-    subroutine set_derived_parameters(derived)
+    subroutine set_derived_parameters_pre_bodies(derived)
         implicit none
         type(sim_params_st), intent(inout) :: derived
         integer(kind=4) :: i
@@ -1408,19 +1408,6 @@ contains
             derived%triax_c_primary = derived%radius_primary
         end if
 
-        !! NMoons
-        if (derived%Nmoons < 0) then
-            write (*, *) "ERROR: Nmoons can not be negative."
-            stop 1
-        end if
-        derived%use_moons = derived%Nmoons > 0
-
-        !! NParticles
-        if (derived%Nparticles < 0) then
-            write (*, *) "ERROR: Nparticles can not be negative."
-            stop 1
-        end if
-        derived%use_particles = derived%Nparticles > 0
 
         !! Forces
         !!! stokes_a_damping_time y stokes_e_damping_time
@@ -1434,8 +1421,6 @@ contains
             derived%stokes_e_damping_time = cero
             derived%stokes_active_time = cero
             derived%use_stokes_with_moons = .False.
-        else if (derived%Nmoons == 0) then
-            derived%use_stokes_with_moons = .False.
         end if
 
         !!! Naive-stokes
@@ -1447,8 +1432,6 @@ contains
         if (.not. derived%use_drag) then
             derived%drag_coefficient = cero
             derived%drag_active_time = cero
-            derived%use_drag_with_moons = .False.
-        else if (derived%Nmoons == 0) then
             derived%use_drag_with_moons = .False.
         end if
 
@@ -1552,19 +1535,6 @@ contains
         !     derived%update_rmax_bins = derived%rmax_bins < - myepsilon
         !     derived%update_bins = derived%update_rmin_bins .or. derived%update_rmax_bins .or. derived%binning_method == 3
         ! end if
-
-        ! Moons gravity
-        if (derived%Nmoons == 0) derived%use_moon_gravity = .False.  ! Deactivate it
-
-        ! Merges
-        if (derived%Nparticles == 0) derived%use_merge_part_mass = .False.  ! Deactivate it
-        if (derived%Nmoons == 0) derived%use_merge_massive = .False.  ! Deactivate it
-        derived%use_any_merge = derived%use_merge_part_mass .or. derived%use_merge_massive
-
-        ! Stops
-        if (derived%Nparticles == 0) derived%use_stop_no_part_left = .False.  ! Deactivate it
-        if (derived%Nmoons == 0) derived%use_stop_no_moon_left = .False.  ! Deactivate it
-        derived%use_any_stop = derived%use_stop_no_part_left .or. derived%use_stop_no_moon_left
 
         ! Eta and f collitions values
         if ((derived%eta_col < cero) .or. (derived%eta_col > uno)) then
@@ -1739,12 +1709,6 @@ contains
             stop 1
         end if
 
-        ! Second surface check: No more than 1 particle/moon
-        if (derived%use_surface .and. derived%Nactive > 2) then
-            write (*, *) "ERROR: Surface section is available with a single moon/particle."
-            stop 1
-        end if
-
         ! Third surface check: filename must be set
         if ((trim(derived%surfacefile) == "") .and. derived%use_surface) then
             write (*, *) "ERROR: Surface file name not set."
@@ -1757,19 +1721,66 @@ contains
             stop 1
         end if
 
-        ! First sinodic check: If sinodic, no moon
-        if (derived%use_sinodic .and. derived%Nmoons > 0) then
-            write (*, *) "ERROR: Sinodic system is available for systems with particles only."
-            stop 1
-        end if
-
         ! Second sinodic check: If sinodic, no damping
         if (derived%use_sinodic .and. derived%use_omega_damping) then
             write (*, *) "ERROR: Sinodic system is not compatible with Omega damping."
             stop 1
         end if
 
-    end subroutine set_derived_parameters
+    end subroutine set_derived_parameters_pre_bodies
+
+    ! 4. Set derived parameters
+    subroutine set_derived_parameters_post_bodies(derived)
+        implicit none
+        type(sim_params_st), intent(inout) :: derived
+        integer(kind=4) :: i
+        character(:), allocatable :: aux_ch1, aux_ch2
+
+        !! NMoons
+        if (derived%Nmoons < 0) then
+            write (*, *) "ERROR: Nmoons can not be negative."
+            stop 1
+        end if
+        derived%use_moons = derived%Nmoons > 0
+
+        !! NParticles
+        if (derived%Nparticles < 0) then
+            write (*, *) "ERROR: Nparticles can not be negative."
+            stop 1
+        end if
+        derived%use_particles = derived%Nparticles > 0
+
+        !! Forces
+        if (derived%Nmoons == 0) then
+            derived%use_stokes_with_moons = .False. ! Deactivaet stokes
+            derived%use_drag_with_moons = .False. ! Deactivate drag
+            derived%use_moon_gravity = .False.  ! Deactivate self gravity
+            derived%use_merge_massive = .False.  ! Deactivate merges
+            derived%use_stop_no_moon_left = .False. ! Deactivate Stops
+        end if
+
+        ! Merges
+        if (derived%Nparticles == 0) then
+            derived%use_merge_part_mass = .False.  ! Deactivate merges
+            derived%use_stop_no_part_left = .False.  ! Deactivate Stops
+        end if
+             
+        derived%use_any_merge = derived%use_merge_part_mass .or. derived%use_merge_massive
+        derived%use_any_stop = derived%use_stop_no_part_left .or. derived%use_stop_no_moon_left
+        
+        ! Second surface check: No more than 1 particle/moon
+        if (derived%use_surface .and. derived%Nactive > 2) then
+            write (*, *) "ERROR: Surface section is available with a single moon/particle."
+            stop 1
+        end if
+
+        ! First sinodic check: If sinodic, no moon
+        if (derived%use_sinodic .and. derived%Nmoons > 0) then
+            write (*, *) "ERROR: Sinodic system is available for systems with particles only."
+            stop 1
+        end if
+
+    end subroutine set_derived_parameters_post_bodies
 
     ! Define IO pointers
     subroutine define_writing_pointers(simu)
@@ -1942,10 +1953,11 @@ contains
     end subroutine update_sim_Nactive
 
     ! Update forces and constant arrays data
-    subroutine update_forces_and_constants(sistema)
+    subroutine update_forces_and_constants(simu, sistema)
         implicit none
+        type(sim_params_st), intent(in) :: simu
         type(system_st), intent(in) :: sistema
-        if (sim%use_merge_massive) asteroid_data(3) = sistema%asteroid%inertia
+        if (simu%use_merge_massive) asteroid_data(3) = sistema%asteroid%inertia
         if (sistema%asteroid%boulder_z%active) call update_boulder_z(sistema%asteroid%boulder_z%mass)
     end subroutine update_forces_and_constants
 
@@ -2044,9 +2056,10 @@ contains
     end subroutine do_not_write_ch
 
     ! FILTERING
-    subroutine apply_filter(y_nvalues, syst_pre_filter, syst_filtered, el_filtered)
+    subroutine apply_filter(simu, y_nvalues, syst_pre_filter, syst_filtered, el_filtered)
         use bodies, only: get_Nactive, copy_objects, update_system_from_array, update_elements, moon_st, particle_st
         implicit none
+        type(sim_params_st), intent(in) :: simu
         integer(kind=4), intent(in) :: y_nvalues
         type(system_st), intent(in) :: syst_pre_filter
         type(system_st), intent(inout) :: syst_filtered
@@ -2070,7 +2083,7 @@ contains
         do i = 1, filter%size
             weigth = filter%kernel(i)
             call update_system_from_array(syst_filtered, filter%tmp_times(i), filter%tmp_values(:y_nvalues, i))
-            call update_elements(syst_filtered, sim%reference_frame)
+            call update_elements(syst_filtered, simu%reference_frame)
 
             ! Theta
             cos_th = cos_th + cos(syst_filtered%asteroid%theta)*weigth
@@ -2131,7 +2144,7 @@ contains
         do j = 1, nbodies
             idx = 4*j - 1  ! From derivates
             ! e ?
-            if (sim%filter_use_KH) then
+            if (simu%filter_use_KH) then
                 el_filtered(idx + 1) = sqrt(cos_an(j, 2)*cos_an(j, 2) + sin_an(j, 2)*sin_an(j, 2))
             end if
             ! M
@@ -2147,9 +2160,10 @@ contains
 
     ! SPECIFIC subroutines to avoid writing the same lines of code
 
-    subroutine generate_output(syst, filtered)
+    subroutine generate_output(simu, syst, filtered)
         use bodies, only: write_diagnostics
         implicit none
+        type(sim_params_st), intent(in) :: simu
         type(system_st), intent(in) :: syst
         logical, intent(in), optional :: filtered
         integer(kind=4) :: i, pind, pout
@@ -2177,7 +2191,7 @@ contains
         !$OMP END DO NOWAIT
         !$OMP SECTIONS
         !$OMP SECTION
-        if (sim%use_diagnostics) then
+        if (simu%use_diagnostics) then
             call write_diagnostics(initial_system, syst, 6)  ! 6 defaults to std out
         else if (pout == 0) then
             call write_to_screen(syst, 6)  ! 6 defaults to std out
@@ -2201,19 +2215,20 @@ contains
 
     end subroutine generate_output
 
-    subroutine check_esc_and_col(syst, unit_out)
+    subroutine check_esc_and_col(simu, syst, unit_out)
         use bodies, only: resolve_collisions, resolve_escapes
         implicit none
+        type(sim_params_st), intent(in) :: simu
         type(system_st), intent(inout) :: syst
         integer(kind=4), intent(in) :: unit_out
 
         ! Apply colissions and check
-        call resolve_collisions(syst, sim%min_distance, unit_out)
-        call check_after_col(syst, sim, keep_integrating)
+        call resolve_collisions(syst, simu%min_distance, unit_out)
+        call check_after_col(syst, simu, keep_integrating)
 
         ! Apply escapes and check
-        call resolve_escapes(syst, sim%max_distance, unit_out)
-        call check_after_esc(syst, sim, keep_integrating)
+        call resolve_escapes(syst, simu%max_distance, unit_out)
+        call check_after_esc(syst, simu, keep_integrating)
 
     end subroutine check_esc_and_col
     

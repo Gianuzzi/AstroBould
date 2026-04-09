@@ -269,7 +269,7 @@ program main
     
     ! Init derived parameters
     sim%input_params_st = input ! Create sim with input parameters
-    call set_derived_parameters(sim) ! Inicializamos parámetros derivados
+    call set_derived_parameters_pre_bodies(sim) ! Inicializamos parámetros derivados pre bodies
     if (sim%use_screen) then
         unit_file = 6  ! Unit_file to std out (for collisions and escapes)
         if (sim%use_version) call print_version(unit_file, PROGRAM_NAME)
@@ -387,10 +387,14 @@ program main
         deallocate (aux_2D)
     end if
 
+    ! Update parameters post bodies
+    call set_derived_parameters_pre_bodies(sim) ! Inicializamos parámetros derivados pre bodies
+
     ! <> Set and check numbers
     !! Set
     sim%Ntotal = 1 + sim%Nmoons + sim%Nparticles
     call update_sim_Nactive(sim, sim%Nparticles, sim%Nmoons)
+    
 
     !! Check
     if (sim%Ntotal - 1 == 0) then ! No Hay partículas para integrar?
@@ -827,6 +831,7 @@ program main
                 end if
             else
                 write (*, s1r1) " Massive bodies collisional factor:", sim%eta_col
+                print*, sim%use_merge_massive
             end if
             write (*, *) ACHAR(5)
         end if
@@ -1481,7 +1486,7 @@ program main
 
     ! CHECK INITIAL CONDITIONS
     ! Apply colissions/escapes and checks. This is first (only here) bc we want to remove possible duplcates
-    call check_esc_and_col(system, unit_file)
+    call check_esc_and_col(sim, system, unit_file)
 
     ! Update Chaos (triggers update elements)
     if (sim%use_elements) call update_chaos(system, sim%reference_frame)
@@ -1503,7 +1508,7 @@ program main
     end if
 
     ! Output initial conditions
-    call generate_output(system)
+    call generate_output(sim, system)
 
     ! Update Nactive and y_nvalues if necessary
     call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -1599,12 +1604,12 @@ program main
             if (sim%use_geometricfile) call update_chaos_geometric(system)
 
             ! Apply escapes and colissions and check
-            call check_esc_and_col(system, unit_file)
+            call check_esc_and_col(sim, system, unit_file)
 
             ! Output and Update j; only if not premature
             if (.not. is_premature_exit) then
                 if (checkpoint_is_output(j) .and. (j > last_output)) then
-                    call generate_output(system)
+                    call generate_output(sim, system)
                     last_output = j
                 end if
                 j = j + 1
@@ -1691,7 +1696,7 @@ program main
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                 ! Apply escapes and colissions and check
-                call check_esc_and_col(system, unit_file)
+                call check_esc_and_col(sim, system, unit_file)
 
                 ! Update Nactive and y_nvalues if necessary
                 call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -1769,7 +1774,7 @@ program main
             end do
 
             ! Create filtered and do post-processing
-            call apply_filter(y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
+            call apply_filter(sim, y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
             call update_system_from_elements(system_filtered, &
                                             & checkpoint_times(first_idx_yes_filter), &
                                             & elem_filtered, &
@@ -1777,7 +1782,7 @@ program main
             ! Update Chaos (triggers update elements)
             call update_chaos(system_filtered, sim%reference_frame)
             ! Filtered output
-            call generate_output(system_filtered, .True.)
+            call generate_output(sim, system_filtered, .True.)
 
             ! =======> SECOND STEP <==========
 
@@ -1842,12 +1847,12 @@ program main
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                 ! Apply escapes and colissions and check
-                call check_esc_and_col(system, unit_file)
+                call check_esc_and_col(sim, system, unit_file)
 
                 ! Output and Update j; only if not premature
                 if (.not. is_premature_exit) then
                     if (checkpoint_is_output(j) .and. (j > last_output)) then
-                        call generate_output(system)
+                        call generate_output(sim, system)
                         last_output = j
                     end if
                     j = j + 1
@@ -1966,7 +1971,7 @@ program main
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                     ! Apply escapes and colissions and check
-                    call check_esc_and_col(system, aux_int)
+                    call check_esc_and_col(sim, system, aux_int)
 
                     ! Update Nactive and y_nvalues if necessary
                     call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -2044,7 +2049,7 @@ program main
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                     ! Apply escapes and colissions and check
-                    call check_esc_and_col(system, unit_file)
+                    call check_esc_and_col(sim, system, unit_file)
 
                     ! Update Nactive and y_nvalues if necessary
                     call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -2148,7 +2153,7 @@ program main
             end do
 
             ! Create filtered
-            call apply_filter(y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
+            call apply_filter(sim, y_nvalues, system, system_filtered, elem_filtered(:y_nvalues))
             call update_system_from_elements(system_filtered, &
                                         & checkpoint_times(next_filter), &
                                         & elem_filtered, &
@@ -2156,7 +2161,7 @@ program main
             ! Update Chaos (triggers update elements)
             call update_chaos(system_filtered, sim%reference_frame)
             ! Filtered output
-            call generate_output(system_filtered, .True.)
+            call generate_output(sim, system_filtered, .True.)
 
 
             ! =============> Get to the filter checkpoint itself (with output) and process it <=============
@@ -2216,12 +2221,12 @@ program main
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                 ! Apply escapes and colissions and check
-                call check_esc_and_col(system, unit_file)
+                call check_esc_and_col(sim, system, unit_file)
 
                 ! Update j and Output
                 if (.not. is_premature_exit) then
                     if (checkpoint_is_output(j) .and. (j > last_output)) then
-                        call generate_output(system)
+                        call generate_output(sim, system)
                         last_output = j
                     end if
                     j = j + 1
@@ -2330,7 +2335,7 @@ program main
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                 ! Apply escapes and colissions and check
-                call check_esc_and_col(system, aux_int)
+                call check_esc_and_col(sim, system, aux_int)
 
                 ! Update Nactive and y_nvalues if necessary
                 call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -2341,7 +2346,7 @@ program main
                 ! Update j and Output
                 if (.not. is_premature_exit) then
                     if (checkpoint_is_output(j) .and. (j > last_output)) then
-                        call generate_output(system)
+                        call generate_output(sim, system)
                         last_output = j
                     end if
                     j = j + 1
@@ -2406,7 +2411,7 @@ program main
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                 ! Apply escapes and colissions and check
-                call check_esc_and_col(system, unit_file)
+                call check_esc_and_col(sim, system, unit_file)
 
                 ! Update Nactive and y_nvalues if necessary
                 call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -2657,10 +2662,10 @@ program main
             if (sim%use_geometricfile) call update_chaos_geometric(system)
 
             ! Apply escapes and colissions and check
-            call check_esc_and_col(system, unit_file)
+            call check_esc_and_col(sim, system, unit_file)
 
             ! Output
-            if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) call generate_output(system)
+            if ((checkpoint_is_output(j)) .and. (.not. is_premature_exit)) call generate_output(sim, system)
 
             ! Percentage output
             if (sim%use_percentage) call percentage(time, sim%final_time)

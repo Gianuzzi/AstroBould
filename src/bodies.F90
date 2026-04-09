@@ -1285,6 +1285,10 @@ contains
 
         Nmoons_active = self%Nmoons_active
         if (Nmoons_active .le. 1) return
+
+        do i = 1, Nmoons_active
+            order(i) = i
+        end do
         
         ! Get order
         call quickargsort(self%moons%mass, order, 1, Nmoons_active)
