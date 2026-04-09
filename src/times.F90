@@ -1,6 +1,6 @@
 !> Module with time and checkpoint calculation routines.
 module times
-    use constants, only: wp, cero, uno, uno2, tini
+    use constants, only: wp, cero, uno, uno2, dos, tini
     use auxiliary, only: quicksort, merge_sort_and_unique
     
     implicit none
@@ -29,9 +29,9 @@ contains
                 stop 1
             end if
             n_out = int((tf - t0)/dt_out) + 1
-            npointsr = real(n_out, kind=wp)
+            npointsr = max(real(n_out, kind=wp), dos)
         else
-            npointsr = real(n_out, kind=wp)
+            npointsr = max(real(n_out, kind=wp), dos)
             dt_out = (tf - t0)/(npointsr - uno)
         end if
 
@@ -154,7 +154,7 @@ contains
         real(wp), intent(in)  :: x
         logical, intent(out) :: b(size(a))
 
-        integer(kind=4) :: ntrue, nkeep, k
+        integer(kind=4) :: ntrue, nkeep, k, i
         integer(kind=4), allocatable :: idx(:)
         real(wp) :: step, pos
 
@@ -165,7 +165,15 @@ contains
         if (ntrue == 0) return
 
         ! indices of TRUE elements
-        idx = pack([(k, k=1,size(a))], a)
+        !idx = pack([(k, k=1,size(a))], a)  ! May generate Stack Overflow
+        allocate(idx(ntrue))
+        k = 0
+        do i = 1, size(a)
+            if (a(i)) then
+                k = k + 1
+                idx(k) = i
+            end if
+        end do
 
         ! how many to keep
         nkeep = int(ntrue * x, kind=4)
