@@ -1,7 +1,7 @@
 !> Module with main derivate function.
 module derivates
     use, intrinsic :: ieee_arithmetic
-    use constants, only: wp, G, cero, uno, uno2, uno3, dos, myepsilon, tini, megno_factor
+    use constants, only: wp, G, cero, uno, uno2, uno3, dos, tini, megno_factor, infinito
     use auxiliary, only: cross2D_z, rotate2D
     use parameters, only: sim, &
                           & asteroid_data, &  !! |axis_a, axis_b, inertia|
@@ -91,6 +91,7 @@ contains
         real(wp) :: mean_movement  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: damp_f, drag_f, stokes_f  ! For extra forces
+        real(wp) :: rcoll, rescape  ! For collision and escape distances
         real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
         real(wp) :: aux_real
 
@@ -143,6 +144,13 @@ contains
             s2th = sin(dos*theta)
         end if
 
+        ! Possible escape distance
+        if (sim%max_distance <= cero) then
+            rescape = infinito  !  do not consider escape if max_distance is not set or negative
+        else 
+            rescape = sim%max_distance
+        end if
+
         !! Moons (massive)
         do j = 2, last_moon
             jdx = get_index(j)
@@ -151,16 +159,16 @@ contains
             !! ASTEROID AND MOON
             dr_vec = coords_M(1:2) - coords_A(1:2)  ! From Asteroid to Moon
             dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-            dr = sqrt(dr2)
 
             ! Check if collision or Escape
-            if ((dr < R_arr(1) + R_arr(j)) .or. &
-              & (dr < sim%min_distance) .or. &
-              & (dr > sim%max_distance .and. sim%max_distance > cero)) then
+            rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
+            if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
                 hard_exit = .True.
+                cycle    ! Skip
             end if
 
-            if (dr < myepsilon) cycle  ! Skip to avoid NaNs
+            ! Distance
+            dr = sqrt(dr2)
 
             ! Extra needed
             Gmj = G*m_arr(j)
@@ -282,16 +290,16 @@ contains
             !! ASTEROID AND PARTICLE
             dr_vec = coords_P(1:2) - coords_A(1:2)  ! From Asteroid to Particle
             dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-            dr = sqrt(dr2)
 
             ! Check if collision or Escape
-            if ((dr < R_arr(1) + R_arr(j)) .or. &
-              & (dr < sim%min_distance) .or. &
-              & (dr > sim%max_distance .and. sim%max_distance > cero)) then
+            rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
+            if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
                 hard_exit = .True.
+                cycle    ! Skip
             end if
 
-            if (dr < myepsilon) cycle  ! Skip to avoid NaNs
+            ! Distance
+            dr = sqrt(dr2)
 
             ! Extra needed
             inv_dr3 = uno/(dr2*dr)
@@ -307,6 +315,7 @@ contains
                 if (((xy_rotated(1)+ R_arr(j))/asteroid_data(1))**2 &
                 & + ((xy_rotated(2)+ R_arr(j))/asteroid_data(2))**2 < uno) then
                     hard_exit = .True.
+                    cycle  ! Skip
                 end if
 
                 ! Extra needed
@@ -522,12 +531,16 @@ contains
                 !! BOULDER AND MOON
                 dr_vec = coords_M(1:2) - boulders_coords(0, 1:2)  ! From Boulder 0 (primary) to Moon
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                dr = sqrt(dr2)
-
-                if (dr < myepsilon) cycle  ! Skip to avoid NaNs
 
                 ! Check if collision
-                if (dr < boulders_data(0, 2) + R_arr(j)) hard_exit = .True.
+                rcoll = boulders_data(0, 2) + R_arr(j)
+                if (dr2 < rcoll*rcoll) then
+                    hard_exit = .True.
+                    cycle  ! Skip
+                end if
+
+                ! Distance
+                dr = sqrt(dr2)
 
                 ! Gravitational acceleration of moon j by boulder 0 (and possible J2)
                 if (use_manual_J2_from_primary) then  
@@ -560,12 +573,16 @@ contains
                 !! BOULDER AND PARTICLE
                 dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)  ! From Boulder 0 (primary) to Particle
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                dr = sqrt(dr2)
-
-                if (dr < myepsilon) cycle  ! Skip to avoid NaNs
-
+                
                 ! Check if collision
-                if (dr < boulders_data(0, 2) + R_arr(j)) hard_exit = .True.
+                rcoll = boulders_data(0, 2) + R_arr(j)
+                if (dr2 < rcoll*rcoll) then
+                    hard_exit = .True.
+                    cycle  ! Skip
+                end if
+
+                ! Distance
+                dr = sqrt(dr2)
 
                 ! Gravitational acceleration of particle j by boulder 0 (and possible J2)
                 if (use_manual_J2_from_primary) then  
@@ -649,12 +666,16 @@ contains
                     !! BOULDER AND MOON
                     dr_vec = coords_M(1:2) - boulders_coords(i, 1:2)  ! From Boulder i (primary) to Moon
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    dr = sqrt(dr2)
-
-                    if (dr < myepsilon) cycle  ! Skip to avoid NaNs
-
+                    
                     ! Check if collision
-                    if (dr < boulders_data(i, 2) + R_arr(j)) hard_exit = .True.
+                    rcoll = boulders_data(i, 2) + R_arr(j)
+                    if (dr2 < rcoll*rcoll) then
+                        hard_exit = .True.
+                        cycle  ! Skip
+                    end if
+
+                    ! Distance
+                    dr = sqrt(dr2)
 
                     ! Gravitational acceleration of moon j by boulder i
                     acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G mi (x, y) / r³
@@ -679,12 +700,16 @@ contains
                     !! BOULDER AND PARTICLE
                     dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)  ! From Boulder i (primary) to Particle
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    dr = sqrt(dr2)
-
-                    if (dr < myepsilon) cycle  ! Skip to avoid NaNs
-
+                    
                     ! Check if collision
-                    if (dr < boulders_data(i, 2) + R_arr(j)) hard_exit = .True.
+                    rcoll = boulders_data(i, 2) + R_arr(j)
+                    if (dr2 < rcoll*rcoll) then
+                        hard_exit = .True.
+                        cycle  ! Skip
+                    end if
+
+                    ! Distance
+                    dr = sqrt(dr2)
 
                     ! Gravitational acceleration of particle j by boulder i
                     acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G mi (x, y) / r³
@@ -725,12 +750,16 @@ contains
                 !! MOON AND PARTICLE
                 dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon i (M) to Particle j (P)
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                dr = sqrt(dr2)
-
-                if (dr < myepsilon) cycle  ! Skip to avoid NaNs
-
+                
                 ! Check if collision
-                if (dr < R_arr(i) + R_arr(j)) hard_exit = .True.
+                rcoll = R_arr(i) + R_arr(j)
+                if (dr2 < rcoll*rcoll) then
+                    hard_exit = .True.
+                    cycle  ! Skip
+                end if
+
+                ! Distance
+                dr = sqrt(dr2)
 
                 ! Auxiliar
                 aux_real = -G*m_arr(i)/(dr2*dr)
@@ -767,12 +796,16 @@ contains
                     !! MOON 1 (M) AND MOON 2 (P)
                     dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon i (M) to Moon j (P)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    dr = sqrt(dr2)
-
-                    if (dr < myepsilon) cycle  ! Skip to avoid NaNs
-
+                    
                     ! Check if collision
-                    if (dr < R_arr(i) + R_arr(j)) hard_exit = .True.
+                    rcoll = R_arr(i) + R_arr(j)
+                    if (dr2 < rcoll*rcoll) then
+                        hard_exit = .True.
+                        cycle  ! Skip
+                    end if
+
+                    ! Distance
+                    dr = sqrt(dr2)
 
                     ! Moons acceleration per unit mass
                     acc_grav_m = G*dr_vec/(dr2*dr)  !! G (x, y) / r³
@@ -789,7 +822,7 @@ contains
 
         ! Fourth, particles to particles (if requested, for collisions)
         if (sim%use_collisions_part) then
-            do i = first_particle, N_total - 1
+            part2part: do i = first_particle, N_total - 1
                 idx = get_index(i)
                 coords_M = y(idx:idx + 3)  ! Particle i (M)
 
@@ -801,13 +834,17 @@ contains
                     !! PARTICLE 1 (P) AND PARTICLE 2 (M)
                     dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Particle i (P) to Particle j (M)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    dr = sqrt(dr2)
-
-                    if (dr < (R_arr(i) + R_arr(j))) hard_exit = .True.
+                    
+                    ! Check if collision
+                    rcoll = R_arr(i) + R_arr(j)
+                    if (dr2 < rcoll*rcoll) then
+                        hard_exit = .True.
+                        exit part2part  ! Skip and exit loop, no need to check more
+                    end if
 
                 end do
 
-            end do
+            end do part2part
 
         end if
 
@@ -883,6 +920,7 @@ contains
         real(wp) :: mean_movement  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: drag_f, stokes_f  ! For extra forces
+        real(wp) :: rcoll, rescape  ! For collision distance
         real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
         real(wp) :: aux_real
 
@@ -914,6 +952,13 @@ contains
         if (use_stokes) stokes_f = uno2*(uno + tanh(1.e1_wp*(uno - t/stokes_time)))
         if (use_drag) drag_f = uno2*(uno + tanh(1.e1_wp*(uno - t/drag_time)))
 
+        ! Possible escape distance
+        if (sim%max_distance <= cero) then
+            rescape = infinito  !  do not consider escape if max_distance is not set or negative
+        else 
+            rescape = sim%max_distance
+        end if
+
         !! Particles (massless)
         do j = first_particle, N_total
             jdx = get_index(j)
@@ -922,15 +967,16 @@ contains
             !! ASTEROID AND PARTICLE
             dr_vec = coords_P(1:2)  ! From Asteroid to Particle
             dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-            dr = sqrt(dr2)
-
+            
             ! Check if collision or Escape
-            if ((dr < sim%min_distance) .or. &
-              & (dr > sim%max_distance .and. sim%max_distance > cero)) then
+            rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
+            if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
                 hard_exit = .True.
+                cycle    ! Skip
             end if
 
-            if (dr < myepsilon) cycle  ! Skip to avoid NaNs
+            ! Distance
+            dr = sqrt(dr2)
 
             ! Extra needed
             inv_dr3 = uno/(dr2*dr)
@@ -942,7 +988,10 @@ contains
             if (use_ellipsoid) then
 
                 ! Check if inside
-                if ((dr_vec(1)/asteroid_data(1))**2 + (dr_vec(2)/asteroid_data(2))**2 < uno) hard_exit = .True.
+                if ((dr_vec(1)/asteroid_data(1))**2 + (dr_vec(2)/asteroid_data(2))**2 < uno) then
+                    hard_exit = .True.
+                    cycle  ! Skip
+                end if
 
                 ! Extra needed
                 inv_dr2 = inv_dr3*dr
@@ -1104,12 +1153,16 @@ contains
                 !! BOULDER AND PARTICLE
                 dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)  ! From Boulder 0 (primary) to Particle
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                dr = sqrt(dr2)
-
-                if (dr < myepsilon) cycle  ! Skip to avoid NaNs
-
+                
                 ! Check if collision
-                if (dr < boulders_data(0, 2)) hard_exit = .True.
+                rcoll = boulders_data(0, 2) + R_arr(j)
+                if (dr2 < rcoll*rcoll) then
+                    hard_exit = .True.
+                    cycle  ! Skip
+                end if
+
+                ! Distance
+                dr = sqrt(dr2)
 
                 ! Gravitational acceleration of particle j by boulder 0 (and possible J2)
                 if (use_manual_J2_from_primary) then  
@@ -1156,12 +1209,16 @@ contains
                     !! BOULDER AND PARTICLE
                     dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)  ! From Boulder i (primary) to Particle
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    dr = sqrt(dr2)
-
-                    if (dr < myepsilon) cycle  ! Skip to avoid NaNs
-
+                    
                     ! Check if collision
-                    if (dr < boulders_data(i, 2)) hard_exit = .True.
+                    rcoll = boulders_data(i, 2) + R_arr(j)
+                    if (dr2 < rcoll*rcoll) then
+                        hard_exit = .True.
+                        cycle  ! Skip
+                    end if
+
+                    ! Distance
+                    dr = sqrt(dr2)
 
                     ! Gravitational acceleration of particle j by boulder i
                     acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G mi (x, y) / r³
@@ -1183,6 +1240,33 @@ contains
                 end do
             
             end do
+
+        end if
+
+        ! Particles to particles (if requested, for collisions)
+        if (sim%use_collisions_part) then
+            part2part: do i = first_particle, N_total - 1
+                idx = get_index(i)
+                coords_P = y(idx:idx + 3)  ! Particle i (P)
+
+                !! Other Particles (massless)
+                do j = i + 1, N_total
+                    jdx = get_index(j)
+
+                    !! PARTICLE 1 (P) AND PARTICLE 2 (M)
+                    dr_vec = y(jdx:jdx + 1) - coords_P(1:2)  ! From Particle i (M) to Particle j (P)
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                    
+                    ! Check if collision
+                    rcoll = R_arr(i) + R_arr(j)
+                    if (dr2 < rcoll*rcoll) then
+                        hard_exit = .True.
+                        exit part2part  ! Skip and exit loop, no need to check more
+                    end if
+
+                end do
+
+            end do part2part
 
         end if
 

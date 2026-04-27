@@ -25,6 +25,7 @@ module constants
     real(wp), parameter :: degree = uno/radian
     real(wp), parameter :: infinito = 1.0e50_wp  ! Infinito
     real(wp), parameter :: myepsilon = epsilon(1.0_wp) ! Precisión / Error [Usado en elem y coord]
+    real(wp), parameter :: myepsilon2 = myepsilon*myepsilon ! myepsilon al cuadrado
     real(wp), parameter :: sqepsilon = sqrt(myepsilon) ! Error usado para checkeos
     real(wp), parameter :: tini = tiny(1.0_wp) ! Lowest value to compare
     real(wp), parameter :: unit_mass = 1.e0_wp   ! in [kg]

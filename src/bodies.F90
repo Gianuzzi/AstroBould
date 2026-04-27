@@ -1,6 +1,6 @@
 !> Module with System, Asteroid, Moons, and Particles structures and routines
 module bodies
-    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, sqepsilon, tini, infinito, &
+    use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, myepsilon2, sqepsilon, tini, infinito, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, degree, megno_factor
     use celestial, only: get_a_corot, get_acc_and_pot_single, get_acc_and_pot_single_with_J2, elem, coord, coord2geom
     use auxiliary, only: quickargsort, quickargsort_int, rotate2D
@@ -80,7 +80,6 @@ module bodies
     type :: particle_st
         logical :: active  ! Whether this particle is active (orbiting) or not
         integer(kind=4) :: id = -1  ! Identifier
-        real(wp) :: radius = cero  ! Radius (for collision purposes)
         real(wp) :: dist_to_cm = cero  ! Distance to origin
         real(wp), dimension(4) :: coordinates = cero  ! x, y vx, vy
         real(wp), dimension(4) :: elements = cero  ! a, e, M, w  [config]
@@ -94,7 +93,8 @@ module bodies
 
     type, extends(particle_st) :: moon_st
         real(wp) :: mu_to_asteroid = cero ! Mass ratio to asteroid  [config]
-        real(wp) :: mass = cero  ! Masa
+        real(wp) :: mass = cero  ! Mass
+        real(wp) :: radius = cero  ! Radius
         real(wp) :: inertia = cero  ! Inertia moment
         real(wp) :: ang_mom_orb = cero  ! Orbital angular momentum [dynamic]
         real(wp) :: ang_mom_rot = cero  ! Rotational angular momentum [dynamic] (Just for conservation)
@@ -126,6 +126,7 @@ module bodies
         type(moon_st), allocatable :: moons(:)
         integer(kind=4) :: Nparticles = 0
         integer(kind=4) :: Nparticles_active = 0
+        real(wp) :: particles_radius = cero
         type(particle_st), allocatable :: particles(:)
         type(megno_st) :: megno
         integer(kind=4) :: reference_frame = 0  ! Just to have an idea. 0:B, 1:J, 2:A
@@ -334,10 +335,10 @@ contains
         end if
     end subroutine add_moon
 
-    subroutine add_particle(self, ele_a, ele_e, ele_M, ele_w, mmr, radius, id_start)
+    subroutine add_particle(self, ele_a, ele_e, ele_M, ele_w, mmr, id_start)
         implicit none
         type(particle_st), dimension(:), intent(inout) :: self
-        real(wp), intent(in) :: ele_a, ele_e, ele_M, ele_w, mmr, radius
+        real(wp), intent(in) :: ele_a, ele_e, ele_M, ele_w, mmr
         integer(kind=4), intent(in), optional :: id_start
         integer(kind=4) :: i
         integer(kind=4) :: id0 = 0  ! Where to start using IDs from (first is 1)
@@ -358,7 +359,6 @@ contains
                 self(i)%elements(3) = ele_M
                 self(i)%elements(4) = ele_w
                 self(i)%mmr = mmr
-                self(i)%radius = radius
                 slot_found = .True.
                 exit
             end if
@@ -823,7 +823,7 @@ contains
         real(wp), intent(out) :: energy, ang_mom, inertia
         real(wp) :: e_pot
         integer(kind=4) :: i, j
-        real(wp) :: dr(2), dist
+        real(wp) :: dr(2), dist, dist2
 
         ! Asteroid energy and ang_mom are obtaines considering a rigid body
 
@@ -837,17 +837,19 @@ contains
         !! Asteroid (with moons)
         do i = 1, self%Nmoons_active
             dr = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)
-            dist = sqrt(dr(1)*dr(1) + dr(2)*dr(2))
+            dist2 = dr(1)*dr(1) + dr(2)*dr(2)
+            if (dist2 < myepsilon2) cycle
+            dist = sqrt(dist2)
             inertia = inertia + self%moons(i)%mass*dist*dist
-            if (dist < myepsilon) cycle
             e_pot = e_pot - (self%asteroid%mass*self%moons(i)%mass)/dist
         end do
         !! Moons (here, only moons with moons are added)
         do i = 1, self%Nmoons_active - 1
             do j = 2, self%Nmoons_active
                 dr = self%moons(j)%coordinates(1:2) - self%moons(i)%coordinates(1:2)
-                dist = sqrt(dr(1)*dr(1) + dr(2)*dr(2))
-                if (dist < myepsilon) cycle
+                dist2 = dr(1)*dr(1) + dr(2)*dr(2)
+                if (dist2 < myepsilon2) cycle
+                dist = sqrt(dist2)
                 e_pot = e_pot - (self%moons(i)%mass*self%moons(j)%mass)/dist
             end do
             !! Energy and Ang Mom (TBD: Last moon)
@@ -1180,12 +1182,13 @@ contains
     end subroutine init_system
 
     ! Set extra system parameters
-    pure subroutine set_system_extra(self, time, eta_collision, f_collision, manual_J2, J2_from_primary)
+    pure subroutine set_system_extra(self, time, eta_collision, f_collision, manual_J2, J2_from_primary, radius_particles)
         implicit none
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: time
         real(wp), intent(in) :: eta_collision, f_collision, manual_J2
         logical, intent(in) :: J2_from_primary
+        real(wp), intent(in) :: radius_particles
 
         ! Initial time. Set TIME
         self%time = time
@@ -1200,6 +1203,9 @@ contains
                 self%asteroid%primary%C20 = -manual_J2  ! C20 = -J2
             end if
         end if
+
+        ! Set Radius particles
+        self%particles_radius = radius_particles
 
     end subroutine set_system_extra
 
@@ -1704,7 +1710,7 @@ contains
             st = sin(self%asteroid%theta)
             do i = 1, self%Nparticles_active
                 mass_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
-                radius_arr(self%Nmoons_active + i + 1) = self%particles(i)%radius
+                radius_arr(self%Nmoons_active + i + 1) = self%particles_radius
                 ! --- subtract Ω × r_I ---
                 aux_real2(1) = self%particles(i)%coordinates(3) + self%asteroid%omega * self%particles(i)%coordinates(2)
                 aux_real2(2) = self%particles(i)%coordinates(4) - self%asteroid%omega * self%particles(i)%coordinates(1)
@@ -1718,7 +1724,7 @@ contains
         else
             do i = 1, self%Nparticles_active
                 mass_arr(self%Nmoons_active + i + 1) = cero  ! Needed ?
-                radius_arr(self%Nmoons_active + i + 1) = self%particles(i)%radius
+                radius_arr(self%Nmoons_active + i + 1) = self%particles_radius
                 array(idx:idx + 3) = self%particles(i)%coordinates
                 idx = idx + 4
             end do
@@ -2229,7 +2235,7 @@ contains
         real(wp) :: mi, mj
         real(wp) :: ri(2), rj(2)
         real(wp) :: vi(2), vj(2)
-        real(wp) :: dr_vec(2), dr, dr_ver(2)
+        real(wp) :: dr_vec(2), dr, dr2, dr_ver(2)
         real(wp) :: dv_vec(2), dv2
         real(wp) :: dv_rad
         real(wp) :: Li_orb, Lj_orb
@@ -2253,10 +2259,13 @@ contains
 
         ! Relative attrs
         dr_vec = ri - rj  ! Relative pos
-        dr = sqrt(dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2))  ! Distance
+        dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
 
         ! Skip if not touching
-        if (dr .gt. (self%moons(j)%radius + self%moons(i)%radius)) return ! Nothing to do
+        if (dr2 .gt. (self%moons(j)%radius + self%moons(i)%radius)**2) return ! Nothing to do
+
+        ! Distance
+        dr = sqrt(dr2)  
 
         ! Relative position versor
         dr_ver = dr_vec/dr
@@ -2452,7 +2461,7 @@ contains
         real(wp) :: L_orb
         real(wp) :: ri(2), rj(2)
         real(wp) :: vi(2), vj(2)
-        real(wp) :: dr_vec(2), dr, dr_ver(2)
+        real(wp) :: dr_vec(2), dr, dr2, dr_ver(2)
         real(wp) :: dv_vec(2)
         real(wp) :: v_mean, v_diff
         real(wp) :: dv_rad
@@ -2477,10 +2486,13 @@ contains
 
         ! Relative attrs
         dr_vec = ri - rj  ! Relative pos
-        dr = sqrt(dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2))  ! Distance
+        dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
 
         ! Skip if not touching
-        if (dr .gt. (self%particles(j)%radius + self%particles(i)%radius)) return ! Nothing to do
+        if (dr2 .gt. 4*self%particles_radius**2) return ! Nothing to do
+
+        ! Distance
+        dr = sqrt(dr2)
 
         ! Relative position versor
         dr_ver = dr_vec/dr
@@ -2496,7 +2508,7 @@ contains
         ! Are they already moving appart ?
         if (dv_rad > cero) then
             ! Push apart proportionally to masses
-            overlap = self%particles(i)%radius + self%particles(j)%radius - dr
+            overlap = 2 * self%particles_radius - dr
             if (overlap > cero) then
 
                 corr = uno2 * overlap
@@ -2550,7 +2562,7 @@ contains
         vjn_new = v_mean + (uno - self%eta_col)*v_diff
 
         ! --- Position correction ---
-        overlap = self%particles(i)%radius + self%particles(j)%radius  - dr
+        overlap = 2 * self%particles_radius - dr
         if (overlap > cero) then
             corr = uno2 * overlap
             new_rvi(1:2) = ri + corr*dr_ver
@@ -2610,7 +2622,7 @@ contains
         integer(kind=4) :: outcome
         real(wp) :: boul_pos(2), moon_pos(2)
         real(wp) :: boul_rad, moon_rad
-        real(wp) :: dr_vec(2), dr
+        real(wp) :: dr_vec(2), dr2, coll_dist2
         real(wp) :: xy_rotated(2), dx, dy  ! For ellipsoid
         logical :: again, do_write, was_any_moon_something
 
@@ -2657,8 +2669,8 @@ contains
                     boul_rad = self%asteroid%primary%radius
                     do i = m_act, 1, -1  ! Backwards loop
                         dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
-                        dr = sqrt(dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2))  ! Distance
-                        if (dr .le. boul_rad + self%moons(i)%radius) then
+                        dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
+                        if (dr2 .le. (boul_rad + self%moons(i)%radius)**2) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
                             was_any_moon_something = .True.
@@ -2685,8 +2697,8 @@ contains
                     boul_rad = self%asteroid%boulders(j)%radius
                     do i = m_act, 1, -1  ! Backwards loop
                         dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
-                        dr = sqrt(dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2))  ! Distance
-                        if (dr .le. boul_rad + self%moons(i)%radius) then
+                        dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
+                        if (dr2 .le. (boul_rad + self%moons(i)%radius)**2) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
                         end if
@@ -2697,8 +2709,8 @@ contains
 
                 do i = m_act, 1, -1  ! Backwards loop
                     dr_vec = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
-                    dr = sqrt(dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2))  ! Distance
-                    if (dr .le. r_min + self%moons(i)%radius) then
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
+                    if (dr2 .le. (r_min + self%moons(i)%radius)**2) then
                         if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                         call merge_moon_i_into_ast(self, i)
                         was_any_moon_something = .True.
@@ -2740,10 +2752,11 @@ contains
             moon_pos = self%moons(j)%coordinates(1:2)
             moon_rad = self%moons(j)%radius
             moon_id = self%moons(j)%id
+            coll_dist2 = (moon_rad + self%particles_radius)**2
             do i = p_act, 1, -1  ! Backwards loop
                 dr_vec = self%particles(i)%coordinates(1:2) - moon_pos  ! Relative pos
-                dr = sqrt(dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2))  ! Distance
-                if (dr .le. moon_rad + self%particles(i)%radius) then
+                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
+                if (dr2 .le. coll_dist2) then
                     if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, "(", self%particles(i)%id, ") into moon ", &
                                     & j, "(", self%moons(j)%id, ")."
                     self%particles(i)%merged_to = moon_id  ! Set where merged to
@@ -2760,10 +2773,11 @@ contains
             boul_pos = self%asteroid%primary%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
             if (self%asteroid%primary%is_sphere) then  ! Sphere
                 boul_rad = self%asteroid%primary%radius
+                coll_dist2 = (boul_rad + self%particles_radius)**2
                 do i = p_act, 1, -1  ! Backwards loop
                     dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
-                    dr = sqrt(dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2))  ! Distance
-                    if (dr .le. boul_rad + self%particles(i)%radius) then
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
+                    if (dr2 .le. coll_dist2) then
                         if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, &
                                                             & "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
@@ -2790,10 +2804,11 @@ contains
             do j = 1, self%asteroid%Nboulders
                 boul_pos = self%asteroid%boulders(j)%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
                 boul_rad = self%asteroid%boulders(j)%radius
+                coll_dist2 = (boul_rad + self%particles_radius)**2
                 do i = p_act, 1, -1  ! Backwards loop
                     dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
-                    dr = sqrt(dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2))  ! Distance
-                    if (dr .le. boul_rad + self%particles(i)%radius) then
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
+                    if (dr2 .le. coll_dist2) then
                         if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, &
                                                             & "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
@@ -2803,11 +2818,12 @@ contains
             end do
 
         else ! Check only if distance to asteroid is lower than r_min
-
+            
+            coll_dist2 = (r_min + self%particles_radius)**2
             do i = p_act, 1, -1  ! Backwards loop
                 dr_vec = self%particles(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
-                dr = sqrt(dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2))  ! Distance
-                if (dr .le. r_min + self%particles(i)%radius) then
+                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
+                if (dr2 .le. coll_dist2) then
                     if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, "(", self%particles(i)%id, ") into asteroid."
                     self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
                     call deactivate_particle_i(self, i)  ! Deactivate
@@ -2989,7 +3005,7 @@ contains
             & self%particles(i)%elements(4)*degree, &  ! w
             & self%particles(i)%mmr, &  ! MMR
             & cero, &  ! mass
-            & self%particles(i)%radius/unit_dist, &  ! radius
+            & self%particles_radius/unit_dist, &  ! radius
             & self%particles(i)%dist_to_cm/unit_dist, &  ! distance
             & self%particles(i)%chaos%a/unit_dist, &  ! da
             & self%particles(i)%chaos%e, & ! de
@@ -3121,7 +3137,7 @@ contains
             & self%particles(i)%coordinates(1:2)/unit_dist, &  ! x y
             & self%particles(i)%coordinates(3:4)/unit_vel, &  ! vx vy
             & self%particles(i)%chaos%megno, &  ! megno
-            & self%particles(i)%radius/unit_dist  ! radius
+            & self%particles_radius/unit_dist  ! radius
     end subroutine write_particle_i_coor
 
     ! Write coordinates ALL
@@ -3282,7 +3298,7 @@ contains
             & initial%particles(i_initial)%elements(4)*degree, &  ! w
             & initial%particles(i_initial)%mmr, &   ! MMR
             & cero, &  ! mass
-            & initial%particles(i_initial)%radius/unit_dist, &  ! radius
+            & initial%particles_radius/unit_dist, &  ! radius
             & actual%asteroid%theta*degree, &  ! theta
             & actual%asteroid%omega*unit_time, &  ! omega
             & actual%particles(i)%elements(1)/unit_dist, &  ! a
@@ -3291,7 +3307,7 @@ contains
             & actual%particles(i)%elements(4)*degree, &  ! w
             & actual%particles(i)%mmr, &   ! MMR
             & cero, &  ! mass
-            & actual%particles(i)%radius/unit_dist, &  ! radius
+            & actual%particles_radius/unit_dist, &  ! radius
             & actual%particles(i)%chaos%a/unit_dist, &  ! da
             & actual%particles(i)%chaos%e, & ! de
             & actual%particles(i)%chaos%megno ! MEGNO
@@ -3381,7 +3397,7 @@ contains
             & self%particles(i)%geometric(4)*degree, &  ! w
             & self%particles(i)%mmr_geom, &  ! MMR
             & cero, &  ! mass
-            & self%particles(i)%radius/unit_dist, &  ! radius
+            & self%particles_radius/unit_dist, &  ! radius
             & self%particles(i)%dist_to_cm/unit_dist, &  ! distance
             & self%particles(i)%chaos%a_geom/unit_dist, &  ! da
             & self%particles(i)%chaos%e_geom, & ! de
@@ -3501,7 +3517,7 @@ contains
             & initial%particles(i_initial)%geometric(4)*degree, &  ! w
             & initial%particles(i_initial)%mmr_geom, &   ! MMR
             & cero, &  ! mass
-            & initial%particles(i_initial)%radius/unit_dist, &  ! radius
+            & initial%particles_radius/unit_dist, &  ! radius
             & actual%asteroid%theta*degree, &  ! theta
             & actual%asteroid%omega*unit_time, &  ! omega
             & actual%particles(i)%geometric(1)/unit_dist, &  ! a
@@ -3510,7 +3526,7 @@ contains
             & actual%particles(i)%geometric(4)*degree, &  ! w
             & actual%particles(i)%mmr_geom, &   ! MMR
             & cero, &  ! mass
-            & actual%particles(i)%radius/unit_dist, &  ! radius
+            & actual%particles_radius/unit_dist, &  ! radius
             & actual%particles(i)%chaos%a_geom/unit_dist, &  ! da
             & actual%particles(i)%chaos%e_geom, & ! de
             & actual%particles(i)%chaos%megno ! MEGNO

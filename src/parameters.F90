@@ -71,6 +71,7 @@ module parameters
         logical :: use_moonsfile = .False.
         character(30) :: moonsfile = ""
         ! Particles -
+        real(wp) :: radius_particles = cero
         logical :: use_particlesfile = .False.
         character(30) :: particlesfile = ""
         ! Extra forces/effects -
@@ -231,7 +232,7 @@ module parameters
     ! ----  <<<<<    INITIAL BODIES     >>>>>   -----
     real(wp), dimension(:, :), allocatable :: boulders_in !! mu, radius, theta  | (Nb, 3)
     real(wp), dimension(:, :), allocatable :: moons_in !! mass, a, e, M, w, MMR, radius  | (Nm, 7)
-    real(wp), dimension(:, :), allocatable :: particles_in !! a, e, M, w, MMR, radius  | (Np, 6)
+    real(wp), dimension(:, :), allocatable :: particles_in !! a, e, M, w, MMR  | (Np, 5)
     real(wp) :: cl_body_in(7) = cero  !! mass, a, e, M, w, MMR, radius  | (7)  | COMMAND LINE Input
 
     ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
@@ -861,6 +862,8 @@ contains
                         params%use_moonsfile = .False.
                         params%moonsfile = ""
                     end if
+                case ("particles radiu")
+                    read (value_str, *, iostat=ios) params%radius_particles
                 case ("particles input")
                     if ((to_lower(trim(value_str)) == "n") .or. &
                       & (to_lower(trim(value_str)) == "no")) then
@@ -1313,15 +1316,12 @@ contains
                             if ((auxch1 == "c") .or. (auxch1 == "!")) cycle  ! Skip commented
                             ! Set MMR to 0
                             particles_in(j, 5) = cero
-                            ! Set radius to 0
-                            particles_in(j, 6) = cero
                             read (line, *, iostat=io) &
                                 & particles_in(j, 1), &
                                 & particles_in(j, 2), &
                                 & particles_in(j, 3), &
                                 & particles_in(j, 4), &
-                                & particles_in(j, 5), &
-                                & particles_in(j, 6)
+                                & particles_in(j, 5)
                             if (io /= 0) then
                                 write (*, *) "ERROR: Al leer partícula:", j
                                 stop 1
@@ -1364,7 +1364,6 @@ contains
             write (*, *) "ERROR: Negative time selector must be -1, 0, or 1. Option not recognized:", derived%negative_time_selector
             stop 1
         end if
-
 
         !! Expand checkpoints
         if (derived%extra_checkpoints < 0) then
@@ -1420,6 +1419,9 @@ contains
             derived%triax_b_primary = derived%radius_primary
             derived%triax_c_primary = derived%radius_primary
         end if
+
+        ! Particles radius
+        derived%radius_particles = abs(derived%radius_particles)
 
 
         !! Forces
@@ -1767,7 +1769,7 @@ contains
         !----------------------------------------
         ! Allocate new arrays
         allocate(moons_tmp(Nm, 7))
-        allocate(particles_tmp(Np, 6))
+        allocate(particles_tmp(Np, 5))
 
         !----------------------------------------
         ! Fill arrays
@@ -1786,7 +1788,7 @@ contains
                 moons_tmp(im, :) = moons_in(i, :)
             else
                 ip = ip + 1
-                particles_tmp(ip, :) = moons_in(i, 1:6)
+                particles_tmp(ip, :) = moons_in(i, 1:5)
             end if
         end do
 
@@ -1801,8 +1803,6 @@ contains
     subroutine set_derived_parameters_post_bodies(derived)
         implicit none
         type(sim_params_st), intent(inout) :: derived
-        integer(kind=4) :: i
-        character(:), allocatable :: aux_ch1, aux_ch2
 
         !! NMoons
         if (derived%Nmoons < 0) then
