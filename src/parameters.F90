@@ -414,7 +414,7 @@ contains
             STOP 1
         end if
 
-        allocate (moons_in(Nmoons, 7))  ! FROM 1 to Nmoons
+        allocate (moons_in(Nmoons, 7))  ! FROM 1 to Nmoons, columns: mass, a, e, M, w, MMR, radius
     end subroutine allocate_params_moons
 
     ! Allocate particles params arrays
@@ -427,7 +427,7 @@ contains
             STOP 1
         end if
 
-        allocate (particles_in(Nparticles, 6))  ! FROM 1 to Nparticles
+        allocate (particles_in(Nparticles, 5))  ! FROM 1 to Nparticles, columns: a, e, M, w, MMR
     end subroutine allocate_params_particles
 
     ! 1. Read command line input

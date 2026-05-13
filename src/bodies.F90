@@ -422,13 +422,13 @@ contains
         ! Set Rotations
         self%theta = cero  ! Initial angle with X axis
         self%omega_kep = sqrt(G*self%mass/self%primary%radius**3) ! Keplerian mean motion boulders would have
-        if (abs(lambda_kep) > myepsilon) then
+        if (abs(lambda_kep) > myepsilon) then  ! Allow negative lambda_kep
             self%lambda_kep = lambda_kep
             self%omega = self%omega_kep*self%lambda_kep  ! Angular velocity of primary
-            self%rotational_period = twopi/abs(self%omega) ! Rotational period of primary
-        else if (abs(rotational_period) > myepsilon) then
-            self%rotational_period = abs(rotational_period)
+            self%rotational_period = twopi/abs(self%omega) ! Rotational period of primary (always positive)
+        else if (abs(rotational_period) > myepsilon) then    ! Allow negative rotational_period
             self%omega = (twopi/rotational_period) ! Angular velocity of primary
+            self%rotational_period = abs(rotational_period)  ! Rotational period of primary (always positive)
             self%lambda_kep = self%omega/self%omega_kep ! Ratio of omegas
         else  ! No rotation at all
             self%rotational_period = cero
@@ -627,7 +627,7 @@ contains
         self%theta = modulo(theta, twopi)  ! Update THETA
         if (abs(omega) > myepsilon) then
             self%a_corotation = get_a_corot(self%mass, omega)  ! This is a bit odd now...
-            self%rotational_period = twopi/omega ! Rotational period of primary
+            self%rotational_period = twopi/abs(omega) ! Rotational period of primary (always positive)
             self%lambda_kep = omega/self%omega_kep ! Ratio of omegas
             self%omega = omega  ! Update OMEGA
         else
