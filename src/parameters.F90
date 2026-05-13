@@ -71,7 +71,6 @@ module parameters
         logical :: use_moonsfile = .False.
         character(30) :: moonsfile = ""
         ! Particles -
-        real(wp) :: radius_particles = cero
         logical :: use_particlesfile = .False.
         character(30) :: particlesfile = ""
         ! Extra forces/effects -
@@ -132,14 +131,21 @@ module parameters
         real(wp) :: rmin_bins = -uno ! -1 means first particle (initial)
         real(wp) :: rmax_bins = -uno ! -1 means last particle (initial)
         ! Conditions for Collision/Escape -
+        real(wp) :: radius_particles = cero
         real(wp) :: min_distance = cero
         real(wp) :: max_distance = cero  ! Means no check
         logical :: use_merge_part_mass = .True.
         logical :: use_merge_massive = .True.
+        real(wp) :: eta_col_moon = uno  ! 0: Elastic, 1: Plastic  ! HARD-SPHERE
+        real(wp) :: f_col_moon = cero  ! Bounded: Etot < -f |Epot|  ! HARD-SPHERE
+        logical :: use_part_soft_sphere_col = .False.  ! If yes, soft-sphere collisions are checked between particles at every timestep
+        real(wp) :: kappa_col_part = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
+        real(wp) :: gamma_col_part = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE
+        logical :: use_part_hard_sphere_col = .False.  ! If yes, hard-sphere collisions are checked between particles at every output
+        real(wp) :: eta_col_part = uno  ! 0: Elastic, 1: Plastic  ! HARD-SPHERE
+        real(wp) :: f_col_part = cero  ! Bounded: Etot < -f |Epot|  ! HARD-SPHERE
         logical :: use_stop_no_part_left = .True.
         logical :: use_stop_no_moon_left = .True.
-        real(wp) :: eta_col = uno  ! 0: Elastic, 1: Plastic
-        real(wp) :: f_col = cero  ! Bounded: Etot < -f |Epot|
         ! Manual |(t)imes omega(t) mass_add(t)| file -
         logical :: use_tomfile = .False.
         character(30) :: tomfile = ""
@@ -210,8 +216,6 @@ module parameters
         logical :: update_bins = .False.
         ! Merges
         logical :: use_any_merge = .False.
-        ! Collisions
-        logical :: use_collisions_part = .False.
         ! Stops
         logical :: use_any_stop = .False.
         ! Chaos
@@ -1067,10 +1071,30 @@ contains
                     else
                         params%use_merge_massive = .False.
                     end if
-                case ("collisional eta")
-                    read (value_str, *, iostat=ios) params%eta_col
-                case ("collisional f p")
-                    read (value_str, *, iostat=ios) params%f_col
+                case ("moon-moon eta c")
+                    read (value_str, *, iostat=ios) params%eta_col_moon
+                case ("moon-moon f col")
+                    read (value_str, *, iostat=ios) params%f_col_moon
+                case ("use soft-sphere")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_part_soft_sphere_col = .True.
+                    else
+                        params%use_part_soft_sphere_col = .False.
+                    end if
+                case ("part-part kappa")
+                    read (value_str, *, iostat=ios) params%kappa_col_part
+                case ("part-part gamma")
+                    read (value_str, *, iostat=ios) params%gamma_col_part
+                case ("use hard-sphere")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_part_hard_sphere_col = .True.
+                    else
+                        params%use_part_hard_sphere_col = .False.
+                    end if
+                case ("part-part eta c")
+                    read (value_str, *, iostat=ios) params%eta_col_part
+                case ("part-part f col")
+                    read (value_str, *, iostat=ios) params%f_col_part
                 case ("stop if no part")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_stop_no_part_left = .True.
@@ -1387,7 +1411,7 @@ contains
             else if (derived%triax_b_primary < cero) then
                 write (*, *) "ERROR: Semi-axis 'b' can not be negative"
                 stop 1
-            else if (derived%triax_a_primary .le. cero) then
+            else if (derived%triax_a_primary <=cero) then
                 write (*, *) "ERROR: Semi-axis 'a' must be positive."
                 stop 1
             else if (derived%triax_b_primary > derived%triax_a_primary) then
@@ -1428,7 +1452,7 @@ contains
         !!! stokes_a_damping_time y stokes_e_damping_time
         if (abs(derived%stokes_a_damping_time) < myepsilon) derived%stokes_a_damping_time = cero
         if (abs(derived%stokes_e_damping_time) < myepsilon) derived%stokes_e_damping_time = cero
-        if (derived%stokes_active_time .le. cero) derived%stokes_active_time = infinito
+        if (derived%stokes_active_time <=cero) derived%stokes_active_time = infinito
         if ((abs(derived%stokes_a_damping_time) < myepsilon) .and. &
           & (abs(derived%stokes_e_damping_time) < myepsilon)) derived%use_stokes = .False.
         if (.not. derived%use_stokes) then
@@ -1443,7 +1467,7 @@ contains
             derived%use_drag = .False.
             derived%drag_coefficient = cero
         end if
-        if (derived%drag_active_time .le. cero) derived%drag_active_time = infinito
+        if (derived%drag_active_time <=cero) derived%drag_active_time = infinito
         if (.not. derived%use_drag) then
             derived%drag_coefficient = cero
             derived%drag_active_time = cero
@@ -1451,7 +1475,7 @@ contains
         end if
 
         !!! tau_m y tau_o
-        if (derived%omega_damp_active_time .le. cero) derived%omega_damp_active_time = infinito
+        if (derived%omega_damp_active_time <=cero) derived%omega_damp_active_time = infinito
         derived%use_lin_omega_damp = abs(derived%omega_lin_damping_time) > myepsilon
         derived%use_exp_omega_damp = abs(derived%omega_exp_damping_time) > myepsilon
         derived%use_poly_omega_damp = (abs(derived%omega_exp_damp_poly_A) > myepsilon .or. &
@@ -1486,7 +1510,7 @@ contains
                 derived%manual_J2 = cero
             else if (derived%use_J2_from_primary) then
                 derived%gamma_J2 = uno
-            else if (derived%gamma_J2 .le. cero) then
+            else if (derived%gamma_J2 <=cero) then
                 write (*, *) "ERROR: Parameter gamma for manual J2 must be positive."
                 stop 1
             end if
@@ -1513,11 +1537,11 @@ contains
                 write (*, *) "ERROR: Filter dt must be different than 0."
                 stop 1
             end if
-            if (derived%filter_nsamples .le. 0) then
+            if (derived%filter_nsamples <=0) then
                 write (*, *) "ERROR: Filter n_samples must be greater than 0."
                 stop 1
             end if
-            if (derived%filter_nwindows .le. 0) then
+            if (derived%filter_nwindows <=0) then
                 write (*, *) "ERROR: Filter n_windows must be greater than 0."
                 stop 1
             end if
@@ -1550,16 +1574,6 @@ contains
         !     derived%update_rmax_bins = derived%rmax_bins < - myepsilon
         !     derived%update_bins = derived%update_rmin_bins .or. derived%update_rmax_bins .or. derived%binning_method == 3
         ! end if
-
-        ! Eta and f collitions values
-        if ((derived%eta_col < cero) .or. (derived%eta_col > uno)) then
-            write (*, *) "ERROR: Collisional eta must be between 0 and 1."
-            stop 1
-        end if
-        if ((derived%f_col < cero) .or. (derived%f_col > uno)) then
-            write (*, *) "ERROR: Collisional f must be between 0 and 1."
-            stop 1
-        end if
 
         ! Error
         if (derived%error_digits < 1) then
@@ -1848,14 +1862,69 @@ contains
             stop 1
         end if
 
-        ! Collisions of particles
-        if (derived%Nparticles == 0) then
-            derived%use_collisions_part = .False.
-        else if (derived%eta_col .ge. uno) then
-            derived%use_collisions_part = .False.
-        else
-            derived%use_collisions_part = .True.
+        ! Check Collisions of massive paramters
+        if (derived%Nmoons > 0) then
+            if ((derived%eta_col_moon < cero) .or. (derived%eta_col_moon > uno)) then
+                write (*, *) "ERROR: Collisional eta for moons must be between 0 and 1."
+                stop 1
+            end if
+            if ((derived%f_col_moon < cero) .or. (derived%f_col_moon > uno)) then
+                write (*, *) "ERROR: Collisional f for moons must be between 0 and 1."
+                stop 1
+            end if
         end if
+
+        ! Check Collisions of particle parameters
+        if (derived%Nparticles > 0) then
+            ! Check if radius > 0
+            if ((derived%radius_particles <= cero) .and. &
+            & (derived%use_part_hard_sphere_col .or. derived%use_part_soft_sphere_col)) then
+                write (*, *) "WARNING: Non-positive particle radius. Collisions will be deactivated."
+                derived%eta_col_part = uno  ! Means no check
+                derived%use_part_hard_sphere_col = .False.
+                derived%use_part_soft_sphere_col = .False.
+            end if
+            ! Check Soft Sphere
+            if (derived%use_part_soft_sphere_col) then
+                if ((derived%kappa_col_part < cero) .or. (derived%kappa_col_part > uno)) then
+                    write (*, *) "ERROR: Collisional kappa for particles must be between 0 and 1."
+                    stop 1
+                end if
+                if ((derived%gamma_col_part < cero) .or. (derived%gamma_col_part > uno)) then
+                    write (*, *) "ERROR: Collisional gamma for particles must be between 0 and 1."
+                    stop 1
+                end if
+                if (derived%kappa_col_part < myepsilon) then
+                    derived%use_part_soft_sphere_col = .False.
+                    derived%kappa_col_part = cero
+                    derived%gamma_col_part = cero
+                end if
+            end if
+            ! Check Hard Sphere
+            if (derived%use_part_hard_sphere_col) then
+                if ((derived%eta_col_part < cero) .or. (derived%eta_col_part > uno)) then
+                    write (*, *) "ERROR: Collisional eta for particles must be between 0 and 1."
+                    stop 1
+                end if
+                if ((derived%f_col_part < cero) .or. (derived%f_col_part > uno)) then
+                    write (*, *) "ERROR: Collisional f for particles must be between 0 and 1."
+                    stop 1
+                end if
+            else
+                derived%eta_col_part = uno  ! Means no check
+            end if
+        else
+            derived%eta_col_part = uno  ! Means no check
+            derived%use_part_hard_sphere_col = .False.
+            derived%use_part_soft_sphere_col = .False.
+        end if
+
+        ! Check no megno and hard or soft sphere (particle) collisions
+        if (derived%use_megno .and. (derived%use_part_soft_sphere_col .or. derived%use_part_hard_sphere_col)) then
+            write (*, *) "ERROR: Can not use MEGNO with particle collisions."
+            stop 1
+        end if
+            
 
     end subroutine set_derived_parameters_post_bodies
 

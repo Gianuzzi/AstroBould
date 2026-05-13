@@ -118,8 +118,16 @@ program main
         input%use_merge_massive = .True.   ! Merge massive bodies
 
         !!! Collisions factors
-        input%eta_col = uno  ! 0: Elastic, 1: Plastic
-        input%f_col = uno  ! Bounded: Etot < -f |Epot|
+        !! --- Moons ---  ( HARD-SPHERE )
+        input%eta_col_moon = uno  ! 0: Elastic, 1: Plastic
+        input%f_col_moon = uno  ! Bounded: Etot < -f |Epot|
+        !! --- Particles --- (SOFT-SPHERE and / or HARD-SPHERE)
+        input%use_part_soft_sphere_col = .False. ! If true, they are used at every timestep
+        input%kappa_col_part = cero  ! 0: No bounce, 1: Full bounce.  ! SOFT SPHERE
+        input%gamma_col_part = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE
+        input%use_part_hard_sphere_col = .False. ! If true, they are used at every output
+        input%eta_col_part = uno  ! 0: Elastic, 1: Plastic  ! HARD SPHERE
+        input%f_col_part = uno  ! Bounded: Etot < -f |Epot|  ! HARD SPHERE
 
         !! Stops
         input%use_stop_no_moon_left = .True. ! Stop if no more moons left
@@ -255,7 +263,7 @@ program main
     call load_command_line_arguments(input, use_configfile)
 
     ! Message
-    if ((arguments_number .le. 1) .and. (use_configfile .and. (.not. configfile_exists))) then  ! Global variable
+    if ((arguments_number <=1) .and. (use_configfile .and. (.not. configfile_exists))) then  ! Global variable
         print *, "WARNING: No command line arguments, and configuration file not found/used."
         print *, "¿Do you want to run with in-code set parameters? [y/N]"
         read (*, *) aux_character20
@@ -524,9 +532,10 @@ program main
                     & sim%use_sinodic )                           ! Sinodic frame for particles ?
 
     call set_system_extra(system, cero, &
-                            & sim%eta_col, sim%f_col, &
-                            & sim%manual_J2, sim%use_J2_from_primary, &
-                            & sim%radius_particles*unit_dist)  ! Extra parameters
+                            & sim%eta_col_moon, sim%f_col_moon, &
+                            & sim%eta_col_part, sim%f_col_part, &
+                            & sim%radius_particles*unit_dist, &
+                            & sim%manual_J2, sim%use_J2_from_primary)  ! Extra parameters
 
     ! <<<< Save initial data >>>>
     initial_system = system
@@ -854,25 +863,30 @@ program main
                 write (*, *) "Colliding particles into massive bodies will stop the integration."
             end if
             write (*, *) ACHAR(5)
-            if (sim%use_collisions_part) then
-                sim%use_collisions_part = sim%use_collisions_part .and. sim%radius_particles > cero
+            if (sim%use_part_hard_sphere_col) then
+                write (*, *) "Particle-particle hard-sphere collisions activated."
+                write (*, s1r1) "  Collisional eta (distance) factor:", sim%eta_col_part
+                write (*, s1r1) "  Collisional f (velocity) factor:", sim%f_col_part
             end if
-            if (sim%use_collisions_part) then
-                write (*, *) "Particle-particle collisions activated."
-            else
+            if (sim%use_part_soft_sphere_col) then
+                write (*, *) "Particle-particle soft-sphere collisions activated."
+                write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_part
+                write (*, s1r1) "  Collisional gamma (damping) factor:", sim%gamma_col_part
+            end if
+            if ((.not. sim%use_part_soft_sphere_col) .and. (.not. sim%use_part_hard_sphere_col)) then
                 write (*, *) "Particle-particle collisions deactivated."
             end if
             write (*, *) ACHAR(5)
         end if
         if (sim%use_moons) then
-            if (sim%eta_col == uno) then
+            if (sim%eta_col_moon == uno) then
                 if (sim%use_merge_massive) then
                     write (*, *) "Colliding massive bodies will be merged."
                 else
                     write (*, *) "Colliding massive bodies will stop the integration."
                 end if
             else
-                write (*, s1r1) " Massive bodies collisional factor:", sim%eta_col
+                write (*, s1r1) " Massive bodies collisional factor:", sim%eta_col_moon
                 print*, sim%use_merge_massive
             end if
             write (*, *) ACHAR(5)
@@ -1054,7 +1068,7 @@ program main
     end if
 
     ! Check final time
-    if (sim%final_time .le. cero) then
+    if (sim%final_time <=cero) then
         write (*, *) ACHAR(10)
         write (*, *) "ERROR: tf < 0"
         stop 1
@@ -1576,7 +1590,7 @@ program main
         do first_idx_yes_filter = 2, sim%checkpoint_number
             ! If too short, cycle to next
             if (checkpoint_is_filter(first_idx_yes_filter) .and. &
-             & (checkpoint_times(first_idx_yes_filter) .ge. filter%half_width)) exit
+             & (checkpoint_times(first_idx_yes_filter) >= filter%half_width)) exit
         end do
 
         ! This is first initial time related to filtering
@@ -1584,7 +1598,7 @@ program main
 
         ! Find the last checkpoint before first filtering process
         do last_idx_no_filter = first_idx_yes_filter - 1, 1, -1  ! Backwards look
-            if (checkpoint_times(last_idx_no_filter) .le. next_t_filt) exit
+            if (checkpoint_times(last_idx_no_filter) <=next_t_filt) exit
         end do
 
         ! Define last output done
@@ -1592,7 +1606,7 @@ program main
 
         ! -----------------------------------------------------------------------------
         ! --------> LOOP WITH NO FILTER, up to last checkpoint without filter <--------
-        loop_pre_filter: do while (j .le. last_idx_no_filter)
+        loop_pre_filter: do while (j <=last_idx_no_filter)
 
             hard_exit = .False. ! Resetear HardExit
             is_premature_exit = .False. ! Resetear premature
@@ -1835,7 +1849,7 @@ program main
             ! =======> SECOND STEP <==========
 
             ! j is where I WILL be
-            loop_missing_chkp: do while (j .le. first_idx_yes_filter)
+            loop_missing_chkp: do while (j <=first_idx_yes_filter)
 
                 hard_exit = .False. ! Resetear HardExit
                 is_premature_exit = .False. ! Resetear premature
@@ -1922,7 +1936,7 @@ program main
 
             ! =======> THIRD STEP <==========
 
-            keep_integrating = keep_integrating .and. (j .le. sim%checkpoint_number)
+            keep_integrating = keep_integrating .and. (j <=sim%checkpoint_number)
 
             ! If not needed, skip
             if (keep_integrating) then
@@ -2215,7 +2229,7 @@ program main
             ! =============> Get to the filter checkpoint itself (with output) and process it <=============
 
             ! LOOP WITH NO FILTER
-            loop_until_checkp: do while ((j .le. next_filter) .and. keep_integrating)
+            loop_until_checkp: do while ((j <=next_filter) .and. keep_integrating)
 
                 hard_exit = .False. ! Resetear HardExit
                 is_premature_exit = .False. ! Resetear premature

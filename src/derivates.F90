@@ -84,14 +84,15 @@ contains
         real(wp) :: theta_moon  ! For triaxial
         real(wp) :: xy_rotated(2)  ! For triaxial
         real(wp) :: Gmast, Gmcomb, Gmj, Gmi  ! For extra/COM forces
-        real(wp) :: dr_ver(2), dv_vec(2)  ! For extra forces
+        real(wp) :: dr_ver(2), dv_vec(2), dvr  ! For extra forces
         real(wp) :: vel_circ(2), v2  ! For extra forces
         real(wp) :: two_ener  ! For extra forces
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z  ! For extra forces
         real(wp) :: mean_movement  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: damp_f, drag_f, stokes_f  ! For extra forces
-        real(wp) :: rcoll, rescape  ! For collision and escape distances
+        real(wp) :: F_mag, F_vec(2) ! For collisions
+        real(wp) :: rcoll, rescape, overlap, gamma_coll  ! For collision and escape distances
         real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
         real(wp) :: aux_real
 
@@ -821,7 +822,8 @@ contains
         end if
 
         ! Fourth, particles to particles (if requested, for collisions)
-        if (sim%use_collisions_part) then
+        if (sim%use_part_soft_sphere_col) then
+            gamma_coll = min(sim%gamma_col_part, uno) * dos * sqrt(sim%kappa_col_part)
             part2part: do i = first_particle, N_total - 1
                 idx = get_index(i)
                 coords_M = y(idx:idx + 3)  ! Particle i (M)
@@ -837,10 +839,36 @@ contains
                     
                     ! Check if collision
                     rcoll = R_arr(i) + R_arr(j)
-                    if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
-                        exit part2part  ! Skip and exit loop, no need to check more
+
+                    if (dr2 >= rcoll*rcoll) cycle  ! no overlap → next pair
+                    
+                    ! ── Distance ─────────────────────────
+                    dr = sqrt(dr2)
+                    overlap  = rcoll - dr    ! overlap depth (> 0)
+                    dr_ver  = dr_vec / dr    ! unit normal i → j
+
+                    ! ── Velocity ─────────────────────────
+                    dv_vec = coords_P(3:4) - coords_M(3:4)  ! Velocity from M to P
+
+                    ! ── spring term ────────────────────────────────────────
+                    F_mag = sim%kappa_col_part * overlap
+
+                    ! ── damping term (optional) ────────────────────────────
+                    ! Only the normal component of v_rel is damped.
+                    ! Tangential sliding is left undamped here; add a
+                    ! friction term if you need it.
+                    if (gamma_coll > cero) then
+                        dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
+                        ! Clamp to zero: damping must not become attractive
+                        ! (particles separating after the bounce).
+                        F_mag = F_mag - gamma_coll * min(dvr, cero)
                     end if
+
+                    F_vec = F_mag * dr_ver   ! force on j (away from i)
+
+                    ! ── accumulate forces (Newton's 3rd law) ───────────────
+                    der(jdx + 2 : jdx + 3) = der(jdx + 2 : jdx + 3) + F_vec
+                    der(idx + 2 : idx + 3) = der(idx + 2 : idx + 3) - F_vec
 
                 end do
 
@@ -921,6 +949,7 @@ contains
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: drag_f, stokes_f  ! For extra forces
         real(wp) :: rcoll, rescape  ! For collision distance
+        real(wp) :: gamma_coll, overlap, F_mag, F_vec(2), dvr, coords_M(4) ! For collision response
         real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
         real(wp) :: aux_real
 
@@ -1244,25 +1273,53 @@ contains
         end if
 
         ! Particles to particles (if requested, for collisions)
-        if (sim%use_collisions_part) then
+        if (sim%use_part_soft_sphere_col) then
+            gamma_coll = min(sim%gamma_col_part, uno) * dos * sqrt(sim%kappa_col_part)
             part2part: do i = first_particle, N_total - 1
                 idx = get_index(i)
-                coords_P = y(idx:idx + 3)  ! Particle i (P)
+                coords_M = y(idx:idx + 3)  ! Particle i (M)
 
                 !! Other Particles (massless)
                 do j = i + 1, N_total
                     jdx = get_index(j)
+                    coords_P = y(jdx:jdx + 3)  ! Particle j (P)
 
                     !! PARTICLE 1 (P) AND PARTICLE 2 (M)
-                    dr_vec = y(jdx:jdx + 1) - coords_P(1:2)  ! From Particle i (M) to Particle j (P)
+                    dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Particle i (P) to Particle j (M)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     
                     ! Check if collision
                     rcoll = R_arr(i) + R_arr(j)
-                    if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
-                        exit part2part  ! Skip and exit loop, no need to check more
+
+                    if (dr2 >= rcoll*rcoll) cycle  ! no overlap → next pair
+                    
+                    ! ── Distance ─────────────────────────
+                    dr = sqrt(dr2)
+                    overlap  = rcoll - dr    ! overlap depth (> 0)
+                    dr_ver  = dr_vec / dr    ! unit normal i → j
+
+                    ! ── Velocity ─────────────────────────
+                    dv_vec = coords_P(3:4) - coords_M(3:4)  ! Velocity from M to P
+
+                    ! ── spring term ────────────────────────────────────────
+                    F_mag = sim%kappa_col_part * overlap
+
+                    ! ── damping term (optional) ────────────────────────────
+                    ! Only the normal component of v_rel is damped.
+                    ! Tangential sliding is left undamped here; add a
+                    ! friction term if you need it.
+                    if (gamma_coll > cero) then
+                        dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
+                        ! Clamp to zero: damping must not become attractive
+                        ! (particles separating after the bounce).
+                        F_mag = F_mag - gamma_coll * min(dvr, cero)
                     end if
+
+                    F_vec = F_mag * dr_ver   ! force on j (away from i)
+
+                    ! ── accumulate forces (Newton's 3rd law) ───────────────
+                    der(jdx + 2 : jdx + 3) = der(jdx + 2 : jdx + 3) + F_vec
+                    der(idx + 2 : idx + 3) = der(idx + 2 : idx + 3) - F_vec
 
                 end do
 

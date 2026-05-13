@@ -113,22 +113,30 @@ module bodies
 
     ! This struct will store the CM (system) properties and objects
     type :: system_st
+        ! Basic
         real(wp) :: time = cero
         real(wp) :: mass = cero
         real(wp) :: energy = cero
         real(wp) :: ang_mom = cero
         real(wp) :: inertia = cero
-        real(wp) :: eta_col = uno  ! For collisions
-        real(wp) :: f_col = uno  ! For collisions
+        ! Collisions
+        real(wp) :: eta_col_moon = uno
+        real(wp) :: f_col_moon = uno2
+        real(wp) :: eta_col_part = uno
+        real(wp) :: f_col_part = uno2
+        logical :: check_col_part = .False.
+        real(wp) :: particles_radius = cero
+        ! Objects
         type(asteroid_st) :: asteroid
         integer(kind=4) :: Nmoons = 0
         integer(kind=4) :: Nmoons_active = 0
         type(moon_st), allocatable :: moons(:)
         integer(kind=4) :: Nparticles = 0
         integer(kind=4) :: Nparticles_active = 0
-        real(wp) :: particles_radius = cero
         type(particle_st), allocatable :: particles(:)
+        ! Chaos
         type(megno_st) :: megno
+        ! Extra
         integer(kind=4) :: reference_frame = 0  ! Just to have an idea. 0:B, 1:J, 2:A
         logical :: is_sinodic = .False.  ! In case the integrations are sinodic
     end type system_st
@@ -1182,20 +1190,32 @@ contains
     end subroutine init_system
 
     ! Set extra system parameters
-    pure subroutine set_system_extra(self, time, eta_collision, f_collision, manual_J2, J2_from_primary, radius_particles)
+    pure subroutine set_system_extra(self, time, &
+                    & eta_col_moon, f_col_moon, eta_col_part, f_col_part, &
+                    & radius_particles, &
+                    & manual_J2, J2_from_primary)
         implicit none
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: time
-        real(wp), intent(in) :: eta_collision, f_collision, manual_J2
-        logical, intent(in) :: J2_from_primary
+        real(wp), intent(in) :: eta_col_moon, f_col_moon, eta_col_part, f_col_part
         real(wp), intent(in) :: radius_particles
+        real(wp), intent(in) :: manual_J2
+        logical, intent(in) :: J2_from_primary
 
         ! Initial time. Set TIME
         self%time = time
 
         ! Initial collisional eta and f. Set eta_col and f_col
-        self%eta_col = eta_collision
-        self%f_col = f_collision
+        self%eta_col_moon = eta_col_moon
+        self%f_col_moon = f_col_moon
+        self%eta_col_part = eta_col_part
+        self%f_col_part = f_col_part
+        self%check_col_part = self%eta_col_part < uno
+
+        ! Set Radius particles
+        self%particles_radius = radius_particles
+
+        ! Set J2. If manual_J2 is given and primary is a sphere, set C20 = -J2 in the primary or asteroid depending on the presence of boulders
         if ((abs(manual_J2) > cero) .and. self%asteroid%primary%is_sphere) then
             if ((.not. J2_from_primary) .or. (self%asteroid%Nboulders == 0)) then
                 self%asteroid%C20 = -manual_J2  ! C20 = -J2
@@ -1203,9 +1223,6 @@ contains
                 self%asteroid%primary%C20 = -manual_J2  ! C20 = -J2
             end if
         end if
-
-        ! Set Radius particles
-        self%particles_radius = radius_particles
 
     end subroutine set_system_extra
 
@@ -1291,7 +1308,7 @@ contains
         integer(kind=4) :: i, Nmoons_active
 
         Nmoons_active = self%Nmoons_active
-        if (Nmoons_active .le. 1) return
+        if (Nmoons_active <=1) return
 
         do i = 1, Nmoons_active
             order(i) = i
@@ -2184,7 +2201,7 @@ contains
         logical :: again, do_write
         real(wp) :: r_max2, dist2_to_ast, ast_coord(2), aux_coord(2)
 
-        if (r_max .le. cero) return  ! Nothing to do
+        if (r_max <=cero) return  ! Nothing to do
 
         ! Init
         do_write = present(unit_file)
@@ -2217,7 +2234,7 @@ contains
                     call deactivate_particle_i(self, i)
                 end if
             end do
-            again = (self%Nmoons_active .ge. 1) .and. (m_act0 > self%Nmoons_active)
+            again = (self%Nmoons_active >= 1) .and. (m_act0 > self%Nmoons_active)
 
         end do
     end subroutine resolve_escapes
@@ -2327,8 +2344,8 @@ contains
 
         ! Check if merge
         !! Merge if bounded or eta = 1
-        if (((Ekin + Epot < -self%f_col*abs(Epot)) .and. (dv2 < vesc2*(uno - self%f_col))) .or. &
-            & (self%eta_col .ge. uno)) then
+        if (((Ekin + Epot < -self%f_col_moon*abs(Epot)) .and. (dv2 < vesc2*(uno - self%f_col_moon))) .or. &
+            & (self%eta_col_moon >= uno)) then
 
             ! Result (merge)
             outcome = 1
@@ -2379,9 +2396,9 @@ contains
             vjn = vj(1)*dr_ver(1) + vj(2)*dr_ver(2)
             vjt = -vj(1)*dr_ver(2) + vj(2)*dr_ver(1)
 
-            ! Normal after collision (restitution handled by self%eta_col)
-            vin_new = ((mi*vin + mj*vjn) - (uno - self%eta_col)*mj*(vin - vjn))/m_cm
-            vjn_new = ((mi*vin + mj*vjn) + (uno - self%eta_col)*mi*(vin - vjn))/m_cm
+            ! Normal after collision (restitution handled by self%eta_col_moon)
+            vin_new = ((mi*vin + mj*vjn) - (uno - self%eta_col_moon)*mj*(vin - vjn))/m_cm
+            vjn_new = ((mi*vin + mj*vjn) + (uno - self%eta_col_moon)*mi*(vin - vjn))/m_cm
 
             ! --- Position correction (push apart to avoid overlap) ---
             overlap = self%moons(i)%radius + self%moons(j)%radius - dr
@@ -2478,7 +2495,7 @@ contains
         outcome = 0
 
         ! CHECK
-        if (self%eta_col .ge. uno) return  ! Nothing to do
+        if (.not. self%check_col_part) return  ! Nothing to do
 
         ! Individual attrs
         ri = self%particles(i)%coordinates(1:2)
@@ -2558,8 +2575,8 @@ contains
         v_mean = uno2*(vin + vjn)
         v_diff = uno2*(vin - vjn)
 
-        vin_new = v_mean - (uno - self%eta_col)*v_diff
-        vjn_new = v_mean + (uno - self%eta_col)*v_diff
+        vin_new = v_mean - (uno - self%eta_col_part)*v_diff
+        vjn_new = v_mean + (uno - self%eta_col_part)*v_diff
 
         ! --- Position correction ---
         overlap = 2 * self%particles_radius - dr
@@ -2661,7 +2678,7 @@ contains
 
             ! Moons -> Primary + Boulders
             m_act = self%Nmoons_active
-            if (r_min .le. cero) then  ! Only if not r_min
+            if (r_min <=cero) then  ! Only if not r_min
 
                 ! Primary
                 boul_pos = self%asteroid%primary%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
@@ -2670,7 +2687,7 @@ contains
                     do i = m_act, 1, -1  ! Backwards loop
                         dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
                         dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                        if (dr2 .le. (boul_rad + self%moons(i)%radius)**2) then
+                        if (dr2 <=(boul_rad + self%moons(i)%radius)**2) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
                             was_any_moon_something = .True.
@@ -2698,7 +2715,7 @@ contains
                     do i = m_act, 1, -1  ! Backwards loop
                         dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
                         dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                        if (dr2 .le. (boul_rad + self%moons(i)%radius)**2) then
+                        if (dr2 <=(boul_rad + self%moons(i)%radius)**2) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
                         end if
@@ -2710,7 +2727,7 @@ contains
                 do i = m_act, 1, -1  ! Backwards loop
                     dr_vec = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                    if (dr2 .le. (r_min + self%moons(i)%radius)**2) then
+                    if (dr2 <=(r_min + self%moons(i)%radius)**2) then
                         if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                         call merge_moon_i_into_ast(self, i)
                         was_any_moon_something = .True.
@@ -2719,12 +2736,12 @@ contains
 
             end if
 
-            again = again .or. ((self%Nmoons_active .ge. 1) .and. (m_act0 > self%Nmoons_active))
+            again = again .or. ((self%Nmoons_active >= 1) .and. (m_act0 > self%Nmoons_active))
 
         end do
 
         ! Particles -> Particles (only if eta_col < 1)
-        if (self%eta_col < uno) then
+        if (self%check_col_part) then
             again = .True.
             do while (again)
 
@@ -2741,7 +2758,7 @@ contains
                     end do inner_loop_part
                 end do
 
-                again = again .or. ((self%Nparticles_active .ge. 1) .and. (p_act0 > self%Nparticles_active))
+                again = again .or. ((self%Nparticles_active >= 1) .and. (p_act0 > self%Nparticles_active))
             end do
         end if
 
@@ -2756,7 +2773,7 @@ contains
             do i = p_act, 1, -1  ! Backwards loop
                 dr_vec = self%particles(i)%coordinates(1:2) - moon_pos  ! Relative pos
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                if (dr2 .le. coll_dist2) then
+                if (dr2 <=coll_dist2) then
                     if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, "(", self%particles(i)%id, ") into moon ", &
                                     & j, "(", self%moons(j)%id, ")."
                     self%particles(i)%merged_to = moon_id  ! Set where merged to
@@ -2767,7 +2784,7 @@ contains
 
         ! Particles -> Primary + Boulders (Only if not r_min)
         p_act = self%Nparticles_active
-        if (r_min .le. cero) then
+        if (r_min <=cero) then
 
             ! Primary
             boul_pos = self%asteroid%primary%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
@@ -2777,7 +2794,7 @@ contains
                 do i = p_act, 1, -1  ! Backwards loop
                     dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                    if (dr2 .le. coll_dist2) then
+                    if (dr2 <=coll_dist2) then
                         if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, &
                                                             & "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
@@ -2808,7 +2825,7 @@ contains
                 do i = p_act, 1, -1  ! Backwards loop
                     dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                    if (dr2 .le. coll_dist2) then
+                    if (dr2 <=coll_dist2) then
                         if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, &
                                                             & "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
@@ -2823,7 +2840,7 @@ contains
             do i = p_act, 1, -1  ! Backwards loop
                 dr_vec = self%particles(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                if (dr2 .le. coll_dist2) then
+                if (dr2 <=coll_dist2) then
                     if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, "(", self%particles(i)%id, ") into asteroid."
                     self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
                     call deactivate_particle_i(self, i)  ! Deactivate
