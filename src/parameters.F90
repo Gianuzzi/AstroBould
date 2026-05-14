@@ -131,21 +131,32 @@ module parameters
         real(wp) :: rmin_bins = -uno ! -1 means first particle (initial)
         real(wp) :: rmax_bins = -uno ! -1 means last particle (initial)
         ! Conditions for Collision/Escape -
-        real(wp) :: radius_particles = cero
+        real(wp) :: radius_particles = cero  ! Just for collision purposes. If 0, particles are point-like
         real(wp) :: min_distance = cero
         real(wp) :: max_distance = cero  ! Means no check
+        !! Merges
         logical :: use_merge_part_mass = .True.
         logical :: use_merge_massive = .True.
+        !! Moons
+        logical :: use_moon_soft_sphere_col = .False.  ! If yes, soft-sphere collisions are checked between moons at every timestep
+        real(wp) :: kappa_col_moon = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
+        real(wp) :: gamma_col_moon = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE
         real(wp) :: eta_col_moon = uno  ! 0: Elastic, 1: Plastic  ! HARD-SPHERE
         real(wp) :: f_col_moon = cero  ! Bounded: Etot < -f |Epot|  ! HARD-SPHERE
+        !! Particles
         logical :: use_part_soft_sphere_col = .False.  ! If yes, soft-sphere collisions are checked between particles at every timestep
         real(wp) :: kappa_col_part = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
         real(wp) :: gamma_col_part = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE
         logical :: use_part_hard_sphere_col = .False.  ! If yes, hard-sphere collisions are checked between particles at every output
         real(wp) :: eta_col_part = uno  ! 0: Elastic, 1: Plastic  ! HARD-SPHERE
         real(wp) :: f_col_part = cero  ! Bounded: Etot < -f |Epot|  ! HARD-SPHERE
+        !! Both
         logical :: use_stop_no_part_left = .True.
         logical :: use_stop_no_moon_left = .True.
+        !! Grid collisions
+        integer(kind=4) :: grid_col_min_bodies = 100  ! Do not even consider grid if number of bodies is below this threshold
+        integer(kind=4) :: grid_col_max_cells = 10000  ! Max amount of cells before falling back to brute-force
+        real(wp) :: grid_col_min_cell_size = uno  ! Minimum cell size to avoid too much overhead
         ! Manual |(t)imes omega(t) mass_add(t)| file -
         logical :: use_tomfile = .False.
         character(30) :: tomfile = ""
@@ -866,8 +877,6 @@ contains
                         params%use_moonsfile = .False.
                         params%moonsfile = ""
                     end if
-                case ("particles radiu")
-                    read (value_str, *, iostat=ios) params%radius_particles
                 case ("particles input")
                     if ((to_lower(trim(value_str)) == "n") .or. &
                       & (to_lower(trim(value_str)) == "no")) then
@@ -1055,6 +1064,8 @@ contains
                     read (value_str, *, iostat=ios) params%rmin_bins
                 case ("outer bin edge")
                     read (value_str, *, iostat=ios) params%rmax_bins
+                case ("particles radiu")
+                    read (value_str, *, iostat=ios) params%radius_particles
                 case ("min distance fr")
                     read (value_str, *, iostat=ios) params%min_distance
                 case ("max distance fr")
@@ -1071,11 +1082,21 @@ contains
                     else
                         params%use_merge_massive = .False.
                     end if
+                case ("use moon soft-s")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_moon_soft_sphere_col = .True.
+                    else
+                        params%use_moon_soft_sphere_col = .False.
+                    end if
+                case ("moon-moon kappa")
+                    read (value_str, *, iostat=ios) params%kappa_col_moon
+                case ("moon-moon gamma")
+                    read (value_str, *, iostat=ios) params%gamma_col_moon
                 case ("moon-moon eta c")
                     read (value_str, *, iostat=ios) params%eta_col_moon
                 case ("moon-moon f col")
                     read (value_str, *, iostat=ios) params%f_col_moon
-                case ("use soft-sphere")
+                case ("use part soft-s")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_part_soft_sphere_col = .True.
                     else
@@ -1085,7 +1106,7 @@ contains
                     read (value_str, *, iostat=ios) params%kappa_col_part
                 case ("part-part gamma")
                     read (value_str, *, iostat=ios) params%gamma_col_part
-                case ("use hard-sphere")
+                case ("use part hard-s")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_part_hard_sphere_col = .True.
                     else
@@ -1107,6 +1128,12 @@ contains
                     else
                         params%use_stop_no_moon_left = .False.
                     end if
+                case ("min bodies for ")
+                    read (value_str, *, iostat=ios) params%grid_col_min_bodies
+                case ("max cells for g")
+                    read (value_str, *, iostat=ios) params%grid_col_max_cells
+                case ("min cell size f")
+                    read (value_str, *, iostat=ios) params%grid_col_min_cell_size
                 case ("input time-omeg")
                     if ((to_lower(trim(value_str)) == "n") .or. &
                       & (to_lower(trim(value_str)) == "no")) then
@@ -1446,7 +1473,6 @@ contains
 
         ! Particles radius
         derived%radius_particles = abs(derived%radius_particles)
-
 
         !! Forces
         !!! stokes_a_damping_time y stokes_e_damping_time
@@ -1862,8 +1888,26 @@ contains
             stop 1
         end if
 
-        ! Check Collisions of massive paramters
+
+        ! Check Collisions of moons parameters
         if (derived%Nmoons > 0) then
+            ! Check Soft Sphere
+            if (derived%use_moon_soft_sphere_col) then
+                if ((derived%kappa_col_moon < cero) .or. (derived%kappa_col_moon > uno)) then
+                    write (*, *) "ERROR: Collisional kappa for moons must be between 0 and 1."
+                    stop 1
+                end if
+                if ((derived%gamma_col_moon < cero) .or. (derived%gamma_col_moon > uno)) then
+                    write (*, *) "ERROR: Collisional gamma for moons must be between 0 and 1."
+                    stop 1
+                end if
+                if (derived%kappa_col_moon < myepsilon) then
+                    derived%use_moon_soft_sphere_col = .False.
+                    derived%kappa_col_moon = cero
+                    derived%gamma_col_moon = cero
+                end if
+            end if
+            ! Check Collisions of massive parameters
             if ((derived%eta_col_moon < cero) .or. (derived%eta_col_moon > uno)) then
                 write (*, *) "ERROR: Collisional eta for moons must be between 0 and 1."
                 stop 1
@@ -1872,6 +1916,8 @@ contains
                 write (*, *) "ERROR: Collisional f for moons must be between 0 and 1."
                 stop 1
             end if
+        else
+            derived%use_moon_soft_sphere_col = .False.
         end if
 
         ! Check Collisions of particle parameters
@@ -1924,7 +1970,23 @@ contains
             write (*, *) "ERROR: Can not use MEGNO with particle collisions."
             stop 1
         end if
-            
+
+        ! If soft-sphere, check the grid params
+        if ((derived%use_part_soft_sphere_col) .or. (derived%use_moon_soft_sphere_col)) then
+            if (derived%grid_col_min_bodies <= cero) then
+                write (*, *) "ERROR: Collision grid min bodies must be positive."
+                stop 1
+            end if
+            if (derived%grid_col_max_cells <= cero) then
+                write (*, *) "ERROR: Collision grid max cells must be positive."
+                stop 1
+            end if
+            if (derived%grid_col_min_cell_size <= cero) then
+                write (*, *) "ERROR: Collision grid min cell size must be positive."
+                stop 1
+            end if
+            derived%grid_col_min_bodies = max(derived%grid_col_min_bodies, 100)
+        end if
 
     end subroutine set_derived_parameters_post_bodies
 

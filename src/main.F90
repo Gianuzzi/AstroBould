@@ -118,9 +118,12 @@ program main
         input%use_merge_massive = .True.   ! Merge massive bodies
 
         !!! Collisions factors
-        !! --- Moons ---  ( HARD-SPHERE )
-        input%eta_col_moon = uno  ! 0: Elastic, 1: Plastic
-        input%f_col_moon = uno  ! Bounded: Etot < -f |Epot|
+        !! --- Moons ---  (SOFT-SPHERE (or not) and HARD-SPHERE)
+        input%use_moon_soft_sphere_col = .False. ! If true, they are used at every timestep
+        input%kappa_col_moon = cero  ! 0: No bounce, 1: Full bounce.  ! SOFT SPHERE
+        input%gamma_col_moon = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE
+        input%eta_col_moon = uno  ! 0: Elastic, 1: Plastic  ! HARD SPHERE
+        input%f_col_moon = uno  ! Bounded: Etot < -f |Epot|  ! HARD SPHERE
         !! --- Particles --- (SOFT-SPHERE and / or HARD-SPHERE)
         input%use_part_soft_sphere_col = .False. ! If true, they are used at every timestep
         input%kappa_col_part = cero  ! 0: No bounce, 1: Full bounce.  ! SOFT SPHERE
@@ -879,15 +882,23 @@ program main
             write (*, *) ACHAR(5)
         end if
         if (sim%use_moons) then
+            write (*, *) ACHAR(5)
             if (sim%eta_col_moon == uno) then
                 if (sim%use_merge_massive) then
                     write (*, *) "Colliding massive bodies will be merged."
                 else
                     write (*, *) "Colliding massive bodies will stop the integration."
                 end if
+            else 
+                write (*, s1r1) "  Collisional eta (distance) factor:", sim%eta_col_moon
+                write (*, s1r1) "  Collisional f (velocity) factor:", sim%f_col_moon
+            end if
+            if (sim%use_moon_soft_sphere_col) then
+                write (*, *) "Moon-moon soft-sphere collisions activated."
+                write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_moon
+                write (*, s1r1) "  Collisional gamma (damping) factor:", sim%gamma_col_moon
             else
-                write (*, s1r1) " Massive bodies collisional factor:", sim%eta_col_moon
-                print*, sim%use_merge_massive
+                write (*, *) "Moon-moon soft-sphere collisions deactivated."
             end if
             write (*, *) ACHAR(5)
         end if

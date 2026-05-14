@@ -306,7 +306,7 @@ contains
         slot_found = .False. ! Default
 
         ! Ensure not massless
-        if (mu_to_asteroid < myepsilon) then
+        if (mu_to_asteroid < tini) then
             write (*, *) "ERROR: Moons can not have zero or negative mass (I think)..."
             stop 1
         end if
@@ -698,7 +698,7 @@ contains
         real(wp) :: growth
         integer(kind=4) :: i
 
-        if (mass_to_add < myepsilon) return  ! No mass to add
+        if (mass_to_add < tini) return  ! No mass to add
 
         ! Get mass growth ratio
         growth = uno + (mass_to_add/self%mass)
@@ -853,7 +853,7 @@ contains
         end do
         !! Moons (here, only moons with moons are added)
         do i = 1, self%Nmoons_active - 1
-            do j = 2, self%Nmoons_active
+            do j = i + 1, self%Nmoons_active
                 dr = self%moons(j)%coordinates(1:2) - self%moons(i)%coordinates(1:2)
                 dist2 = dr(1)*dr(1) + dr(2)*dr(2)
                 if (dist2 < myepsilon2) cycle
@@ -1342,7 +1342,7 @@ contains
 
         ! Check MASS
         if (abs(mass - self%mass)/mass > myepsilon) then
-            write (*, *) "WARNING: Total mass differs from CM mass. Error:", abs(mass - self%mass)/mass
+            ! write (*, *) "WARNING: Total mass differs from CM mass. Error:", abs(mass - self%mass)/mass
             if (present(error)) error = error + 1
         end if
 
@@ -2162,7 +2162,7 @@ contains
         call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_real)
         aux_real = max(sqepsilon, abs(ang_mom))
         if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
-            write (*, *) "WARNING: Total angular momentum relative error:", abs(ang_mom - self%ang_mom)/aux_real
+            ! write (*, *) "WARNING: Total angular momentum relative error:", abs(ang_mom - self%ang_mom)/aux_real
             if (present(error)) error = error + 1
             return
         end if
@@ -2364,12 +2364,14 @@ contains
             self%moons(i)%mu_to_asteroid = m_cm/self%asteroid%mass
 
             ! Update RADIUS
-            self%moons(i)%radius = max(self%moons(i)%radius, self%moons(j)%radius)   ! HEURISTIC Maybe mean density ???
+            ! self%moons(i)%radius = max(self%moons(i)%radius, self%moons(j)%radius)   ! HEURISTIC Maybe mean density ???
+            self%moons(i)%radius = (self%moons(i)%radius**3 + self%moons(j)%radius**3)**uno3  ! Assuming constant density
 
             ! Update ENERGY and ANGULAR MOMENTUM
             self%moons(i)%inertia = 0.4e0_wp*m_cm*self%moons(i)%radius*self%moons(i)%radius
             self%moons(i)%ang_mom_rot = self%moons(i)%ang_mom_rot + self%moons(j)%ang_mom_rot + L_rot
-            self%moons(i)%e_rot = self%moons(i)%e_rot + self%moons(j)%e_rot + (uno2*L_rot*L_rot/self%moons(i)%inertia)
+            ! self%moons(i)%e_rot = self%moons(i)%e_rot + self%moons(j)%e_rot + (uno2*L_rot*L_rot/self%moons(i)%inertia)
+            self%moons(i)%e_rot = uno2 * self%moons(i)%ang_mom_rot * self%moons(i)%ang_mom_rot / self%moons(i)%inertia
 
             ! Add the flag
             self%moons(j)%merged_to = self%moons(i)%id  ! Merged j into i
@@ -2460,7 +2462,7 @@ contains
         call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_real)
         aux_real = max(sqepsilon, abs(ang_mom))
         if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
-            write (*, *) "WARNING: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real
+            ! write (*, *) "WARNING: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real
             if (present(error)) error = error + 1
         end if
 
