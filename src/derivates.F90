@@ -18,6 +18,8 @@ module derivates
     implicit none
     private
     public :: dydt, set_dydt
+    integer(kind=4), parameter :: N_COLL_THRESHOLD = 100
+
 
     
 
@@ -821,60 +823,16 @@ contains
 
         end if
 
-        ! Fourth, particles to particles (if requested, for collisions)
+        ! Fourth, particles to particles (if requested, for soft-sphere collisions)
         if (sim%use_part_soft_sphere_col) then
             gamma_coll = min(sim%gamma_col_part, uno) * dos * sqrt(sim%kappa_col_part)
-            part2part: do i = first_particle, N_total - 1
-                idx = get_index(i)
-                coords_M = y(idx:idx + 3)  ! Particle i (M)
-
-                !! Other Particles (massless)
-                do j = i + 1, N_total
-                    jdx = get_index(j)
-                    coords_P = y(jdx:jdx + 3)  ! Particle j (P)
-
-                    !! PARTICLE 1 (P) AND PARTICLE 2 (M)
-                    dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Particle i (P) to Particle j (M)
-                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    
-                    ! Check if collision
-                    rcoll = R_arr(i) + R_arr(j)
-
-                    if (dr2 >= rcoll*rcoll) cycle  ! no overlap → next pair
-                    
-                    ! ── Distance ─────────────────────────
-                    dr = sqrt(dr2)
-                    overlap  = rcoll - dr    ! overlap depth (> 0)
-                    dr_ver  = dr_vec / dr    ! unit normal i → j
-
-                    ! ── Velocity ─────────────────────────
-                    dv_vec = coords_P(3:4) - coords_M(3:4)  ! Velocity from M to P
-
-                    ! ── spring term ────────────────────────────────────────
-                    F_mag = sim%kappa_col_part * overlap
-
-                    ! ── damping term (optional) ────────────────────────────
-                    ! Only the normal component of v_rel is damped.
-                    ! Tangential sliding is left undamped here; add a
-                    ! friction term if you need it.
-                    if (gamma_coll > cero) then
-                        dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
-                        ! Clamp to zero: damping must not become attractive
-                        ! (particles separating after the bounce).
-                        F_mag = F_mag - gamma_coll * min(dvr, cero)
-                    end if
-
-                    F_vec = F_mag * dr_ver   ! force on j (away from i)
-
-                    ! ── accumulate forces (Newton's 3rd law) ───────────────
-                    der(jdx + 2 : jdx + 3) = der(jdx + 2 : jdx + 3) + F_vec
-                    der(idx + 2 : idx + 3) = der(idx + 2 : idx + 3) - F_vec
-
-                end do
-
-            end do part2part
-
+            if (N_particles <= N_COLL_THRESHOLD) then
+                call collisions_brute(y, der, first_particle, N_total, gamma_coll)
+            else
+                call collisions_grid(y, der, first_particle, N_total, gamma_coll)
+            end if
         end if
+
 
         ! Fifth, Extra variational if MEGNO
         if (sim%megno_active) then
@@ -1375,5 +1333,182 @@ contains
         endif
 
     end function dydt_sinodic
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!! SOFT-SPHERE COLLISION ROUTINES !!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ 
+    ! ── Shared force kernel ──────────────────────────────────────────────────
+    ! Computes the soft-sphere force between two overlapping particles and
+    ! accumulates it into der (Newton's 3rd law).
+    ! Called by both brute-force and grid routines.
+    subroutine soft_sphere_force(y, der, i, j, gamma_coll)
+        implicit none
+        real(wp), dimension(:), intent(in)    :: y
+        real(wp), dimension(:), intent(inout) :: der
+        integer(kind=4),        intent(in)    :: i, j       ! particle indices
+        real(wp),               intent(in)    :: gamma_coll
+ 
+        integer(kind=4) :: idx, jdx
+        real(wp) :: dr_vec(2), dr2, dr, rcoll, overlap
+        real(wp) :: dr_ver(2), dv_vec(2), dvr
+        real(wp) :: F_mag, F_vec(2)
+ 
+        idx = get_index(i)
+        jdx = get_index(j)
+ 
+        ! Relative position
+        dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
+        dr2    = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+        rcoll  = R_arr(i) + R_arr(j)
+ 
+        if (dr2 >= rcoll*rcoll) return  ! no overlap
+ 
+        ! ── Zero-distance guard ──────────────────────────────────────────────
+        if (dr2 < tini*tini) then
+            dr_ver  = [uno, cero]
+            dr      = tini
+            overlap = rcoll
+        else
+            dr      = sqrt(dr2)
+            overlap = rcoll - dr          ! overlap depth (> 0)
+            dr_ver  = dr_vec / dr         ! unit normal i → j
+        end if
+ 
+        ! ── Spring term ──────────────────────────────────────────────────────
+        F_mag = sim%kappa_col_part * overlap
+ 
+        ! ── Damping term (normal component only) ─────────────────────────────
+        ! Clamp to zero: damp only approaching pairs (dvr < 0).
+        if (gamma_coll > cero) then
+            dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)  ! relative velocity
+            dvr    = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
+            F_mag  = F_mag - gamma_coll * min(dvr, cero)
+        end if
+ 
+        F_vec = F_mag * dr_ver  ! force on j (away from i)
+ 
+        ! ── Newton's 3rd law ─────────────────────────────────────────────────
+        der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + F_vec
+        der(idx+2:idx+3)  = der(idx+2:idx+3)  - F_vec
+ 
+    end subroutine soft_sphere_force
+ 
+    ! ── Brute-force O(N²) — used when N_particles <= N_COLL_THRESHOLD ────────
+    subroutine collisions_brute(y, der, first_particle, N_total, gamma_coll)
+        implicit none
+        real(wp), dimension(:), intent(in)    :: y
+        real(wp), dimension(:), intent(inout) :: der
+        integer(kind=4),        intent(in)    :: first_particle, N_total
+        real(wp),               intent(in)    :: gamma_coll
+ 
+        integer(kind=4) :: i, j
+ 
+        do i = first_particle, N_total - 1
+            do j = i + 1, N_total
+                call soft_sphere_force(y, der, i, j, gamma_coll)
+            end do
+        end do
+ 
+    end subroutine collisions_brute
+ 
+    ! ── Cell-list O(N) — used when N_particles > N_COLL_THRESHOLD ───────────
+    ! Cell size = 2R (collision diameter): only the 9 surrounding cells
+    ! need to be checked for each particle.
+    ! Requires sim%domain_{x,y}_{min,max} to be set in the sim structure.
+    subroutine collisions_grid(y, der, first_particle, N_total, gamma_coll)
+        implicit none
+        real(wp), dimension(:), intent(in)    :: y
+        real(wp), dimension(:), intent(inout) :: der
+        integer(kind=4),        intent(in)    :: first_particle, N_total
+        real(wp),               intent(in)    :: gamma_coll
+ 
+        real(wp)        :: L_cell, x_min, x_max, y_min, y_max
+        integer(kind=4) :: Ncx, Ncy, Nc
+        integer(kind=4) :: cx, cy, ci
+        integer(kind=4) :: cx2, cy2, ci2
+        integer(kind=4) :: dcx, dcy
+        integer(kind=4) :: i, j, idx
+        integer(kind=4), allocatable :: head(:), next(:)
+ 
+        ! ── Cell size = collision diameter (all equal radius) ─────────────
+        L_cell = dos * R_arr(first_particle)
+
+        ! ── Domain bounds from particle positions ────────────────────────
+        x_min = y(get_index(first_particle))
+        x_max = x_min
+        y_min = y(get_index(first_particle)+1)
+        y_max = y_min
+
+        do i = first_particle, N_total
+            idx = get_index(i)
+            x_min = min(x_min, y(idx))
+            x_max = max(x_max, y(idx))
+            y_min = min(y_min, y(idx+1))
+            y_max = max(y_max, y(idx+1))
+        end do
+
+        ! Add one cell of padding so boundary particles aren't clipped
+        x_min = x_min - L_cell
+        x_max = x_max + L_cell
+        y_min = y_min - L_cell
+        y_max = y_max + L_cell
+ 
+        Ncx = max(1, int((x_max - x_min) / L_cell))
+        Ncy = max(1, int((y_max - y_min) / L_cell))
+        Nc  = Ncx * Ncy
+
+        ! ── Safety: fall back to brute-force if grid is too large ────────
+        if (Nc > 4 * (N_total - first_particle + 1)**2) then
+            call collisions_brute(y, der, first_particle, N_total, gamma_coll)
+            return
+        end if
+ 
+        ! ── Build linked-list cell structure ─────────────────────────────────
+        allocate(head(0:Nc-1), next(first_particle:N_total))
+        head = -1  ! -1 = empty cell
+ 
+        do i = first_particle, N_total
+            idx = get_index(i)
+            cx  = min(int((y(idx)   - x_min) / L_cell), Ncx - 1)
+            cy  = min(int((y(idx+1) - y_min) / L_cell), Ncy - 1)
+            ! Clamp particles outside domain to boundary cells
+            cx  = max(cx, 0)
+            cy  = max(cy, 0)
+            ci  = cx + Ncx * cy
+            next(i)  = head(ci)
+            head(ci) = i
+        end do
+ 
+        ! ── Check only 9-cell neighbourhood ──────────────────────────────────
+        do i = first_particle, N_total
+            idx = get_index(i)
+            cx  = min(max(int((y(idx)   - x_min) / L_cell), 0), Ncx - 1)
+            cy  = min(max(int((y(idx+1) - y_min) / L_cell), 0), Ncy - 1)
+ 
+            do dcy = -1, 1
+            do dcx = -1, 1
+                cx2 = cx + dcx
+                cy2 = cy + dcy
+                if (cx2 < 0 .or. cx2 >= Ncx) cycle
+                if (cy2 < 0 .or. cy2 >= Ncy) cycle
+ 
+                ci2 = cx2 + Ncx * cy2
+                j   = head(ci2)
+                do while (j /= -1)
+                    if (j > i) then  ! avoid double-counting
+                        call soft_sphere_force(y, der, i, j, gamma_coll)
+                    end if
+                    j = next(j)
+                end do
+            end do
+            end do
+        end do
+ 
+        deallocate(head, next)
+ 
+    end subroutine collisions_grid
+
 
 end module derivates
