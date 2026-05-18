@@ -845,7 +845,7 @@ contains
         end do
         !! Moons (here, only moons with moons are added)
         do i = 1, self%Nmoons_active - 1
-            do j = 2, self%Nmoons_active
+            do j = i + 1, self%Nmoons_active
                 dr = self%moons(j)%coordinates(1:2) - self%moons(i)%coordinates(1:2)
                 dist2 = dr(1)*dr(1) + dr(2)*dr(2)
                 if (dist2 < myepsilon2) cycle
