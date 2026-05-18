@@ -138,21 +138,24 @@ module parameters
         logical :: use_merge_part_mass = .True.
         logical :: use_merge_massive = .True.
         !! Moons
-        logical :: use_moon_soft_sphere_col = .False.  ! If yes, soft-sphere collisions are checked between moons at every timestep
+        logical :: use_moon_soft_sphere_col = .False.  ! Checked between moons at every timestep
         real(wp) :: kappa_col_moon = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
-        real(wp) :: gamma_col_moon = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE
+        real(wp) :: gamma_col_moon_n = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, normal component
+        real(wp) :: beta_col_moon = uno  ! Ratio tangential to normal damping. Only used if gamma_col_moon_n > 0.  ! SOFT-SPHERE
         real(wp) :: eta_col_moon = uno  ! 0: Elastic, 1: Plastic  ! HARD-SPHERE
         real(wp) :: f_col_moon = cero  ! Bounded: Etot < -f |Epot|  ! HARD-SPHERE
         !! Particles
-        logical :: use_part_soft_sphere_col = .False.  ! If yes, soft-sphere collisions are checked between particles at every timestep
+        logical :: use_part_soft_sphere_col = .False.  ! Checked between particles at every timestep
         real(wp) :: kappa_col_part = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
-        real(wp) :: gamma_col_part = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE
-        logical :: use_part_hard_sphere_col = .False.  ! If yes, hard-sphere collisions are checked between particles at every output
+        real(wp) :: gamma_col_part_n = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, normal component
+        real(wp) :: beta_col_part = uno  ! Ratio tangential to normal damping. Only used if gamma_col_part_n > 0.  ! SOFT-SPHERE
+        logical :: use_part_hard_sphere_col = .False.  ! Checked between particles at every output
         real(wp) :: eta_col_part = uno  ! 0: Elastic, 1: Plastic  ! HARD-SPHERE
         real(wp) :: f_col_part = cero  ! Bounded: Etot < -f |Epot|  ! HARD-SPHERE
         !! Both
         logical :: use_stop_no_part_left = .True.
         logical :: use_stop_no_moon_left = .True.
+        real(wp) :: coulomb_mu_col = cero  ! Coulomb friction coeff. Only active if SOFT-SPHERE collisions and gamma_t > 0
         !! Grid collisions
         integer(kind=4) :: grid_col_min_bodies = 100  ! Do not even consider grid if number of bodies is below this threshold
         integer(kind=4) :: grid_col_max_cells = 10000  ! Max amount of cells before falling back to brute-force
@@ -221,13 +224,14 @@ module parameters
         !!! Viscosity [Not available yet]
         logical :: use_viscosity = .False.
         real(wp) :: viscosity = -uno
-        !!! Self-Gravity
+        !!! Self-Gravity [Not available yet]
         logical :: update_rmin_bins = .False.
         logical :: update_rmax_bins = .False.
         logical :: update_bins = .False.
-        ! Merges
+        ! Collisions/Escape and Merges
+        real(wp) :: gamma_col_moon_t = cero  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, tangential component
+        real(wp) :: gamma_col_part_t = cero  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, tangential component
         logical :: use_any_merge = .False.
-        ! Stops
         logical :: use_any_stop = .False.
         ! Chaos
         logical :: use_chaos = .False.  ! Need to output chaos values
@@ -1091,7 +1095,9 @@ contains
                 case ("moon-moon kappa")
                     read (value_str, *, iostat=ios) params%kappa_col_moon
                 case ("moon-moon gamma")
-                    read (value_str, *, iostat=ios) params%gamma_col_moon
+                    read (value_str, *, iostat=ios) params%gamma_col_moon_n
+                case ("moon-moon beta ")
+                    read (value_str, *, iostat=ios) params%beta_col_moon
                 case ("moon-moon eta c")
                     read (value_str, *, iostat=ios) params%eta_col_moon
                 case ("moon-moon f col")
@@ -1105,7 +1111,9 @@ contains
                 case ("part-part kappa")
                     read (value_str, *, iostat=ios) params%kappa_col_part
                 case ("part-part gamma")
-                    read (value_str, *, iostat=ios) params%gamma_col_part
+                    read (value_str, *, iostat=ios) params%gamma_col_part_n
+                case ("part-part beta ")
+                    read (value_str, *, iostat=ios) params%beta_col_part
                 case ("use part hard-s")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_part_hard_sphere_col = .True.
@@ -1116,6 +1124,8 @@ contains
                     read (value_str, *, iostat=ios) params%eta_col_part
                 case ("part-part f col")
                     read (value_str, *, iostat=ios) params%f_col_part
+                case ("coulomb cap for")
+                    read (value_str, *, iostat=ios) params%coulomb_mu_col
                 case ("stop if no part")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_stop_no_part_left = .True.
@@ -1223,6 +1233,13 @@ contains
                     else
                         params%int_elements_output = 1  ! Just default
                     end if
+                ! case ("output in binar")
+                !     if ((to_lower(trim(value_str)) == "n") .or. &
+                !       & (to_lower(trim(value_str)) == "no")) then
+                !         params%use_binary_output = .False.
+                !     else
+                !         params%use_binary_output = .True.
+                !     end if
                 case ("output elements")
                     if (auxch1 == "a") then
                         params%reference_frame = 2
@@ -1897,14 +1914,19 @@ contains
                     write (*, *) "ERROR: Collisional kappa for moons must be between 0 and 1."
                     stop 1
                 end if
-                if ((derived%gamma_col_moon < cero) .or. (derived%gamma_col_moon > uno)) then
+                if ((derived%gamma_col_moon_n < cero) .or. (derived%gamma_col_moon_n > uno)) then
                     write (*, *) "ERROR: Collisional gamma for moons must be between 0 and 1."
+                    stop 1
+                end if
+                if ((derived%beta_col_moon < cero) .or. (derived%beta_col_moon > uno)) then
+                    write (*, *) "ERROR: Collisional beta for moons must be between 0 and 1."
                     stop 1
                 end if
                 if (derived%kappa_col_moon < myepsilon) then
                     derived%use_moon_soft_sphere_col = .False.
                     derived%kappa_col_moon = cero
-                    derived%gamma_col_moon = cero
+                    derived%gamma_col_moon_n = cero
+                    derived%beta_col_moon = cero
                 end if
             end if
             ! Check Collisions of massive parameters
@@ -1919,6 +1941,8 @@ contains
         else
             derived%use_moon_soft_sphere_col = .False.
         end if
+        ! Set tangential
+        derived%gamma_col_moon_t = derived%gamma_col_moon_n * derived%beta_col_moon
 
         ! Check Collisions of particle parameters
         if (derived%Nparticles > 0) then
@@ -1936,14 +1960,19 @@ contains
                     write (*, *) "ERROR: Collisional kappa for particles must be between 0 and 1."
                     stop 1
                 end if
-                if ((derived%gamma_col_part < cero) .or. (derived%gamma_col_part > uno)) then
+                if ((derived%gamma_col_part_n < cero) .or. (derived%gamma_col_part_n > uno)) then
                     write (*, *) "ERROR: Collisional gamma for particles must be between 0 and 1."
+                    stop 1
+                end if
+                if ((derived%beta_col_part < cero) .or. (derived%beta_col_part > uno)) then
+                    write (*, *) "ERROR: Collisional beta for particles must be between 0 and 1."
                     stop 1
                 end if
                 if (derived%kappa_col_part < myepsilon) then
                     derived%use_part_soft_sphere_col = .False.
                     derived%kappa_col_part = cero
-                    derived%gamma_col_part = cero
+                    derived%gamma_col_part_n = cero
+                    derived%beta_col_part = cero
                 end if
             end if
             ! Check Hard Sphere
@@ -1986,6 +2015,14 @@ contains
                 stop 1
             end if
             derived%grid_col_min_bodies = max(derived%grid_col_min_bodies, 100)
+        end if
+        ! Set gamma tangential for particles
+        derived%gamma_col_part_t = derived%gamma_col_part_n * derived%beta_col_part
+
+        ! Check cap between 0 and 1
+        if ((derived%coulomb_mu_col < cero) .or. (derived%coulomb_mu_col > uno)) then
+            write (*, *) "ERROR: Collisional cap for particles must be between 0 and 1."
+            stop 1
         end if
 
     end subroutine set_derived_parameters_post_bodies

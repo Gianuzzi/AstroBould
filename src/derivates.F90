@@ -2,7 +2,7 @@
 module derivates
     use, intrinsic :: ieee_arithmetic
     use iso_fortran_env, only: int64
-    use constants, only: wp, G, cero, uno, uno2, uno3, dos, tini, megno_factor, infinito
+    use constants, only: wp, G, cero, uno, uno2, uno3, dos, twopi, tini, megno_factor, infinito
     use auxiliary, only: cross2D_z, rotate2D
     use parameters, only: sim, &
                           & asteroid_data, &  !! |axis_a, axis_b, inertia|
@@ -90,7 +90,7 @@ contains
         real(wp) :: mean_movement  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: damp_f, drag_f, stokes_f  ! For extra forces
-        real(wp) :: rcoll, rescape, gamma_coll  ! For collision and escape distances
+        real(wp) :: rcoll, rescape, gamma_n, gamma_t  ! For collision and escape distances
         real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
         real(wp) :: aux_real
 
@@ -821,21 +821,23 @@ contains
 
         ! Fourth, moons to moons (if requested, for soft-sphere collisions)
         if (sim%use_moon_soft_sphere_col .and. (last_moon > 3)) then
-            gamma_coll = uno ! Will be recomputed inside the subroutine
+            gamma_n = uno ! Will be recomputed inside the subroutine
+            gamma_t = uno ! Will be recomputed inside the subroutine
             if (last_moon <= sim%grid_col_min_bodies + 1) then
-                call collisions_brute(y, der, 2, last_moon, gamma_coll, .True.)
+                call collisions_brute(y, der, 2, last_moon, gamma_n, gamma_t, .True.)
             else
-                call collisions_grid(y, der, 2, last_moon, gamma_coll, .True.)
+                call collisions_grid(y, der, 2, last_moon, gamma_n, gamma_t, .True.)
             end if
         end if
 
         ! Fifth, particles to particles (if requested, for soft-sphere collisions)
         if (sim%use_part_soft_sphere_col) then
-            gamma_coll = min(sim%gamma_col_part, uno) * dos * sqrt(sim%kappa_col_part)
+            gamma_n = min(sim%gamma_col_part_n, uno) * dos * sqrt(sim%kappa_col_part)
+            gamma_t = min(sim%gamma_col_part_t, uno) * dos * sqrt(sim%kappa_col_part)
             if (N_particles <= sim%grid_col_min_bodies) then
-                call collisions_brute(y, der, first_particle, N_total, gamma_coll, .False.)
+                call collisions_brute(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
             else
-                call collisions_grid(y, der, first_particle, N_total, gamma_coll, .False.)
+                call collisions_grid(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
             end if
         end if
 
@@ -912,7 +914,7 @@ contains
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: drag_f, stokes_f  ! For extra forces
         real(wp) :: rcoll, rescape  ! For collision distance
-        real(wp) :: gamma_coll ! For collision response
+        real(wp) :: gamma_t, gamma_n  ! For collision response
         real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
         real(wp) :: aux_real
 
@@ -1237,11 +1239,12 @@ contains
 
         ! Particles to particles (if requested, for soft-sphere collisions)
         if (sim%use_part_soft_sphere_col) then
-            gamma_coll = min(sim%gamma_col_part, uno) * dos * sqrt(sim%kappa_col_part)
+            gamma_n = min(sim%gamma_col_part_n, uno) * dos * sqrt(sim%kappa_col_part)
+            gamma_t = min(sim%gamma_col_part_t, uno) * dos * sqrt(sim%kappa_col_part)
             if (N_particles <= sim%grid_col_min_bodies) then
-                call collisions_brute(y, der, first_particle, N_total, gamma_coll, .False.)
+                call collisions_brute(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
             else
-                call collisions_grid(y, der, first_particle, N_total, gamma_coll, .False.)
+                call collisions_grid(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
             end if
         end if
 
@@ -1299,105 +1302,153 @@ contains
     !!!!!!!!!!!!!!!!!!!! SOFT-SPHERE COLLISION ROUTINES !!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
  
-    ! ── Shared force kernel ──────────────────────────────────────────────────
+    ! ── Shared force kernel ───
     ! Computes the soft-sphere force between two overlapping particles and
     ! accumulates it into der (Newton's 3rd law).
+    !
+    ! Normal force:
+    !   F_n = kappa * delta - gamma_n * dvr    (clamped to >= 0)
+    !
+    ! Tangential force (Coulomb-limited friction):
+    !   F_t = -gamma_t * dv_tan               (viscous sliding damping)
+    !   |F_t| <= coulomb_mu * |F_n|           (Coulomb cap)
+    !   kappa_t * delta_t not included: static tangential spring needs
+    !   persistent state per pair — omitted here (see note below).
+    !
     ! Called by both brute-force and grid routines.
-    subroutine soft_sphere_force(y, der, i, j, gamma_coll, are_moons)
+    subroutine soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
         implicit none
         real(wp), dimension(:), intent(in)    :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: i, j       ! particle indices
-        real(wp),               intent(in)    :: gamma_coll
+        integer(kind=4),        intent(in)    :: i, j
+        real(wp),               intent(in)    :: gamma_n, gamma_t
         logical,                intent(in)    :: are_moons
+
         integer(kind=4) :: idx, jdx
         real(wp) :: dr_vec(2), dr2, dr, rcoll, overlap
-        real(wp) :: dr_ver(2), dv_vec(2), dvr
-        real(wp) :: F_mag, F_vec(2)
-        real(wp) :: gamma_coll_pair, mi, mj
+        real(wp) :: dr_ver(2), dt_ver(2)          ! normal and tangential unit vectors
+        real(wp) :: dv_vec(2), dvr, dvt           ! relative vel components
+        real(wp) :: F_n, F_t               ! force magnitudes
+        real(wp) :: F_vec(2)
+        real(wp) :: gamma_n_pair, gamma_t_pair
+        real(wp) :: mi, mj
+        real(wp) :: rand1, rand2, rn              ! for random fallback direction
+        real(wp) :: aux_real
 
- 
         idx = get_index(i)
         jdx = get_index(j)
- 
-        ! Relative position
+
+        ! ── Relative position ───
         dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
         dr2    = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
         rcoll  = R_arr(i) + R_arr(j)
- 
+
         if (dr2 >= rcoll*rcoll) return  ! no overlap
- 
-        ! ── Zero-distance guard ──────────────────────────────────────────────
+
+        ! ── Zero-distance guard: random direction from previous relative vel ──
         if (dr2 < tini) then
-            dr_ver  = [uno, cero]
+            ! Try to use relative velocity direction as contact normal
+            dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
+            rn = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
+            if (rn > tini) then
+                rn = sqrt(rn)
+                dr_ver = dv_vec / rn          ! direction of approach
+            else
+                ! Truly degenerate: random unit vector
+                call random_number(rand1)
+                call random_number(rand2)
+                rand1  = twopi * rand1  ! uniform angle in [0, 2pi)
+                dr_ver = [cos(rand1), sin(rand1)]
+            end if
             dr      = tini
             overlap = rcoll
         else
             dr      = sqrt(dr2)
-            overlap = rcoll - dr          ! overlap depth (> 0)
-            dr_ver  = dr_vec / dr         ! unit normal i → j
+            overlap = rcoll - dr
+            dr_ver  = dr_vec / dr
         end if
- 
-        ! ── Spring term ──────────────────────────────────────────────────────
-        F_mag = sim%kappa_col_part * overlap
- 
-        ! ── Damping term (normal component only) ─────────────────────────────
-        ! Clamp to zero: damp only approaching pairs (dvr < 0).
+
+        ! ── Tangential unit vector (90° rotation of normal) ───
+        ! dt_ver points in the direction of tangential sliding.
+        dt_ver = [-dr_ver(2), dr_ver(1)]
+
+        ! ── Masses ────
         if (are_moons) then
             mi = m_arr(i)
             mj = m_arr(j)
-            gamma_coll_pair = min(sim%gamma_col_moon, uno) * dos * sqrt(sim%kappa_col_moon * (mi * mj / (mi + mj)))
+            aux_real = dos * sqrt(sim%kappa_col_moon * (mi * mj / (mi + mj)))
+            gamma_n_pair = min(sim%gamma_col_moon_n, uno) * aux_real
+            gamma_t_pair = min(sim%gamma_col_moon_t, uno) * aux_real
         else
-            mi = uno  ! massless particle
-            mj = uno  ! massless particle
-            gamma_coll_pair = gamma_coll
+            mi = uno
+            mj = uno
+            gamma_n_pair = gamma_n
+            gamma_t_pair = gamma_t
         end if
-        if (gamma_coll_pair > cero) then
-            dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)  ! relative velocity
-            dvr    = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
-            F_mag  = F_mag - gamma_coll_pair * min(dvr, cero)
+
+        ! ── Relative velocity components ───
+        dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
+        dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)  ! normal component
+        dvt = dv_vec(1)*dt_ver(1) + dv_vec(2)*dt_ver(2)  ! tangential component
+
+        ! ── Normal force (spring + damping, clamped >= 0) ───
+        ! Clamp ensures force is always repulsive — never attractive.
+        F_n = sim%kappa_col_part * overlap
+        if (gamma_n_pair > cero) then
+            F_n = F_n - gamma_n_pair * min(dvr, cero)
         end if
- 
-        F_vec = F_mag * dr_ver  ! force on j (away from i)
- 
-        ! ── Newton's 3rd law ─────────────────────────────────────────────────
+        F_n = max(F_n, cero) ! ← clamp: F_n cannot go negative
+
+        ! ── Tangential force (viscous, Coulomb-limited) ───
+        ! Viscous sliding: F_t = -gamma_t * dv_tan
+        ! Coulomb cap: |F_t| <= mu * F_n  (no friction beyond this)
+        F_t = cero
+        if ((gamma_t_pair > cero) .and. (sim%coulomb_mu_col > cero) .and. (F_n > cero)) then
+            F_t = -gamma_t_pair * dvt
+            ! Coulomb cap
+            F_t = sign(min(abs(F_t), sim%coulomb_mu_col * F_n), F_t)
+        end if
+
+        ! ── Assemble total force on j ───
+        F_vec = F_n * dr_ver + F_t * dt_ver
+
+        ! ── Newton's 3rd law ────
         der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + F_vec / mj
-        der(idx+2:idx+3)  = der(idx+2:idx+3)  - F_vec / mi
- 
+        der(idx+2:idx+3) = der(idx+2:idx+3) - F_vec / mi
+
     end subroutine soft_sphere_force
  
-    ! ── Brute-force O(N²) — used when N_particles <= sim%grid_col_min_bodies ────────
-    subroutine collisions_brute(y, der, first_index, last_index, gamma_coll, are_moons)
+    ! ── Brute-force O(N²) — used when N_particles <= sim%grid_col_min_bodies ──────
+    subroutine collisions_brute(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
         implicit none
         real(wp), dimension(:), intent(in)    :: y
         real(wp), dimension(:), intent(inout) :: der
         integer(kind=4),        intent(in)    :: first_index, last_index
-        real(wp),               intent(in)    :: gamma_coll
+        real(wp),               intent(in)    :: gamma_n, gamma_t
         logical,                intent(in)    :: are_moons
  
         integer(kind=4) :: i, j
  
         do i = first_index, last_index - 1
             do j = i + 1, last_index
-                call soft_sphere_force(y, der, i, j, gamma_coll, are_moons)
+                call soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
             end do
         end do
  
     end subroutine collisions_brute
  
-    ! ── Cell-list O(N) — used when N_particles > sim%grid_col_min_bodies ───────────
-    ! Cell size = 2R (collision diameter): only the 9 surrounding cells
+    ! ── Cell-list O(N) — used when N_particles > sim%grid_col_min_bodies ──
+    ! Cell size ~ 2R (collision diameter): only the 9 surrounding cells
     ! need to be checked for each particle.
-    ! Requires sim%domain_{x,y}_{min,max} to be set in the sim structure.
-    subroutine collisions_grid(y, der, first_index, last_index, gamma_coll, are_moons)
+    subroutine collisions_grid(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
         implicit none
         real(wp), dimension(:), intent(in)    :: y
         real(wp), dimension(:), intent(inout) :: der
         integer(kind=4),        intent(in)    :: first_index, last_index
-        real(wp),               intent(in)    :: gamma_coll
+        real(wp),               intent(in)    :: gamma_n, gamma_t
         logical,                intent(in)    :: are_moons
  
-        real(wp)        :: L_cell, x_min, x_max, y_min, y_max
+        real(wp) :: L_cell, x_min, x_max, y_min, y_max
         integer(int64) :: Ncx, Ncy, Nc
         integer(int64) :: cx, cy, ci
         integer(int64) :: cx2, cy2, ci2
@@ -1405,7 +1456,7 @@ contains
         integer(kind=4) :: i, j, idx
         integer(kind=4), allocatable :: head(:), next(:)
  
-        ! ── Cell size = collision diameter (all equal radius) ─────────────
+        ! ── Cell size ~ 2R (collision diameter): only the 9 surrounding cells
         if (are_moons) then
             L_cell = dos * maxval(R_arr(first_index:last_index))
         else
@@ -1414,7 +1465,7 @@ contains
 
         L_cell = max(L_cell, sim%grid_col_min_cell_size)  ! Avoid too small cells (too much overhead)
 
-        ! ── Domain bounds from particle positions ────────────────────────
+        ! ── Domain bounds from particle positions ───
         x_min = y(get_index(first_index))
         x_max = x_min
         y_min = y(get_index(first_index)+1)
@@ -1438,15 +1489,15 @@ contains
         Ncy = max(1, ceiling((y_max - y_min) / L_cell))
 
 
-        ! ── Safety: fall back to brute-force if grid is too large ────────
+        ! ── Safety: fall back to brute-force if grid is too large ──
         if (Ncx > sim%grid_col_max_cells / Ncy) then
-            call collisions_brute(y, der, first_index, last_index, gamma_coll, are_moons)
+            call collisions_brute(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
             return
         end if
 
         Nc  = Ncx * Ncy
  
-        ! ── Build linked-list cell structure ─────────────────────────────────
+        ! ── Build linked-list cell structure ───
         allocate(head(0:Nc-1), next(first_index:last_index))
         head = -1  ! -1 = empty cell
  
@@ -1462,7 +1513,7 @@ contains
             head(ci) = i
         end do
  
-        ! ── Check only 9-cell neighbourhood ──────────────────────────────────
+        ! ── Check only 9-cell neighbourhood ───
         do i = first_index, last_index
             idx = get_index(i)
             cx  = min(max(int((y(idx)   - x_min) / L_cell, int64), 0_int64), Ncx - 1_int64)
@@ -1479,7 +1530,7 @@ contains
                     j   = head(ci2)
                     do while (j /= -1)
                         if (j > i) then  ! avoid double-counting
-                            call soft_sphere_force(y, der, i, j, gamma_coll, are_moons)
+                            call soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
                         end if
                         j = next(j)
                     end do

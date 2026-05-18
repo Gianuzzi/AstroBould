@@ -121,16 +121,20 @@ program main
         !! --- Moons ---  (SOFT-SPHERE (or not) and HARD-SPHERE)
         input%use_moon_soft_sphere_col = .False. ! If true, they are used at every timestep
         input%kappa_col_moon = cero  ! 0: No bounce, 1: Full bounce.  ! SOFT SPHERE
-        input%gamma_col_moon = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE
+        input%gamma_col_moon_n = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE 
+        input%beta_col_moon = cero  ! beta = gamma_t / gamma_n ! Only active if SOFT-SPHERE collisions and gamma_t > 0
         input%eta_col_moon = uno  ! 0: Elastic, 1: Plastic  ! HARD SPHERE
         input%f_col_moon = uno  ! Bounded: Etot < -f |Epot|  ! HARD SPHERE
         !! --- Particles --- (SOFT-SPHERE and / or HARD-SPHERE)
         input%use_part_soft_sphere_col = .False. ! If true, they are used at every timestep
         input%kappa_col_part = cero  ! 0: No bounce, 1: Full bounce.  ! SOFT SPHERE
-        input%gamma_col_part = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE
+        input%gamma_col_part_n = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE
+        input%beta_col_part = cero  ! beta = gamma_t / gamma_n ! Only active if SOFT-SPHERE collisions and gamma_t > 0
         input%use_part_hard_sphere_col = .False. ! If true, they are used at every output
         input%eta_col_part = uno  ! 0: Elastic, 1: Plastic  ! HARD SPHERE
         input%f_col_part = uno  ! Bounded: Etot < -f |Epot|  ! HARD SPHERE
+        !! --- Both --- (SOFT-SPHERE)
+        input%coulomb_mu_col = uno2 ! Coulomb friction coeff. Ft <= mu * Fn. Only active if SOFT-SPHERE collisions and gamma_t > 0
 
         !! Stops
         input%use_stop_no_moon_left = .True. ! Stop if no more moons left
@@ -630,8 +634,12 @@ program main
 
     ! Moons positions
     if (sim%use_screen .and. sim%use_moons) then
-        write (*, *) "   Barycentric moons: [x, y, vx, vy, mass, distance, radius]"
-        do i = 1, sim%Nmoons
+        if (sim%Nmoon_active > 10) then
+            write (*, *) "  Barycentric moons: [x, y, vx, vy, mass, distance, radius] (Only first 10 shown)"
+        else
+            write (*, *) "   Barycentric moons: [x, y, vx, vy, mass, distance, radius]"
+        end if
+        do i = 1, min(sim%Nmoons, 10)
             write (*, i1r7) i, &
                 & system%moons(i)%coordinates(1:2)/unit_dist, &
                 & system%moons(i)%coordinates(3:4)/unit_vel, &
@@ -644,8 +652,12 @@ program main
 
     ! Particles positions
     if (sim%use_screen .and. sim%use_particles) then
-        write (*, *) "   Barycentric particles: [x, y, vx, vy, distance, radius]"
-        do i = 1, sim%Nparticles
+        if (sim%Npart_active > 10) then
+            write (*, *) "  Barycentric particles: [x, y, vx, vy, distance, radius] (Only first 10 shown)"
+        else
+            write (*, *) "   Barycentric particles: [x, y, vx, vy, distance, radius]"
+        end if
+        do i = 1, min(sim%Nparticles, 10)
             write (*, i1r7) i, &
                      & system%particles(i)%coordinates(1:2)/unit_dist, &
                      & system%particles(i)%coordinates(3:4)/unit_vel, &
@@ -874,7 +886,8 @@ program main
             if (sim%use_part_soft_sphere_col) then
                 write (*, *) "Particle-particle soft-sphere collisions activated."
                 write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_part
-                write (*, s1r1) "  Collisional gamma (damping) factor:", sim%gamma_col_part
+                write (*, s1r1) "  Collisional gamma (damping) normal factor:", sim%gamma_col_part_n
+                write (*, s1r1) "  Collisional gamma (damping) tangential factor:", sim%gamma_col_part_t
             end if
             if ((.not. sim%use_part_soft_sphere_col) .and. (.not. sim%use_part_hard_sphere_col)) then
                 write (*, *) "Particle-particle collisions deactivated."
@@ -896,10 +909,16 @@ program main
             if (sim%use_moon_soft_sphere_col) then
                 write (*, *) "Moon-moon soft-sphere collisions activated."
                 write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_moon
-                write (*, s1r1) "  Collisional gamma (damping) factor:", sim%gamma_col_moon
+                write (*, s1r1) "  Collisional gamma (damping) normal factor:", sim%gamma_col_moon_n
+                write (*, s1r1) "  Collisional gamma (damping) tangential factor:", sim%gamma_col_moon_t
             else
                 write (*, *) "Moon-moon soft-sphere collisions deactivated."
             end if
+            write (*, *) ACHAR(5)
+        end if
+        if (sim%use_moon_soft_sphere_col .or. sim%use_part_soft_sphere_col) then
+            write (*, *) ACHAR(5)
+            write (*, s1r1) "Soft-Sphere Coulomb cap mu factor:", sim%coulomb_mu_col
             write (*, *) ACHAR(5)
         end if
         if (sim%use_any_stop) then
@@ -979,6 +998,7 @@ program main
 
     ! Initial message
     if (sim%use_screen) then
+        write (*, *) ACHAR(5)
         write (*, *) "----- Integration reference frame ------"
         write (*, *) ACHAR(5)
         if (sim%use_sinodic) then
@@ -1466,10 +1486,19 @@ program main
     !! Archivo de salida general
     if (sim%use_datafile) then
         if (sim%int_elements_output == 2) then
-            open (unit=u_datafile, file="elem_"//trim(sim%datafile), status='replace', action='write')
-            open (unit=u_datafile+1, file="coor_"//trim(sim%datafile), status='replace', action='write')
+            if (use_binary_output) then
+                open (unit=u_datafile, file="elem_"//trim(sim%datafile), status='replace', access='stream', form='unformatted')
+                open (unit=u_datafile+1, file="coor_"//trim(sim%datafile), status='replace', access='stream', form='unformatted')
+            else
+                open (unit=u_datafile, file="elem_"//trim(sim%datafile), status='replace', action='write')
+                open (unit=u_datafile+1, file="coor_"//trim(sim%datafile), status='replace', action='write')
+            end if
         else
-            open (unit=u_datafile, file=trim(sim%datafile), status='replace', action='write')
+            if (use_binary_output) then
+                open (unit=u_datafile, file=trim(sim%datafile), status='replace', access='stream', form='unformatted')
+            else
+                open (unit=u_datafile, file=trim(sim%datafile), status='replace', action='write')
+            end if
         end if
     end if
 
@@ -1480,7 +1509,11 @@ program main
 
     !! Geometric file
     if (sim%use_geometricfile) then
-        open (unit=u_geometricfile, file=trim(sim%geometricfile), status='replace', action='write')
+        if (use_binary_output) then
+            open (unit=u_geometricfile, file=trim(sim%geometricfile), status='replace', access='stream', form='unformatted')
+        else
+            open (unit=u_geometricfile, file=trim(sim%geometricfile), status='replace', action='write')
+        end if
     end if
 
     !! Geometric chaos file
@@ -1492,8 +1525,13 @@ program main
     if (sim%use_multiple_outputs) then
         do i = 0, sim%Ntotal  ! 0 is the asteroid
             write (aux_character20, *) i
-            open (unit=u_multfile + i, file=trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
-                & status='replace', action='write')
+            if (use_binary_output) then
+                open (unit=u_multfile + i, file=trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
+                    & status='replace', access='stream', form='unformatted')
+            else
+                open (unit=u_multfile + i, file=trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
+                    & status='replace', action='write')
+            end if
         end do
     end if
 
