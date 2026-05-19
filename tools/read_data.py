@@ -34,6 +34,41 @@ chaos_names = [
     "megno",
 ]
 
+outnames_coord = {
+    "idx": "i4",
+    "btype": "i4",
+    "t": "f8",
+    "theta": "f8",
+    "omega": "f8",
+    "x": "f8",
+    "y": "f8",
+    "vx": "f8",
+    "vy": "f8",
+    "mass": "f8",
+    "radius": "f8",
+}
+
+outnames_elem = {
+    "idx": "i4",
+    "btype": "i4",
+    "t": "f8",
+    "theta": "f8",
+    "omega": "f8",
+    "a": "f8",
+    "e": "f8",
+    "M": "f8",
+    "w": "f8",
+    "mmr": "f8",
+    "mass": "f8",
+    "radius": "f8",
+    "dist": "f8",
+    "amin": "f8",
+    "amax": "f8",
+    "emin": "f8",
+    "emax": "f8",
+    "megno": "f8",
+}
+
 
 def read_chaos(chaos_name="sump.out", work_dir=None, use_megno=True):
     if work_dir is None:
@@ -52,63 +87,41 @@ def read_chaos(chaos_name="sump.out", work_dir=None, use_megno=True):
 
 
 def read_outfile(
-    out_name="salida.out", work_dir=None, nboulders=0, coord=False
+    out_name="salida.out", work_dir=None, nboulders=0, coord=False, binary=False,
 ):
     if work_dir is None:
         full_name = out_name
     else:
         full_name = os.path.join(work_dir, out_name)
     if coord:
-        df = pd.read_csv(
-            full_name,
-            delimiter="\\s+",
-            header=None,
-            names=[
-                "idx",
-                "btype",
-                "t",
-                "theta",
-                "omega",
-                "x",
-                "y",
-                "vx",
-                "vy",
-                "mass",
-                "radius",
-            ],
-        )
+        if binary:
+            dt = np.dtype([(k, v) for k, v in outnames_coord.items()])
+            data = np.fromfile(full_name, dtype=dt)
+            df = pd.DataFrame(data, columns=list(outnames_coord.keys()))
+        else:
+            df = pd.read_csv(
+                full_name,
+                delimiter="\\s+",
+                header=None,
+                names=list(outnames_coord.keys()),
+            )
         df.nt = df.idx.nunique()
         df.nb = nboulders
         df.np = df.nt - nboulders
         df["r"] = np.sqrt(df["x"] ** 2 + df["y"] ** 2)
         df["v"] = np.sqrt(df["vx"] ** 2 + df["vy"] ** 2)
     else:
-        names = [
-            "idx",
-            "btype",
-            "t",
-            "theta",
-            "omega",
-            "a",
-            "e",
-            "M",
-            "w",
-            "mmr",
-            "mass",
-            "radius",
-            "dist",
-            "amin",
-            "amax",
-            "emin",
-            "emax",
-            "megno",
-        ]
-        df = pd.read_csv(
-            full_name,
-            delimiter="\\s+",
-            header=None,
-        )
-        df.columns = names[: len(df.columns)]
+        if binary:
+            dt = np.dtype([(k, v) for k, v in outnames_elem.items()])
+            data = np.fromfile(full_name, dtype=dt)
+            df = pd.DataFrame(data, columns=list(outnames_elem.keys()))
+        else:
+            df = pd.read_csv(
+                full_name,
+                delimiter="\\s+",
+                header=None,
+            )
+        df.columns = list(outnames_elem.keys())[: len(df.columns)]
         df["lam"] = np.mod(df.M + df.w, 360.0)
         df.tmax = df.t.iloc[-1]
     return df
