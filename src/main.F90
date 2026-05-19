@@ -71,7 +71,7 @@ program main
 
             boulders_in(1, 1) = 1.e-1_wp   ! Cociente de masas entre boulder 1 y primary
             boulders_in(1, 2) = cero       ! Ángulo de fase del boulder 1 [deg]
-            boulders_in(1, 3) = 2.5e0_wp   ! Radio del boulder 1 [km]
+            boulders_in(1, 3) = cero       ! Radio del boulder 1 [km]
 
         end if
 
@@ -86,7 +86,7 @@ program main
             moons_in(1, 3) = cero       ! Eccentricidad
             moons_in(1, 4) = cero       ! M [deg]
             moons_in(1, 5) = cero       ! w [deg]
-            moons_in(1, 6) = 11.1e0_wp  ! MMR
+            moons_in(1, 6) = cero       ! MMR
             moons_in(1, 7) = cero       ! radius [km]
 
         end if
@@ -103,7 +103,7 @@ program main
             particles_in(1, 2) = cero      ! Eccentricidad
             particles_in(1, 3) = cero      ! M [deg]
             particles_in(1, 4) = cero      ! w [deg]
-            particles_in(1, 5) = 8.1e0_wp  ! MMR
+            particles_in(1, 5) = cero      ! MMR
 
         end if
 
