@@ -60,8 +60,8 @@ program main
         input%radius_primary = 129.e0_wp ! Radio del cuerpo 0 [km]
 
         !!! Rotation
-        input%asteroid_rotational_period = 7.004e0_wp * hora  ! Periodo de rotación [day]
-        !lambda_kep = 0.471e0_wp      ! Cociente omega/wk
+        input%lambda_kep = cero                               ! Cociente omega/wk
+        input%asteroid_rotational_period = 7.004e0_wp * hora  ! Periodo de rotación [day] ! Usado si lambda_kep = 0        
 
         !! Boulders
         input%Nboulders = 1 ! Número de boulders
@@ -97,12 +97,13 @@ program main
         if (input%Nparticles > 0) then ! Specify particles properties
             call allocate_params_particles(input%Nparticles)!! Alocatamos (No tocar)
 
+            input%radius_particles = cero  ! Radio [km] (todas)
+
             particles_in(1, 1) = cero      ! Semieje [km]
             particles_in(1, 2) = cero      ! Eccentricidad
             particles_in(1, 3) = cero      ! M [deg]
             particles_in(1, 4) = cero      ! w [deg]
             particles_in(1, 5) = 8.1e0_wp  ! MMR
-            particles_in(1, 6) = cero      ! radius [km]
 
         end if
 
@@ -362,7 +363,8 @@ program main
         end if
         call allocate_params_particles(1)
         ! Fill the array
-        particles_in(1, :) = cl_body_in(2:7)
+        particles_in(1, :) = cl_body_in(2:6)
+        input%radius_particles = cl_body_in(7)  ! Set radius from command line if given
     else if (sim%use_particlesfile) then
         if (sim%Nparticles > 0) then
             write (*, *) ACHAR(10)
@@ -370,7 +372,7 @@ program main
             stop 1
         end if
         if (sim%use_screen) write (*, *) "Reading particles from file: ", trim(sim%particlesfile)
-        !!!! Formato: [mu, a, e, M, w, MMR, radius]
+        !!!! Formato: [mu, a, e, M, w, MMR]
         call read_columns_file(sim%particlesfile, aux_2D)
         sim%Nparticles = size(aux_2D, 1)
         if (sim%Nparticles == 0) then
@@ -510,7 +512,6 @@ program main
                          & particles_in(i, 3)*radian, &     ! M (degrees)
                          & particles_in(i, 4)*radian, &     ! w (degrees)
                          & particles_in(i, 5), &            ! MMR
-                         & particles_in(i, 6)*unit_dist, &  ! radius
                          sim%Nmoons)                        ! ID to star from
     end do
 
@@ -522,7 +523,10 @@ program main
                     & sim%reference_frame, &                      ! Reference frame for elements
                     & sim%use_sinodic )                           ! Sinodic frame for particles ?
 
-    call set_system_extra(system, cero, sim%eta_col, sim%f_col, sim%manual_J2, sim%use_J2_from_primary)  ! Extra parameters
+    call set_system_extra(system, cero, &
+                            & sim%eta_col, sim%f_col, &
+                            & sim%manual_J2, sim%use_J2_from_primary, &
+                            & sim%radius_particles*unit_dist)  ! Extra parameters
 
     ! <<<< Save initial data >>>>
     initial_system = system
@@ -634,7 +638,7 @@ program main
                      & system%particles(i)%coordinates(1:2)/unit_dist, &
                      & system%particles(i)%coordinates(3:4)/unit_vel, &
                      & system%particles(i)%dist_to_cm/unit_dist, &
-                     & system%particles(i)%radius/unit_dist
+                     & system%particles_radius/unit_dist
         end do
         write (*, *) ACHAR(5)
     end if
@@ -851,7 +855,7 @@ program main
             end if
             write (*, *) ACHAR(5)
             if (sim%use_collisions_part) then
-                sim%use_collisions_part = sim%use_collisions_part .and. any(system%particles(:sim%Nparticles)%radius > cero)
+                sim%use_collisions_part = sim%use_collisions_part .and. sim%radius_particles > cero
             end if
             if (sim%use_collisions_part) then
                 write (*, *) "Particle-particle collisions activated."

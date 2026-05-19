@@ -24,7 +24,7 @@ contains
         real(wp), intent(in) :: mass, omega
         real(wp) :: acorot
 
-        if (omega < myepsilon) then
+        if (abs(omega) < myepsilon) then
             acorot = cero
         else
             acorot = (G*mass/(omega*omega))**(1/3.)
