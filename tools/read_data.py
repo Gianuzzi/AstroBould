@@ -87,7 +87,11 @@ def read_chaos(chaos_name="sump.out", work_dir=None, use_megno=True):
 
 
 def read_outfile(
-    out_name="salida.out", work_dir=None, nboulders=0, coord=False, binary=False,
+    out_name="salida.out",
+    work_dir=None,
+    nboulders=0,
+    coord=False,
+    binary=False,
 ):
     if work_dir is None:
         full_name = out_name
