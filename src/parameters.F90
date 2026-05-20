@@ -463,6 +463,18 @@ contains
                     call get_command_argument(i + 1, aux_character20)
                     read (aux_character20, *) simulation_number  ! Global variable
                     aux_integer = 1
+                case ("-ast_mass")
+                    call get_command_argument(i + 1, aux_character20)
+                    read (aux_character20, *) params%mass_primary
+                    aux_integer = 1
+                case ("-ast_radius")
+                    call get_command_argument(i + 1, aux_character20)
+                    read (aux_character20, *) params%radius_primary
+                    aux_integer = 1
+                case ("-ast_period")
+                    call get_command_argument(i + 1, aux_character20)
+                    read (aux_character20, *) params%asteroid_rotational_period
+                    aux_integer = 1
                 case ("-mumoon")
                     call get_command_argument(i + 1, aux_character20)
                     read (aux_character20, *) cl_body_in(1)  ! Global variable
@@ -632,6 +644,9 @@ contains
                     write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional. 0 si no se utiliza.]"
                     write (*, *) "    --onlyprint   : No integrar; solo imprimir configuraciones"
                     write (*, *) "    -nsim         : Número de simulación [int]"
+                    write (*, *) "    -ast_mass     : Masa del asteroide (kg)"
+                    write (*, *) "    -ast_radius   : Radio del asteroide (km)"
+                    write (*, *) "    -ast_period   : Período de rotación del asteroide (horas)"
                     write (*, *) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
                     write (*, *) "    -radius       : Radio de la partícula/luna individual (km)."
                     write (*, *) "    -datafile     : Nombre de archivo de salida de datos"
@@ -664,16 +679,16 @@ contains
                     write (*, *) "    --nopartfile  : No utilizar archivo de partículas"
                     write (*, *) "    --noconfig    : No leer archivo de configuración"
                     write (*, *) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
-                    write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos"
+                    write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Toda"
                     write (*, *) "    -stopif       : Detener la integración sin más objetos del tipo [int]:"
                     write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
                     write (*, *) "    --megno       : Calcular MEGNO para partículas"
                     write (*, *) "    --nomegno     : No calcular MEGNO"
                     write (*, *) "    --sinodic     : Integar en sistema rotante"
                     write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
-                    write (*, *) "    -parallel     : Cantida de thread a utilizar en paralelo [int]"
-                    write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
-                    write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
+                    write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int] (deprecated)"
+                    write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles (deprecated)"
+                    write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas (deprecated)"
                     write (*, *) "    --help        : Mostrar esta ayuda"
                     stop 0
                 case default  ! Si no es un argumento reconocido...
