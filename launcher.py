@@ -95,13 +95,16 @@ sinodic = False  # Integrar en el sistema rotante (solo partículas)
 config = "config.ini"  # Archivo de configuración
 bodiesfile = "particles.in"  # Archivo de partículas o lunas
 tomfile = ""  # Archivo de valores de t_i, delta_omega(t_i), y delta_masa(t_i)
+has_mass = False  # Si bodies tiene en la primera columna el valor de la masa del objeto central
+has_radius = False  # Si bodies tiene en la segunda columna el valor del radio del objeto central
+has_period = False  # Si bodies tiene en la tercera (segunda (primera)) columna el valor del período rotacional del objeto central
 
 # Output # ("" o False si no se usa)
 new_dir = True  # Directorio donde volcar las salidas.
 datafile = "salida"  # Archivo de salidas de datos (sin extensión)
 final_chaos = "chaos"  # Archivo de caos final (sin extensión)
 geomfile = False  # Archivo de elementos geométricos (sin extensión)
-final_surface = "surface"  # Archivo de sección de superficie final (sin extensión)
+final_surface = "surface"  # Archivo de superficie de seccion final (sin extensión)
 filter_prefix = False  # Prefijo de archivo de salidas filtradas
 # Summary file
 summaryfile = "summary"  # Archivo con resumen de parámetros
@@ -225,9 +228,13 @@ if os.path.isfile(os.path.join(wrk_dir, f"{final_chaos}.out")):
     if geomfile:
         print(f"  Independently, '{geomfile}' will be replaced (if exists).")
     if final_surface:
-        print(f"  Independently, '{final_surface}' will be replaced (if exists).")
+        print(
+            f"  Independently, '{final_surface}' will be replaced (if exists)."
+        )
     if summaryfile:
-        print(f"  Independently, '{summaryfile}' will be replaced (if exists).")
+        print(
+            f"  Independently, '{summaryfile}' will be replaced (if exists)."
+        )
     if ask_overwrite:
         yes_no = input("Do you want to overwrite it? [y/[n]]: ")
     else:
@@ -277,7 +284,7 @@ if nsys == 0:
     print("Saliendo.")
     sys.exit()
 else:
-    print(f"Cantidad total de bodies: {nsys}")
+    print(f"Cantidad total de bodies (integraciones): {nsys}")
 
 
 # Ver si hay que hacer todo, o ya hay alguna realizadas
@@ -435,15 +442,21 @@ def integrate_n(i):
     this_args = f"-nsim {i}"
 
     this_args += "%s" % (
-        " --nodataf" if not datafile else f" -datafile {this_datafile}_undone.out"
+        " --nodataf"
+        if not datafile
+        else f" -datafile {this_datafile}_undone.out"
     )
 
     this_args += "%s" % (
-        " --nochaosf" if not final_chaos else f" -chaosfile {this_chaosfile}_undone.out"
+        " --nochaosf"
+        if not final_chaos
+        else f" -chaosfile {this_chaosfile}_undone.out"
     )
 
     this_args += "%s" % (
-        " --nogeomf" if not geomfile else f" -geomfile {this_geomfile}_undone.out"
+        " --nogeomf"
+        if not geomfile
+        else f" -geomfile {this_geomfile}_undone.out"
     )
 
     # Extract the data from the lines
@@ -451,6 +464,23 @@ def integrate_n(i):
         lines[i - 1]
     ).split()  # -1 porque la lista arranca de 0 y los sistemas de 1
 
+    # Check if the mass is in the first column, and if so, add it to the arguments and remove it from the data list
+    if has_mass and len(data) >= 1:  # The mass is present in the first column
+        this_args += f" -ast_mass {data.pop(0)}"  # Update my_line
+
+    # Check if the radius is in the second column, and if so, add it to the arguments and remove it from the data list
+    if (
+        has_radius and len(data) >= 1
+    ):  # The radius is present in the second (first) column
+        this_args += f" -ast_radius {data.pop(0)}"  # Update my_line
+
+    # Check if the period is in the third column, and if so, add it to the arguments and remove it from the data list
+    if (
+        has_period and len(data) >= 1
+    ):  # The period is present in the third (second (first))) column
+        this_args += f" -ast_period {data.pop(0)}"  # Update my_line
+
+    # Check if the body mass is in the first column, and if so, add it to the arguments and remove it from the data list
     if len(data) >= 6:  # The mass in present in the first column
         this_args += f" -mumoon {data.pop(0)}"  # Update my_line
         if len(data) == 6:  # The radius would be the last column
@@ -542,7 +572,9 @@ def integrate_n(i):
 
         # Renombramos el archivo de chaos geométrico
         rename_file(
-            os.path.join(dirp, f"{filter_prefix}{old_geomchaosfile}_undone.out"),
+            os.path.join(
+                dirp, f"{filter_prefix}{old_geomchaosfile}_undone.out"
+            ),
             os.path.join(dirp, f"{filter_prefix}{new_geomchaosfile}.out"),
         )
 
@@ -576,7 +608,9 @@ def make_chaos(final_chaos, base="chaos", suffix=""):
     else:
         file_list = sorted(
             file_list,
-            key=lambda x: int(x.split(base)[1].split(".out")[0].split(suffix)[0]),
+            key=lambda x: int(
+                x.split(base)[1].split(".out")[0].split(suffix)[0]
+            ),
         )
 
     # Check
@@ -603,7 +637,9 @@ def make_chaos(final_chaos, base="chaos", suffix=""):
             start_for_chunk = (
                 chunk_idx * chunk_size + 1
             )  # 1-based index for first file in this chunk
-            mode = "wb" if chunk_idx == 0 else "ab"  # write first chunk, append others
+            mode = (
+                "wb" if chunk_idx == 0 else "ab"
+            )  # write first chunk, append others
 
             cmd = [
                 "awk",
@@ -677,7 +713,8 @@ if __name__ == "__main__":
             # Chequeamos si existe el archivo de configuración
             if os.path.isfile(ncini) and ask_overwrite:
                 print(
-                    f"Configuration file '{ncini}' " + f"already exists in {wrk_dir}."
+                    f"Configuration file '{ncini}' "
+                    + f"already exists in {wrk_dir}."
                 )
                 print("Do you want to overwrite it?")
                 print("If NOT, the existing one will be used.")
@@ -696,7 +733,10 @@ if __name__ == "__main__":
 
         # Chequeamos si existe el archivo de partículas
         if os.path.isfile(nparticles) and ask_overwrite:
-            print(f"Particles file '{nparticles}' " + f"already exists in {wrk_dir}.")
+            print(
+                f"Particles file '{nparticles}' "
+                + f"already exists in {wrk_dir}."
+            )
             print("Do you want to overwrite it?")
             print("If NOT, the existing one will be used.")
             yes_no = input("[y/[n]]: ")
@@ -782,7 +822,9 @@ if __name__ == "__main__":
                     + f"{filter_prefix}{final_chaos}.out ya existente."
                 )
 
-            make_chaos(f"{filter_prefix}{final_chaos}", f"{filter_prefix}chaos")
+            make_chaos(
+                f"{filter_prefix}{final_chaos}", f"{filter_prefix}chaos"
+            )
 
     # Creamos el archivo de chaos de geométricos
     if geomchaosfile:
@@ -801,7 +843,9 @@ if __name__ == "__main__":
     if final_surface:
 
         print("")
-        print(f"Creando archivo de superficie de sección '{final_surface}.out'")
+        print(
+            f"Creando archivo de superficie de sección '{final_surface}.out'"
+        )
         if os.path.isfile(os.path.join(wrk_dir, f"{final_surface}.out")):
             print(
                 "WARNING: Se está reemplazando el archivo "
