@@ -5,10 +5,11 @@ import numpy as np
 from scipy.stats import norm, rayleigh
 
 # ---------------------------------------------------------------------
-# Constantes
+# Constantes [kg, km, day, degree]
 pi = np.pi
 rad = pi / 180.0
 deg = 1.0
+hour = 1 / 24.0
 
 # Semilla para el generador de números aleatorios
 rng = np.random.default_rng(seed=42)
@@ -76,9 +77,29 @@ type_gen = type(rndm())
 
 # ---------------------------------------------------------------------
 
+# Nombres ordenados de las columnas posibles
+order = [
+    "ast_mass",
+    "ast_radius",
+    "ast_Prot",
+    "mu_to_disk",
+    "a",
+    "e",
+    "M",
+    "w",
+    "mmr",
+    "radius",
+]
+
+
+# ---------------------------------------------------------------------
+
 # -----------------
 # INPUT
 # -----------------
+use_ast_mass = False  # True if the mass of the asteroid is expected
+use_ast_radius = False  # True if the radius of the asteroid is expected
+use_ast_Prot = False  # True if the rot period of the asteroid is expected
 use_mu_and_radius = False  # True if a moon is expected
 
 # UNIDADES
@@ -86,19 +107,21 @@ unit_angle = deg
 
 # Data
 data_in = {}
-# Nombres ordenados de las columnas posibles
-order = ["mu_to_disk", "a", "e", "M", "w", "mmr", "radius"]
 # PARÁMETROS A VARIAR
+## Only central parameters
+data_in["ast_mass"] = [-6.3e18]  # [kg]
+data_in["ast_radius"] = [125]  # [km]
+data_in["ast_Prot"] = [7.004 * hour]  # [day]
 ## Only Moon parameters
-disk_to_ast_mass_ratio = 0.1  # Unused if use_mu_and_radius is False.
-data_in["mu_to_disk"] = [rndm(0.0, 1.0)]  # mass moon / mass disk (total moons)
-data_in["radius"] = [0.0]  # [km]
+disk_to_ast_mass_ratio = 1e-17  # Unused if use_mu_and_radius is False.
+data_in["mu_to_disk"] = [1]  # mass moon / mass disk (total moons)
+data_in["radius"] = [1e-3]  # [km]
 ## Particle parameters
 data_in["a"] = [0.0]  # [km]
-data_in["e"] = [n_steps(0.0, 0.2, 20)]  # Podría ser: rayleigh_dist(0, 0.1, 1)
-data_in["M"] = [rndm(0.0, 360.0)]  # [unit_angle]
-data_in["w"] = [rndm(0.0, 360.0)]  # [unit_angle]
-data_in["mmr"] = [n_steps(1.45, 4.6, 50)]
+data_in["e"] = [0.4]  # Podría ser: rayleigh_dist(0, 0.1, 1)
+data_in["M"] = [n_steps(0.0, 360, 250)]  # [unit_angle]
+data_in["w"] = [0.0]  # [unit_angle]
+data_in["mmr"] = [n_steps(2.999, 3.001, 2)]
 
 # Nota:
 #     'mu_to_disk' es solo para input; el output será 'mu_to_asteroid'
@@ -224,7 +247,16 @@ def shuffle_matrix(matrix: np.ndarray):
 # MAIN PROGRAM
 
 if __name__ == "__main__":
-    # Remove mass if not needed
+    # Remove parameters if not used
+    if not use_ast_mass:
+        if "ast_mass" in order:
+            order.remove("ast_mass")
+    if not use_ast_radius:
+        if "ast_radius" in order:
+            order.remove("ast_radius")
+    if not use_ast_Prot:
+        if "ast_Prot" in order:
+            order.remove("ast_Prot")
     if not use_mu_and_radius:
         if "mu_to_disk" in order:
             order.remove("mu_to_disk")
