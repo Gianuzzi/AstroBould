@@ -60,58 +60,60 @@ For basic help in Spanish just run:
 ``` console
 $ ./ASTROBOULD --help
 
- Uso: .\ASTROBOULD <ea> <ee> <eM> <ew> <mmr> [args]"
-    ea  : Elemento a de la partícula/luna (km)
-    ee  : Elemento e de la partícula/luna
-    eM  : Elemento M de la partícula/luna (deg)
-    ew  : Elemento w de la partícula/luna (deg)
-    mmr : Valor de MMR de la partícula/luna [Opcional. 0 si no se utiliza.]
-    --onlyprint   : No integrar; solo imprimir configuraciones
-    -nsim         : Número de simulación [int]
-    -mumoon       : Cociente de masa entre la luna individual y el asteroide
-    -radius       : Radio de la partícula/luna individual (km)
-    -datafile     : Nombre de archivo de salida de datos
-    --nodataf     : No guardar datos de salida
-    -chaosfile    : Nombre de archivo de salida caos
-    --nochaosf    : No guardar salida de caos
-    -geomfile     : Nombre de archivo de salida de elementos geométricos
-    --nogeomf     : No guardar salida de elementos geométricos
-    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)
-    --nofilter    : No utilizar filtro
-    --screen      : Imprimir información en pantalla
-    --noscreen    : No imprimir en pantalla
-    --perc        : Imprimir porcentaje de integración
-    --noperc      : No imprimir porcentaje de integración
-    --datascr     : Imprimir datos de salida en pantalla
-    --nodatascr   : No imprimir datos de salida en pantalla
-    --diagnostic  : Imprimir datos de diagnostico en pantalla
-    --nodiagnostic: No imprimir datos de diagnostico en pantalla
-    -multifile    : Nombre base de archivo de salida de datos individuales
-    --nomultif    : No guardar datos en archivos individuales
-    -mapfile      : Nombre de archivo de mapa
-    --nomapf      : No guardar mapa de potencial
+  Uso: ./ASTROBOULD <ea> <ee> <eM> <ew> <mmr> [args]"
+    ea   : Elemento a de la partícula/luna (km)"
+    ee   : Elemento e de la partícula/luna"
+    eM   : Elemento M de la partícula/luna (deg)"
+    ew   : Elemento w de la partícula/luna (deg)"
+    mmr  : Cociente Omega/n de la partícula/luna [Opcional]"
+    --onlyprint   : No integrar; solo imprimir configuraciones"
+    -nsim         : Número de simulación [int]"
+    -ast_mass     : Masa del asteroide (kg)"
+    -ast_radius   : Radio del asteroide (km)"
+    -ast_period   : Período de rotación del asteroide (horas)"
+    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
+    -radius       : Radio de la partícula/luna individual (km)"
+    -datafile     : Nombre de archivo de salida de datos"
+    --nodataf     : No guardar datos de salida"
+    -chaosfile    : Nombre de archivo de salida caos"
+    --nochaosf    : No guardar salida de caos"
+    -geomfile     : Nombre de archivo de salida de elementos geométricos"
+    --nogeomf     : No guardar salida de elementos geométricos"
+    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)"
+    --nofilter    : No utilizar filtro"
+    --screen      : Imprimir información en pantalla"
+    --noscreen    : No imprimir en pantalla"
+    --perc        : Imprimir porcentaje de integración"
+    --noperc      : No imprimir porcentaje de integración"
+    --datascr     : Imprimir datos de salida en pantalla"
+    --nodatascr   : No imprimir datos de salida en pantalla"
+    --diagnostic  : Imprimir datos de diagnóstico en pantalla"
+    --nodiagnostic: No imprimir datos de diagnóstico en pantalla"
+    -multifile    : Nombre base de archivo de salida de datos individuales"
+    --nomultif    : No guardar datos en archivos individuales"
+    -mapfile      : Nombre de archivo de mapa"
+    --nomapf      : No guardar mapa de potencial"
     --elem        : Imprimir elementos orbitales (lunas/partículas) [default]
-    --noelem      : Imprimir coordenadas baricéntricas
-    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar
-    --notomfile   : No utilizar archivo de (t)iempos|omega|masa
-    -moonfile     : Nombre de archivo de lunas a utilizar
-    --nomoonfile  : No utilizar archivo de lunas
-    -partfile     : Nombre de archivo de partículas a utilizar
-    --nopartfile  : No utilizar archivo de partículas
-    --noconfig    : No leer archivo de configuración
-    -merge        : Tipo de colisiones (merges) permitidas [int]: 
-                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Todos
-    -stopif       : Detener la integración sin más objetos del tipo [int]:
-                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos
-    --megno       : Calcular MEGNO para partículas
-    --nomegno     : No calcular MEGNO
-    --sinodic     : Integar en sistema rotante
-    --nosinodic   : Integar en sistema NO rotante
-    -parallel     : Cantida de thread a utilizar en paralelo [int]
-    --parallel    : Paralelizar usando todos los threads disponibles
-    --noparallel  : No usar paralelización para lunas/partículas
-    --version     : Imprimir versión del código al iniciar la ejecución
-    --help        : Mostrar esta ayuda
+    --noelem      : Imprimir coordenadas baricéntricas"
+    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
+    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
+    -moonfile     : Nombre de archivo de lunas a utilizar"
+    --nomoonfile  : No utilizar archivo de lunas"
+    -partfile     : Nombre de archivo de partículas a utilizar"
+    --nopartfile  : No utilizar archivo de partículas"
+    --noconfig    : No leer archivo de configuración"
+    -merge        : Tipo de colisiones (merges) permitidas [int]: "
+                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Tod
+    -stopif       : Detener la integración sin más objetos del tipo [int]:"
+                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
+    --megno       : Calcular MEGNO para partículas"
+    --nomegno     : No calcular MEGNO"
+    --sinodic     : Integar en sistema rotante"
+    --nosinodic   : Integar en sistema NO rotante"
+    -parallel     : Cantida de threads a utilizar en paralelo [int] (depr)"
+    --parallel    : Paralelizar usando todos los threads disponibles (depr)"
+    --noparallel  : No usar paralelización para lunas/partículas (depr)"
+    --help        : Mostrar esta ayuda"
 
 ``` 
 
