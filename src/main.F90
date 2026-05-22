@@ -135,6 +135,9 @@ program main
         input%f_col_part = uno  ! Bounded: Etot < -f |Epot|  ! HARD SPHERE
         !! --- Both --- (SOFT-SPHERE)
         input%coulomb_mu_col = uno2 ! Coulomb friction coeff. Ft <= mu * Fn. Only active if SOFT-SPHERE collisions and gamma_t > 0
+        input%use_verlet_col = .False. ! Whether to use Verlet list for collisions
+        input%verlet_skin_factor = 0.1_wp ! Skin factor for Verlet list (as a fraction of ~2R)
+        input%use_verlet_with_moons = .False. ! Whether to include moons instead of particles in the Verlet list for collisions 
 
         !! Stops
         input%use_stop_no_moon_left = .True. ! Stop if no more moons left
@@ -183,9 +186,9 @@ program main
         input%output_number = 100         ! Number of outputs (if output_timestep = 0)
         input%extra_checkpoints = 2000    ! Number of extra checkpoints for chaos calculations
 
-        !! Error and Tiemstepping
+        !! Error and Timestepping
         input%use_adaptive = .True.       ! Whether to use an adaptive timestepping method
-        input%dt_min = -1.e-2_wp          ! Minimum dt to use. (if negative, |dt| * min_period)
+        input%dt_min = -1.e-2_wp          ! Minimum (or fixed) dt to use. (if negative, |dt| * min_period)
         input%learning_rate = 0.85e0_wp   ! [For adaptive step integrators] Learning rate
         input%error_digits = 12           ! [For adaptive step integrators] Digits for relative error
 
@@ -888,6 +891,10 @@ program main
                 write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_part
                 write (*, s1r1) "  Collisional gamma (damping) normal factor:", sim%gamma_col_part_n
                 write (*, s1r1) "  Collisional gamma (damping) tangential factor:", sim%gamma_col_part_t
+                if (sim%use_verlet_col .and. .not. sim%use_verlet_with_moons) then
+                    write(*, *) ACHAR(5)
+                    write(*, s1r1) " Using Verlet for collisions between particles, with skin factor:", sim%verlet_skin_factor
+                end if
             end if
             if ((.not. sim%use_part_soft_sphere_col) .and. (.not. sim%use_part_hard_sphere_col)) then
                 write (*, *) "Particle-particle collisions deactivated."
@@ -911,22 +918,26 @@ program main
                 write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_moon
                 write (*, s1r1) "  Collisional gamma (damping) normal factor:", sim%gamma_col_moon_n
                 write (*, s1r1) "  Collisional gamma (damping) tangential factor:", sim%gamma_col_moon_t
+                if (sim%use_verlet_col .and. sim%use_verlet_with_moons) then
+                    write(*, *) ACHAR(5)
+                    write(*, s1r1) " Using Verlet for collisions between moons, with skin factor:", sim%verlet_skin_factor
+                end if
             else
                 write (*, *) "Moon-moon soft-sphere collisions deactivated."
             end if
             write (*, *) ACHAR(5)
         end if
         if (sim%use_moon_soft_sphere_col .or. sim%use_part_soft_sphere_col) then
-            write (*, *) ACHAR(5)
-            write (*, s1r1) "Soft-Sphere Coulomb cap mu factor:", sim%coulomb_mu_col
+            write (*, s1r1) " Soft-Sphere Coulomb cap mu factor:", sim%coulomb_mu_col
             write (*, *) ACHAR(5)
         end if
+        write (*, *) ACHAR(5)
         if (sim%use_any_stop) then
             if (sim%use_stop_no_part_left .and. sim%use_particles) then
-                write (*, *) " Simulation will stop if no more particles are left."
+                write (*, *) "Simulation will stop if no more particles are left."
             end if
             if (sim%use_stop_no_moon_left .and. sim%use_moons) then
-                write (*, *) " Simulation will stop if no more moons are left."
+                write (*, *) "Simulation will stop if no more moons are left."
             end if
         else
             write (*, *) "Simulation will stop if no more particles and moons are left."
@@ -1202,6 +1213,12 @@ program main
             write (*, s1r1) "  tf    : ", sim%final_time/unit_time, "[day]"
             write (*, s1r1) "  dt_out: ", sim%output_timestep/unit_time, "[day]"
             write (*, s1r1) "  dt_min: ", sim%dt_min/unit_time, "[day]"
+        end if
+            write (*, *) ACHAR(5)
+        if (sim%use_adaptive) then
+            write (*, *) "Using adaptive timestep."
+        else
+            write (*, *) "Using fixed timestep."
         end if
         write (*, *) ACHAR(5)
         write (*, s1i1) "  n_out         : ", sim%output_number

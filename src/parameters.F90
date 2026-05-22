@@ -156,6 +156,9 @@ module parameters
         logical :: use_stop_no_part_left = .True.
         logical :: use_stop_no_moon_left = .True.
         real(wp) :: coulomb_mu_col = cero  ! Coulomb friction coeff. Only active if SOFT-SPHERE collisions and gamma_t > 0
+        logical :: use_verlet_col = .False.  ! Whether to use Verlet list for collisions (only for particles)
+        real(wp) :: verlet_skin_factor = 0.1_wp  ! skin = factor * 2R
+        logical :: use_verlet_with_moons = .False.  ! Whether to use Verlet list for collisions involving moons instead of particles.
         !! Grid collisions
         integer(kind=4) :: grid_col_min_bodies = 100  ! Do not even consider grid if number of bodies is below this threshold
         integer(kind=4) :: grid_col_max_cells = 10000  ! Max amount of cells before falling back to brute-force
@@ -660,14 +663,14 @@ contains
                     write (*, *) "    ee   : Elemento e de la partícula/luna"
                     write (*, *) "    eM   : Elemento M de la partícula/luna (deg)"
                     write (*, *) "    ew   : Elemento w de la partícula/luna (deg)"
-                    write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional. 0 si no se utiliza.]"
+                    write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional]"
                     write (*, *) "    --onlyprint   : No integrar; solo imprimir configuraciones"
                     write (*, *) "    -nsim         : Número de simulación [int]"
                     write (*, *) "    -ast_mass     : Masa del asteroide (kg)"
                     write (*, *) "    -ast_radius   : Radio del asteroide (km)"
                     write (*, *) "    -ast_period   : Período de rotación del asteroide (horas)"
                     write (*, *) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
-                    write (*, *) "    -radius       : Radio de la partícula/luna individual (km)."
+                    write (*, *) "    -radius       : Radio de la partícula/luna individual (km)"
                     write (*, *) "    -datafile     : Nombre de archivo de salida de datos"
                     write (*, *) "    --nodataf     : No guardar datos de salida"
                     write (*, *) "    -chaosfile    : Nombre de archivo de salida caos"
@@ -705,9 +708,9 @@ contains
                     write (*, *) "    --nomegno     : No calcular MEGNO"
                     write (*, *) "    --sinodic     : Integar en sistema rotante"
                     write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
-                    write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int] (deprecated)"
-                    write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles (deprecated)"
-                    write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas (deprecated)"
+                    write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int] (depr)"
+                    write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles (depr)"
+                    write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas (depr)"
                     write (*, *) "    --help        : Mostrar esta ayuda"
                     stop 0
                 case default  ! Si no es un argumento reconocido...
@@ -1159,6 +1162,20 @@ contains
                     read (value_str, *, iostat=ios) params%grid_col_max_cells
                 case ("min cell size f")
                     read (value_str, *, iostat=ios) params%grid_col_min_cell_size
+                case ("use Verlet list")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_verlet_col = .True.
+                    else
+                        params%use_verlet_col = .False.
+                    end if
+                case ("Verlet skin fac")
+                    read (value_str, *, iostat=ios) params%verlet_skin_factor
+                case ("use Verlet with")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_verlet_with_moons = .True.
+                    else
+                        params%use_verlet_with_moons = .False.
+                    end if
                 case ("input time-omeg")
                     if ((to_lower(trim(value_str)) == "n") .or. &
                       & (to_lower(trim(value_str)) == "no")) then
@@ -1937,6 +1954,13 @@ contains
                     write (*, *) "ERROR: Collisional beta for moons must be between 0 and 1."
                     stop 1
                 end if
+
+                if (derived%use_verlet_col .and. &
+                  & derived%use_verlet_with_moons .and. & 
+                  & (derived%verlet_skin_factor <= myepsilon)) then
+                    write (*, *) "ERROR: Verlet skin factor must be positive."
+                    stop 1
+                end if
                 if (derived%kappa_col_moon < myepsilon) then
                     derived%use_moon_soft_sphere_col = .False.
                     derived%kappa_col_moon = cero
@@ -1981,6 +2005,12 @@ contains
                 end if
                 if ((derived%beta_col_part < cero) .or. (derived%beta_col_part > uno)) then
                     write (*, *) "ERROR: Collisional beta for particles must be between 0 and 1."
+                    stop 1
+                end if
+                if (derived%use_verlet_col .and. &
+                  & (.not. derived%use_verlet_with_moons) .and. & 
+                  & (derived%verlet_skin_factor <= myepsilon)) then
+                    write (*, *) "ERROR: Verlet skin factor must be positive."
                     stop 1
                 end if
                 if (derived%kappa_col_part < myepsilon) then
