@@ -13,6 +13,7 @@ module shared
 #endif
 
     ! Constants
+    real(wp), parameter :: DOSPI = 8.0e0_wp*atan(1.0e0_wp)
     real(wp), parameter :: ZERO = 0.0e0_wp
     real(wp), parameter :: ONE = 1.e0_wp
     real(wp), parameter :: TWO = 2.e0_wp
