@@ -167,7 +167,7 @@ contains
         !$OMP PARALLEL DO                  &
         !$OMP   DEFAULT(SHARED)            &
         !$OMP   PRIVATE(i, j)              &
-        !$OMP   SCHEDULE(DYNAMIC, 400)
+        !$OMP   SCHEDULE(DYNAMIC, 40)
         do i = first_index, last_index - 1
             do j = i + 1, last_index
                 call soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
@@ -456,7 +456,7 @@ contains
         !$OMP PARALLEL DO              &
         !$OMP   DEFAULT(SHARED)        &
         !$OMP   PRIVATE(k, i, j)       &
-        !$OMP   SCHEDULE(DYNAMIC, 640)
+        !$OMP   SCHEDULE(DYNAMIC, 192)
         do k = 1, vlist_n
             i = vlist(1, k)
             j = vlist(2, k)

@@ -2925,7 +2925,7 @@ program main
     !! Info sobre Verlet
     if (sim%use_screen .and. verlet_rebuilds > 0) then
         write (*, *) ACHAR(10)
-        write (*, s1r1) "Total Verlet rebuilds: ", verlet_rebuilds
+        write (*, s1i1) "Total Verlet rebuilds: ", verlet_rebuilds
     end if
 
     !! Cerrar archivo de salida
