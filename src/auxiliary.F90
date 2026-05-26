@@ -408,7 +408,7 @@ contains
 
         if (present(file_unit)) funit = file_unit
 
-        iper = int(100.0e0_wp*tout/tstop)
+        iper = nint(100.0e0_wp*tout/tstop)
         guiones = repeat('.', iper)
 
         if (iper < 100) then
