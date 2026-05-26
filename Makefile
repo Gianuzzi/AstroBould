@@ -77,7 +77,11 @@ endif
 #--------------------------------------------------------------------------
 # Parallelization
 ifdef PARALLEL
-  MYFFLAGS += -fopenmp
+  ifeq ($(INTEL),1)
+	MYFFLAGS += -qopenmp
+  else
+  	MYFFLAGS += -fopenmp
+  endif
 endif
 
 
@@ -132,7 +136,11 @@ endif
 
 #------------------------------
 # ADD CPP
-FFLAGS += -cpp
+ifeq ($(INTEL),1)
+  FFLAGS += -fpp
+else
+  FFLAGS += -cpp
+endif
 #------------------------------
 
 
@@ -193,6 +201,9 @@ intel:
 
 amd:
 	$(MAKE) AMD=1
+
+intel_parallel:
+	$(MAKE) INTEL=1 PARALLEL=1
 
 $(OBJ_DIR):
 	@mkdir -p $@
