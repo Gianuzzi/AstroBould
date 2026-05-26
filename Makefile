@@ -41,7 +41,7 @@ else
   STD  = -std=f2008
   ARCH = -march=native
 endif
-WARN_GCC   = -Wall -Wextra -Wshadow
+WARN_GCC   = -Wall -Wextra -Wshadow -Wimplicit-interface -Wsurprising
 WARN_INTEL = -warn all -nogen-interfaces
 WARN_AMD   =    # (no good Fortran warning flags in AOCC yet)
 
@@ -55,9 +55,9 @@ ifdef DEBUG
   ifeq ($(INTEL),1)
     MYFFLAGS = -traceback -fpe0 -check all -fp-model=source
   else ifeq ($(AMD),1)
-    MYFFLAGS = -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow -fsanitize=address,undefined
+    MYFFLAGS = -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow
   else
-    MYFFLAGS = -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow -fsanitize=address,undefined
+    MYFFLAGS = -fcheck=all -fbacktrace -ffpe-trap=zero,invalid,overflow,underflow -finit-real=snan -fno-omit-frame-pointer
   endif
 else
   # Release build
