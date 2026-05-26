@@ -713,9 +713,9 @@ contains
                     write (*, *) "    --nomegno     : No calcular MEGNO"
                     write (*, *) "    --sinodic     : Integar en sistema rotante"
                     write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
-                    write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int] (depr)"
-                    write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles (depr)"
-                    write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas (depr)"
+                    write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int]"
+                    write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
+                    write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
                     write (*, *) "    --help        : Mostrar esta ayuda"
                     stop 0
                 case default  ! Si no es un argumento reconocido...

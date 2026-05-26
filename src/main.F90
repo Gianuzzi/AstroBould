@@ -9,7 +9,7 @@ program main
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
     use surface, only: init_section, crossed_section, get_jacobi_constant
-    ! use collisions, only: verlet_rebuilds
+    use collisions, only: verlet_rebuilds
 
     implicit none
 
@@ -136,9 +136,13 @@ program main
         input%f_col_part = uno  ! Bounded: Etot < -f |Epot|  ! HARD SPHERE
         !! --- Both --- (SOFT-SPHERE)
         input%coulomb_mu_col = uno2 ! Coulomb friction coeff. Ft <= mu * Fn. Only active if SOFT-SPHERE collisions and gamma_t > 0
+        !!! Verlet
         input%use_verlet_col = .False. ! Whether to use Verlet list for collisions
         input%verlet_skin_factor = 0.1_wp ! Skin factor for Verlet list (as a fraction of ~2R)
-        input%use_verlet_with_moons = .False. ! Whether to include moons instead of particles in the Verlet list for collisions 
+        input%use_verlet_with_moons = .False. ! Whether to include moons instead of particles in the Verlet list for collisions
+        !!! Substeps
+        input%use_substeps_col = .False. ! Whether to use substeps for collisions
+        input%dt_substeps = cero ! Timestep for substeps (if use_substeps_col = .True.) 
 
         !! Stops
         input%use_stop_no_moon_left = .True. ! Stop if no more moons left
@@ -1447,7 +1451,16 @@ program main
 
     !!! Final message
     if (sim%use_screen) then
-        if (sim%use_datafile) write (*, *) "General output file: ", trim(sim%datafile)
+        if (sim%use_datafile) then
+            if (sim%int_elements_output == 2) then
+                write (*, *) "General output files: "
+                write (*, *) "  Elements file   : ", "elem_"//trim(sim%datafile)
+                write (*, *) "  Coordinates file: ", "coor_"//trim(sim%datafile)
+            else
+                write (*, *) "General output file: ", trim(sim%datafile)
+            end if
+            if (use_binary_output) write (*, *) " Output format: Binary"
+        end if
         if (sim%use_multiple_outputs) write (*, *) "Individuals output files: ", trim(sim%multfile)//"_*"
         if (sim%use_geometricfile) write (*, *) "Geometric output file: ", trim(sim%geometricfile)
         write (*, *) ACHAR(5)
@@ -2902,14 +2915,18 @@ program main
             ! Update j; only if not premature
             if (.not. is_premature_exit) j = j + 1
 
-            ! if (verlet_rebuilds > 0) print*, "Verlet rebuilds: ", verlet_rebuilds
-
         end do main_loop_normal
 
     end if
 
     !! Porcentaje final
     if (sim%use_percentage .and. time /= sim%final_time) call percentage(sim%final_time + uno, sim%final_time)
+
+    !! Info sobre Verlet
+    if (sim%use_screen .and. verlet_rebuilds > 0) then
+        write (*, *) ACHAR(10)
+        write (*, s1r1) "Total Verlet rebuilds: ", verlet_rebuilds
+    end if
 
     !! Cerrar archivo de salida
     if (sim%use_datafile) then
