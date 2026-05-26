@@ -8,59 +8,59 @@ module derivates
                           & asteroid_data, &  !! |axis_a, axis_b, inertia|
                           & boulders_coords, boulders_data, & !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
                           & m_arr, R_arr, &
-                          & hard_exit
+                          & hard_exit, &
+                          & get_index
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
                             & use_drag, use_drag_moons, drag_coef, drag_time, &
                             & use_stokes, use_stokes_moons, stokes_C, stokes_alpha, stokes_time, &
                             & use_ellipsoid, K_coef, L_coef, &
-                            & use_manual_J2_from_cm, use_manual_J2_from_primary, J2K_coef, & 
+                            & use_manual_J2_from_cm, use_manual_J2_from_primary, J2K_coef, &
                             & use_boulder_z, Gmboulder_z_coef, dz2_boulder_z_coef
+    use collisions, only: init_collisions, collisions_brute, collisions_grid, collisions_verlet
 
     implicit none
     private
-    public :: dydt, set_dydt    
+    public :: dydt, set_dydt, dydt_grav_f, dydt_coll_f
 
     abstract interface
         ! Here must be every f_i defined explicitly
         function dydt_template(t, y) result(der)
             import :: wp
             implicit none
-            real(wp), intent(in)               :: t
+            real(wp), intent(in) :: t
             real(wp), dimension(:), intent(in) :: y
-            real(wp), dimension(size(y))       :: der
+            real(wp), dimension(size(y)) :: der
         end function dydt_template
+
+        ! Here must be every f_i defined explicitly
+        subroutine dydt_grav_template(t, y, der, first_particle, N_total)
+            import :: wp
+            implicit none
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), dimension(:), intent(inout) :: der
+            integer(kind=4), intent(in) :: first_particle, N_total
+        end subroutine dydt_grav_template
 
     end interface
 
-    procedure(dydt_template), pointer :: dydt => null()
-
-    ! ── Verlet neighbour list (persistent across sub-steps) ── 
-    ! r_skin: extra shell beyond 2R — pairs within (2R + r_skin) are listed.
-    ! Rebuild triggered when any particle moves more than r_skin/2 since last build.
-    integer(kind=4), save :: vlist_n                    ! number of pairs
-    real(wp), save :: vrcut                             ! current Verlet cutoff (2R + skin)
-    integer(kind=4), save, allocatable :: vlist(:, :)   ! (2, vlist_n) pair indices
-    real(wp), save, allocatable :: vlist_pos(:, :)      ! (2, N) positions at last build
-    logical, save :: vlist_built = .False.
+    procedure(dydt_grav_template), pointer :: dydt_grav => null()
 
 contains
 
-    subroutine set_dydt(sinodic)
-        logical, intent(in) :: sinodic
-        
-        if (sinodic) then
-            dydt => dydt_sinodic
-        else
-            dydt => dydt_inertial
-        end if
-    end subroutine set_dydt
-
-    pure function get_index(i) result(idx)
+    subroutine set_dydt(Ntotal, sinodic)
         implicit none
-        integer(kind=4), intent(in) :: i
-        integer(kind=4) :: idx
-        idx = 4*i - 1
-    end function get_index
+        integer(kind=4), intent(in) :: Ntotal
+        logical, intent(in) :: sinodic
+
+        if (sinodic) then
+            dydt_grav => dydt_grav_sinodic
+        else
+            dydt_grav => dydt_grav_inertial
+        end if
+
+        call init_collisions(Ntotal, sinodic)
+    end subroutine set_dydt
 
     pure function get_variational_index(i, first_particle, Ntotal) result(idx)
         implicit none
@@ -69,81 +69,94 @@ contains
         idx = 4*(Ntotal + 1) - 1 + 7*(i - first_particle)
     end function get_variational_index
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!! DERIVATIVES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!                        HELPER SUBROUTINES                               !!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    function dydt_inertial(t, y) result(der)
-        !y = /theta, omega, xA, yA, vxA, vyA, Moon, Part, .../
+    !> Set kinematic derivatives: d(pos)/dt = vel for every body.
+    !> Called at the very end of every top-level dydt, after all vel
+    !> derivatives have been accumulated.
+    subroutine set_pos_derivatives(y, der, N_total)
         implicit none
-        real(wp), intent(in)               :: t
         real(wp), dimension(:), intent(in) :: y
-        real(wp), dimension(size(y))       :: der
-        real(wp) :: theta, omega
-        real(wp) :: coords_A(4), coords_M(4), coords_P(4), dr_vec(2), dr, dr2
-        real(wp) :: acc_grav(2), acc_grav_m(2), torque
+        real(wp), dimension(:), intent(inout) :: der
+        integer(kind=4), intent(in) :: N_total
+
         integer(kind=4) :: i, idx
-        integer(kind=4) :: j, jdx
-        integer(kind=4) :: vdx  ! For variational
-        integer(kind=4) :: N_total, N_particles, last_moon, first_particle 
-        real(wp) :: c2th, s2th  ! For triaxial
-        real(wp) :: Q_eff, dQdx, dQdy  ! For triaxial
-        real(wp) :: inv_dr, inv_dr2, inv_dr3, inv_dr7  ! For triaxial and extra forces
-        real(wp) :: theta_moon  ! For triaxial
-        real(wp) :: xy_rotated(2)  ! For triaxial
-        real(wp) :: Gmast, Gmcomb, Gmj, Gmi  ! For extra/COM forces
-        real(wp) :: dr_ver(2), dv_vec(2)  ! For extra forces
-        real(wp) :: vel_circ(2), v2  ! For extra forces
-        real(wp) :: two_ener  ! For extra forces
-        real(wp) :: aux_J2K, aux_inv_dr3_boulder_z  ! For extra forces
-        real(wp) :: mean_movement  ! For extra forces
-        real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
-        real(wp) :: damp_f, drag_f, stokes_f  ! For extra forces
-        real(wp) :: rcoll, rescape, gamma_n, gamma_t  ! For collision and escape distances
-        real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
-        real(wp) :: aux_real
 
-        der = cero  ! init der at cero
+        ! Track asteroid spin angle
+        der(1) = y(2) ! dtheta/dt = omega
 
-        last_moon = 1 + sim%Nmoon_active  ! This would be the last moon (+ 1 bc asteroid is 1)
-        first_particle = last_moon + 1
-        N_particles = sim%Npart_active
-        N_total = last_moon + N_particles
-
-        ! Calculate the angle of the asteroid
-        theta = y(1)
-        omega = y(2)
-        der(1) = omega
-
-        ! Set the position derivates: dX/dt = V
         do i = 1, N_total
             idx = get_index(i)
             der(idx:idx + 1) = y(idx + 2:idx + 3)
         end do
 
-        coords_A = y(3:6)  ! Asteroid pos + vel
-        torque = cero  ! Init torque at cero
-        acc_grav = cero  ! Init acceleration at cero
+    end subroutine set_pos_derivatives
 
-        ! ---> Omega Damping <---
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!                       GRAVITATIONAL DERIVATIVES                         !!
+    !!  (includes omega damping and non-conservative forces — Stokes, drag —   !!
+    !!   because they share per-pair geometric quantities computed here) !!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !> Inertial-frame gravitational (and non-conservative) accelerations.
+    !> Accumulates into der(:) — does NOT initialise or set pos derivatives.
+    subroutine dydt_grav_inertial(t, y, der, first_particle, N_total)
+        implicit none
+        real(wp), intent(in) :: t
+        real(wp), dimension(:), intent(in) :: y
+        real(wp), dimension(:), intent(inout) :: der
+        integer(kind=4), intent(in) :: first_particle, N_total
+
+        real(wp) :: theta, omega
+        real(wp) :: coords_A(4), coords_M(4), coords_P(4), dr_vec(2), dr, dr2
+        real(wp) :: acc_grav(2), acc_grav_m(2), torque
+        integer(kind=4) :: i, idx, j, jdx, vdx
+        real(wp) :: c2th, s2th  ! For triaxial
+        real(wp) :: Q_eff, dQdx, dQdy  ! For triaxial
+        real(wp) :: inv_dr, inv_dr2, inv_dr3, inv_dr7  ! For triaxial and extra forces
+        real(wp) :: theta_moon  ! For triaxial
+        real(wp) :: xy_rotated(2) ! For triaxial
+        real(wp) :: Gmast, Gmcomb, Gmj, Gmi  ! For extra/COM forces
+        real(wp) :: dr_ver(2), dv_vec(2) ! For extra forces
+        real(wp) :: vel_circ(2), v2  ! For extra forces
+        real(wp) :: two_ener  ! For extra forces
+        real(wp) :: aux_J2K, aux_inv_dr3_boulder_z  ! For extra forces
+        real(wp) :: mean_movement  ! For extra forces
+        real(wp) :: vel_radial(2), acc_radial_drag(2) ! For extra forces
+        real(wp) :: damp_f, drag_f, stokes_f  ! For extra forces
+        real(wp) :: rcoll, rescape  ! For collision and escape distances
+        real(wp) :: aux_real
+
+        integer(kind=4) :: last_moon
+        
+        last_moon = first_particle - 1
+
+        ! Calculate the angle of the asteroid
+        theta = y(1)
+        omega = y(2)
+
+        ! Asteroid coordinates
+        coords_A = y(3:6)
+        torque = cero
+        acc_grav = cero
+
+        ! ── Omega damping ────
         if (use_damp) then
-            !! Damping
             damp_f = uno2*(uno + tanh(1.e1_wp*(uno - t/damp_time)))
             select case (damp_model)
-            case (1) ! domega/dt = tau
-                der(2) = der(2) + damp_coef_1*damp_f
-            case (2) ! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau
-                der(2) = der(2) - omega/damp_coef_1*damp_f
-            case (3) ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
-                der(2) = der(2) +  &
-                        & damp_coef_1*(t - cero + tini)**(damp_coef_2 - uno)*omega*damp_f
+                case (1) ! domega/dt = tau
+                    der(2) = der(2) + damp_coef_1*damp_f
+                case (2) ! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau
+                    der(2) = der(2) - omega/damp_coef_1*damp_f
+                case (3) ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B)
+                    der(2) = der(2) + &
+                            & damp_coef_1*(t - cero + tini)**(damp_coef_2 - uno)*omega*damp_f
             end select
         end if
 
-        ! ---> Forces / Escapes/ Collisions acting from COM of asteroid <---
-        !! Includes triaxial
-
-        !!! Set-up
+        ! ── Set-up flags / pre-factors ────
         Gmast = G*m_arr(1)
         if (use_stokes) stokes_f = uno2*(uno + tanh(1.e1_wp*(uno - t/stokes_time)))
         if (use_drag) drag_f = uno2*(uno + tanh(1.e1_wp*(uno - t/drag_time)))
@@ -152,61 +165,45 @@ contains
             s2th = sin(dos*theta)
         end if
 
-        ! Possible escape distance
         if (sim%max_distance <= cero) then
-            rescape = infinito  !  do not consider escape if max_distance is not set or negative
-        else 
+            rescape = infinito
+        else
             rescape = sim%max_distance
         end if
 
-        !! Moons (massive)
+        ! ── Forces from asteroid COM on moons ────
         do j = 2, last_moon
             jdx = get_index(j)
-            coords_M = y(jdx:jdx + 3)  ! Moon
+            coords_M = y(jdx:jdx + 3)
 
-            !! ASTEROID AND MOON
-            dr_vec = coords_M(1:2) - coords_A(1:2)  ! From Asteroid to Moon
+            dr_vec = coords_M(1:2) - coords_A(1:2)
             dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
 
-            ! Check if collision or Escape
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
                 hard_exit = .True.
-                cycle    ! Skip
+                cycle
             end if
 
-            ! Distance
             dr = sqrt(dr2)
-
-            ! Extra needed
             Gmj = G*m_arr(j)
             inv_dr3 = uno/(dr2*dr)
-
-            ! INIT Acceleration to 0
             acc_grav = cero
 
             ! ---> Triaxial <---
             if (use_ellipsoid) then
-
-                ! Anti-rotate target to check if inside
                 xy_rotated = rotate2D(dr_vec, -theta)
                 if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
+                &  + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
                     hard_exit = .True.
                 end if
 
-                ! Extra needed
                 inv_dr2 = inv_dr3*dr
+                Q_eff = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th &
+                          &   + dos*dr_vec(1)*dr_vec(2)*s2th )*inv_dr2*inv_dr2
+                dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)
+                dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)
 
-                ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
-                ! Q_eff = 5 Q / r⁴
-                Q_eff = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th + dos*dr_vec(1)*dr_vec(2)*s2th )*inv_dr2*inv_dr2
-                dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)  ! 2x cos(2th) + 2y sin(2th)
-                dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)  ! - 2y cos(2th) + 2x sin(2th)
-
-                ! Accelerations by triaxial
-                ! a_x = -G mA / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴))
-                ! a_y = -G mA / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴))
                 acc_grav(1) = -(Gmast*inv_dr3)*( &
                                 &  dr_vec(1) &
                                 &  - K_coef*dr_vec(1)*inv_dr2 &
@@ -218,798 +215,431 @@ contains
                                 &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_eff) &
                                 &)
 
-                ! Torque to Asteroid
                 theta_moon = atan2(dr_vec(2), dr_vec(1))
                 torque = torque - dos*m_arr(j)*L_coef*inv_dr3*sin(dos*(theta_moon - theta))
 
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
-
-                ! Accelerations by J2: G mA (x, y) (J2K / r²) / r³
                 acc_grav = Gmast*dr_vec*J2K_coef/dr2*inv_dr3
 
             ! ---> Manual boulder_z from asteroid CM <---
             else if (use_boulder_z) then
-
                 aux_inv_dr3_boulder_z = uno/(dr2 + dz2_boulder_z_coef)**(1.5e0_wp)
-
-                ! Acceleration by boulders Z: -2 G (x, y) boulder_z / r³
                 acc_grav = -Gmboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z
-
             end if
 
-            ! Acceleration of moon j from asteroid
             der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
-
-            !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
-            ! Acceleration of asteroid from moon j [REACTION]
             der(5:6) = der(5:6) - acc_grav*m_arr(j)/m_arr(1)
 
-            
-            ! -------- NON CONSERVATIVE -------
-
-            ! ---> Drag and/or Stokes <---
+            ! ── Non-conservative: drag / Stokes on moons ───
             if (use_drag_moons .or. use_stokes_moons) then
                 Gmcomb = Gmast + Gmj
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
-                dv_vec = coords_M(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Moon
+                dv_vec = coords_M(3:4) - coords_A(3:4)
                 v2 = dot_product(dv_vec, dv_vec)
-
-                ! Get energy
                 two_ener = dos*Gmcomb*inv_dr - v2
 
-                ! Check if unbound
-                if (two_ener > cero) then ! Can calculate only in this case
-                    mean_movement = abs(two_ener)**(1.5e0_wp)/Gmcomb ! n
+                if (two_ener > cero) then
+                    mean_movement = abs(two_ener)**(1.5e0_wp)/Gmcomb
 
-                    ! ---> Drag <---
                     if (use_drag_moons) then
                         vel_radial = dot_product(dr_ver, dv_vec)
                         acc_radial_drag = -drag_coef*mean_movement*vel_radial
-
-                        ! Acceleration of moon j by drag
-                        !! acc = -a_r_drag * (x, y) / r * factor
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_radial_drag*dr_ver*drag_f
-
                     end if
 
-                    ! ---> Stokes <---
                     if (use_stokes_moons) then
-                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
-
-                        ! Acceleration of moon j by Stokes
-                        !! acc = -C * (v - alpha * vc) * factor
-                        der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
-
+                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)
+                        der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) &
+                                              & - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
                     end if
-
                 end if
-
-            end if            
+            end if
 
         end do
 
-        !! Particles (massless)
+        ! ── Forces from asteroid COM on particles ───
         do j = first_particle, N_total
             jdx = get_index(j)
-            coords_P = y(jdx:jdx + 3)  ! Particle
+            coords_P = y(jdx:jdx + 3)
 
-            !! ASTEROID AND PARTICLE
-            dr_vec = coords_P(1:2) - coords_A(1:2)  ! From Asteroid to Particle
+            dr_vec = coords_P(1:2) - coords_A(1:2)
             dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
 
-            ! Check if collision or Escape
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
                 hard_exit = .True.
-                cycle    ! Skip
+                cycle
             end if
 
-            ! Distance
             dr = sqrt(dr2)
-
-            ! Extra needed
             inv_dr3 = uno/(dr2*dr)
-
-            ! INIT Acceleration to 0
             acc_grav = cero
 
             ! ---> Triaxial <---
             if (use_ellipsoid) then
-
-                ! Anti-rotate target to check if inside
                 xy_rotated = rotate2D(dr_vec, -theta)
-                if (((xy_rotated(1)+ R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2)+ R_arr(j))/asteroid_data(2))**2 < uno) then
+                if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
+                &  + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
                     hard_exit = .True.
-                    cycle  ! Skip
+                    cycle
                 end if
 
-                ! Extra needed
                 inv_dr2 = inv_dr3*dr
+                Q_eff = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th &
+                          &   + dos*dr_vec(1)*dr_vec(2)*s2th )*inv_dr2*inv_dr2
+                dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)
+                dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)
 
-                ! Q = (x²-y²) cos(2th) + 2xy sin(2th)
-                ! Q_eff = 5 Q / r⁴
-                Q_eff = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th + dos*dr_vec(1)*dr_vec(2)*s2th )*inv_dr2*inv_dr2
-                dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)  ! 2x cos(2th) + 2y sin(2th)
-                dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)  ! - 2y cos(2th) + 2x sin(2th)
-
-                ! Accelerations by triaxial
-                ! a_x = -G mA / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴))
-                ! a_y = -G mA / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴))
                 acc_grav(1) = -(Gmast*inv_dr3)*( dr_vec(1) &
                                 &  - K_coef*dr_vec(1)*inv_dr2 &
                                 &  - L_coef*(dQdx*inv_dr2 - dr_vec(1)*Q_eff) )
                 acc_grav(2) = -(Gmast*inv_dr3)*( dr_vec(2) &
                                 &  - K_coef*dr_vec(2)*inv_dr2 &
                                 &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_eff) )
-                
-                ! ! Variational [MEGNO]
-                ! if (sim%megno_active) then
-                !     vdx = get_variational_index(j, first_particle, N_total)
-                !     coords_P = y(vdx:vdx + 3)  ! Variational particle
-                    
-
-                !     ! dvx = mu / r³ * (r² * (-dy (K - 3 r²) x y + dx (4 x⁴ + 5 x² y² + y⁴ - K (2 x² + y²))) &
-                !     !                 & + L (6 dx x⁴ - 17 dy x³ y + 9 dx x² y² - 7 dy x y³ - 7 dx y⁴) cos(2th) &
-                !     !                 & + 2 L (4 dy x⁴ + 4 dx x³ y - 3 dy x² y² + 9 dx x y³ - 2 dy y⁴) sin(2th))
-                !     der(vdx + 2) = der(vdx + 2) + aux_real*m_arr(1) * (&
-                !                 & dr2*( &
-                !                         & -coords_P(2)*(K_coef - 3*dr2)*dr_vec(1)*dr_vec(2) &
-                !                         & + coords_P(1)*(&
-                !                             & 3*dr_vec(1)**4 &
-                !                             & + 5*(dr_vec(1)*dr_vec(2))**2 &
-                !                             & + dr2*dr2 &
-                !                             & - K_coef*(dr_vec(1)**2 + dr2 ) &
-                !                             & ) &
-                !                         & ) &
-                !                 & + L_coef*( &
-                !                         & 6*coords_P(1)*dr_vec(1)**4 &
-                !                         & -17*coords_P(2)*dr_vec(1)**3*dr_vec(2) &
-                !                         & + 9*coords_P(1)*(dr_vec(1)*dr_vec(2))**2 &
-                !                         & -7*coords_P(2)*dr_vec(1)*dr_vec(2)**3 &
-                !                         & -7*coords_P(1)*dr_vec(2)**4 &
-                !                         & )*c2th &
-                !                 & + 2*L_coef*( &
-                !                           & 4*coords_P(2)*dr_vec(1)**4 &
-                !                           & + 4*coords_P(1)*dr_vec(1)**3*dr_vec(2) &
-                !                           & -3*coords_P(2)*(dr_vec(1)*dr_vec(2))**2 &
-                !                           & +9*coords_P(1)*dr_vec(1)*dr_vec(2)**3 &
-                !                           & -2*coords_P(2)*dr_vec(2)**4 &
-                !                           & )*s2th)
-                    
-                !     ! dvy = mu / r³ * (r² * (-dx (K - 3 r²) x y + dy (x⁴ + 5 x² y² + 4 y⁴ - K (x² + 2 y²))) &
-                !     !                 & + L (7 dy x⁴ + 7 dx x³ y - 9 dy x² y² + 17 dy x y³ - 6 dy y⁴) cos(2th) &
-                !     !                 & - 2 L (2 dx x⁴ - 9 dy x³ y + 3 dx x² y² - 4 dx x y³ - 4 dx y⁴) sin(2th))
-                !     der(vdx + 3) = der(vdx + 3) + aux_real*m_arr(1) * (&
-                !                 & dr2*( &
-                !                         & -coords_P(1)*(K_coef - 3*dr2)*dr_vec(1)*dr_vec(2) &
-                !                         & + coords_P(2)*(&
-                !                             & dr2*dr2 &
-                !                             & + 5*(dr_vec(1)*dr_vec(2))**2 &
-                !                             & + 3*dr_vec(2)**4 &
-                !                             & - K_coef*(dr2 + dr_vec(2)**2) &
-                !                             & ) &
-                !                         & ) &
-                !                 & + L_coef*( &
-                !                         & 7*coords_P(2)*dr_vec(1)**4 &
-                !                         & + 7*coords_P(1)*dr_vec(1)**3*dr_vec(2) &
-                !                         & -9*coords_P(2)*(dr_vec(1)*dr_vec(2))**2 &
-                !                         & + 17*coords_P(1)*dr_vec(1)*dr_vec(2)**3 &
-                !                         & -6*coords_P(2)*dr_vec(2)**4 &
-                !                         & )*c2th &
-                !                 & + 2*L_coef*( &
-                !                           & 2*coords_P(1)*dr_vec(1)**4 &
-                !                           & -9*coords_P(2)*dr_vec(1)**3*dr_vec(2) &
-                !                           & + 3*coords_P(1)*(dr_vec(1)*dr_vec(2))**2 &
-                !                           & -4*coords_P(2)*dr_vec(1)*dr_vec(2)**3 &
-                !                           & -4*coords_P(1)*dr_vec(2)**4 &
-                !                           & )*s2th)
-
-                ! end if
 
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
+                acc_grav = Gmast*dr_vec*J2K_coef/dr2*inv_dr3
 
-                ! Acceleration of particle j by J2
-                acc_grav = Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (J2K / r²) / r³
-
-                ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
-                    
+                    coords_P = y(vdx:vdx + 3)
                     inv_dr7 = inv_dr3 * inv_dr3 / dr
                     aux_real = Gmast*J2K_coef*inv_dr7
 
-                    ! dvx = mu J2k / r⁷ * (-5 dy x y + dx (-4 x² + y²))
-                    der(vdx + 2) = der(vdx + 2) + aux_real*(&
+                    der(vdx + 2) = der(vdx + 2) + aux_real*( &
                             & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
                             & + coords_P(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
-                    
-                    ! dvy = mu J2k / r⁷ * (-5 dx x y + dy (x² - 4 y²))
-                    der(vdx + 3) = der(vdx + 3) + aux_real*(&
+                    der(vdx + 3) = der(vdx + 3) + aux_real*( &
                             & -5*coords_P(1)*dr_vec(1)*dr_vec(2) &
                             & + coords_P(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
-
                 end if
 
             ! ---> Manual boulder_z from asteroid CM <---
             else if (use_boulder_z) then
-
                 aux_inv_dr3_boulder_z = uno/(dr2 + dz2_boulder_z_coef)**(1.5e0_wp)
+                acc_grav = -Gmboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z
 
-                ! Acceleration of particle j by boulders Z
-                acc_grav = - Gmboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z  !! Add - 2 G (x, y) boulder_z / r³
-
-                ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
-                    
+                    coords_P = y(vdx:vdx + 3)
                     aux_real = Gmboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
 
-                    ! dvx = - mu / (r² + rz²)²·⁵ * (-3 dy x y + dx (-2 x² + y² + rz²))
-                    der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & 3*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
-                    
-                    ! dvy = mu / (r² + rz²)²·⁵ * (3 dx x y - dy (x² - 2 y² + rz²))
-                    der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & 3*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
-
+                    der(vdx + 2) = der(vdx + 2) + aux_real*( &
+                            &  3*coords_P(2)*dr_vec(1)*dr_vec(2) &
+                            &  - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
+                    der(vdx + 3) = der(vdx + 3) + aux_real*( &
+                            &  3*coords_P(1)*dr_vec(1)*dr_vec(2) &
+                            &  - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
                 end if
-
             end if
 
-            ! Acceleration of particle j from asteroid CM
             der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
 
-            ! -------- NON CONSERVATIVE -------
-
-            ! ---> Drag and/or Stokes <---
+            ! ── Non-conservative: drag / Stokes on particles ───
             if (use_drag .or. use_stokes) then
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
-                dv_vec = coords_P(3:4) - coords_A(3:4)  ! Velocity from Asteroid to Particle
+                dv_vec = coords_P(3:4) - coords_A(3:4)
                 v2 = dot_product(dv_vec, dv_vec)
 
-                ! Get energy
                 if (use_manual_J2_from_cm) then
-                    aux_J2K = J2K_coef/dr2  ! J2K_coef is negative
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2  ! Check if unbound
+                    aux_J2K = J2K_coef/dr2
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
                     mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
                 else
-                    two_ener = dos*Gmast*inv_dr - v2  ! Check if unbound
-                    mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast ! n
+                    two_ener = dos*Gmast*inv_dr - v2
+                    mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast
                 end if
 
-                if (two_ener > cero) then ! Can calculate only in this case
-
-                    ! ---> Drag <---
+                if (two_ener > cero) then
                     if (use_drag) then
                         vel_radial = dot_product(dr_ver, dv_vec)
                         acc_radial_drag = -drag_coef*mean_movement*vel_radial
-
-                        ! Acceleration of particle j by drag
-                        !! acc = -a_r_drag * (x, y) / r * factor
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_radial_drag*dr_ver*drag_f
-
                     end if
-                    ! ---> Stokes <---
+
                     if (use_stokes) then
-                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
-
-                        ! Acceleration of particle j by Stokes
-                        !! acc = -C * (v - alpha * vc) * factor
-                        der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
-
+                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)
+                        der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) &
+                                              & - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
                     end if
-
                 end if
-
             end if
 
         end do
 
-        ! ---> GRAVITY (if not triaxial, only boulders) <---
+        ! ── Gravity from boulders (only when NOT triaxial) ───
+        if (.not. use_ellipsoid) then
 
-        ! First, Asteroid to all
-        if (.not. use_ellipsoid) then  ! Only if NOT triaxial
-            ! First we do only boulder 0 (primary) for possible J2
-
-            !! Get boulder coords
-            boulders_coords(0, 1) = boulders_data(0, 4)*cos(theta + boulders_data(0, 3))  ! x
-            boulders_coords(0, 2) = boulders_data(0, 4)*sin(theta + boulders_data(0, 3))  ! y
-            boulders_coords(0, 3) = -omega*boulders_coords(0, 2)  ! vx
-            boulders_coords(0, 4) = omega*boulders_coords(0, 1)  ! vy
-
-            boulders_coords(0, :) = boulders_coords(0, :) + coords_A  ! Move to Asteroid
-
-            ! Aux needed
+            ! Boulder 0 (primary) — handles possible J2 from primary
+            boulders_coords(0, 1) = boulders_data(0, 4)*cos(theta + boulders_data(0, 3))
+            boulders_coords(0, 2) = boulders_data(0, 4)*sin(theta + boulders_data(0, 3))
+            boulders_coords(0, 3) = -omega*boulders_coords(0, 2)
+            boulders_coords(0, 4) = omega*boulders_coords(0, 1)
+            boulders_coords(0, :) = boulders_coords(0, :) + coords_A
             Gmi = G*boulders_data(0, 1)
 
-            !! Moons (massive)
-            do j = 2, last_moon ! +1 porque j=1 es asteroid
+            !! Moons
+            do j = 2, last_moon
                 jdx = get_index(j)
-                coords_M = y(jdx:jdx + 3)  ! Moon
+                coords_M = y(jdx:jdx + 3)
 
-                !! BOULDER AND MOON
-                dr_vec = coords_M(1:2) - boulders_coords(0, 1:2)  ! From Boulder 0 (primary) to Moon
+                dr_vec = coords_M(1:2) - boulders_coords(0, 1:2)
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
 
-                ! Check if collision
                 rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
                     hard_exit = .True.
-                    cycle  ! Skip
+                    cycle
                 end if
 
-                ! Distance
                 dr = sqrt(dr2)
 
-                ! Gravitational acceleration of moon j by boulder 0 (and possible J2)
-                if (use_manual_J2_from_primary) then  
-
-                    ! Including extra J2
-                    acc_grav = -Gmi*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  !! -G m0 (x, y) (1 - K / r²) / r³
+                if (use_manual_J2_from_primary) then
+                    acc_grav = -Gmi*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)
                 else
-
-                    ! Purely central
-                    acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G m0 (x, y) / r³
+                    acc_grav = -Gmi*dr_vec/(dr2*dr)
                 end if
 
-                ! Acceleration of moon j by boulder 0
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
-
-                !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
-                ! Acceleration of asteroid from moon j [REACTION]
-                der(5:6) = der(5:6) - acc_grav*m_arr(j)/m_arr(1)  ! Force moved to Asteroid CM
-
-                ! Torque to Asteroid
-                torque = torque + cross2D_z(boulders_coords(0, 1:2) - coords_A(1:2), -acc_grav*m_arr(j))  !! r x F
-            
+                der(5:6) = der(5:6) - acc_grav*m_arr(j)/m_arr(1)
+                torque = torque + cross2D_z(boulders_coords(0, 1:2) - coords_A(1:2), -acc_grav*m_arr(j))
             end do
 
-            !! Particles (massless)
+            !! Particles
             do j = first_particle, N_total
                 jdx = get_index(j)
-                coords_P = y(jdx:jdx + 3)  ! Particle
+                coords_P = y(jdx:jdx + 3)
 
-                !! BOULDER AND PARTICLE
-                dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)  ! From Boulder 0 (primary) to Particle
+                dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                
-                ! Check if collision
+
                 rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
                     hard_exit = .True.
-                    cycle  ! Skip
+                    cycle
                 end if
 
-                ! Distance
                 dr = sqrt(dr2)
 
-                ! Gravitational acceleration of particle j by boulder 0 (and possible J2)
-                if (use_manual_J2_from_primary) then  
-
-                    ! Including extra J2
-                    acc_grav = -Gmi*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  !! -G m0 (x, y) (1 - K / r²) / r³
-
-                    ! ! Variational [MEGNO]
-                    ! if (sim%megno_active) then
-                    !     vdx = get_variational_index(j, first_particle, N_total)
-
-                    !     coords_P = y(vdx:vdx + 3)  ! Variational particle
-
-                    !     inv_dr7 = uno / (dr2*dr2*dr2*dr)
-                        
-                    !     ! dvx = mu / r⁷ * (dy (-5 K + 3 r²) x y + dx (2 x² (-2 K + x²) + (K + x²) y² - y⁴)
-                    !     der(vdx+2) = der(vdx+2) + aux_real*inv_dr7*(&
-                    !         & coords_P(2)*(-5*J2K_coef + 3*dr2)*dr_vec(1)*dr_vec(2) &
-                    !         & + coords_P(1)*( &
-                    !             & 3*dr_vec(1)**4 &
-                    !             & + (dr_vec(1)*dr_vec(2))**2 &
-                    !             & -dr2*dr2 &
-                    !             & + J2K_coef*(-5*dr_vec(1)*dr_vec(1) + dr2) &
-                    !             & ) &
-                    !         & )
-
-                    !     ! dvy = mu / r⁷ * (dx (-5 K + 3 l^2) x y + dy (-x^4 + x^2 y^2 + 2 y^4 + K (x^2 - 4 y^2)))
-                    !     der(vdx+3) = der(vdx+3) + aux_real*inv_dr7*(&
-                    !         & coords_P(1)*(-5*J2K_coef + 3*dr2)*dr_vec(1)*dr_vec(2) &
-                    !         & + coords_P(2)*( &
-                    !             & -dr2*dr2 &
-                    !             & + (dr_vec(1)*dr_vec(2))**2 &
-                    !             & + 3*dr_vec(2)**4 &
-                    !             & + J2K_coef*(-5*dr_vec(2)*dr_vec(2) + dr2) &
-                    !             & ) &
-                    !         & )
-
-                    ! end if
+                if (use_manual_J2_from_primary) then
+                    acc_grav = -Gmi*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)
                 else
+                    acc_grav = -Gmi*dr_vec/(dr2*dr)
 
-                    ! Purely central
-                    acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G m0 (x, y) / r³
-
-                    ! Variational [MEGNO]
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
-
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
-                        
+                        coords_P = y(vdx:vdx + 3)
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
-
+                            & ( coords_P(1:2)*dr2 - 3*dot_product(dr_vec, coords_P(1:2))*dr_vec) &
+                            & / (dr2*dr2*dr)
                     end if
-
                 end if
 
-                ! Acceleration of particle j by boulder 0
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
-
             end do
 
-            ! Now the rest of the boulders
+            ! Rest of the boulders (i = 1 .. Nboulders)
             do i = 1, sim%Nboulders
-
-                !! Get boulder coords
-                boulders_coords(i, 1) = boulders_data(i, 4)*cos(theta + boulders_data(i, 3))  ! x
-                boulders_coords(i, 2) = boulders_data(i, 4)*sin(theta + boulders_data(i, 3))  ! y
-                boulders_coords(i, 3) = -omega*boulders_coords(i, 2)  ! vx
-                boulders_coords(i, 4) = omega*boulders_coords(i, 1)  ! vy
-
-                boulders_coords(i, :) = boulders_coords(i, :) + coords_A  ! Move to Asteroid
-
-                ! Aux needed
+                boulders_coords(i, 1) = boulders_data(i, 4)*cos(theta + boulders_data(i, 3))
+                boulders_coords(i, 2) = boulders_data(i, 4)*sin(theta + boulders_data(i, 3))
+                boulders_coords(i, 3) = -omega*boulders_coords(i, 2)
+                boulders_coords(i, 4) = omega*boulders_coords(i, 1)
+                boulders_coords(i, :) = boulders_coords(i, :) + coords_A
                 Gmi = G*boulders_data(i, 1)
 
-                !! Moons (massive)
-                do j = 2, last_moon ! +1 porque j=1 es asteroid
+                !! Moons
+                do j = 2, last_moon
                     jdx = get_index(j)
-                    coords_M = y(jdx:jdx + 3)  ! Moon
+                    coords_M = y(jdx:jdx + 3)
 
-                    !! BOULDER AND MOON
-                    dr_vec = coords_M(1:2) - boulders_coords(i, 1:2)  ! From Boulder i (primary) to Moon
+                    dr_vec = coords_M(1:2) - boulders_coords(i, 1:2)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    
-                    ! Check if collision
+
                     rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
                         hard_exit = .True.
-                        cycle  ! Skip
+                        cycle
                     end if
 
-                    ! Distance
                     dr = sqrt(dr2)
+                    acc_grav = -Gmi*dr_vec/(dr2*dr)
 
-                    ! Gravitational acceleration of moon j by boulder i
-                    acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G mi (x, y) / r³
-
-                    ! Acceleration of moon j by boulder i
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
-
-                    !! ASTEROID FROM MOON: This force is "felt" by the asteroid CM
-                    ! Acceleration of asteroid from moon j [REACTION]
-                    der(5:6) = der(5:6) - acc_grav*m_arr(j)/m_arr(1)  ! Force moved to Asteroid CM
-
-                    ! Torque to Asteroid
-                    torque = torque + cross2D_z(boulders_coords(i, 1:2) - coords_A(1:2), -acc_grav*m_arr(j))  !! r x F
-                
+                    der(5:6) = der(5:6) - acc_grav*m_arr(j)/m_arr(1)
+                    torque = torque + cross2D_z(boulders_coords(i, 1:2) - coords_A(1:2), -acc_grav*m_arr(j))
                 end do
 
-                !! Particles (massless)
+                !! Particles
                 do j = first_particle, N_total
                     jdx = get_index(j)
-                    coords_P = y(jdx:jdx + 3)  ! Particle
+                    coords_P = y(jdx:jdx + 3)
 
-                    !! BOULDER AND PARTICLE
-                    dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)  ! From Boulder i (primary) to Particle
+                    dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    
-                    ! Check if collision
+
                     rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
                         hard_exit = .True.
-                        cycle  ! Skip
+                        cycle
                     end if
 
-                    ! Distance
                     dr = sqrt(dr2)
+                    acc_grav = -Gmi*dr_vec/(dr2*dr)
 
-                    ! Gravitational acceleration of particle j by boulder i
-                    acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G mi (x, y) / r³
-
-                    ! Acceleration of particle j by boulder i
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
 
-                    ! Variational [MEGNO]
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
-
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
-                        
+                        coords_P = y(vdx:vdx + 3)
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
-
+                            & ( coords_P(1:2)*dr2 - 3*dot_product(dr_vec, coords_P(1:2))*dr_vec) &
+                            & / (dr2*dr2*dr)
                     end if
-
                 end do
-            
             end do
 
-        end if
+        end if ! .not. use_ellipsoid
 
-        !! Update Omega with Torque
-        der(2) = der(2) + torque/asteroid_data(3) ! Torque/Inertia
+        ! ── Apply accumulated torque to asteroid spin ────
+        der(2) = der(2) + torque/asteroid_data(3)
 
-        ! Second, Moons to particles
-        do i = 2, last_moon
-            idx = get_index(i)
-            coords_M = y(idx:idx + 3)  ! Moon i (M)
-
-            !! Particles (massless)
-            do j = first_particle, N_total
-                jdx = get_index(j)
-                coords_P = y(jdx:jdx + 3)  ! Particle
-
-                !! MOON AND PARTICLE
-                dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon i (M) to Particle j (P)
-                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                
-                ! Check if collision
-                rcoll = R_arr(i) + R_arr(j)
-                if (dr2 < rcoll*rcoll) then
-                    hard_exit = .True.
-                    cycle  ! Skip
-                end if
-
-                ! Distance
-                dr = sqrt(dr2)
-
-                ! Auxiliar
-                aux_real = -G*m_arr(i)/(dr2*dr)
-
-                ! Acceleration of particle j by moon i
-                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + aux_real*dr_vec  ! -G mMoon (x, y) / r³
-
-                ! Variational [MEGNO]
-                if (sim%megno_active) then
-                    vdx = get_variational_index(j, first_particle, N_total)
-
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
-
-                    der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) + aux_real / dr2 * &
-                        & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec)
-
-                end if
-
-            end do
-
-        end do
-
-        ! Third, Moons to Moons (if requested)
+        ! ── Mutual moon gravity ──────
         if (sim%use_moon_gravity) then
             do i = 2, last_moon - 1
                 idx = get_index(i)
-                coords_M = y(idx:idx + 3)  ! Moon i (M)
+                coords_M = y(idx:idx + 3)
 
-                !! Other Moons (massive)
-                do j = i + 1, last_moon ! Ahora sí +1 porque j=1 es asteroid
+                do j = i + 1, last_moon
                     jdx = get_index(j)
-                    coords_P = y(jdx:jdx + 3)  ! Moon 2 (P)
+                    coords_P = y(jdx:jdx + 3)
 
-                    !! MOON 1 (M) AND MOON 2 (P)
-                    dr_vec = coords_P(1:2) - coords_M(1:2)  ! From Moon i (M) to Moon j (P)
+                    dr_vec = coords_P(1:2) - coords_M(1:2)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    
-                    ! Check if collision
+
                     rcoll = R_arr(i) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
                         hard_exit = .True.
-                        cycle  ! Skip
+                        cycle
                     end if
 
-                    ! Distance
                     dr = sqrt(dr2)
+                    acc_grav_m = G*dr_vec/(dr2*dr)
 
-                    ! Moons acceleration per unit mass
-                    acc_grav_m = G*dr_vec/(dr2*dr)  !! G (x, y) / r³
-
-                    ! Both accelerations
                     der(idx + 2:idx + 3) = der(idx + 2:idx + 3) + acc_grav_m*m_arr(j)
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - acc_grav_m*m_arr(i)
-
                 end do
-
             end do
-
         end if
 
-        ! Fourth, moons to moons (if requested, for soft-sphere collisions)
-        if (sim%use_moon_soft_sphere_col .and. (last_moon > 3)) then
-            gamma_n = uno ! Will be recomputed inside the subroutine
-            gamma_t = uno ! Will be recomputed inside the subroutine
-            if (last_moon <= sim%grid_col_min_bodies + 1) then
-                call collisions_brute(y, der, 2, last_moon, gamma_n, gamma_t, .True.)
-            else if (sim%use_verlet_col .and. sim%use_verlet_with_moons) then
-                call collisions_verlet(y, der, 2, last_moon, gamma_n, gamma_t, .True.)
-            else
-                call collisions_grid(y, der, 2, last_moon, gamma_n, gamma_t, .True.)
-            end if
-        end if
+        ! ── Moons-to-particles gravity ─────
+        do i = 2, last_moon
+            idx = get_index(i)
+            coords_M = y(idx:idx + 3)
 
-        ! Fifth, particles to particles (if requested, for soft-sphere collisions)
-        if (sim%use_part_soft_sphere_col) then
-            gamma_n = min(sim%gamma_col_part_n, uno) * dos * sqrt(sim%kappa_col_part)
-            gamma_t = min(sim%gamma_col_part_t, uno) * dos * sqrt(sim%kappa_col_part)
-            if (N_particles <= sim%grid_col_min_bodies) then
-                call collisions_brute(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
-            else if (sim%use_verlet_col .and. .not. sim%use_verlet_with_moons) then
-                call collisions_verlet(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
-            else
-                call collisions_grid(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
-            end if
-        end if
+            do j = first_particle, N_total
+                jdx = get_index(j)
+                coords_P = y(jdx:jdx + 3)
 
-        ! Sixth, Extra variational if MEGNO
-        if (sim%megno_active) then
+                dr_vec = coords_P(1:2) - coords_M(1:2)
+                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
 
-            ! Initialize to 0
-            glob_prod = cero
-            glob_dist = cero
+                rcoll = R_arr(i) + R_arr(j)
+                if (dr2 < rcoll*rcoll) then
+                    hard_exit = .True.
+                    cycle
+                end if
 
-            ! Loop trhough particles
-            do i = first_particle, N_total
-                vdx = get_variational_index(i, first_particle, N_total)
-                ! Update 'd positions' with 'd velocities'
-                der(vdx:vdx + 1) = y(vdx + 2:vdx + 3)
+                dr = sqrt(dr2)
+                aux_real = -G*m_arr(i)/(dr2*dr)
 
-                ! Get and update prod  and dist
-                prod = y(vdx)*der(vdx) + y(vdx+1)*der(vdx+1) + y(vdx+2)*der(vdx+2) + y(vdx+3)*der(vdx+3)
-                if (.not. ieee_is_finite(prod) .or. abs(prod) < tini) prod = cero
+                der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + aux_real*dr_vec
 
-                dist = y(vdx)*y(vdx) + y(vdx+1)*y(vdx+1) + y(vdx+2)*y(vdx+2) + y(vdx+3)*y(vdx+3)
-                if (.not. ieee_is_finite(dist) .or. dist < tini) dist = tini
-                
-                glob_prod = glob_prod + prod
-                glob_dist = glob_dist + dist
-
-                ! Calculate dot{lambda}
-                der(vdx + 4) = prod / dist
-
-                ! Calculate dot{Y}
-                der(vdx + 5) = prod / dist * t / megno_factor
-
-                ! Calculate dot{<Y>}
-                if (t > 0) der(vdx + 6) = dos * y(vdx + 5) / t
-
+                if (sim%megno_active) then
+                    vdx = get_variational_index(j, first_particle, N_total)
+                    coords_P = y(vdx:vdx + 3)
+                    der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) + aux_real/dr2 * &
+                        & ( coords_P(1:2)*dr2 - 3*dot_product(dr_vec, coords_P(1:2))*dr_vec )
+                end if
             end do
+        end do
 
-            ! Now, we compute the global 
+    end subroutine dydt_grav_inertial
 
-            ! Calculate dot{lambda}
-            der(vdx + 7) = glob_prod / glob_dist
 
-            ! Calculate dot{Y}
-            der(vdx + 8) = glob_prod / glob_dist * t / megno_factor
-
-            ! Calculate dot{<Y>}
-            if (t > 0) der(vdx + 9) = dos * y(vdx + 8) / t
-
-        end if
-
-    end function dydt_inertial
-
-    function dydt_sinodic(t, y) result(der)  ! ONLY PARTICLES
-        !y = /theta, omega, xA, yA, vxA, vyA, Moon, Part, .../
+    !> Synodic-frame gravitational (and non-conservative) accelerations.
+    !> Only particles are integrated (no moon dynamics in synodic mode).
+    !> Includes Coriolis and centrifugal terms.
+    !> Accumulates into der(:) — does NOT initialise or set pos derivatives.
+    subroutine dydt_grav_sinodic(t, y, der, dummy, N_total)
         implicit none
-        real(wp), intent(in)               :: t
+        real(wp), intent(in) :: t
         real(wp), dimension(:), intent(in) :: y
-        real(wp), dimension(size(y))       :: der
+        real(wp), dimension(:), intent(inout) :: der
+        integer(kind=4), intent(in) :: dummy, N_total
+
         real(wp) :: theta, omega
         real(wp) :: coords_P(4), dr_vec(2), dr, dr2
         real(wp) :: acc_grav(2)
-        integer(kind=4) :: i, idx
-        integer(kind=4) :: j, jdx
-        integer(kind=4) :: vdx  ! For variational
-        integer(kind=4) :: N_total, N_particles, last_moon, first_particle 
-        real(wp) :: Q_eff! For triaxial
+        integer(kind=4) :: i, j, jdx, vdx
+        real(wp) :: Q_eff  ! For triaxial
         real(wp) :: inv_dr, inv_dr2, inv_dr3, inv_dr7  ! For triaxial and extra forces
         real(wp) :: Gmast, Gmi  ! For extra/COM forces
-        real(wp) :: dr_ver(2), dv_vec(2)  ! For extra forces
+        real(wp) :: dr_ver(2), dv_vec(2) ! For extra forces
         real(wp) :: vel_circ(2), v2  ! For extra forces
         real(wp) :: two_ener  ! For extra forces
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z  ! For extra forces
         real(wp) :: mean_movement  ! For extra forces
-        real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
+        real(wp) :: vel_radial(2), acc_radial_drag(2) ! For extra forces
         real(wp) :: drag_f, stokes_f  ! For extra forces
         real(wp) :: rcoll, rescape  ! For collision distance
-        real(wp) :: gamma_t, gamma_n  ! For collision response
-        real(wp) :: prod, dist, glob_prod, glob_dist  ! for MEGNO
         real(wp) :: aux_real
+        integer(kind=4), parameter :: first_particle = 2
 
-        der = cero  ! init der at cero
-
-        last_moon = 1 + sim%Nmoon_active  ! This would be the last moon (+ 1 bc asteroid is 1)
-        first_particle = last_moon + 1
-        N_particles = sim%Npart_active
-        N_total = last_moon + N_particles
-
-        ! Calculate the angle of the asteroid
         theta = y(1)
         omega = y(2)
-        der(1) = omega  ! Just to keep track
 
-        ! Set the position derivates: dX/dt = V
-        do i = 1, N_total
-            idx = get_index(i)
-            der(idx:idx + 1) = y(idx + 2:idx + 3)
-        end do
-
-        acc_grav = cero  ! Init acceleration at cero
-
-        ! ---> Forces / Escapes/ Collisions acting from COM of asteroid <---
-        !! Includes triaxial, Coriolis and centrifugal
-
-        !!! Set-up
         Gmast = G*m_arr(1)
         if (use_stokes) stokes_f = uno2*(uno + tanh(1.e1_wp*(uno - t/stokes_time)))
         if (use_drag) drag_f = uno2*(uno + tanh(1.e1_wp*(uno - t/drag_time)))
 
-        ! Possible escape distance
         if (sim%max_distance <= cero) then
-            rescape = infinito  !  do not consider escape if max_distance is not set or negative
-        else 
+            rescape = infinito
+        else
             rescape = sim%max_distance
         end if
 
-        !! Particles (massless)
+        ! ── Forces from asteroid COM on particles ────
         do j = first_particle, N_total
             jdx = get_index(j)
-            coords_P = y(jdx:jdx + 3)  ! Particle
+            coords_P = y(jdx:jdx + 3)
 
-            !! ASTEROID AND PARTICLE
-            dr_vec = coords_P(1:2)  ! From Asteroid to Particle
+            dr_vec = coords_P(1:2) ! Origin = asteroid COM in synodic frame
             dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-            
-            ! Check if collision or Escape
+
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
                 hard_exit = .True.
-                cycle    ! Skip
+                cycle
             end if
 
-            ! Distance
             dr = sqrt(dr2)
-
-            ! Extra needed
             inv_dr3 = uno/(dr2*dr)
-
-            ! INIT Acceleration to 0
             acc_grav = cero
 
             ! ---> Triaxial <---
             if (use_ellipsoid) then
-
-                ! Check if inside
                 if ((dr_vec(1)/asteroid_data(1))**2 + (dr_vec(2)/asteroid_data(2))**2 < uno) then
                     hard_exit = .True.
-                    cycle  ! Skip
+                    cycle
                 end if
 
-                ! Extra needed
                 inv_dr2 = inv_dr3*dr
-
-                ! Q = (x²-y²)
-                ! Q_eff = 5 Q / r⁴
                 Q_eff = 5*( dr_vec(1)**2 - dr_vec(2)**2 )*inv_dr2*inv_dr2
 
-                ! Accelerations by triaxial
-                ! a_x = -G mA / r³ (x - K x / r² - L (dQ/dx / r² - x 5 Q / r⁴))
-                ! a_y = -G mA / r³ (y - K y / r² - L (dQ/dy / r² - y 5 Q / r⁴))
                 acc_grav(1) = -(Gmast*inv_dr3)*dr_vec(1)*( uno &
                                 &  - K_coef*inv_dr2 &
                                 &  - L_coef*(dos*inv_dr2 - Q_eff) )
@@ -1019,652 +649,335 @@ contains
 
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
+                acc_grav = Gmast*dr_vec*J2K_coef/dr2*inv_dr3
 
-                ! Acceleration of particle j by J2
-                acc_grav = Gmast*dr_vec*J2K_coef/dr2*inv_dr3  !! Add G (x, y) (J2K / r²) / r³
-
-                ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
-                    
+                    coords_P = y(vdx:vdx + 3)
                     inv_dr7 = inv_dr3 * inv_dr3 / dr
                     aux_real = Gmast*J2K_coef*inv_dr7
 
-                    ! dvx = mu J2k / r⁷ * (-5 dy x y + dx (-4 x² + y²))
-                    der(vdx + 2) = der(vdx + 2) + aux_real*(&
+                    der(vdx + 2) = der(vdx + 2) + aux_real*( &
                             & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
                             & + coords_P(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
-                    
-                    ! dvy = mu J2k / r⁷ * (-5 dx x y + dy (x² - 4 y²))
-                    der(vdx + 3) = der(vdx + 3) + aux_real*(&
+                    der(vdx + 3) = der(vdx + 3) + aux_real*( &
                             & -5*coords_P(1)*dr_vec(1)*dr_vec(2) &
                             & + coords_P(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
-
                 end if
 
             ! ---> Manual boulder_z from asteroid CM <---
             else if (use_boulder_z) then
-
                 aux_inv_dr3_boulder_z = uno/(dr2 + dz2_boulder_z_coef)**(1.5e0_wp)
+                acc_grav = -Gmboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z
 
-                ! Acceleration of particle j by boulders Z
-                acc_grav = - Gmboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z  !! Add - 2 G (x, y) boulder_z / r³
-
-                ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
-                    
+                    coords_P = y(vdx:vdx + 3)
                     aux_real = Gmboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
 
-                    ! dvx = - mu / (r² + rz²)²·⁵ * (-3 dy x y + dx (-2 x² + y² + rz²))
-                    der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & 3*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
-                    
-                    ! dvy = mu / (r² + rz²)²·⁵ * (3 dx x y - dy (x² - 2 y² + rz²))
-                    der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & 3*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
-
+                    der(vdx + 2) = der(vdx + 2) + aux_real*( &
+                            &  3*coords_P(2)*dr_vec(1)*dr_vec(2) &
+                            &  - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
+                    der(vdx + 3) = der(vdx + 3) + aux_real*( &
+                            &  3*coords_P(1)*dr_vec(1)*dr_vec(2) &
+                            &  - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
                 end if
-
             end if
 
-            ! Acceleration of particle j from asteroid CM
             der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
 
-            ! -------- Coriolis and centrifugal -------
-            !ax​ = 2Ω vy​ + Ω² x ; ay = −2Ω vx ​ + Ω²y​​
-            der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + dos * y(2) * (/y(jdx + 3), -y(jdx + 2)/) + y(2)**2 * y(jdx:jdx + 1)
+            ! ── Coriolis and centrifugal ─────
+            !  ax = 2Ω vy + Ω² x ;  ay = −2Ω vx + Ω² y
+            der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + dos * y(2) * (/ y(jdx + 3), -y(jdx + 2) /) + y(2)**2 * y(jdx:jdx + 1)
 
-            ! Variational [MEGNO]
             if (sim%megno_active) then
                 vdx = get_variational_index(j, first_particle, N_total)
-                coords_P = y(vdx:vdx + 3)  ! Variational particle
-
-                ! Coriolis
-                der(vdx + 2) = der(vdx + 2) + 2 * omega * coords_P(4)
-                der(vdx + 3) = der(vdx + 3) - 2 * omega * coords_P(3)
-
-                ! Centrifugal
-                der(vdx + 2) = der(vdx + 2) + omega*omega * coords_P(1)
-                der(vdx + 3) = der(vdx + 3) + omega*omega * coords_P(2)
-
+                coords_P = y(vdx:vdx + 3)
+                der(vdx + 2) = der(vdx + 2) + dos*omega*coords_P(4) + omega*omega*coords_P(1)
+                der(vdx + 3) = der(vdx + 3) - dos*omega*coords_P(3) + omega*omega*coords_P(2)
             end if
 
-            ! -------- NON CONSERVATIVE -------
-
-            ! ---> Drag and/or Stokes <---
+            ! ── Non-conservative: drag / Stokes ──────
             if (use_drag .or. use_stokes) then
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
-                dv_vec = coords_P(3:4)  ! Velocity from Asteroid to Particle
+                dv_vec = coords_P(3:4) ! Relative to asteroid (origin)
                 v2 = dot_product(dv_vec, dv_vec)
 
-                ! Get energy
                 if (use_manual_J2_from_cm) then
-                    aux_J2K = J2K_coef/dr2  ! J2K_coef is negative
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2  ! Check if unbound
+                    aux_J2K = J2K_coef/dr2
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
                     mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
                 else
-                    two_ener = dos*Gmast*inv_dr - v2  ! Check if unbound
-                    mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast ! n
+                    two_ener = dos*Gmast*inv_dr - v2
+                    mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast
                 end if
 
-                if (two_ener > cero) then ! Can calculate only in this case
-
-                    ! ---> Drag <---
+                if (two_ener > cero) then
                     if (use_drag) then
                         vel_radial = dot_product(dr_ver, dv_vec)
                         acc_radial_drag = -drag_coef*mean_movement*vel_radial
-
-                        ! Acceleration of particle j by drag
-                        !! acc = -a_r_drag * (x, y) / r * factor
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_radial_drag*dr_ver*drag_f
-
                     end if
-                    ! ---> Stokes <---
+
                     if (use_stokes) then
-                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
-
-                        ! Acceleration of particle j by Stokes
-                        !! acc = -C * (v - alpha * vc) * factor
-                        der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
-
+                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)
+                        der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) &
+                                              & - stokes_C*(dv_vec - stokes_alpha*vel_circ)*stokes_f
                     end if
-
                 end if
-
             end if
 
-        end do
+        end do ! particles
 
-        ! ---> GRAVITY (if not triaxial, only boulders) <---
+        ! ── Gravity from boulders (only when NOT triaxial) ────
+        if (.not. use_ellipsoid) then
 
-        ! Particles
-        if (.not. use_ellipsoid) then  ! Only if NOT triaxial
-            ! First we do only boulder 0 (primary) for possible J2
-
-            !! Get boulder coords (Nothing to do, because no rotation here)
-
-            ! Aux needed
+            ! Boulder 0 (primary) — no rotation needed in synodic frame
             Gmi = G*boulders_data(0, 1)
-            
-            !! Particles (massless)
+
             do j = first_particle, N_total
                 jdx = get_index(j)
-                coords_P = y(jdx:jdx + 3)  ! Particle
+                coords_P = y(jdx:jdx + 3)
 
-                !! BOULDER AND PARTICLE
-                dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)  ! From Boulder 0 (primary) to Particle
+                dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                
-                ! Check if collision
+
                 rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
                     hard_exit = .True.
-                    cycle  ! Skip
+                    cycle
                 end if
 
-                ! Distance
                 dr = sqrt(dr2)
 
-                ! Gravitational acceleration of particle j by boulder 0 (and possible J2)
-                if (use_manual_J2_from_primary) then  
-
-                    ! Including extra J2
-                    acc_grav = -Gmi*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)  !! -G m0 (x, y) (1 - K / r²) / r³
-
+                if (use_manual_J2_from_primary) then
+                    acc_grav = -Gmi*dr_vec/(dr2*dr)*(uno - J2K_coef/dr2)
                 else
+                    acc_grav = -Gmi*dr_vec/(dr2*dr)
 
-                    ! Purely central
-                    acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G m0 (x, y) / r³
-
-                    ! Variational [MEGNO]
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
-
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
-                        
+                        coords_P = y(vdx:vdx + 3)
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
-
+                            & ( coords_P(1:2)*dr2 - 3*dot_product(dr_vec, coords_P(1:2))*dr_vec ) &
+                            & / (dr2*dr2*dr)
                     end if
-
                 end if
 
-                ! Acceleration of particle j by boulder 0
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
-
             end do
 
-            ! Now the rest of the boulders
+            ! Rest of the boulders
             do i = 1, sim%Nboulders
-
-                !! Get boulder coords (Nothing to do, because no rotation here)
-
-                ! Aux needed
                 Gmi = G*boulders_data(i, 1)
-                
-                !! Particles (massless)
+
                 do j = first_particle, N_total
                     jdx = get_index(j)
-                    coords_P = y(jdx:jdx + 3)  ! Particle
+                    coords_P = y(jdx:jdx + 3)
 
-                    !! BOULDER AND PARTICLE
-                    dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)  ! From Boulder i (primary) to Particle
+                    dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    
-                    ! Check if collision
+
                     rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
                         hard_exit = .True.
-                        cycle  ! Skip
+                        cycle
                     end if
 
-                    ! Distance
                     dr = sqrt(dr2)
+                    acc_grav = -Gmi*dr_vec/(dr2*dr)
 
-                    ! Gravitational acceleration of particle j by boulder i
-                    acc_grav = -Gmi*dr_vec/(dr2*dr)  !! -G mi (x, y) / r³
-
-                    ! Acceleration of particle j by boulder i
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
 
-                    ! Variational [MEGNO]
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
-
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
-                        
+                        coords_P = y(vdx:vdx + 3)
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
-
+                            & ( coords_P(1:2)*dr2 - 3*dot_product(dr_vec, coords_P(1:2))*dr_vec ) &
+                            & / (dr2*dr2*dr)
                     end if
-
                 end do
-            
             end do
 
+        end if ! .not. use_ellipsoid
+
+    end subroutine dydt_grav_sinodic
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!                       COLLISION DERIVATIVES                             !!
+    !!  Soft-sphere scheme only.  Accumulates into der(:).                     !!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !> Soft-sphere collision accelerations for moons and/or particles.
+    !> Dispatches to brute-force, cell-list, or Verlet neighbour-list depending
+    !> on body count and simulation flags.
+    !> Accumulates into der(:) — does NOT initialise or set pos derivatives.
+    subroutine dydt_coll(t, y, der, first_particle, N_total)
+        implicit none
+        real(wp), intent(in) :: t
+        real(wp), dimension(:), intent(in) :: y
+        real(wp), dimension(:), intent(inout) :: der
+        integer(kind=4), intent(in) :: first_particle, N_total
+
+        integer(kind=4) :: last_moon, N_particles
+        real(wp) :: gamma_n, gamma_t
+
+        last_moon = first_particle - 1
+        N_particles = N_total - last_moon
+
+        ! ── Moon–moon soft-sphere collisions ─────
+        if (sim%use_moon_soft_sphere_col .and. (last_moon > 3)) then
+            gamma_n = uno  ! Recomputed inside soft_sphere_force for moons
+            gamma_t = uno
+            if (last_moon <= sim%grid_col_min_bodies + 1) then
+                call collisions_brute(y, der, 2, last_moon, gamma_n, gamma_t, .True.)
+            else if (sim%use_verlet_col .and. sim%use_verlet_with_moons) then
+                call collisions_verlet(t, y, der, 2, last_moon, gamma_n, gamma_t, .True.)
+            else
+                call collisions_grid(y, der, 2, last_moon, gamma_n, gamma_t, .True.)
+            end if
         end if
 
-        ! Particles to particles (if requested, for soft-sphere collisions)
+        ! ── Particle–particle soft-sphere collisions ─────
         if (sim%use_part_soft_sphere_col) then
             gamma_n = min(sim%gamma_col_part_n, uno) * dos * sqrt(sim%kappa_col_part)
             gamma_t = min(sim%gamma_col_part_t, uno) * dos * sqrt(sim%kappa_col_part)
             if (N_particles <= sim%grid_col_min_bodies) then
                 call collisions_brute(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
             else if (sim%use_verlet_col .and. .not. sim%use_verlet_with_moons) then
-                call collisions_verlet(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
+                call collisions_verlet(t, y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
             else
                 call collisions_grid(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
             end if
         end if
 
-        ! Extra variational if MEGNO
-        if (sim%megno_active) then
-
-            ! Initialize to 0
-            glob_prod = cero
-            glob_dist = cero
-
-            ! Loop trhough particles
-            do i = first_particle, N_total
-                vdx = get_variational_index(i, first_particle, N_total)
-                ! Update 'd positions' with 'd velocities'
-                der(vdx:vdx + 1) = y(vdx + 2:vdx + 3)
-
-                ! Get and update prod  and dist
-                prod = y(vdx)*der(vdx) + y(vdx+1)*der(vdx+1) + y(vdx+2)*der(vdx+2) + y(vdx+3)*der(vdx+3)
-                if (.not. ieee_is_finite(prod) .or. abs(prod) < tini) prod = cero
-
-                dist = y(vdx)*y(vdx) + y(vdx+1)*y(vdx+1) + y(vdx+2)*y(vdx+2) + y(vdx+3)*y(vdx+3)
-                if (.not. ieee_is_finite(dist) .or. dist < tini) dist = tini
-                
-                glob_prod = glob_prod + prod
-                glob_dist = glob_dist + dist
-
-                ! Calculate dot{lambda}
-                der(vdx + 4) = prod / dist
-
-                ! Calculate dot{Y}
-                der(vdx + 5) = prod / dist * t / megno_factor
-
-                ! Calculate dot{<Y>}
-                if (t > 0) der(vdx + 6) = dos * y(vdx + 5) / t
-
-            end do
-
-            ! Now, we compute the global 
-
-            ! Calculate dot{lambda}
-            der(vdx + 7) = glob_prod / glob_dist
-
-            ! Calculate dot{Y}
-            der(vdx + 8) = glob_prod / glob_dist * t / megno_factor
-
-            ! Calculate dot{<Y>}
-            if (t > 0) der(vdx + 9) = dos * y(vdx + 8) / t
-
-        endif
-
-    end function dydt_sinodic
+    end subroutine dydt_coll
 
 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!! SOFT-SPHERE COLLISION ROUTINES !!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
- 
-    ! ── Shared force kernel ───
-    ! Computes the soft-sphere force between two overlapping particles and
-    ! accumulates it into der (Newton's 3rd law).
-    !
-    ! Normal force:
-    !   F_n = kappa * delta - gamma_n * dvr    (clamped to >= 0)
-    !
-    ! Tangential force (Coulomb-limited friction):
-    !   F_t = -gamma_t * dv_tan               (viscous sliding damping)
-    !   |F_t| <= coulomb_mu * |F_n|           (Coulomb cap)
-    !   kappa_t * delta_t not included: static tangential spring needs history
-    !
-    ! Called by both brute-force and grid routines.
-    subroutine soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!                          MEGNO DERIVATIVES                              !!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !> MEGNO variational-equation update.
+    !> Must be called AFTER all velocity derivatives have been accumulated,
+    !> and AFTER set_pos_derivatives (so der(vdx:vdx+1) can be set here).
+    subroutine dydt_megno(t, y, der, first_particle, N_total)
         implicit none
+        real(wp), intent(in) :: t
         real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4), intent(in) :: i, j
-        real(wp), intent(in) :: gamma_n, gamma_t
-        logical, intent(in) :: are_moons
+        integer(kind=4), intent(in) :: first_particle, N_total
 
-        integer(kind=4) :: idx, jdx
-        real(wp) :: dr_vec(2), dr2, dr, rcoll, overlap
-        real(wp) :: dr_ver(2), dt_ver(2)          ! normal and tangential unit vectors
-        real(wp) :: dv_vec(2), dvr, dvt           ! relative vel components
-        real(wp) :: F_n, F_t                      ! force magnitudes
-        real(wp) :: F_vec(2)
-        real(wp) :: gamma_n_pair, gamma_t_pair
-        real(wp) :: mi, mj
-        real(wp) :: rand1, rand2, rn              ! for random fallback direction
-        real(wp) :: aux_real
+        integer(kind=4) :: i, vdx
+        real(wp) :: prod, dist, glob_prod, glob_dist
 
-        idx = get_index(i)
-        jdx = get_index(j)
+        if (.not. sim%megno_active) return
 
-        ! ── Relative position ───
-        dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
-        dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-        rcoll = R_arr(i) + R_arr(j)
+        glob_prod = cero
+        glob_dist = cero
 
-        if (dr2 >= rcoll*rcoll) return  ! no overlap
+        do i = first_particle, N_total
+            vdx = get_variational_index(i, first_particle, N_total)
 
-        ! ── Zero-distance guard: random direction from previous relative vel ──
-        if (dr2 < tini) then
-            ! Try to use relative velocity direction as contact normal
-            dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
-            rn = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
-            if (rn > tini) then
-                rn = sqrt(rn)
-                dr_ver = dv_vec / rn          ! direction of approach
-            else
-                ! Truly degenerate: random unit vector
-                call random_number(rand1)
-                call random_number(rand2)
-                rand1 = twopi * rand1  ! uniform angle in [0, 2pi)
-                dr_ver = [cos(rand1), sin(rand1)]
-            end if
-            dr = tini
-            overlap = rcoll
-        else
-            dr = sqrt(dr2)
-            overlap = rcoll - dr
-            dr_ver = dr_vec / dr
-        end if
+            ! d(delta_x)/dt = delta_vx  (kinematic part of variational eq.)
+            der(vdx:vdx + 1) = y(vdx + 2:vdx + 3)
 
-        ! ── Tangential unit vector (90° rotation of normal) ───
-        ! dt_ver points in the direction of tangential sliding.
-        dt_ver = [-dr_ver(2), dr_ver(1)]
+            prod = y(vdx)*der(vdx) + y(vdx+1)*der(vdx+1) &
+                 + y(vdx+2)*der(vdx+2) + y(vdx+3)*der(vdx+3)
+            if (.not. ieee_is_finite(prod) .or. abs(prod) < tini) prod = cero
 
-        ! ── Masses ────
-        if (are_moons) then
-            mi = m_arr(i)
-            mj = m_arr(j)
-            aux_real = dos * sqrt(sim%kappa_col_moon * (mi * mj / (mi + mj)))
-            gamma_n_pair = min(sim%gamma_col_moon_n, uno) * aux_real
-            gamma_t_pair = min(sim%gamma_col_moon_t, uno) * aux_real
-        else
-            mi = uno
-            mj = uno
-            gamma_n_pair = gamma_n
-            gamma_t_pair = gamma_t
-        end if
+            dist = y(vdx)*y(vdx) + y(vdx+1)*y(vdx+1) &
+                 + y(vdx+2)*y(vdx+2) + y(vdx+3)*y(vdx+3)
+            if (.not. ieee_is_finite(dist) .or. dist < tini) dist = tini
 
-        ! ── Relative velocity components ───
-        dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
-        dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)  ! normal component
-        dvt = dv_vec(1)*dt_ver(1) + dv_vec(2)*dt_ver(2)  ! tangential component
+            glob_prod = glob_prod + prod
+            glob_dist = glob_dist + dist
 
-        ! ── Normal force (spring + damping, clamped >= 0) ───
-        ! Clamp ensures force is always repulsive — never attractive.
-        F_n = sim%kappa_col_part * overlap
-        if (gamma_n_pair > cero) then
-            F_n = F_n - gamma_n_pair * min(dvr, cero)
-        end if
-        F_n = max(F_n, cero) ! ← clamp: F_n cannot go negative
+            der(vdx + 4) = prod / dist
+            der(vdx + 5) = prod / dist * t / megno_factor
+            if (t > 0) der(vdx + 6) = dos * y(vdx + 5) / t
+        end do
 
-        ! ── Tangential force (viscous, Coulomb-limited) ───
-        ! Viscous sliding: F_t = -gamma_t * dv_tan
-        ! Coulomb cap: |F_t| <= mu * F_n  (no friction beyond this)
-        F_t = cero
-        if ((gamma_t_pair > cero) .and. (sim%coulomb_mu_col > cero) .and. (F_n > cero)) then
-            F_t = -gamma_t_pair * dvt
-            ! Coulomb cap
-            F_t = sign(min(abs(F_t), sim%coulomb_mu_col * F_n), F_t)
-        end if
+        ! Global MEGNO indicators
+        der(vdx + 7) = glob_prod / glob_dist
+        der(vdx + 8) = glob_prod / glob_dist * t / megno_factor
+        if (t > 0) der(vdx + 9) = dos * y(vdx + 8) / t
 
-        ! ── Assemble total force on j ───
-        F_vec = F_n * dr_ver + F_t * dt_ver
+    end subroutine dydt_megno
 
-        ! ── Newton's 3rd law ────
-        der(jdx+2:jdx+3) = der(jdx+2:jdx+3) + F_vec / mj
-        der(idx+2:idx+3) = der(idx+2:idx+3) - F_vec / mi
 
-    end subroutine soft_sphere_force
- 
-    ! ── Brute-force O(N²) — used when N_particles <= sim%grid_col_min_bodies ──────
-    subroutine collisions_brute(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!                     TOP-LEVEL DERIVATIVE FUNCTIONS                      !!
+    !!  Match dydt_template exactly — do NOT change the argument structure.    !!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    !> Inertial-frame derivative function (full N-body: moons + particles).
+    !> Orchestrates: grav → coll → pos derivatives → MEGNO.
+    function dydt(t, y) result(der)
+        !y = /theta, omega, xA, yA, vxA, vyA, Moon, Part, .../
         implicit none
+        real(wp), intent(in) :: t
         real(wp), dimension(:), intent(in) :: y
-        real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4), intent(in) :: first_index, last_index
-        real(wp), intent(in) :: gamma_n, gamma_t
-        logical, intent(in) :: are_moons
- 
-        integer(kind=4) :: i, j
- 
-        do i = first_index, last_index - 1
-            do j = i + 1, last_index
-                call soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
-            end do
-        end do
- 
-    end subroutine collisions_brute
- 
-    ! ── Cell-list O(N) — used when N_particles > sim%grid_col_min_bodies ──
-    ! Cell size ~ 2R (collision diameter): only the 9 surrounding cells
-    ! need to be checked for each particle.
-    subroutine collisions_grid(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
+        real(wp), dimension(size(y)) :: der
+
+        integer(kind=4) :: last_moon, first_particle, N_total
+
+        der = cero
+
+        last_moon = 1 + sim%Nmoon_active
+        first_particle = last_moon + 1
+        N_total = last_moon + sim%Npart_active
+
+        ! 1) Gravitational + non-conservative accelerations (vel derivatives)
+        call dydt_grav(t, y, der, first_particle, N_total)
+
+        ! 2) Soft-sphere collision accelerations (vel derivatives)
+        call dydt_coll(t, y, der, first_particle, N_total)
+
+        ! 3) Position derivatives: d(pos)/dt = vel  — set after all vel ders
+        call set_pos_derivatives(y, der, N_total)
+
+        ! 4) MEGNO variational update (uses der already filled above)
+        call dydt_megno(t, y, der, first_particle, N_total)
+
+    end function dydt
+
+    function dydt_grav_f(t, y) result(der)
         implicit none
+        real(wp), intent(in) :: t
         real(wp), dimension(:), intent(in) :: y
-        real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4), intent(in) :: first_index, last_index
-        real(wp), intent(in) :: gamma_n, gamma_t
-        logical, intent(in) :: are_moons
- 
-        real(wp) :: L_cell, x_min, x_max, y_min, y_max
-        integer(int64) :: Ncx, Ncy, Nc
-        integer(int64) :: cx, cy, ci
-        integer(int64) :: cx2, cy2, ci2
-        integer(kind=4) :: dcx, dcy
-        integer(kind=4) :: i, j, idx
-        integer(kind=4), allocatable :: head(:), next(:)
- 
-        ! ── Cell size ~ 2R (collision diameter): only the 9 surrounding cells
-        if (are_moons) then
-            L_cell = dos * maxval(R_arr(first_index:last_index))
-        else
-            L_cell = dos * R_arr(first_index)
-        end if
+        real(wp), dimension(size(y)) :: der
 
-        L_cell = max(L_cell, sim%grid_col_min_cell_size)  ! Avoid too small cells (too much overhead)
+        integer(kind=4) :: last_moon, first_particle, N_total
 
-        ! ── Domain bounds from particle positions ───
-        x_min = y(get_index(first_index))
-        x_max = x_min
-        y_min = y(get_index(first_index)+1)
-        y_max = y_min
+        der = cero
 
-        do i = first_index, last_index
-            idx = get_index(i)
-            x_min = min(x_min, y(idx))
-            x_max = max(x_max, y(idx))
-            y_min = min(y_min, y(idx+1))
-            y_max = max(y_max, y(idx+1))
-        end do
+        last_moon = 1 + sim%Nmoon_active
+        first_particle = last_moon + 1
+        N_total = last_moon + sim%Npart_active
 
-        ! Add one cell of padding so boundary particles aren't clipped
-        x_min = x_min - L_cell
-        x_max = x_max + L_cell
-        y_min = y_min - L_cell
-        y_max = y_max + L_cell
- 
-        Ncx = max(1, ceiling((x_max - x_min) / L_cell))
-        Ncy = max(1, ceiling((y_max - y_min) / L_cell))
+        call dydt_grav(t, y, der, first_particle, N_total)
 
+    end function dydt_grav_f
 
-        ! ── Safety: fall back to brute-force if grid is too large ──
-        if (Ncx > sim%grid_col_max_cells / Ncy) then
-            call collisions_brute(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
-            return
-        end if
-
-        Nc = Ncx * Ncy
- 
-        ! ── Build linked-list cell structure ───
-        allocate(head(0:Nc-1), next(first_index:last_index))
-        head = -1  ! -1 = empty cell
- 
-        do i = first_index, last_index
-            idx = get_index(i)
-            cx = min(int((y(idx)   - x_min) / L_cell, int64), Ncx - 1_int64)
-            cy = min(int((y(idx+1) - y_min) / L_cell, int64), Ncy - 1_int64)
-            ! Clamp particles outside domain to boundary cells
-            cx = max(cx, 0_int64)
-            cy = max(cy, 0_int64)
-            ci = cx + Ncx * cy
-            next(i)  = head(ci)
-            head(ci) = i
-        end do
- 
-        ! ── Check only 9-cell neighbourhood ───
-        do i = first_index, last_index
-            idx = get_index(i)
-            cx = min(max(int((y(idx)   - x_min) / L_cell, int64), 0_int64), Ncx - 1_int64)
-            cy = min(max(int((y(idx+1) - y_min) / L_cell, int64), 0_int64), Ncy - 1_int64)
- 
-            do dcy = -1, 1
-                do dcx = -1, 1
-                    cx2 = cx + dcx
-                    cy2 = cy + dcy
-                    if (cx2 < 0_int64 .or. cx2 >= Ncx) cycle
-                    if (cy2 < 0_int64 .or. cy2 >= Ncy) cycle
-    
-                    ci2 = cx2 + Ncx * cy2
-                    j   = head(ci2)
-                    do while (j /= -1)
-                        if (j > i) then  ! avoid double-counting
-                            call soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
-                        end if
-                        j = next(j)
-                    end do
-                end do
-            end do
-        end do
- 
-        deallocate(head, next)
- 
-    end subroutine collisions_grid
-
-
-    ! ── Verlet neighbour list ────
-    ! Builds a list of all pairs within (2R + skin). The list is reused across
-    ! sub-steps and only rebuilt when any particle has moved > skin/2 since
-    ! the last build. This amortizes the O(N²) build cost over many sub-steps.
-    subroutine build_verlet_list(y, first_index, last_index, are_moons)
+    function dydt_coll_f(t, y) result(der)
         implicit none
+        real(wp), intent(in) :: t
         real(wp), dimension(:), intent(in) :: y
-        integer(kind=4), intent(in) :: first_index, last_index
-        logical, intent(in) :: are_moons
+        real(wp), dimension(size(y)) :: der
 
-        integer(kind=4) :: i, j, idx, jdx, npairs, N_particles
-        real(wp) :: r_cut, r_cut2, dr_vec(2), dr2
-        integer(kind=4), allocatable :: tmp_list(:, :)
+        integer(kind=4) :: last_moon, first_particle, N_total
 
-        N_particles = last_index - first_index + 1
+        der = cero
 
-        ! ── Cell size ~ 2R (collision diameter): only the 9 surrounding cells
-        if (are_moons) then
-            vrcut = dos * maxval(R_arr(first_index:last_index))
-        else
-            vrcut = dos * R_arr(first_index)
-        end if
+        last_moon = 1 + sim%Nmoon_active
+        first_particle = last_moon + 1
+        N_total = last_moon + sim%Npart_active
 
-        vrcut = max(vrcut, sim%grid_col_min_cell_size)  ! Avoid too small cells (too much overhead)
+        call dydt_coll(t, y, der, first_particle, N_total)
 
-        r_cut = vrcut * (uno + sim%verlet_skin_factor)  ! = 2R + skin
-        r_cut2 = r_cut * r_cut
-
-        ! Temporary storage — worst case N*(N-1)/2 pairs
-        allocate(tmp_list(2, N_particles*(N_particles-1)/2))
-        npairs = 0
-
-        do i = first_index, last_index - 1
-            idx = get_index(i)
-            do j = i + 1, last_index
-                jdx = get_index(j)
-                dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
-                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                if (dr2 < r_cut2) then
-                    npairs = npairs + 1
-                    tmp_list(1, npairs) = i
-                    tmp_list(2, npairs) = j
-                end if
-            end do
-        end do
-
-        ! Store compacted list
-        if (allocated(vlist)) deallocate(vlist)
-        allocate(vlist(2, npairs))
-        vlist(:, 1:npairs) = tmp_list(:, 1:npairs)
-        vlist_n = npairs
-        deallocate(tmp_list)
-
-        ! Store positions at build time (for drift check)
-        if (allocated(vlist_pos)) deallocate(vlist_pos)
-        allocate(vlist_pos(2, first_index:last_index))
-        do i = first_index, last_index
-            idx = get_index(i)
-            vlist_pos(1, i) = y(idx)
-            vlist_pos(2, i) = y(idx+1)
-        end do
-
-        vlist_built = .True.
-
-    end subroutine build_verlet_list
-
-    ! ── Verlet collision loop ───
-    ! Checks if list needs rebuilding (any particle drifted > skin/2),
-    ! then loops only over listed pairs.
-    subroutine collisions_verlet(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
-        implicit none
-        real(wp), dimension(:), intent(in)  :: y
-        real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4), intent(in) :: first_index, last_index
-        real(wp), intent(in) :: gamma_n, gamma_t
-        logical, intent(in) :: are_moons
-
-        integer(kind=4) :: i, j, k, idx
-        real(wp) :: r_skin2, dx, dy, drift2
-
-        r_skin2 = (vrcut * sim%verlet_skin_factor * uno2)**2  ! (skin/2)²
-        ! r_skin2 = (maxval(R_arr(first_index:last_index)) * dos * sim%verlet_skin_factor * uno2)**2  ! (skin/2)²
-
-        ! ── Rebuild check ───
-        ! Rebuild if: never built, size changed, or any particle drifted > skin/2
-        if (.not. vlist_built .or. size(vlist_pos, 2) /= last_index - first_index + 1) then
-            call build_verlet_list(y, first_index, last_index, are_moons)
-        else
-            do i = first_index, last_index
-                idx = get_index(i)
-                dx = y(idx) - vlist_pos(1, i)
-                dy = y(idx+1) - vlist_pos(2, i)
-                drift2 = dx*dx + dy*dy
-                if (drift2 > r_skin2) then
-                    call build_verlet_list(y, first_index, last_index, are_moons)
-                    exit  ! rebuilt — no need to check further
-                end if
-            end do
-        end if
-
-        ! ── Apply forces for all listed pairs ──
-        do k = 1, vlist_n
-            i = vlist(1, k)
-            j = vlist(2, k)
-            call soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
-        end do
-
-    end subroutine collisions_verlet
-
+    end function dydt_coll_f
 
 end module derivates

@@ -163,6 +163,9 @@ module parameters
         integer(kind=4) :: grid_col_min_bodies = 100  ! Do not even consider grid if number of bodies is below this threshold
         integer(kind=4) :: grid_col_max_cells = 10000  ! Max amount of cells before falling back to brute-force
         real(wp) :: grid_col_min_cell_size = uno  ! Minimum cell size to avoid too much overhead
+        !! Substeps
+        logical :: use_substeps_col = .False.  ! Whether to use substeps for collision detection.
+        real(wp) :: dt_substeps = cero  ! If >0, subdt=min(subdt, dt); -1<subdt<0, subdt=|subdt|*dt; subdt<-1, subdt=dt/|subdt|
         ! Manual |(t)imes omega(t) mass_add(t)| file -
         logical :: use_tomfile = .False.
         character(30) :: tomfile = ""
@@ -236,6 +239,7 @@ module parameters
         real(wp) :: gamma_col_part_t = cero  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, tangential component
         logical :: use_any_merge = .False.
         logical :: use_any_stop = .False.
+        logical :: use_soft_sphere_col = .False.
         ! Chaos
         logical :: use_chaos = .False.  ! Need to output chaos values
         character(30) :: geomchaosfile = ""
@@ -267,6 +271,7 @@ module parameters
     real(wp) :: timestep  ! This timestep
     real(wp) :: adaptive_timestep  ! This adaptive timestep
     real(wp) :: fixed_timestep  ! This fixed timestep
+    real(wp) :: sub_timestep  ! This sub-timestep for collision detection (if used)
 
     ! ----  <<<<<    TOM     >>>>>   -----
     type(tom_st) :: tom  ! This is the structure with TOM data
@@ -308,7 +313,7 @@ module parameters
     real(wp) :: tmp_adapt_timestep  ! Temporal adaptive timestep
     type(system_st) :: tmp_system  ! Temporal system
     integer(kind=4) :: tmp_y_nvalues  ! Temporal y nvalues
-    real(wp), dimension(:), allocatable :: tmp_y_arr  ! Temporal coordinates array
+    real(wp), dimension(:), allocatable, target :: tmp_y_arr  ! Temporal coordinates array
 
     ! ----  <<<<<    SURFACE SECTION     >>>>>   -----
     type(section_st) :: section
@@ -805,8 +810,8 @@ contains
         open (unit=u_configfile, file=trim(file_name), status='old', action='read')
         do
             if (ios /= 0) then
-                write (*,*) "WARNING: Errror while reading parameter for", trim(auxch15)
-                write (*,*) "           with value:", value_str
+                write (*,*) "WARNING: Error while reading parameter for ", trim(auxch15)
+                write (*,*) "           with value: ", value_str
                 write (*,*) "  Exiting."
                 stop 1
             end if
@@ -1176,6 +1181,14 @@ contains
                     else
                         params%use_verlet_with_moons = .False.
                     end if
+                case ("use substeps fo")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_substeps_col = .True.
+                    else
+                        params%use_substeps_col = .False.
+                    end if
+                case ("sub-timestep fo")
+                    read (value_str, *, iostat=ios) params%dt_substeps                
                 case ("input time-omeg")
                     if ((to_lower(trim(value_str)) == "n") .or. &
                       & (to_lower(trim(value_str)) == "no")) then
@@ -1834,9 +1847,14 @@ contains
             stop 1
         end if
 
+        ! If no substeps, disabe sub_dt
+        if (.not. derived%use_substeps_col) then
+            derived%dt_substeps = cero
+        end if
+
     end subroutine set_derived_parameters_pre_bodies
 
-    ! Rearrange in case of massless moons
+    ! 4. Rearrange in case of massless moons
     subroutine recreate_moons_particles_in(moons_in, particles_in)
         implicit none
         real(wp), allocatable, intent(inout) :: moons_in(:, :)
@@ -1888,7 +1906,7 @@ contains
 
     end subroutine recreate_moons_particles_in
 
-    ! 4. Set derived parameters
+    ! 5. Set derived parameters
     subroutine set_derived_parameters_post_bodies(derived)
         implicit none
         type(sim_params_st), intent(inout) :: derived
@@ -1940,16 +1958,20 @@ contains
 
         ! Check Collisions of moons parameters
         if (derived%Nmoons > 0) then
+
             ! Check Soft Sphere
             if (derived%use_moon_soft_sphere_col) then
+
                 if ((derived%kappa_col_moon < cero) .or. (derived%kappa_col_moon > uno)) then
                     write (*, *) "ERROR: Collisional kappa for moons must be between 0 and 1."
                     stop 1
                 end if
+
                 if ((derived%gamma_col_moon_n < cero) .or. (derived%gamma_col_moon_n > uno)) then
                     write (*, *) "ERROR: Collisional gamma for moons must be between 0 and 1."
                     stop 1
                 end if
+
                 if ((derived%beta_col_moon < cero) .or. (derived%beta_col_moon > uno)) then
                     write (*, *) "ERROR: Collisional beta for moons must be between 0 and 1."
                     stop 1
@@ -1961,30 +1983,43 @@ contains
                     write (*, *) "ERROR: Verlet skin factor must be positive."
                     stop 1
                 end if
+
+                if (derived%Nmoons == 1) then
+                    write (*, *) "WARNING: Only one moon. Moon collisions will be deactivated."
+                    derived%kappa_col_moon = cero  ! Means no check
+                end if
+
                 if (derived%kappa_col_moon < myepsilon) then
                     derived%use_moon_soft_sphere_col = .False.
                     derived%kappa_col_moon = cero
                     derived%gamma_col_moon_n = cero
                     derived%beta_col_moon = cero
                 end if
+
             end if
+
             ! Check Collisions of massive parameters
             if ((derived%eta_col_moon < cero) .or. (derived%eta_col_moon > uno)) then
                 write (*, *) "ERROR: Collisional eta for moons must be between 0 and 1."
                 stop 1
             end if
+
             if ((derived%f_col_moon < cero) .or. (derived%f_col_moon > uno)) then
                 write (*, *) "ERROR: Collisional f for moons must be between 0 and 1."
                 stop 1
             end if
+
         else
             derived%use_moon_soft_sphere_col = .False.
+
         end if
+
         ! Set tangential
         derived%gamma_col_moon_t = derived%gamma_col_moon_n * derived%beta_col_moon
 
         ! Check Collisions of particle parameters
         if (derived%Nparticles > 0) then
+
             ! Check if radius > 0
             if ((derived%radius_particles <= cero) .and. &
             & (derived%use_part_hard_sphere_col .or. derived%use_part_soft_sphere_col)) then
@@ -1993,26 +2028,37 @@ contains
                 derived%use_part_hard_sphere_col = .False.
                 derived%use_part_soft_sphere_col = .False.
             end if
+
             ! Check Soft Sphere
             if (derived%use_part_soft_sphere_col) then
+
                 if ((derived%kappa_col_part < cero) .or. (derived%kappa_col_part > uno)) then
                     write (*, *) "ERROR: Collisional kappa for particles must be between 0 and 1."
                     stop 1
                 end if
+
                 if ((derived%gamma_col_part_n < cero) .or. (derived%gamma_col_part_n > uno)) then
                     write (*, *) "ERROR: Collisional gamma for particles must be between 0 and 1."
                     stop 1
                 end if
+
                 if ((derived%beta_col_part < cero) .or. (derived%beta_col_part > uno)) then
                     write (*, *) "ERROR: Collisional beta for particles must be between 0 and 1."
                     stop 1
                 end if
+
                 if (derived%use_verlet_col .and. &
                   & (.not. derived%use_verlet_with_moons) .and. & 
                   & (derived%verlet_skin_factor <= myepsilon)) then
                     write (*, *) "ERROR: Verlet skin factor must be positive."
                     stop 1
                 end if
+
+                if (derived%Nparticles == 1) then
+                    write (*, *) "WARNING: Only one particle. Particle collisions will be deactivated."
+                    derived%kappa_col_part = cero  ! Means no check
+                end if
+
                 if (derived%kappa_col_part < myepsilon) then
                     derived%use_part_soft_sphere_col = .False.
                     derived%kappa_col_part = cero
@@ -2020,19 +2066,23 @@ contains
                     derived%beta_col_part = cero
                 end if
             end if
+
             ! Check Hard Sphere
             if (derived%use_part_hard_sphere_col) then
                 if ((derived%eta_col_part < cero) .or. (derived%eta_col_part > uno)) then
                     write (*, *) "ERROR: Collisional eta for particles must be between 0 and 1."
                     stop 1
                 end if
+
                 if ((derived%f_col_part < cero) .or. (derived%f_col_part > uno)) then
                     write (*, *) "ERROR: Collisional f for particles must be between 0 and 1."
                     stop 1
                 end if
             else
+
                 derived%eta_col_part = uno  ! Means no check
             end if
+
         else
             derived%eta_col_part = uno  ! Means no check
             derived%use_part_hard_sphere_col = .False.
@@ -2047,30 +2097,59 @@ contains
 
         ! If soft-sphere, check the grid params
         if ((derived%use_part_soft_sphere_col) .or. (derived%use_moon_soft_sphere_col)) then
+
             if (derived%grid_col_min_bodies <= cero) then
                 write (*, *) "ERROR: Collision grid min bodies must be positive."
                 stop 1
             end if
+
             if (derived%grid_col_max_cells <= cero) then
                 write (*, *) "ERROR: Collision grid max cells must be positive."
                 stop 1
             end if
+
             if (derived%grid_col_min_cell_size <= cero) then
                 write (*, *) "ERROR: Collision grid min cell size must be positive."
                 stop 1
             end if
-            derived%grid_col_min_bodies = max(derived%grid_col_min_bodies, 100)
+
+             ! Minimum 100 bodies per cell to avoid too many cells with few bodies
+            derived%grid_col_min_bodies = max(derived%grid_col_min_bodies, 100) 
+            derived%use_soft_sphere_col = .True.
         end if
+
         ! Set gamma tangential for particles
         derived%gamma_col_part_t = derived%gamma_col_part_n * derived%beta_col_part
 
         ! Check cap between 0 and 1
-        if ((derived%coulomb_mu_col < cero) .or. (derived%coulomb_mu_col > uno)) then
+        if (derived%use_soft_sphere_col .and. ((derived%coulomb_mu_col < cero) .or. (derived%coulomb_mu_col > uno))) then
             write (*, *) "ERROR: Collisional cap for particles must be between 0 and 1."
             stop 1
         end if
 
+        ! IF no soft-sphere, no need for substeps or Verlet
+        if (.not. derived%use_soft_sphere_col) then
+            derived%use_substeps_col = .False.
+            derived%use_verlet_col = .False.
+        end if            
+
+        ! If soft-sphere, and substeps, check that dt is not 0
+        if (derived%use_substeps_col) then
+            if (abs(derived%dt_substeps) < myepsilon) then
+                write (*, *) "ERROR: Sub-timestep for collision detection is too small."
+                stop 1
+            end if
+        end if
+
     end subroutine set_derived_parameters_post_bodies
+
+    ! Index elements in derivates and collisions
+    pure function get_index(i) result(idx)
+        implicit none
+        integer(kind=4), intent(in) :: i
+        integer(kind=4) :: idx
+        idx = 4*i - 1
+    end function get_index
 
     ! Define IO pointers
     subroutine define_writing_pointers(simu)
@@ -2346,14 +2425,14 @@ contains
     end subroutine do_not_write_ch
 
     ! FILTERING
-    subroutine apply_filter(simu, y_nvalues, syst_pre_filter, syst_filtered, el_filtered)
+    subroutine apply_filter(simu, ynvalues, syst_pre_filter, syst_filtered, el_filtered)
         use bodies, only: get_Nactive, copy_objects, update_system_from_array, update_elements, moon_st, particle_st
         implicit none
         type(sim_params_st), intent(in) :: simu
-        integer(kind=4), intent(in) :: y_nvalues
+        integer(kind=4), intent(in) :: ynvalues
         type(system_st), intent(in) :: syst_pre_filter
         type(system_st), intent(inout) :: syst_filtered
-        real(wp), dimension(y_nvalues), intent(inout) :: el_filtered
+        real(wp), dimension(ynvalues), intent(inout) :: el_filtered
         real(wp) :: cos_th, sin_th
         real(wp) :: weigth, e_times_fil
         real(wp), dimension(:, :), allocatable :: cos_an, sin_an
@@ -2372,7 +2451,7 @@ contains
         call copy_objects(syst_pre_filter, syst_filtered)
         do i = 1, filter%size
             weigth = filter%kernel(i)
-            call update_system_from_array(syst_filtered, filter%tmp_times(i), filter%tmp_values(:y_nvalues, i))
+            call update_system_from_array(syst_filtered, filter%tmp_times(i), filter%tmp_values(:ynvalues, i))
             call update_elements(syst_filtered, simu%reference_frame)
 
             ! Theta

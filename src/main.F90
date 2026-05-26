@@ -1,14 +1,15 @@
 program main
     use version_info, only: print_version
     use parameters
-    use integrators, only: integrate, init_integrator, free_integrator
+    use integrators, only: integrate, integrate_substeps, init_integrator, free_integrator
     use celestial, only: get_Period, coord2geom
     use bodies
     use times, only: set_output_times, expand_checkpoints, select_fraction_symmetric
-    use derivates, only: dydt, set_dydt
+    use derivates, only: dydt, set_dydt, dydt_grav_f, dydt_coll_f
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
     use surface, only: init_section, crossed_section, get_jacobi_constant
+    ! use collisions, only: verlet_rebuilds
 
     implicit none
 
@@ -927,7 +928,7 @@ program main
             end if
             write (*, *) ACHAR(5)
         end if
-        if (sim%use_moon_soft_sphere_col .or. sim%use_part_soft_sphere_col) then
+        if (sim%use_soft_sphere_col) then
             write (*, s1r1) " Soft-Sphere Coulomb cap mu factor:", sim%coulomb_mu_col
             write (*, *) ACHAR(5)
         end if
@@ -999,24 +1000,6 @@ program main
     else if (sim%use_screen)then
         write (*, *) ACHAR(5)
         write (*, *) "NOT Activated."
-    end if
-
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRATOR FRAME !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-    call set_dydt(sim%use_sinodic)
-
-    ! Initial message
-    if (sim%use_screen) then
-        write (*, *) ACHAR(5)
-        write (*, *) "----- Integration reference frame ------"
-        write (*, *) ACHAR(5)
-        if (sim%use_sinodic) then
-            write (*, *) "SINODIC"
-        else
-            write (*, *) "BARYCENTRIC"
-        end if
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1234,6 +1217,68 @@ program main
 
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!! SUBSTEPS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    ! Initial message
+    if (sim%use_screen) then
+        write (*, *) ACHAR(5)
+        write (*, *) "---------- Substeps ----------"
+        write (*, *) ACHAR(5)
+    end if
+
+    !!!!!!! SUBSTEPS !!!!!!!
+
+    ! Check if activated
+    if (sim%use_substeps_col) then
+        ! Set substeps
+        if (sim%dt_substeps > cero) then
+            sub_timestep = min(sim%dt_min, sim%dt_substeps*unit_time)
+        else if (sim%dt_substeps > -uno) then
+            sub_timestep = sim%dt_min*abs(sim%dt_substeps)
+        else
+            sub_timestep = sim%dt_min / abs(sim%dt_substeps)
+        end if
+        ! Check that sub_timestep is not greater or equal to dt_min
+        if (sub_timestep >= sim%dt_min) then
+            write (*, *) ACHAR(10)
+            write (*, *) "WARNING: Substeps timestep is greater or equal to minimum timestep."
+            write (*, s1r1) "  Substeps timestep:", sub_timestep/unit_time, "[day] = ", sub_timestep/sim%dt_min, " [dt_min]."
+            write (*, *) "  Substeps will be deactivated."
+            write (*, *) ACHAR(10)
+            sim%use_substeps_col = .False.
+        else
+            ! Everything is ok. We have to re-set the integrator to LF-KDK multistep
+            if (sim%use_screen) then
+                write (*, *) "Substeps for collisions activated."
+                write (*, s1r1) "  Substeps timestep:", sub_timestep/unit_time, "[day] = ", sub_timestep/sim%dt_min, " [dt_min]."
+                write (*, *) " Setting integrator to Leap-Frog KDK with substeps."
+                write (*, *) ACHAR(5)
+            end if
+            sim%integrator_ID = -30  ! Leap-Frog KDK with substeps
+        end if
+    else if (sim%use_screen) then
+        write (*, *) "Substeps for collisions deactivated."
+        write (*, *) ACHAR(5)
+    end if
+
+    ! Get minimum and maximum periods (already have internal units)
+    sim%min_period = infinito
+    sim%max_period = system%asteroid%rotational_period  ! No problem if it is 0
+    if (system%asteroid%rotational_period > myepsilon) sim%min_period = system%asteroid%rotational_period
+    do i = 1, system%Nmoons_active
+        aux_real = get_Period(system%asteroid%mass + system%moons(i)%mass, system%moons(i)%elements(1))
+        sim%min_period = min(sim%min_period, aux_real)
+        sim%max_period = max(sim%max_period, aux_real)
+    end do
+    do i = 1, system%Nparticles_active
+        aux_real = get_Period(system%asteroid%mass, system%particles(i)%elements(1))
+        sim%min_period = min(sim%min_period, aux_real)
+        sim%max_period = max(sim%max_period, aux_real)
+    end do
+
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!! Integration Arrays !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -1255,6 +1300,24 @@ program main
     ! <<<< Arrays to integrate >>>>
     call center_sytem(system)
     call generate_arrays(system, m_arr, R_arr, y_arr)
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!! INTEGRATOR FRAME !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+    call set_dydt(sim%Ntotal, sim%use_sinodic)
+
+    ! Initial message
+    if (sim%use_screen) then
+        write (*, *) ACHAR(5)
+        write (*, *) "----- Integration reference frame ------"
+        write (*, *) ACHAR(5)
+        if (sim%use_sinodic) then
+            write (*, *) "SINODIC"
+        else
+            write (*, *) "BARYCENTRIC"
+        end if
+    end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! SURFACE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2615,7 +2678,7 @@ program main
             if (sim%use_surface) then
                 
                 ! Get tmp times
-                tmp_adapt_timestep = timestep
+                tmp_adapt_timestep = timestep  ! CHECK in the future
                 surf_min_timestep = sim%surface_time_eps
                 if (j <= sim%checkpoint_number-1) then
                     surf_min_timestep = min(checkpoint_times(j+1) - checkpoint_times(j), surf_min_timestep)
@@ -2754,8 +2817,19 @@ program main
 
             else
 
-                ! INTEGRATE
-                call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
+                if (sim%use_substeps_col) then
+                    ! INTEGRATE
+                    call integrate_substeps(time, y_arr(:y_nvalues), &
+                                            & adaptive_timestep, dydt_grav_f, &
+                                            & sub_timestep, dydt_coll_f, &
+                                            & timestep, y_arr_new(:y_nvalues), check_func)
+
+
+                else
+                    ! INTEGRATE
+                    call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
+
+                end if
 
                 ! Check if it might be hard_exit
                 if (hard_exit) then
@@ -2827,6 +2901,8 @@ program main
 
             ! Update j; only if not premature
             if (.not. is_premature_exit) j = j + 1
+
+            ! if (verlet_rebuilds > 0) print*, "Verlet rebuilds: ", verlet_rebuilds
 
         end do main_loop_normal
 

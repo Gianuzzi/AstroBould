@@ -136,7 +136,7 @@ contains
         end do
 
         ! KICK 2: Calculate new accelerations and update velocities half step
-        der05 = dydt(t + dt_half, ynew)
+        der05 = dydt(t + dt, ynew)
 
         ! 1D variables
         do i = 1, EXTRA2, 2
@@ -184,7 +184,7 @@ contains
         end do
 
         ! KICK: Calculate accelerations and update velocities full step
-        der05 = dydt(t + dt_half, ynew)
+        der05 = dydt(t + dt * C1_2, ynew)  ! *C1_2 for Verlet, but here we need full step for KDK
 
         ! 1D variables
         do i = 1, EXTRA2, 2
