@@ -49,8 +49,7 @@ Here:
 - `<e>`   = eccentricity of the particle
 - `<M>`   = mean anomaly of the particle (degrees)
 - `<w>`   = argument of periapsis of the particle (degrees)
-- `<mmr>` = initial spin-orbit ratio ($$\Omega_\text{ast}  / n_\text
-{part}$$) (optional)
+- `<mmr>` = initial spin-orbit ratio ($\Omega_\text{ast}  / n_\text{part}$) (optional)
 
 > If `<mmr>` is provided, it overrides the value of `<a>`.
 
@@ -110,9 +109,9 @@ $ ./ASTROBOULD --help
     --nomegno     : No calcular MEGNO"
     --sinodic     : Integar en sistema rotante"
     --nosinodic   : Integar en sistema NO rotante"
-    -parallel     : Cantida de threads a utilizar en paralelo [int] (depr)"
-    --parallel    : Paralelizar usando todos los threads disponibles (depr)"
-    --noparallel  : No usar paralelización para lunas/partículas (depr)"
+    -parallel     : Cantida de threads a utilizar en paralelo [int]"
+    --parallel    : Paralelizar usando todos los threads disponibles"
+    --noparallel  : No usar paralelización para lunas/partículas"
     --help        : Mostrar esta ayuda"
 
 ``` 
@@ -126,8 +125,8 @@ To define the parameters of an integration, you can edit the [configuration file
 ## ⛓️ Parallel Execution
 
 There are two modes for parallel execution:
+- Independant
 - Dependant 
-- Independant (default)
 
 ⌨️ **Particles Input File**
 
@@ -137,7 +136,7 @@ Both modes require the existence of a particles/moons file (e.g. _particles.in_)
 
 - Multiple independent integrations are performed, one particle/moon per run.
 - Each integration is executed in parallel (e.g., across multiple CPU cores).
-- Does not require _-fopenmp_.
+- Does not require _-fopenmp_ or _-qopenmp_.
 
 The file [launcher.py](./launcher.py) provides all available configurations for this parallel execution mode. Configure the run by editing lines [67 to 116](./launcher.py#L67#L116). More information (in spannish) is available at the top of the file(see lines [1 to 54](./launcher.py#L1#L54)).
 
@@ -147,14 +146,19 @@ $ python launcher.py
 ```
 💡 Make sure to run inside a Python virtual environment. 🐍
 
-### 2. **~~Dependent Mode~~ (DEPRECATED)**
+### 2. **Dependent Mode**
 
 - A single integration is performed, including the asteroid and many particles/moons simultaneously.
 - Tasks related to each particle (e.g., force calculations, orbital elements, etc.) are parallelized internally.
-- Requires OpenMP support (_-fopenmp_). Compile using:
+- Requires OpenMP support (_-fopenmp_ or _-qopenmp_ if using Intel Fortran). Compile using:
 ```console
 $ make parallel
 ```
+or
+```console
+$ make intel_parallel
+```
+if using Intel Fortran.
 To run:
 ```console
 $ ./ASTROBOULD [args] -parallel <number_of_cpus> -partfile <particles_file>
@@ -163,7 +167,6 @@ or edit [config.ini](./config.ini) and set "use parallel threads" to the desired
 ```console
 $ ./ASTROBOULD [args]
 ```
-
 
 ## 🔗 Integrators avaiable
 
