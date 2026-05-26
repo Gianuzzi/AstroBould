@@ -5,6 +5,7 @@ build/main :  \
 	build/auxiliary.o \
 	build/bodies.o \
 	build/celestial.o \
+	build/collisions.o \
 	build/constants.o \
 	build/derivates.o \
 	build/filtering.o \
@@ -13,6 +14,7 @@ build/main :  \
 	build/integrators/embedded.o \
 	build/integrators/integrators.o \
 	build/integrators/leapfrog.o \
+	build/integrators/leapfrog_multirate.o \
 	build/integrators/runge_kutta.o \
 	build/integrators/shared.o \
 	build/main.o \
@@ -40,11 +42,17 @@ build/bodies.o :  \
 build/celestial.o :  \
 	build/constants.o
 
+build/collisions.o :  \
+	build/auxiliary.o \
+	build/constants.o \
+	build/parameters.o
+
 build/constants.o : 
 
 build/derivates.o :  \
 	build/accelerations.o \
 	build/auxiliary.o \
+	build/collisions.o \
 	build/constants.o \
 	build/parameters.o
 
@@ -65,10 +73,14 @@ build/integrators/integrators.o :  \
 	build/integrators/bstoer2.o \
 	build/integrators/embedded.o \
 	build/integrators/leapfrog.o \
+	build/integrators/leapfrog_multirate.o \
 	build/integrators/runge_kutta.o \
 	build/integrators/shared.o
 
 build/integrators/leapfrog.o :  \
+	build/integrators/shared.o
+
+build/integrators/leapfrog_multirate.o :  \
 	build/integrators/shared.o
 
 build/integrators/runge_kutta.o :  \
