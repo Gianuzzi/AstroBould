@@ -7,7 +7,9 @@ module collisions
     use parameters, only: sim, m_arr, R_arr, get_index
 
     private
-    public :: init_collisions, set_coll_parameters, collisions_brute, collisions_grid, collisions_verlet, verlet_rebuilds
+    public :: init_collisions, set_coll_parameters, &
+            & collisions_brute, collisions_grid, collisions_verlet, &
+            & verlet_rebuilds, verlet_caches
 
     abstract interface
         subroutine get_xy_rotated_tem(xy, r, dt, mu, omega)
@@ -26,10 +28,11 @@ module collisions
     real(wp), save, allocatable :: vlist_pos(:, :)
     real(wp), save, allocatable :: vlist_r(:)
     real(wp), save :: vlist_time
-    logical,  save :: vlist_built = .False.
-    logical,  save, allocatable :: list_collided(:)
+    logical, save :: vlist_built = .False.
+    logical, save, allocatable :: list_collided(:)
 
     integer(int64), save :: verlet_rebuilds = 0_int64
+    integer(int64), save :: verlet_caches = 0_int64
 
 contains
 
@@ -488,6 +491,8 @@ contains
             call soft_sphere_force(y, der, i, j, are_moons)
         end do
         !$OMP END PARALLEL DO
+
+        verlet_caches = verlet_caches + 1_int64
 
     end subroutine collisions_verlet
 

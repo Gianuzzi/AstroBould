@@ -9,7 +9,7 @@ program main
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
     use surface, only: init_section, crossed_section, get_jacobi_constant
-    use collisions, only: verlet_rebuilds, set_coll_parameters
+    use collisions, only: set_coll_parameters, verlet_rebuilds, verlet_caches
 
     implicit none
 
@@ -3008,6 +3008,7 @@ program main
     if (sim%use_screen .and. verlet_rebuilds > 0) then
         write (*, *) ACHAR(10)
         write (*, s1i1) "Total Verlet rebuilds: ", verlet_rebuilds
+        write (*, s1i1) "Total Verlet cache hits: ", verlet_caches
     end if
 
     !! Cerrar archivo de salida
