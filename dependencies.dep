@@ -91,6 +91,7 @@ build/integrators/shared.o :
 build/main.o :  \
 	build/bodies.o \
 	build/celestial.o \
+	build/collisions.o \
 	build/derivates.o \
 	build/filtering.o \
 	build/integrators/integrators.o \

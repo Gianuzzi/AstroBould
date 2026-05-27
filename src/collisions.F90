@@ -97,36 +97,42 @@ contains
         real(wp) :: mi, mj, meff
         real(wp) :: rand1, rn
 
-        idx = get_index(i)
-        jdx = get_index(j)
+        idx = 4*i - 1
+        jdx = 4*j - 1
 
-        dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
+        dr_vec(1) = y(jdx)   - y(idx)
+        dr_vec(2) = y(jdx+1) - y(idx+1)
         dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
         rcoll = R_arr(i) + R_arr(j)
 
         if (dr2 >= rcoll*rcoll) return
 
         if (dr2 < tini) then
-            dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
+            dv_vec(1) = y(jdx+2) - y(idx+2)
+            dv_vec(2) = y(jdx+3) - y(idx+3)
             rn = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
             if (rn > tini) then
                 rn = sqrt(rn)
-                dr_ver = dv_vec / rn
+                dr_ver(1) = dv_vec(1) / rn
+                dr_ver(2) = dv_vec(2) / rn
             else
                 call random_number(rand1)
                 rand1 = twopi * rand1
-                dr_ver = [cos(rand1), sin(rand1)]
+                dr_ver(1) = cos(rand1)
+                dr_ver(2) = sin(rand1)
             end if
             dr = tini
             overlap = rcoll
         else
             dr = sqrt(dr2)
-            dr_ver = dr_vec / dr
+            dr_ver(1) = dr_vec(1) / dr
+            dr_ver(2) = dr_vec(2) / dr
             overlap = rcoll - dr 
         end if
 
         overlap = max(overlap, sim%dr_factor_col * rcoll)
-        dt_ver = [-dr_ver(2), dr_ver(1)]
+        dt_ver(1) = -dr_ver(2)
+        dt_ver(2) =  dr_ver(1)
 
         if (are_moons) then
             mi = m_arr(i)
@@ -144,7 +150,8 @@ contains
             gamma_t_pair = sim%gamma_col_part_t
         end if
 
-        dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
+        dv_vec(1) = y(jdx+2) - y(idx+2)
+        dv_vec(2) = y(jdx+3) - y(idx+3)
         dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
         dvt = dv_vec(1)*dt_ver(1) + dv_vec(2)*dt_ver(2)
 
@@ -159,7 +166,8 @@ contains
             F_t = sign(min(abs(F_t), sim%coulomb_mu_col * F_n), F_t)
         end if
 
-        F_vec = meff * (F_n * dr_ver + F_t * dt_ver)
+        F_vec(1) = meff * (F_n * dr_ver(1) + F_t * dt_ver(1))
+        F_vec(2) = meff * (F_n * dr_ver(2) + F_t * dt_ver(2))
 
         ! ── Newton's 3rd law — ATOMIC on all four velocity slots ────────────
         !$OMP ATOMIC UPDATE
@@ -230,13 +238,14 @@ contains
         end if
         L_cell = max(L_cell, sim%grid_col_min_cell_size)
 
-        x_min = y(get_index(first_index))
+        idx = 4*first_index - 1
+        x_min = y(idx)
         x_max = x_min
-        y_min = y(get_index(first_index)+1)
+        y_min = y(idx+1)
         y_max = y_min
 
         do i = first_index, last_index
-            idx = get_index(i)
+            idx = 4*i - 1
             x_min = min(x_min, y(idx))
             x_max = max(x_max, y(idx))
             y_min = min(y_min, y(idx+1))
@@ -261,7 +270,7 @@ contains
         head = -1
 
         do i = first_index, last_index
-            idx = get_index(i)
+            idx = 4*i - 1
             cx = min(int((y(idx)   - x_min) / L_cell, int64), Ncx - 1_int64)
             cy = min(int((y(idx+1) - y_min) / L_cell, int64), Ncy - 1_int64)
             cx = max(cx, 0_int64)
@@ -272,7 +281,7 @@ contains
         end do
 
         do i = first_index, last_index
-            idx = get_index(i)
+            idx = 4*i - 1
             cx = min(max(int((y(idx)   - x_min) / L_cell, int64), 0_int64), Ncx - 1_int64)
             cy = min(max(int((y(idx+1) - y_min) / L_cell, int64), 0_int64), Ncy - 1_int64)
 
@@ -328,13 +337,14 @@ contains
         allocate(tmp_list(2, N_particles*(N_particles-1)/2))
         npairs = 0
 
-        x_min = y(get_index(first_index))
+        idx = 4*first_index - 1
+        x_min = y(idx)
         x_max = x_min
-        y_min = y(get_index(first_index)+1)
+        y_min = y(idx+1)
         y_max = y_min
 
         do i = first_index, last_index
-            idx = get_index(i)
+            idx = 4*i - 1
             x_min = min(x_min, y(idx))
             x_max = max(x_max, y(idx))
             y_min = min(y_min, y(idx+1))
@@ -351,10 +361,11 @@ contains
 
         if (Ncx > sim%grid_col_max_cells / Ncy) then
             do i = first_index, last_index - 1
-                idx = get_index(i)
+                idx = 4*i - 1
                 do j = i + 1, last_index
-                    jdx = get_index(j)
-                    dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
+                    jdx = 4*j - 1
+                    dr_vec(1) = y(jdx)   - y(idx)
+                    dr_vec(2) = y(jdx+1) - y(idx+1)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     if (dr2 < r_cut2) then
                         npairs = npairs + 1
@@ -369,7 +380,7 @@ contains
             head = -1
 
             do i = first_index, last_index
-                idx = get_index(i)
+                idx = 4*i - 1
                 cx = min(int((y(idx)   - x_min) / vrcut, int64), Ncx - 1_int64)
                 cy = min(int((y(idx+1) - y_min) / vrcut, int64), Ncy - 1_int64)
                 cx = max(cx, 0_int64)
@@ -380,7 +391,7 @@ contains
             end do
 
             do i = first_index, last_index
-                idx = get_index(i)
+                idx = 4*i - 1
                 cx = min(max(int((y(idx)   - x_min) / vrcut, int64), 0_int64), Ncx - 1_int64)
                 cy = min(max(int((y(idx+1) - y_min) / vrcut, int64), 0_int64), Ncy - 1_int64)
 
@@ -394,8 +405,9 @@ contains
                         j = head(ci2)
                         do while (j /= -1)
                             if (j > i) then
-                                jdx = get_index(j)
-                                dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
+                                jdx = 4*j - 1
+                                dr_vec(1) = y(jdx)   - y(idx)
+                                dr_vec(2) = y(jdx+1) - y(idx+1)
                                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                                 if (dr2 < r_cut2) then
                                     npairs = npairs + 1
@@ -424,7 +436,7 @@ contains
         allocate(vlist_pos(2, first_index:last_index))
         allocate(vlist_r(first_index:last_index))
         do i = first_index, last_index
-            idx = get_index(i)
+            idx = 4*i - 1
             vlist_pos(1, i) = y(idx)
             vlist_pos(2, i) = y(idx+1)
             vlist_r(i) = sqrt(y(idx)**2 + y(idx+1)**2)
@@ -452,7 +464,7 @@ contains
 
         integer(kind=4) :: i, j, k, idx
         real(wp) :: r_skin2, dx, dy, drift2, dt
-        real(wp), dimension(2) :: xyr
+        real(wp) :: x_rot, y_rot, GM, n, dphi, sin_phi, cos_phi
 
         ! ── Rebuild check (serial — touches global saved state) ─────────────
         if (.not. vlist_built) then
@@ -462,13 +474,24 @@ contains
         else
             r_skin2 = (vrcut * sim%verlet_skin_factor * uno2)**2
             dt = time - vlist_time
+            GM = G*m_arr(1)
 
             do i = first_index, last_index
-                idx = get_index(i)
-                xyr = vlist_pos(:, i)
-                call get_xy_rotated(xyr, vlist_r(i), dt, G*m_arr(1), y(2))
-                dx = y(idx)   - xyr(1)
-                dy = y(idx+1) - xyr(2)
+                idx = 4*i - 1
+                ! Manual inlined rotation for drift check
+                n = sqrt(GM / vlist_r(i)**3)
+                if (sim%use_sinodic) then
+                    dphi = (n - y(2)) * dt
+                else
+                    dphi = n * dt
+                end if
+                cos_phi = cos(dphi)
+                sin_phi = sin(dphi)
+                x_rot = vlist_pos(1, i)*cos_phi - vlist_pos(2, i)*sin_phi
+                y_rot = vlist_pos(1, i)*sin_phi + vlist_pos(2, i)*cos_phi
+                
+                dx = y(idx)   - x_rot
+                dy = y(idx+1) - y_rot
                 drift2 = dx*dx + dy*dy
                 if (drift2 > r_skin2) then
                     call build_verlet_list(time, y, first_index, last_index, are_moons)

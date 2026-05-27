@@ -91,8 +91,10 @@ contains
         real(wp) :: work
         integer(kind=4) :: k, iq, i, km, kk
 
-        der(:sizey) = dydt(x, y)
-        yscal(:sizey) = abs(y) + abs(htry*der(:sizey)) + SAFE_LOW
+        der = dydt(x, y)
+        do i = 1, sizey
+            yscal(i) = abs(y(i)) + abs(htry*der(i)) + SAFE_LOW
+        end do
 
         if (abs(E_TOL - epsold) > SAFE_LOW) then !E_TOL? ! A new tolerance, so reinitialize.
             hnext = -1.0e29_wp ! “Impossible” values.
@@ -115,7 +117,7 @@ contains
             kmax = kopt
         end if
         h = htry
-        ysav(:sizey) = y
+        ysav = y
         if ((abs(h - hnext) > SAFE_LOW) .or. (abs(x - xnew) > SAFE_LOW)) then !E_TOL?
             ! A new stepsize or a new integration: Reestablish the order window.
             first = .True.
@@ -131,11 +133,12 @@ contains
                     ! stop 2
                     ! return
                 end if
-                call mmid(sizey, ysav(:sizey), der(:sizey), x, h, nseq(k), yseq(:sizey), dydt)
+                call mmid(sizey, ysav, der, x, h, nseq(k), yseq, dydt)
                 xest = (h/real(nseq(k), kind=wp))**2 ! Squared, since error series is even.
-                call pzextr(sizey, k, xest, yseq(:sizey), y, yerr(:sizey), qcolpz(1:sizey, :), xpz) ! Perform extrapolation.
-                ! yscal(:sizey) = abs(y) + abs(h*der(:sizey)) + SAFE_LOW
-                yscal(:sizey) = abs(y) + abs(yerr(:sizey)) + SAFE_LOW
+                call pzextr(sizey, k, xest, yseq, y, yerr, qcolpz, xpz) ! Perform extrapolation.
+                do i = 1, sizey
+                    yscal(i) = abs(y(i)) + abs(yerr(i)) + SAFE_LOW
+                end do
                 if (k /= 1) then ! Compute normalized error estimate eps(k).
                     errmax = tini
                     do i = 1, sizey
@@ -207,10 +210,12 @@ contains
         integer(kind=4) :: i, n
 
         h = htot/(nstep*ONE) ! Stepsize this trip.
-        mmid_ym(1:sizey) = y
-        mmid_yn(1:sizey) = y + h*dydx ! First step.
+        mmid_ym = y
+        do i = 1, sizey
+            mmid_yn(i) = y(i) + h*dydx(i)
+        end do
         x = xs + h
-        yout = dydt(x, mmid_yn(1:sizey)) ! Will use yout for temporary storage of derivatives.
+        yout = dydt(x, mmid_yn) ! Will use yout for temporary storage of derivatives.
         h2 = TWO*h
         do n = 2, nstep ! General step.
             do i = 1, sizey
@@ -219,9 +224,11 @@ contains
                 mmid_yn(i) = swap
             end do
             x = x + h
-            yout = dydt(x, mmid_yn(1:sizey))
+            yout = dydt(x, mmid_yn)
         end do
-        yout = C1_2*(mmid_ym(1:sizey) + mmid_yn(1:sizey) + h*yout) ! Last step.
+        do i = 1, sizey
+            yout(i) = C1_2*(mmid_ym(i) + mmid_yn(i) + h*yout(i))
+        end do
     end subroutine mmid
 
     subroutine pzextr(sizey, iest, xest, yest, yz, dy, qcol, x)
@@ -241,7 +248,7 @@ contains
         dy = yest
         yz = yest
         if (iest == 1) then  ! Store ﬁrst estimate in ﬁrst column.
-            qcol(:, 1) = yest(:)
+            qcol(:, 1) = yest
         else
             pz_d = yest
             do k1 = 1, iest - 1
@@ -257,7 +264,7 @@ contains
                     yz(j) = yz(j) + dy(j)
                 end do
             end do
-            qcol(:, iest) = dy(:)
+            qcol(:, iest) = dy
         end if
     end subroutine pzextr
 

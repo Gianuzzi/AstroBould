@@ -263,8 +263,11 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        ynew = y + dt*deri
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*deri(i)
+        end do
 
     end subroutine Euler1
 
@@ -277,10 +280,10 @@ contains
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
 
-        rk_imp1(1:sizey) = ZERO
-        call solve_1k_implicit(sizey, y, dydt, t + dt, dt, rk_imp1(1:sizey), ONE, rk(1:sizey, 1))
+        rk_imp1 = ZERO
+        call solve_1k_implicit(sizey, y, dydt, t + dt, dt, rk_imp1, ONE, rk(:, 1))
 
-        ynew = y + dt*rk(1:sizey, 1)
+        ynew = y + dt*rk(:, 1)
 
     end subroutine Euler_back1
 
@@ -293,10 +296,10 @@ contains
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
 
-        rk_imp1(1:sizey) = ZERO
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey, 1))
+        rk_imp1 = ZERO
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1, C1_2, rk(:, 1))
 
-        ynew = y + dt*rk(1:sizey, 1)
+        ynew = y + dt*rk(:, 1)
 
     end subroutine Euler_center2
 
@@ -308,11 +311,16 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk_imp1(1:sizey) = deri*C1_2
-        call solve_1k_implicit(sizey, y, dydt, t + dt, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey, 2))
+        do i = 1, sizey
+            rk_imp1(i) = deri(i)*C1_2
+        end do
+        call solve_1k_implicit(sizey, y, dydt, t + dt, dt, rk_imp1, C1_2, rk(:, 2))
 
-        ynew = y + dt*(deri + rk(1:sizey, 2))*C1_2
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + rk(i, 2))*C1_2
+        end do
 
     end subroutine Crank_Nicolson2
 
@@ -324,10 +332,16 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt, y + dt*deri)
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)
+        end do
+        rk(:, 2) = dydt(t + dt, yaux)
 
-        ynew = y + dt*(deri + rk(1:sizey, 2))*C1_2
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + rk(i, 2))*C1_2
+        end do
 
     end subroutine Heun2
 
@@ -339,10 +353,16 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C1_2, y + dt*deri*C1_2)
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)*C1_2
+        end do
+        rk(:, 2) = dydt(t + dt*C1_2, yaux)
 
-        ynew = y + dt*rk(1:sizey, 2)
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*rk(i, 2)
+        end do
 
     end subroutine midpoint2
 
@@ -354,10 +374,16 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C3_4, y + dt*deri*C3_4)
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)*C3_4
+        end do
+        rk(:, 2) = dydt(t + dt*C3_4, yaux)
 
-        ynew = y + dt*(deri + rk(1:sizey, 2)*TWO)*C1_3
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + rk(i, 2)*TWO)*C1_3
+        end do
 
     end subroutine strange2
 
@@ -369,10 +395,16 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C2_3, y + dt*deri*C2_3)
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)*C2_3
+        end do
+        rk(:, 2) = dydt(t + dt*C2_3, yaux)
 
-        ynew = y + dt*(deri + rk(1:sizey, 2)*THREE)*C1_4
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + rk(i, 2)*THREE)*C1_4
+        end do
 
     end subroutine Ralston2
 
@@ -384,11 +416,16 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk_imp1(1:sizey) = deri*C1_3
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C2_3, dt, rk_imp1(1:sizey), C1_3, rk(1:sizey, 2))
+        do i = 1, sizey
+            rk_imp1(i) = deri(i)*C1_3
+        end do
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C2_3, dt, rk_imp1, C1_3, rk(:, 2))
 
-        ynew = y + dt*(deri + rk(1:sizey, 2)*THREE)*C1_4
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + rk(i, 2)*THREE)*C1_4
+        end do
 
     end subroutine Hammer_Hollingsworth2
 
@@ -400,14 +437,19 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk_imp1(1:sizey) = ZERO
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey, 1))
+        rk_imp1 = ZERO
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1, C1_2, rk(:, 1))
 
-        rk_imp1(1:sizey) = -rk(1:sizey, 1)*C1_2
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C3_2, dt, rk_imp1(1:sizey), TWO, rk(1:sizey, 2))
+        do i = 1, sizey
+            rk_imp1(i) = -rk(i, 1)*C1_2
+        end do
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C3_2, dt, rk_imp1, TWO, rk(:, 2))
 
-        ynew = y + dt*(-rk(1:sizey, 1) + rk(1:sizey, 2)*THREE)*C1_2
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(-rk(i, 1) + rk(i, 2)*THREE)*C1_2
+        end do
 
     end subroutine Kraaijevanger_Spijker2
 
@@ -419,14 +461,19 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk_imp1(1:sizey) = ZERO
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_4, dt, rk_imp1(1:sizey), C1_4, rk(1:sizey, 1))
+        rk_imp1 = ZERO
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_4, dt, rk_imp1, C1_4, rk(:, 1))
 
-        rk_imp1(1:sizey) = rk(1:sizey, 1)*C1_2
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C3_4, dt, rk_imp1(1:sizey), C1_4, rk(1:sizey, 2))
+        do i = 1, sizey
+            rk_imp1(i) = rk(i, 1)*C1_2
+        end do
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C3_4, dt, rk_imp1, C1_4, rk(:, 2))
 
-        ynew = y + dt*(rk(1:sizey, 1) + rk(1:sizey, 2))*C1_2
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(rk(i, 1) + rk(i, 2))*C1_2
+        end do
 
     end subroutine Qin_Zhang2
 
@@ -438,11 +485,21 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C1_2, y + dt*deri*C1_2)
-        rk(1:sizey, 3) = dydt(t + dt, y + dt*(-deri + rk(1:sizey, 2)*TWO))
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)*C1_2
+        end do
+        rk(:, 2) = dydt(t + dt*C1_2, yaux)
 
-        ynew = y + dt*(deri + rk(1:sizey, 2)*FOUR + rk(1:sizey, 3))*C1_6
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(-deri(i) + rk(i, 2)*TWO)
+        end do
+        rk(:, 3) = dydt(t + dt, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + rk(i, 2)*FOUR + rk(i, 3))*C1_6
+        end do
 
     end subroutine Runge_Kutta3
 
@@ -454,11 +511,21 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C1_3, y + dt*deri*C1_3)
-        rk(1:sizey, 3) = dydt(t + dt*C2_3, y + dt*rk(1:sizey, 2)*C2_3)
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)*C1_3
+        end do
+        rk(:, 2) = dydt(t + dt*C1_3, yaux)
 
-        ynew = y + dt*(deri + rk(1:sizey, 3)*THREE)*C1_4
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*rk(i, 2)*C2_3
+        end do
+        rk(:, 3) = dydt(t + dt*C2_3, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + rk(i, 3)*THREE)*C1_4
+        end do
 
     end subroutine Heun3
 
@@ -470,11 +537,21 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C1_2, y + dt*deri*C1_2)
-        rk(1:sizey, 3) = dydt(t + dt*C3_4, y + dt*rk(1:sizey, 2)*C3_4)
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)*C1_2
+        end do
+        rk(:, 2) = dydt(t + dt*C1_2, yaux)
 
-        ynew = y + dt*(deri*TWO + rk(1:sizey, 2)*THREE + rk(1:sizey, 3)*FOUR)*C1_9
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*rk(i, 2)*C3_4
+        end do
+        rk(:, 3) = dydt(t + dt*C3_4, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i)*TWO + rk(i, 2)*THREE + rk(i, 3)*FOUR)*C1_9
+        end do
 
     end subroutine Ralston3
 
@@ -486,11 +563,21 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt, y + dt*deri)
-        rk(1:sizey, 3) = dydt(t + dt*C1_2, y + dt*(deri + rk(1:sizey, 2))*C1_4)
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)
+        end do
+        rk(:, 2) = dydt(t + dt, yaux)
 
-        ynew = y + dt*(deri + rk(1:sizey, 2) + rk(1:sizey, 3)*FOUR)*C1_6
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(deri(i) + rk(i, 2))*C1_4
+        end do
+        rk(:, 3) = dydt(t + dt*C1_2, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + rk(i, 2) + rk(i, 3)*FOUR)*C1_6
+        end do
 
     end subroutine SSPRrk3
 
@@ -503,14 +590,20 @@ contains
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
         real(wp), parameter :: aux = C1_2 + SQ3_6
+        integer(kind=4) :: i
 
-        rk_imp1(1:sizey) = ZERO
-        call solve_1k_implicit(sizey, y, dydt, t + dt*aux, dt, rk_imp1(1:sizey), aux, rk(1:sizey, 1))
+        rk_imp1 = ZERO
+        call solve_1k_implicit(sizey, y, dydt, t + dt*aux, dt, rk_imp1, aux, rk(:, 1))
 
-        rk_imp1(1:sizey) = -rk(1:sizey, 1)*SQ3_6*2
-        call solve_1k_implicit(sizey, y, dydt, t + dt*(C1_2 - SQ3_6), dt, rk_imp1(1:sizey), aux, rk(1:sizey, 2))
+        do i = 1, sizey
+            rk_imp1(i) = -rk(i, 1)*SQ3_6*2
+        end do
+        call solve_1k_implicit(sizey, y, dydt, t + dt*(C1_2 - SQ3_6), dt, rk_imp1, aux, rk(:, 2))
 
-        ynew = y + dt*(rk(1:sizey, 1) + rk(1:sizey, 2))*C1_2
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(rk(i, 1) + rk(i, 2))*C1_2
+        end do
+
     end subroutine Crouzeix3
 
     subroutine Runge_Kutta_implicit3(sizey, y, dydt, t, dt, deri, ynew) ! Implicit
@@ -521,20 +614,30 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk_imp1(1:sizey) = ZERO
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey, 1))
+        rk_imp1 = ZERO
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1, C1_2, rk(:, 1))
 
-        rk_imp1(1:sizey) = rk(1:sizey, 1)*C1_6
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C2_3, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey, 2))
+        do i = 1, sizey
+            rk_imp1(i) = rk(i, 1)*C1_6
+        end do
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C2_3, dt, rk_imp1, C1_2, rk(:, 2))
 
-        rk_imp1(1:sizey) = (-rk(1:sizey, 1) + rk(1:sizey, 2))*C1_2
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey, 3))
+        do i = 1, sizey
+            rk_imp1(i) = (-rk(i, 1) + rk(i, 2))*C1_2
+        end do
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1, C1_2, rk(:, 3))
 
-        rk_imp1(1:sizey) = ((rk(1:sizey, 1) - rk(1:sizey, 2))*3 + rk(1:sizey, 3))*C1_2
-        call solve_1k_implicit(sizey, y, dydt, t + dt, dt, rk_imp1(1:sizey), C1_2, rk(1:sizey, 4))
+        do i = 1, sizey
+            rk_imp1(i) = ((rk(i, 1) - rk(i, 2))*THREE + rk(i, 3))*C1_2
+        end do
+        call solve_1k_implicit(sizey, y, dydt, t + dt, dt, rk_imp1, C1_2, rk(:, 4))
 
-        ynew = y + dt*(rk_imp1(1:sizey) + rk(1:sizey, 4)*C1_2)
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(rk_imp1(i) + rk(i, 4)*C1_2)
+        end do
+
     end subroutine Runge_Kutta_implicit3
 
     subroutine Ralston4(sizey, y, dydt, t, dt, deri, ynew)
@@ -545,14 +648,28 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C2_5, y + dt*deri*C2_5)
-        rk(1:sizey, 3) = dydt(t + dt*0.45573725e0_wp, y + dt*(deri*0.29697761e0_wp + rk(1:sizey, 2)*0.15875964e0_wp))
-        rk(1:sizey, 4) = dydt(t + dt, y + dt*(deri*0.21810040e0_wp - rk(1:sizey, 2)*3.05096516e0_wp + &
-                                            & rk(1:sizey, 3)*3.83286476e0_wp))
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)*C2_5
+        end do
+        rk(:, 2) = dydt(t + dt*C2_5, yaux)
 
-        ynew = y + dt*(deri*0.17476028e0_wp - rk(1:sizey, 2)*0.55148066e0_wp + rk(1:sizey, 3)*1.20553560e0_wp + &
-                                            & rk(1:sizey, 4)*0.17118478e0_wp)
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(deri(i)*0.29697761e0_wp + rk(i, 2)*0.15875964e0_wp)
+        end do
+        rk(:, 3) = dydt(t + dt*0.45573725e0_wp, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(deri(i)*0.21810040e0_wp - rk(i, 2)*3.05096516e0_wp + &
+                                            & rk(i, 3)*3.83286476e0_wp)
+        end do
+        rk(:, 4) = dydt(t + dt, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i)*0.17476028e0_wp - rk(i, 2)*0.55148066e0_wp + rk(i, 3)*1.20553560e0_wp + &
+                                            & rk(i, 4)*0.17118478e0_wp)
+        end do
 
     end subroutine Ralston4
 
@@ -564,13 +681,21 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk_imp1(1:sizey) = deri*C1_4
-        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1(1:sizey), C1_4, rk(1:sizey, 2))
+        do i = 1, sizey
+            rk_imp1(i) = deri(i)*C1_4
+        end do
+        call solve_1k_implicit(sizey, y, dydt, t + dt*C1_2, dt, rk_imp1, C1_4, rk(:, 2))
 
-        rk(1:sizey, 3) = dydt(t + dt, y + dt*rk(1:sizey, 2))
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*rk(i, 2)
+        end do
+        rk(:, 3) = dydt(t + dt, yaux)
 
-        ynew = y + dt*(deri + rk(1:sizey, 2)*FOUR + rk(1:sizey, 3))*C1_6
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + rk(i, 2)*FOUR + rk(i, 3))*C1_6
+        end do
 
     end subroutine Lobatto4
 
@@ -582,12 +707,26 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C1_2, y + dt*deri*C1_2)
-        rk(1:sizey, 3) = dydt(t + dt*C1_2, y + dt*rk(1:sizey, 2)*C1_2)
-        rk(1:sizey, 4) = dydt(t + dt, y + dt*rk(1:sizey, 3))
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)*C1_2
+        end do
+        rk(:, 2) = dydt(t + dt*C1_2, yaux)
 
-        ynew = y + dt*(deri + (rk(1:sizey, 2) + rk(1:sizey, 3))*TWO + rk(1:sizey, 4))*C1_6
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*rk(i, 2)*C1_2
+        end do
+        rk(:, 3) = dydt(t + dt*C1_2, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*rk(i, 3)
+        end do
+        rk(:, 4) = dydt(t + dt, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + (rk(i, 2) + rk(i, 3))*TWO + rk(i, 4))*C1_6
+        end do
 
     end subroutine Runge_Kutta4
 
@@ -599,11 +738,17 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, :) = ZERO
-        call solve_rk_implicit(sizey, N_STAGES, y, dydt, t, dt, FunK_GL4, rk(1:sizey, :))
+        do i = 1, sizey
+            rk(i, 1) = ZERO
+            rk(i, 2) = ZERO
+        end do
+        call solve_rk_implicit(sizey, N_STAGES, y, dydt, t, dt, FunK_GL4, rk)
 
-        ynew = y + dt*(rk(1:sizey, 1) + rk(1:sizey, 2))*C1_2
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(rk(i, 1) + rk(i, 2))*C1_2
+        end do
 
     contains
         subroutine FunK_GL4(sizey, y, dydt, t, dt, sizerk, kin, kout) !! Funk for Gauss_Legendre4
@@ -615,13 +760,17 @@ contains
             integer(kind=4), intent(in) :: sizerk
             real(wp), dimension(sizey, sizerk), intent(in) :: kin
             real(wp), dimension(sizey, sizerk), intent(out) :: kout
+            integer(kind=4) :: i
 
-            kout(:, 1) = dydt(t + dt*(C1_2 - SQ3_6), y + dt*( &
-                & kin(:, 1)*C1_4 + &
-                & kin(:, 2)*(C1_4 - SQ3_6)))
-            kout(:, 2) = dydt(t + dt*(C1_2 + SQ3_6), y + dt*( &
-                & kin(:, 1)*(C1_4 + SQ3_6) + &
-                & kin(:, 2)*C1_4))
+            do i = 1, sizey
+                yaux(i) = y(i) + dt*(kin(i, 1)*C1_4 + kin(i, 2)*(C1_4 - SQ3_6))
+            end do
+            kout(:, 1) = dydt(t + dt*(C1_2 - SQ3_6), yaux)
+
+            do i = 1, sizey
+                yaux(i) = y(i) + dt*(kin(i, 1)*(C1_4 + SQ3_6) + kin(i, 2)*C1_4)
+            end do
+            kout(:, 2) = dydt(t + dt*(C1_2 + SQ3_6), yaux)
         end subroutine FunK_GL4
 
     end subroutine Gauss_Legendre4
@@ -634,13 +783,27 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 1) = deri*C1_3
-        rk(1:sizey, 2) = dydt(t + dt*C1_3, y + dt*rk(1:sizey, 1))
-        rk(1:sizey, 3) = dydt(t + dt*C2_3, y + dt*(-rk(1:sizey, 1) + rk(1:sizey, 2)))
-        rk(1:sizey, 4) = dydt(t + dt, y + dt*(deri - rk(1:sizey, 2) + rk(1:sizey, 3)))
+        do i = 1, sizey
+            rk(i, 1) = deri(i)*C1_3
+            yaux(i) = y(i) + dt*rk(i, 1)
+        end do
+        rk(:, 2) = dydt(t + dt*C1_3, yaux)
 
-        ynew = y + dt*(deri + (rk(1:sizey, 2) + rk(1:sizey, 3))*THREE + rk(1:sizey, 4))*C1_8
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(-rk(i, 1) + rk(i, 2))
+        end do
+        rk(:, 3) = dydt(t + dt*C2_3, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(deri(i) - rk(i, 2) + rk(i, 3))
+        end do
+        rk(:, 4) = dydt(t + dt, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(deri(i) + (rk(i, 2) + rk(i, 3))*THREE + rk(i, 4))*C1_8
+        end do
 
     end subroutine Runge_Kutta_four_oct4
 
@@ -652,16 +815,38 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C1_3, y + dt*C1_3*deri)
-        rk(1:sizey, 3) = dydt(t + dt*C2_5, y + dt*C1_25*(FOUR*deri + 6.e0_wp*rk(1:sizey, 2)))
-        rk(1:sizey, 4) = dydt(t + dt, y + dt*(C1_4*deri - THREE*rk(1:sizey, 2) + C15_4*rk(1:sizey, 3)))
-        rk(1:sizey, 5) = dydt(t + dt*C2_3, y + dt*C1_9*(C2_3*deri + 10.e0_wp*rk(1:sizey, 2) + &
-                                            & C1_9*(-50.e0_wp*rk(1:sizey, 3) + 8.e0_wp*rk(1:sizey, 4))))
-        rk(1:sizey, 6) = dydt(t + dt*C4_5, y + dt*(C1_25*(TWO*deri + 12.e0_wp*rk(1:sizey, 2)) + &
-                                            & C2_15*rk(1:sizey, 3) + C8_75*rk(1:sizey, 4)))
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*C1_3*deri(i)
+        end do
+        rk(:, 2) = dydt(t + dt*C1_3, yaux)
 
-        ynew = y + dt*C1_192*(23.e0_wp*deri + 125.e0_wp*(rk(1:sizey, 3) + rk(1:sizey, 6)) - 81.e0_wp*rk(1:sizey, 5))
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*C1_25*(FOUR*deri(i) + 6.e0_wp*rk(i, 2))
+        end do
+        rk(:, 3) = dydt(t + dt*C2_5, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(C1_4*deri(i) - THREE*rk(i, 2) + C15_4*rk(i, 3))
+        end do
+        rk(:, 4) = dydt(t + dt, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*C1_9*(C2_3*deri(i) + 10.e0_wp*rk(i, 2) + &
+                                            & C1_9*(-50.e0_wp*rk(i, 3) + 8.e0_wp*rk(i, 4)))
+        end do
+        rk(:, 5) = dydt(t + dt*C2_3, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(C1_25*(TWO*deri(i) + 12.e0_wp*rk(i, 2)) + &
+                                            & C2_15*rk(i, 3) + C8_75*rk(i, 4))
+        end do
+        rk(:, 6) = dydt(t + dt*C4_5, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*C1_192*(23.e0_wp*deri(i) + 125.e0_wp*(rk(i, 3) + rk(i, 6)) - 81.e0_wp*rk(i, 5))
+        end do
 
     end subroutine Nystrom5
 
@@ -673,11 +858,18 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, :) = ZERO
-        call solve_rk_implicit(sizey, N_STAGES, y, dydt, t, dt, FunK_GL6, rk(1:sizey, :))
+        do i = 1, sizey
+            rk(i, 1) = ZERO
+            rk(i, 2) = ZERO
+            rk(i, 3) = ZERO
+        end do
+        call solve_rk_implicit(sizey, N_STAGES, y, dydt, t, dt, FunK_GL6, rk)
 
-        ynew = y + dt*((rk(1:sizey, 1) + rk(1:sizey, 3))*FIVE + rk(1:sizey, 2)*8.e0_wp)*C1_18
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*((rk(i, 1) + rk(i, 3))*FIVE + rk(i, 2)*8.e0_wp)*C1_18
+        end do
 
     contains
         subroutine FunK_GL6(sizey, y, dydt, t, dt, sizerk, kin, kout) !! Funk for Gauss_Legendre6
@@ -689,19 +881,22 @@ contains
             integer(kind=4), intent(in) :: sizerk
             real(wp), dimension(sizey, sizerk), intent(in) :: kin
             real(wp), dimension(sizey, sizerk), intent(out) :: kout
+            integer(kind=4) :: i
 
-            kout(:, 1) = dydt(t + dt*(ONE - SQ15_5)*C1_2, y + dt*(&
-                    & kin(:, 1)*C5_36 + &
-                    & kin(:, 2)*(C2_3 - SQ15_5)*C1_3 + &
-                    & kin(:, 3)*(C5_36 - SQ15_30)))
-            kout(:, 2) = dydt(t + dt*C1_2, y + dt*(&
-                    & kin(:, 1)*(C5_36 + SQ15_24) + &
-                    & kin(:, 2)*C2_9 + &
-                    & kin(:, 3)*(C5_36 - SQ15_24)))
-            kout(:, 3) = dydt(t + dt*(ONE + SQ15_5)*C1_2, y + dt*(&
-                    & kin(:, 1)*(C5_36 + SQ15_30) + &
-                    & kin(:, 2)*(C2_9 + SQ15_15) + &
-                    & kin(:, 3)*C5_36))
+            do i = 1, sizey
+                yaux(i) = y(i) + dt*(kin(i, 1)*C5_36 + kin(i, 2)*(C2_3 - SQ15_5)*C1_3 + kin(i, 3)*(C5_36 - SQ15_30))
+            end do
+            kout(:, 1) = dydt(t + dt*(ONE - SQ15_5)*C1_2, yaux)
+
+            do i = 1, sizey
+                yaux(i) = y(i) + dt*(kin(i, 1)*(C5_36 + SQ15_24) + kin(i, 2)*C2_9 + kin(i, 3)*(C5_36 - SQ15_24))
+            end do
+            kout(:, 2) = dydt(t + dt*C1_2, yaux)
+
+            do i = 1, sizey
+                yaux(i) = y(i) + dt*(kin(i, 1)*(C5_36 + SQ15_30) + kin(i, 2)*(C2_9 + SQ15_15) + kin(i, 3)*C5_36)
+            end do
+            kout(:, 3) = dydt(t + dt*(ONE + SQ15_5)*C1_2, yaux)
         end subroutine FunK_GL6
 
     end subroutine Gauss_Legendre6
@@ -714,17 +909,43 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C1_4, y + dt*C1_4*deri)
-        rk(1:sizey, 3) = dydt(t + dt*C1_4, y + dt*C1_8*(deri + rk(1:sizey, 2)))
-        rk(1:sizey, 4) = dydt(t + dt*C1_2, y + dt*(-C5_6*rk(1:sizey, 2) + C4_3*rk(1:sizey, 3)))
-        rk(1:sizey, 5) = dydt(t + dt*C3_4, y + dt*(C1_8*(deri + rk(1:sizey, 2)) + C1_2*rk(1:sizey, 4)))
-        rk(1:sizey, 6) = dydt(t + dt*C3_4, y + dt*(C3_8*rk(1:sizey, 2) + C1_4*(rk(1:sizey, 3) + rk(1:sizey, 5)) - &
-                                                & C1_8*rk(1:sizey, 4)))
-        rk(1:sizey, 7) = dydt(t + dt, y + dt*(C1_7*deri - C2_7*rk(1:sizey, 2) + C4_7*(rk(1:sizey, 3) + rk(1:sizey, 6))))
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*C1_4*deri(i)
+        end do
+        rk(:, 2) = dydt(t + dt*C1_4, yaux)
 
-        ynew = y + dt*(C7_90*(deri + rk(1:sizey, 7)) + C32_90*rk(1:sizey, 3) + C12_90*rk(1:sizey, 4) + &
-                                                & C16_90*(rk(1:sizey, 5) + rk(1:sizey, 6)))
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*C1_8*(deri(i) + rk(i, 2))
+        end do
+        rk(:, 3) = dydt(t + dt*C1_4, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(-C5_6*rk(i, 2) + C4_3*rk(i, 3))
+        end do
+        rk(:, 4) = dydt(t + dt*C1_2, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(C1_8*(deri(i) + rk(i, 2)) + C1_2*rk(i, 4))
+        end do
+        rk(:, 5) = dydt(t + dt*C3_4, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(C3_8*rk(i, 2) + C1_4*(rk(i, 3) + rk(i, 5)) - &
+                                                & C1_8*rk(i, 4))
+        end do
+        rk(:, 6) = dydt(t + dt*C3_4, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(C1_7*deri(i) - C2_7*rk(i, 2) + C4_7*(rk(i, 3) + rk(i, 6)))
+        end do
+        rk(:, 7) = dydt(t + dt, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*(C7_90*(deri(i) + rk(i, 7)) + C32_90*rk(i, 3) + C12_90*rk(i, 4) + &
+                                                & C16_90*(rk(i, 5) + rk(i, 6)))
+        end do
 
     end subroutine Runge_Kutta6
 
@@ -736,21 +957,47 @@ contains
         real(wp), intent(in) :: t, dt
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
+        integer(kind=4) :: i
 
-        rk(1:sizey, 2) = dydt(t + dt*C1_3, y + dt*deri*C1_3)
-        rk(1:sizey, 3) = dydt(t + dt*C2_3, y + dt*rk(1:sizey, 2)*C2_3)
-        rk(1:sizey, 4) = dydt(t + dt*C1_3, y + dt*(deri + rk(1:sizey, 2)*FOUR - rk(1:sizey, 3))*C1_12)
-        rk(1:sizey, 5) = dydt(t + dt*C5_6, y + dt*(deri*25.e0_wp - rk(1:sizey, 2)*110.e0_wp + &
-                                                    & rk(1:sizey, 3)*35.e0_wp + rk(1:sizey, 4)*90.e0_wp)/48.e0_wp)
-        rk(1:sizey, 6) = dydt(t + dt*C1_6, y + dt*(deri*0.15e0_wp - rk(1:sizey, 2)*0.55e0_wp - rk(1:sizey, 3)*C1_8 + &
-                                                    & rk(1:sizey, 4)*C1_2 + rk(1:sizey, 5)*0.1e0_wp))
-        rk(1:sizey, 7) = dydt(t + dt, y + dt*(-deri*195.75e0_wp + rk(1:sizey, 2)*495.e0_wp + &
-                                                    & rk(1:sizey, 3)*53.75e0_wp - rk(1:sizey, 4)*590.e0_wp + &
-                                                    & rk(1:sizey, 5)*32.e0_wp + &
-        & rk(1:sizey, 6)*400.e0_wp)/195.e0_wp)
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*deri(i)*C1_3
+        end do
+        rk(:, 2) = dydt(t + dt*C1_3, yaux)
 
-        ynew = y + dt*((deri + rk(1:sizey, 7))*13.e0_wp + (rk(1:sizey, 3) + rk(1:sizey, 4))*55.e0_wp + (rk(1:sizey, 5) + &
-                                                        & rk(1:sizey, 6))*32.e0_wp)*5.e-3_wp
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*rk(i, 2)*C2_3
+        end do
+        rk(:, 3) = dydt(t + dt*C2_3, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(deri(i) + rk(i, 2)*FOUR - rk(i, 3))*C1_12
+        end do
+        rk(:, 4) = dydt(t + dt*C1_3, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(deri(i)*25.e0_wp - rk(i, 2)*110.e0_wp + &
+                                                    & rk(i, 3)*35.e0_wp + rk(i, 4)*90.e0_wp)/48.e0_wp
+        end do
+        rk(:, 5) = dydt(t + dt*C5_6, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(deri(i)*0.15e0_wp - rk(i, 2)*0.55e0_wp - rk(i, 3)*C1_8 + &
+                                                    & rk(i, 4)*C1_2 + rk(i, 5)*0.1e0_wp)
+        end do
+        rk(:, 6) = dydt(t + dt*C1_6, yaux)
+
+        do i = 1, sizey
+            yaux(i) = y(i) + dt*(-deri(i)*195.75e0_wp + rk(i, 2)*495.e0_wp + &
+                                                    & rk(i, 3)*53.75e0_wp - rk(i, 4)*590.e0_wp + &
+                                                    & rk(i, 5)*32.e0_wp + &
+        & rk(i, 6)*400.e0_wp)/195.e0_wp
+        end do
+        rk(:, 7) = dydt(t + dt, yaux)
+
+        do i = 1, sizey
+            ynew(i) = y(i) + dt*((deri(i) + rk(i, 7))*13.e0_wp + (rk(i, 3) + rk(i, 4))*55.e0_wp + (rk(i, 5) + &
+                                                        & rk(i, 6))*32.e0_wp)*5.e-3_wp
+        end do
 
     end subroutine Abbas6
 
@@ -768,13 +1015,13 @@ contains
         real(wp), dimension(sizey), intent(in) :: kprev
         real(wp), intent(in) :: cte
         real(wp), dimension(sizey), intent(out) :: kout
-        integer(kind=4) :: i
+        integer(kind=4) :: i, iter
 
         kout = dydt(t, y + dt*kprev)
-        do i = 1, MAX_N_ITER
-            rk_imp_solv(1:sizey, 1) = kout
+        do iter = 1, MAX_N_ITER
+            rk_imp_solv(:, 1) = kout
             kout = dydt(t, y + dt*(kprev + cte*kout))
-            if (maxval(abs((rk_imp_solv(1:sizey, 1) - kout)/(rk_imp_solv(1:sizey, 1) + SAFE_LOW))) .le. E_TOL) then
+            if (maxval(abs((rk_imp_solv(:, 1) - kout)/(rk_imp_solv(:, 1) + SAFE_LOW))) .le. E_TOL) then
                 exit
             end if
         end do
@@ -789,20 +1036,20 @@ contains
         real(wp), intent(in) :: t, dt
         procedure(implicit_funK_tem) :: impl_funK
         real(wp), dimension(sizey, nstages), intent(inout) :: rkout
-        integer(kind=4) :: i
+        integer(kind=4) :: iter
 
-        do i = 1, MAX_N_ITER
-            rk_imp_solv(1:sizey, 1:nstages) = rkout
-            call impl_funK(sizey, y, dydt, t, dt, nstages, rk_imp_solv(1:sizey, 1:nstages), rkout)
-            if (maxval(abs((rk_imp_solv(1:sizey, 1:nstages) - rkout)/ &
-                         & (rk_imp_solv(1:sizey, 1:nstages) + SAFE_LOW))) .le. E_TOL) then
+        do iter = 1, MAX_N_ITER
+            rk_imp_solv(:, 1:nstages) = rkout
+            call impl_funK(sizey, y, dydt, t, dt, nstages, rk_imp_solv(:, 1:nstages), rkout)
+            if (maxval(abs((rk_imp_solv(:, 1:nstages) - rkout)/ &
+                         & (rk_imp_solv(:, 1:nstages) + SAFE_LOW))) .le. E_TOL) then
                 exit
             end if
         end do
     end subroutine solve_rk_implicit
 
     !!!! Adaptive Timestep: Half step
-    recursive subroutine solve_rk_half_step(sizey, y, dydt, t, dt_adap, dt_used, deri, runge_kutta, ynew)
+    subroutine solve_rk_half_step(sizey, y, dydt, t, dt_adap, dt_used, deri, runge_kutta, ynew)
         implicit none
         integer(kind=4), intent(in) :: sizey
         real(wp), dimension(sizey), intent(in) :: y
@@ -814,60 +1061,65 @@ contains
         procedure(runge_kutta_tem), pointer :: runge_kutta
         real(wp), dimension(sizey), intent(out) :: ynew
 
-        real(wp) :: e_calc, ratio, hdt_adap
-        integer(kind=4) :: iter = 0
+        real(wp) :: e_calc, ratio, hdt_adap, dt_try
+        integer(kind=4) :: iter, i
 
-        iter = iter + 1
-        dt_adap = max(dt_adap, DT_MIN_NOW)
-        hdt_adap = C1_2*dt_adap
+        iter = 0
+        dt_try = dt_adap
 
-        ! yscal
-        yscal(:sizey) = abs(y) + abs(dt_adap*deri) + SAFE_LOW
+        do
+            iter = iter + 1
+            dt_try = max(dt_try, DT_MIN_NOW)
+            hdt_adap = C1_2*dt_try
 
-        ! y(t, dt; der) -> ynew
-        call runge_kutta(sizey, y, dydt, t, dt_adap, deri, ynew)
+            ! yscal
+            do i = 1, sizey
+                yscal(i) = abs(y(i)) + abs(dt_try*deri(i)) + SAFE_LOW
+            end do
 
-        ! y(t, dt/2; der) -> yhalf
-        call runge_kutta(sizey, y, dydt, t, hdt_adap, deri, yhalf(:sizey))
+            ! y(t, dt; der) -> ynew
+            call runge_kutta(sizey, y, dydt, t, dt_try, deri, ynew)
 
-        ! d[yhalf (t + dt/2)]/dt -> derhalf
-        derhalf(:sizey) = dydt(t + hdt_adap, yhalf(:sizey))
+            ! y(t, dt/2; der) -> yhalf
+            call runge_kutta(sizey, y, dydt, t, hdt_adap, deri, yhalf)
 
-        ! yhalf(t + dt/2, dt/2; derhalf) -> yaux
-        call runge_kutta(sizey, yhalf(:sizey), dydt, t + hdt_adap, hdt_adap, derhalf(:sizey), yaux(:sizey))
+            ! d[yhalf (t + dt/2)]/dt -> derhalf
+            derhalf = dydt(t + hdt_adap, yhalf)
 
-        ! Error
-        e_calc = max(maxval(abs((ynew - yaux(:sizey))/yscal(:sizey))*ONE__MINUS_ONE_PLUS_TWO_TO_ORD), SAFE_LOW)
-        ratio = E_TOL/e_calc
+            ! yhalf(t + dt/2, dt/2; derhalf) -> yaux
+            call runge_kutta(sizey, yhalf, dydt, t + hdt_adap, hdt_adap, derhalf, yaux)
 
-        if (ratio > ONE) then
-            dt_used = dt_adap
-            dt_adap = dt_adap*min(BETA*ratio**ONE__OSOL_PLUS_ONE, MAX_DT_FACTOR)
-            iter = 0
+            ! Error
+            e_calc = ZERO
+            do i = 1, sizey
+                e_calc = max(e_calc, abs((ynew(i) - yaux(i))/yscal(i))*ONE__MINUS_ONE_PLUS_TWO_TO_ORD)
+            end do
+            e_calc = max(e_calc, SAFE_LOW)
+            ratio = E_TOL/e_calc
 
-        else
-            if (abs(dt_adap - DT_MIN_NOW) .le. E_TOL) then !E_TOL?
-                dt_used = DT_MIN_NOW
-                iter = 0
+            if (ratio > ONE) then
+                dt_used = dt_try
+                dt_adap = dt_try*min(BETA*ratio**ONE__OSOL_PLUS_ONE, MAX_DT_FACTOR)
+                return
 
             else
-                dt_adap = dt_adap*min(BETA*ratio**ONE_OSOL, MAX_DT_FACTOR)
-
-                if ((dt_adap /= dt_adap) .or. (dt_adap .le. DT_MIN_NOW) .or. (iter == MAX_N_ITER)) then
+                if (abs(dt_try - DT_MIN_NOW) .le. E_TOL) then
                     dt_used = DT_MIN_NOW
-                    dt_adap = DT_MIN_NOW
-
-                    call runge_kutta(sizey, y, dydt, t, dt_adap, deri, ynew)
-                    iter = 0
+                    dt_adap = dt_try
+                    return
 
                 else
-                    call solve_rk_half_step(sizey, y, dydt, t, dt_adap, dt_used, deri, runge_kutta, ynew)
+                    dt_try = dt_try*min(BETA*ratio**ONE_OSOL, MAX_DT_FACTOR)
 
+                    if ((dt_try /= dt_try) .or. (dt_try .le. DT_MIN_NOW) .or. (iter == MAX_N_ITER)) then
+                        dt_used = DT_MIN_NOW
+                        dt_adap = DT_MIN_NOW
+                        call runge_kutta(sizey, y, dydt, t, dt_try, deri, ynew)
+                        return
+                    end if
                 end if
-
             end if
-
-        end if
+        end do
 
     end subroutine solve_rk_half_step
 
@@ -907,14 +1159,14 @@ contains
                 end if
             end if
 
-            ycaller(:sizey) = ynew
+            ycaller = ynew
 
             dt_adap = min(dt_adap, t_end - time)
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
-            der(:sizey) = dydt(time, ycaller(:sizey))
+            der = dydt(time, ycaller)
 
-            call solve_rk_half_step(sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, der(:sizey), runge_kutta_ptr, ynew)
+            call solve_rk_half_step(sizey, ycaller, dydt, time, dt_adap, dt_used, der, runge_kutta_ptr, ynew)
 
             time = time + dt_used
         end do
@@ -957,14 +1209,14 @@ contains
                 end if
             end if
 
-            ycaller(:sizey) = ynew
+            ycaller = ynew
 
             dt_adap = min(dt_adap, t_end - time)
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
-            der(:sizey) = dydt(time, ycaller(:sizey))
+            der = dydt(time, ycaller)
 
-            call runge_kutta_ptr(sizey, ycaller(:sizey), dydt, time, dt_adap, der(:sizey), ynew)
+            call runge_kutta_ptr(sizey, ycaller, dydt, time, dt_adap, der, ynew)
 
             time = time + dt_adap
         end do

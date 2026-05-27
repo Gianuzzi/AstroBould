@@ -119,10 +119,10 @@ contains
 
         !------------------------------------------------------------------------------
         ! Calculate accelerations at the start of the step
-        der(:sizey) = dydt(t, y)
+        der = dydt(t, y)
 
-        y0(:sizey) = y
-        der0(:sizey) = der
+        y0 = y
+        der0 = der
 
         ! Calculate the scale array
         ! 1D variables
@@ -178,7 +178,7 @@ contains
                 end do
 
                 tt = tt + h
-                deraux(:sizey) = dydt(tt, yaux(:sizey))
+                deraux = dydt(tt, yaux)
 
                 ! First step of modified midpoint
                 ! 1D variables
@@ -202,7 +202,7 @@ contains
 
                 ! Subsequent steps of modified midpoint
                 do j = 2, ns
-                    deraux(:sizey) = dydt(tt, yend(:sizey))
+                    deraux = dydt(tt, yend)
 
                     ! 1D variables
                     do i = 1, EXTRA2, 2
@@ -223,7 +223,7 @@ contains
 
                     tt = tt + hx2
 
-                    deraux(:sizey) = dydt(tt, yaux(:sizey))
+                    deraux = dydt(tt, yaux)
 
                     ! 1D variables
                     do i = 1, EXTRA2, 2
@@ -245,7 +245,7 @@ contains
                     tt = tt + hx2
                 end do
 
-                deraux(:sizey) = dydt(tt, yend(:sizey))
+                deraux = dydt(tt, yend)
 
                 ! Final combination for Richardson extrapolation
                 ! 1D variables
@@ -273,7 +273,9 @@ contains
                     tmp0 = ONE/(h2(j) - h2(ns))
                     tmp1 = tmp0*h2(j1)
                     tmp2 = tmp0*h2(ns)
-                    dy(1:sizey, j) = tmp1*dy(1:sizey, j1) - tmp2*dy(1:sizey, j)
+                    do i = 1, sizey
+                        dy(i, j) = tmp1*dy(i, j1) - tmp2*dy(i, j)
+                    end do
                 end do
 
                 ! After several integrations, test the relative error on extrapolated values
@@ -304,10 +306,12 @@ contains
 
                     ! If error is smaller than TOL, update position and velocity arrays, and exit
                     if (errmax <= E_TOL) then
-                        y0(:sizey) = ZERO
+                        y0 = ZERO
 
                         do j = 1, ns
-                            y0(:sizey) = y0(:sizey) + dy(1:sizey, j)
+                            do i = 1, sizey
+                                y0(i) = y0(i) + dy(i, j)
+                            end do
                         end do
 
                         ! Recommend a stepsize for the next call to this subroutine
@@ -316,7 +320,7 @@ contains
 
                         ! Update
                         hdid = dt
-                        y = y0(:sizey)
+                        y = y0
 
                         return
                     end if
@@ -336,7 +340,7 @@ contains
 
         ! Update
         hdid = dt
-        y = y0(:sizey)
+        y = y0
 
     end subroutine bstep
 
@@ -367,10 +371,10 @@ contains
 
         !------------------------------------------------------------------------------
         ! Calculate accelerations at the start of the step
-        der(:sizey) = dydt(t, y)
+        der = dydt(t, y)
 
-        y0(:sizey) = y
-        der0(:sizey) = der
+        y0 = y
+        der0 = der
 
         ! Calculate the scale array
         do i = 1, EXTRA2
@@ -405,7 +409,7 @@ contains
                 end do
                 tt = tt + h
 
-                deraux(:sizey) = dydt(tt, yaux(:sizey))
+                deraux = dydt(tt, yaux)
                 do i = 1, sizey, 2
                     yend(i) = y0(i) + hx2*yaux(i + 1)
                     yend(i + 1) = y0(i + 1) + hx2*deraux(i + 1)
@@ -413,14 +417,14 @@ contains
                 tt = tt + hx2
 
                 do j = 2, ns
-                    deraux(:sizey) = dydt(tt, yend(:sizey))
+                    deraux = dydt(tt, yend)
                     do i = 1, sizey, 2
                         yaux(i) = yaux(i) + hx2*yend(i + 1)
                         yaux(i + 1) = yaux(i + 1) + hx2*deraux(i + 1)
                     end do
                     tt = tt + hx2
 
-                    deraux(:sizey) = dydt(tt, yaux(:sizey))
+                    deraux = dydt(tt, yaux)
                     do i = 1, sizey, 2
                         yend(i) = yend(i) + hx2*yaux(i + 1)
                         yend(i + 1) = yend(i + 1) + hx2*deraux(i + 1)
@@ -428,7 +432,7 @@ contains
                     tt = tt + hx2
                 end do
 
-                deraux(:sizey) = dydt(tt, yend(:sizey))
+                deraux = dydt(tt, yend)
                 do i = 1, sizey, 2
                     dy(i, ns) = C1_2*(yend(i) + yaux(i) + h*yend(i + 1))
                     dy(i + 1, ns) = C1_2*(yend(i + 1) + yaux(i + 1) + h*deraux(i + 1))
@@ -440,7 +444,9 @@ contains
                     tmp0 = ONE/(h2(j) - h2(ns))
                     tmp1 = tmp0*h2(j1)
                     tmp2 = tmp0*h2(ns)
-                    dy(1:sizey, j) = tmp1*dy(1:sizey, j1) - tmp2*dy(1:sizey, j)
+                    do i = 1, sizey
+                        dy(i, j) = tmp1*dy(i, j1) - tmp2*dy(i, j)
+                    end do
                 end do
 
                 ! After several integrations, test the relative error on extrapolated values
@@ -466,10 +472,12 @@ contains
 
                     ! If error is smaller than TOL, update position and velocity arrays, and exit
                     if (errmax <= E_TOL) then ! * E_TOL?
-                        y0(:sizey) = ZERO
+                        y0 = ZERO
 
                         do j = 1, ns
-                            y0(:sizey) = y0(:sizey) + dy(1:sizey, j)
+                            do i = 1, sizey
+                                y0(i) = y0(i) + dy(i, j)
+                            end do
                         end do
 
                         ! Recommend a stepsize for the next call to this subroutine
@@ -478,7 +486,7 @@ contains
 
                         ! Update
                         hdid = dt
-                        y = y0(:sizey)
+                        y = y0
 
                         return
 
@@ -501,7 +509,7 @@ contains
 
         ! Update
         hdid = dt
-        y = y0(:sizey)
+        y = y0
 
     end subroutine bstep_std
 

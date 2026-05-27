@@ -3211,7 +3211,7 @@ end program main
 
 subroutine create_map(sim, system)
     use constants, only: wp, cero
-    use bodies, only: system_st, get_acc_and_pot_xy
+    use bodies, only: system_st, get_acc_and_pot_xy, use_binary_output
     use parameters, only: sim_params_st, u_mapfile
     implicit none
     type(sim_params_st), intent(in) :: sim
@@ -3245,8 +3245,8 @@ subroutine create_map(sim, system)
     !$OMP PARALLEL DEFAULT(SHARED) &
     !$OMP PRIVATE(i,j,rb)
     !$OMP DO SCHEDULE (STATIC)
-    do i = 1, sim%map_grid_size_x
-        do j = 1, sim%map_grid_size_y
+    do j = 1, sim%map_grid_size_y
+        do i = 1, sim%map_grid_size_x
             rb(1) = sim%map_min_x + (i - 1) * dx_nx
             rb(2) = sim%map_min_y + (j - 1) * dy_ny
             call get_acc_and_pot_xy(system, rb, acc(i, j, :), pot(i, j))
@@ -3256,15 +3256,29 @@ subroutine create_map(sim, system)
     !$OMP END PARALLEL
 
     if (sim%use_screen) write (*, *) "Potential calculated. Writing file..."
-    open (unit=u_mapfile, file=trim(sim%mapfile), status='replace', action='write')
-    do i = 1, sim%map_grid_size_x
+    if (use_binary_output) then
+        open (unit=u_mapfile, file=trim(sim%mapfile), status='replace', access='stream', form='unformatted')
         do j = 1, sim%map_grid_size_y
-            write (u_mapfile, '(5(1PE22.15,1X))') sim%map_min_x + (i - 1) * dx_nx, &
-                                                & sim%map_min_y + (j - 1) * dy_ny, &
-                                                & pot(i, j), &
-                                                & acc(i, j, :)
+            do i = 1, sim%map_grid_size_x
+                write (u_mapfile) sim%map_min_x + (i - 1) * dx_nx, &
+                                 & sim%map_min_y + (j - 1) * dy_ny, &
+                                 & pot(i, j), &
+                                 & acc(i, j, 1), &
+                                 & acc(i, j, 2)
+            end do
         end do
-    end do
+    else
+        open (unit=u_mapfile, file=trim(sim%mapfile), status='replace', action='write')
+        do j = 1, sim%map_grid_size_y
+            do i = 1, sim%map_grid_size_x
+                write (u_mapfile, '(5(1PE22.15,1X))') sim%map_min_x + (i - 1) * dx_nx, &
+                                                    & sim%map_min_y + (j - 1) * dy_ny, &
+                                                    & pot(i, j), &
+                                                    & acc(i, j, 1), &
+                                                    & acc(i, j, 2)
+            end do
+        end do
+    end if
     close (u_mapfile)
 
     ! Deallocate

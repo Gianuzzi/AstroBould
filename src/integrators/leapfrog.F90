@@ -106,18 +106,17 @@ contains
 
         dt_half = dt*C1_2
 
-        ! Initial copy
-        ynew = y
-
         ! KICK 1: Update velocities half step
         ! 1D variables (EXTRA pairs)
         do i = 1, EXTRA2, 2
+            ynew(i) = y(i)
             ynew(i + 1) = y(i + 1) + deri(i + 1)*dt_half  ! v0 -> v0.5
         end do
 
         ! NDIM variables (each has NDIM positions + NDIM velocities)
         do i = EXTRA2 + 1, sizey, NDIM2
             do j = 0, NDIM - 1
+                ynew(i + j) = y(i + j)
                 ynew(i + NDIM + j) = y(i + NDIM + j) + deri(i + NDIM + j)*dt_half  ! v0 -> v0.5
             end do
         end do
@@ -125,13 +124,13 @@ contains
         ! DRIFT: Update positions full step using half-step velocities
         ! 1D variables
         do i = 1, EXTRA2, 2
-            ynew(i) = y(i) + ynew(i + 1)*dt  ! x0 -> x1 using v0.5
+            ynew(i) = ynew(i) + ynew(i + 1)*dt  ! x0 -> x1 using v0.5
         end do
 
         ! NDIM variables
         do i = EXTRA2 + 1, sizey, NDIM2
             do j = 0, NDIM - 1
-                ynew(i + j) = y(i + j) + ynew(i + NDIM + j)*dt  ! x0 -> x1 using v0.5
+                ynew(i + j) = ynew(i + j) + ynew(i + NDIM + j)*dt  ! x0 -> x1 using v0.5
             end do
         end do
 
@@ -167,24 +166,23 @@ contains
 
         dt_half = dt*C1_2
 
-        ! Initial copy
-        ynew = y
-
         ! DRIFT 1: Update positions half step
         ! 1D variables
         do i = 1, EXTRA2, 2
-            ynew(i) = ynew(i) + ynew(i + 1)*dt_half  ! x0 -> x0.5 using v0
+            ynew(i) = y(i) + y(i + 1)*dt_half  ! x0 -> x0.5 using v0
+            ynew(i + 1) = y(i + 1)
         end do
 
         ! NDIM variables
         do i = EXTRA2 + 1, sizey, NDIM2
             do j = 0, NDIM - 1
-                ynew(i + j) = ynew(i + j) + ynew(i + NDIM + j)*dt_half  ! x0 -> x0.5 using v0
+                ynew(i + j) = y(i + j) + y(i + NDIM + j)*dt_half  ! x0 -> x0.5 using v0
+                ynew(i + NDIM + j) = y(i + NDIM + j)
             end do
         end do
 
         ! KICK: Calculate accelerations and update velocities full step
-        der05 = dydt(t + dt * C1_2, ynew)  ! *C1_2 for Verlet, but here we need full step for KDK
+        der05 = dydt(t + dt_half, ynew)
 
         ! 1D variables
         do i = 1, EXTRA2, 2
@@ -226,21 +224,24 @@ contains
         real(wp), dimension(sizey), intent(out) :: ynew
 
         integer(kind=4) :: i
+        real(wp) :: dt_half
+
+        dt_half = dt*C1_2
 
         ! Initial set
         do i = 1, sizey, 2
             ! Calculate v05
-            ynew(i + 1) = y(i + 1) + deri(i + 1)*dt*C1_2
+            ynew(i + 1) = y(i + 1) + deri(i + 1)*dt_half
             ! Calculate x1 (y05) using v05
             ynew(i) = y(i) + ynew(i + 1)*dt
         end do
 
         ! Calculate a_aux using accelerations at x1 and v05
-        der05(:sizey) = dydt(t + dt, ynew)
+        der05 = dydt(t + dt, ynew)
 
         ! Update v1 using a_aux
         do i = 2, sizey, 2
-            ynew(i) = ynew(i) + der05(i)*dt*C1_2
+            ynew(i) = ynew(i) + der05(i)*dt_half
         end do
     end subroutine leapfrog_KDK_std
 
@@ -256,22 +257,23 @@ contains
         real(wp), dimension(sizey), intent(out) :: ynew
 
         integer(kind=4) :: i
+        real(wp) :: dt_half
 
-        ! Initial set
-        ynew = y
+        dt_half = dt*C1_2
 
         ! Calculate x05 at the start of the step
         do i = 1, sizey, 2
-            ynew(i) = ynew(i) + ynew(i + 1)*dt*C1_2
+            ynew(i) = y(i) + y(i + 1)*dt_half
+            ynew(i + 1) = y(i + 1)
         end do
 
         ! Calculate a_aux using accelerations at x05 and v0
-        der05(:sizey) = dydt(t + dt, ynew)
+        der05 = dydt(t + dt_half, ynew)
 
         ! Update v1 and x1 (with x05 and v1)
         do i = 1, sizey, 2
             ynew(i + 1) = ynew(i + 1) + der05(i + 1)*dt
-            ynew(i) = ynew(i) + ynew(i + 1)*dt*C1_2
+            ynew(i) = ynew(i) + ynew(i + 1)*dt_half
         end do
     end subroutine leapfrog_DKD_std
 
@@ -279,7 +281,7 @@ contains
     !  Solver LeapFrog (adaptive timestep)
     !------------------------------------------------
 
-    recursive subroutine solve_leapfrog(sizey, y, dydt, t, dt_adap, dt_used, deri, leapfrog, ynew)
+    subroutine solve_leapfrog(sizey, y, dydt, t, dt_adap, dt_used, deri, leapfrog, ynew)
         implicit none
         integer(kind=4), intent(in) :: sizey
         real(wp), dimension(sizey), intent(in) :: y
@@ -291,60 +293,65 @@ contains
         procedure(leapfrog_tem), pointer :: leapfrog
         real(wp), dimension(sizey), intent(out) :: ynew
 
-        integer(kind=4), save :: iter = 0
-        real(wp) :: e_calc, ratio, dt_half
+        integer(kind=4) :: iter, i
+        real(wp) :: e_calc, ratio, dt_half, t_curr, dt_try
 
-        iter = iter + 1
-        dt_adap = max(dt_adap, DT_MIN_NOW)
-        dt_half = C1_2*dt_adap
+        iter = 0
+        dt_try = dt_adap
 
-        ! yscal
-        yscal(:sizey) = abs(y) + abs(dt_adap*deri) + SAFE_LOW
+        do
+            iter = iter + 1
+            dt_try = max(dt_try, DT_MIN_NOW)
+            dt_half = C1_2*dt_try
 
-        ! y(t, dt) -> ynew
-        call leapfrog(sizey, y, dydt, t, dt_adap, deri, ynew)
+            ! yscal
+            do i = 1, sizey
+                yscal(i) = abs(y(i)) + abs(dt_try*deri(i)) + SAFE_LOW
+            end do
 
-        ! y(t, dt/2) -> y05
-        call leapfrog(sizey, y, dydt, t, dt_half, deri, y05(:sizey))
+            ! y(t, dt) -> ynew
+            call leapfrog(sizey, y, dydt, t, dt_try, deri, ynew)
 
-        ! d[y05(t + dt/2, dt/2)] / dt -> der05
-        der05(:sizey) = dydt(t + dt_half, y05(:sizey))
+            ! y(t, dt/2) -> y05
+            call leapfrog(sizey, y, dydt, t, dt_half, deri, y05)
 
-        ! y05(t + dt/2, dt/2) -> yaux
-        call leapfrog(sizey, y05(:sizey), dydt, t + dt_half, dt_half, der05(:sizey), yaux(:sizey))
+            ! d[y05(t + dt/2, dt/2)] / dt -> der05
+            der05 = dydt(t + dt_half, y05)
 
-        ! Error
-        e_calc = max(maxval(abs((ynew - yaux(:sizey))/yscal(:sizey))), SAFE_LOW)
-        ratio = E_TOL/e_calc
+            ! y05(t + dt/2, dt/2) -> yaux
+            call leapfrog(sizey, y05, dydt, t + dt_half, dt_half, der05, yaux)
 
-        if (ratio > ONE) then
-            dt_used = dt_adap
-            dt_adap = dt_adap*min(BETA*ratio**C1_3, MAX_DT_FACTOR) ! 1/3 porque es 1/(O(2) + 1)
-            iter = 0
+            ! Error
+            e_calc = ZERO
+            do i = 1, sizey
+                e_calc = max(e_calc, abs((ynew(i) - yaux(i))/yscal(i)))
+            end do
+            e_calc = max(e_calc, SAFE_LOW)
+            ratio = E_TOL/e_calc
 
-        else
-            if (abs(dt_adap - DT_MIN_NOW) .le. E_TOL) then !E_TOL?
-                dt_used = DT_MIN_NOW
-                iter = 0
+            if (ratio > ONE) then
+                dt_used = dt_try
+                dt_adap = dt_try*min(BETA*ratio**C1_3, MAX_DT_FACTOR)
+                return
 
             else
-                dt_adap = dt_adap*min(BETA*ratio**C1_2, MAX_DT_FACTOR)
-
-                if ((dt_adap /= dt_adap) .or. (dt_adap .le. DT_MIN_NOW) .or. (iter == MAX_N_ITER)) then
+                if (abs(dt_try - DT_MIN_NOW) .le. E_TOL) then
                     dt_used = DT_MIN_NOW
-                    dt_adap = DT_MIN_NOW
-
-                    call leapfrog(sizey, y, dydt, t, dt_adap, deri, ynew)
-                    iter = 0
+                    dt_adap = dt_try  ! Or should it be updated?
+                    return
 
                 else
-                    call solve_leapfrog(sizey, y, dydt, t, dt_adap, dt_used, deri, leapfrog, ynew)
+                    dt_try = dt_try*min(BETA*ratio**C1_2, MAX_DT_FACTOR)
 
+                    if ((dt_try /= dt_try) .or. (dt_try .le. DT_MIN_NOW) .or. (iter == MAX_N_ITER)) then
+                        dt_used = DT_MIN_NOW
+                        dt_adap = DT_MIN_NOW
+                        call leapfrog(sizey, y, dydt, t, dt_try, deri, ynew)
+                        return
+                    end if
                 end if
-
             end if
-
-        end if
+        end do
 
     end subroutine solve_leapfrog
 
@@ -384,14 +391,14 @@ contains
                 end if
             end if
 
-            ycaller(:sizey) = ynew
+            ycaller = ynew
 
             dt_adap = min(dt_adap, t_end - time)
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
-            der(:sizey) = dydt(time, ycaller(:sizey))
+            der = dydt(time, ycaller)
 
-            call solve_leapfrog(sizey, ycaller(:sizey), dydt, time, dt_adap, dt_used, der(:sizey), leapfrog_ptr, ynew)
+            call solve_leapfrog(sizey, ycaller, dydt, time, dt_adap, dt_used, der, leapfrog_ptr, ynew)
 
             time = time + dt_used
         end do
@@ -434,14 +441,14 @@ contains
                 end if
             end if
 
-            ycaller(:sizey) = ynew
+            ycaller = ynew
 
             dt_adap = min(dt_adap, t_end - time)
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
-            der(:sizey) = dydt(time, ycaller(:sizey))
+            der = dydt(time, ycaller)
 
-            call leapfrog_ptr(sizey, ycaller(:sizey), dydt, time, dt_adap, der(:sizey), ynew)
+            call leapfrog_ptr(sizey, ycaller, dydt, time, dt_adap, der, ynew)
 
             time = time + dt_adap
         end do
