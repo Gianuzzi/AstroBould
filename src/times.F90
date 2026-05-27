@@ -95,7 +95,7 @@ contains
     subroutine expand_checkpoints(extra_checkp_times, checkp_times, checkp_is_a, checkp_is_b, new_checkp_num)
         implicit none
         ! --- Arguments ---
-        real(wp), intent(in)  :: extra_checkp_times(:)
+        real(wp), intent(in) :: extra_checkp_times(:)
         real(wp), allocatable, intent(inout) :: checkp_times(:)
         logical, allocatable, intent(inout) :: checkp_is_a(:)
         logical, allocatable, intent(inout) :: checkp_is_b(:)
@@ -150,8 +150,8 @@ contains
     ! Create a new array with a percentage of the old checkpoints
     subroutine select_fraction_symmetric(a, x, b)
         implicit none
-        logical, intent(in)  :: a(:)
-        real(wp), intent(in)  :: x
+        logical, intent(in) :: a(:)
+        real(wp), intent(in) :: x
         logical, intent(out) :: b(size(a))
 
         integer(kind=4) :: ntrue, nkeep, k, i

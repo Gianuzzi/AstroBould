@@ -103,9 +103,9 @@ module shared
         function dydt_tem(t, y) result(derivate)
             import :: wp
             implicit none
-            real(wp), intent(in)               :: t
+            real(wp), intent(in) :: t
             real(wp), dimension(:), intent(in) :: y
-            real(wp), dimension(size(y))       :: derivate
+            real(wp), dimension(size(y)) :: derivate
         end function dydt_tem
 
     end interface

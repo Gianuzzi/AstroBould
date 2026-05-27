@@ -97,7 +97,7 @@ contains
     ! Get coordinates from a body
     subroutine coord(msum, a, e, inc, capm, omega, capom, xc)
         implicit none
-        real(wp), intent(in)  :: msum, a, e, inc, capm, omega, capom
+        real(wp), intent(in) :: msum, a, e, inc, capm, omega, capom
         real(wp), intent(out) :: xc(6)
         real(wp) :: sp, cp, so, co, si, ci
         real(wp) :: d11, d12, d13, d21, d22, d23
@@ -141,7 +141,7 @@ contains
     ! Get true f and g from a body
     subroutine aver(dm, e, u, f)
         implicit none
-        real(wp), intent(in)  :: dm, e
+        real(wp), intent(in) :: dm, e
         real(wp), intent(out) :: u, f
         real(wp) :: u0, dif, seno, cose
         integer(kind=4), parameter :: MAX_ITER = 100
@@ -168,7 +168,7 @@ contains
     ! Get elements from a body
     pure subroutine elem(msum, xc, a, e, inc, capm, omega, capom)
         implicit none
-        real(wp), intent(in)  :: msum, xc(6)
+        real(wp), intent(in) :: msum, xc(6)
         real(wp), intent(out) :: a, e, inc, capm, omega, capom
         real(wp) :: gmsum
         real(wp) :: x, y, z, vx, vy, vz
