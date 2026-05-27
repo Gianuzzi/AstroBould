@@ -235,7 +235,7 @@ contains
         real(wp), dimension(16), intent(inout) :: x
 
         integer(kind=4) :: j, k1
-        real(wp)    :: delta, f1, f2, q
+        real(wp) :: delta, f1, f2, q
 
         x(iest) = xest  ! Save current independent variable.
         dy = yest
