@@ -139,6 +139,9 @@ module parameters
         logical :: use_merge_massive = .True.
         !! Moons
         logical :: use_moon_soft_sphere_col = .False.  ! Checked between moons at every timestep
+        real(wp) :: epsilon_col_moon = cero  ! 0 < epsilon < 1 ! Used to calculate kappa and gamma for moons.  ! SOFT-SPHERE
+        real(wp) :: Tdur_col_moon = cero  ! > 0 ! Duration of the collision. Same as dt_min. ! Used to calculate kappa and gamma for moons.  ! SOFT-SPHERE
+        logical :: use_moon_soft_explicit_col = .False.  ! Whether to use the explicit parameters for moons instead of calculating them with epsilon and Tdur
         real(wp) :: kappa_col_moon = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
         real(wp) :: gamma_col_moon_n = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, normal component
         real(wp) :: beta_col_moon = uno  ! Ratio tangential to normal damping. Only used if gamma_col_moon_n > 0.  ! SOFT-SPHERE
@@ -146,6 +149,9 @@ module parameters
         real(wp) :: f_col_moon = cero  ! Bounded: Etot < -f |Epot|  ! HARD-SPHERE
         !! Particles
         logical :: use_part_soft_sphere_col = .False.  ! Checked between particles at every timestep
+        real(wp) :: epsilon_col_part = cero  ! 0 < epsilon < 1 ! Used to calculate kappa and gamma for particles.  ! SOFT-SPHERE
+        real(wp) :: Tdur_col_part = cero  ! > 0 ! Duration of the collision. Same as dt_min. ! Used to calculate kappa and gamma for particles.  ! SOFT-SPHERE
+        logical :: use_part_soft_explicit_col = .False.  ! Whether to use the explicit parameters for particles instead of calculating them with epsilon and Tdur
         real(wp) :: kappa_col_part = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
         real(wp) :: gamma_col_part_n = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, normal component
         real(wp) :: beta_col_part = uno  ! Ratio tangential to normal damping. Only used if gamma_col_part_n > 0.  ! SOFT-SPHERE
@@ -156,6 +162,8 @@ module parameters
         logical :: use_stop_no_part_left = .True.
         logical :: use_stop_no_moon_left = .True.
         real(wp) :: coulomb_mu_col = cero  ! Coulomb friction coeff. Only active if SOFT-SPHERE collisions and gamma_t > 0
+        logical :: use_only_repulsive_col = .False.  ! Whether to use only the repulsive part of the collision
+        real(wp) :: dr_factor_col = uno  ! Factor to multiply the repulsive part of the collision. Only active if use_only_repulsive_col is True
         logical :: use_verlet_col = .False.  ! Whether to use Verlet list for collisions (only for particles)
         real(wp) :: verlet_skin_factor = 0.1_wp  ! skin = factor * 2R
         logical :: use_verlet_with_moons = .False.  ! Whether to use Verlet list for collisions involving moons instead of particles.
@@ -297,7 +305,7 @@ module parameters
     integer(kind=4) :: first_idx_yes_filter = 0   ! First checkpoint with no filtering
     real(wp), dimension(:), allocatable :: elem_filtered  ! Filtered_data
     real(wp), dimension(:), allocatable :: y_pre_filter   ! Data pre-filtering
-    ! ==========    EXTRA FILTER    ==========
+    ! ==========   EXTRA FILTER  ==========
     real(wp) :: next_time  ! Next time
     real(wp) :: next_t_filt  ! Next filter time
     real(wp) :: time_filt  ! Actual time of the filtering integration
@@ -319,7 +327,7 @@ module parameters
     type(section_st) :: section
     logical :: has_crossed_surface = .False.
     real(wp), dimension(:), allocatable :: y_cross    ! Coordinates array at the crossing time (interpolated with alpha)
-    ! ==========    EXTRA SURFACE SECTION    ==========
+    ! ==========   EXTRA SURFACE SECTION  ==========
     ! Uses tmp_adapt_timestep
     logical :: had_crossed_surface = .False.
     real(wp) :: surf_old_timestep  ! Previous timestep before crossing attempt
@@ -417,6 +425,16 @@ module parameters
 
 contains
 
+    ! Error caller
+    subroutine fatal_error(message)
+        implicit none
+        character(len=*), intent(in) :: message
+
+        write(*,*) "ERROR: ", trim(message)
+        stop 1
+
+    end subroutine fatal_error
+
     ! Allocate asteroid params arrays
     subroutine allocate_params_asteroid(Nboulders)
         implicit none
@@ -461,7 +479,7 @@ contains
     subroutine load_command_line_arguments(params, use_config)
         implicit none
         type(input_params_st), intent(inout) :: params
-        logical, intent(inout)  :: use_config
+        logical, intent(inout) :: use_config
         logical :: is_number
         integer(kind=4) :: i, j
         logical :: aux_logical = .False.
@@ -469,6 +487,7 @@ contains
         integer(kind=4) :: merge_type = 0, stop_type = 0
         character(20) :: aux_character20
         character(30) :: aux_character30
+        character(len=128) :: err_msg
 
         ! Leemos de la línea de comandos
         arguments_number = command_argument_count()  ! Global variable
@@ -616,8 +635,8 @@ contains
                         params%use_merge_part_mass = .True.
                         params%use_merge_massive = .True.
                     else
-                        write (*, *) "ERROR: Merge type not recognized: ", merge_type
-                        stop 1
+                        write (err_msg, "(A, G0)") "Merge type not recognized: ", merge_type
+                        call fatal_error(err_msg)
                     end if
                     aux_integer = 1
                 case ("-stopif")
@@ -636,8 +655,8 @@ contains
                         params%use_stop_no_moon_left = .True.
                         params%use_stop_no_part_left = .True.
                     else
-                        write (*, *) "ERROR: Stop criteria not recognized: ", stop_type
-                        stop 1
+                        write (err_msg, "(A, G0)") "Stop criteria not recognized: ", stop_type
+                        call fatal_error(err_msg)
                     end if
                     aux_integer = 1
                 case ("--megno")
@@ -728,18 +747,17 @@ contains
                         end if
                     end do
                     if (.not. is_number) then ! No es un número
-                        write (*, '(A, I0, A, A)') "ERROR: Argument not recognized ", i, ": ", trim(aux_character30)
+                        write (*, '(A, G0, A, A)') "ERROR: Argument not recognized ", i, ": ", trim(aux_character30)
                         call get_command_argument(0, aux_character30)
                         write (*, *) "   For more help run: ", trim(aux_character30), " --help"
                         write (*, *) "Exiting."
-                        stop 1
+                        call fatal_error("Unrecognized argument.")
                     end if
                     if (.not. aux_logical) then ! No leí los parámetros aún
                         if (arguments_number < i + 3) then
                             write (*, *) "ERROR: Could not read all particle orbital elements."
-                            write (*, '(A,I0,A)') "        Missing ", 4 - arguments_number, " elements."
-                            write (*, *) "Exiting."
-                            stop 1
+                            write (*, '(A,G0,A)') "        Missing ", 4 - arguments_number, " elements."
+                            call fatal_error("Insufficient particle orbital elements.")
                         else ! Leo los argumentos numéricos. Considero que es 1 sola partícula
                             ! Para generar prioridad, reallocatamos de ser necesario
                             params%use_command_body = .True.  ! Switch
@@ -776,13 +794,14 @@ contains
         character(2) :: auxch2
         character(15) :: auxch15
         character(15) :: auxch30
-        integer(kind=4)  :: colonPos, commentPos
+        integer(kind=4) :: colonPos, commentPos
         integer(kind=4) :: nlines
         integer(kind=4) :: io, ios ! For error handling
         integer(kind=4) :: len_val
         integer(kind=4) :: j
         integer(kind=4) :: aux_integer
         integer(kind=4) :: Nboulders, Nmoons, Nparticles
+        character(256) :: err_msg
 
         ! CHECK IF
         aux_integer = command_argument_count()
@@ -813,7 +832,7 @@ contains
                 write (*,*) "WARNING: Error while reading parameter for ", trim(auxch15)
                 write (*,*) "           with value: ", value_str
                 write (*,*) "  Exiting."
-                stop 1
+                call fatal_error("Error reading configuration file.")
             end if
             ! Read the line from the file
             read (u_configfile, '(A)', END=98) line
@@ -830,7 +849,7 @@ contains
                 value_str = trim(adjustl(line(colonPos + 1:commentPos - 1)))
                 auxch1 = to_lower(value_str(:1))
                 auxch2 = to_lower(value_str(:2))
-                auxch15 = param_str(:15)
+                auxch15 = to_lower(param_str(:15))
                 select case (auxch15)
                 case ("total integrati")
                     read (value_str, *, iostat=ios) params%final_time
@@ -858,7 +877,7 @@ contains
                         params%use_parallel = .True.
                     end if
                     ios = 0 ! return to ok
-                case ("integrator ID t")
+                case ("integrator id t")
                     read (value_str, *, iostat=ios) params%integrator_ID
                 case ("use adaptive ti")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
@@ -928,9 +947,9 @@ contains
                     else
                         params%use_manual_J2 = .False.
                     end if
-                case ("manual J2 value")
+                case ("manual j2 value")
                     read (value_str, *, iostat=ios) params%manual_J2
-                case ("set J2 from pri")
+                case ("set j2 from pri")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_J2_from_primary = .True.
                     else
@@ -990,9 +1009,9 @@ contains
                     read (value_str, *, iostat=ios) params%omega_lin_damping_time
                 case ("rotation expone")
                     read (value_str, *, iostat=ios) params%omega_exp_damping_time
-                case ("rotation A poly")
+                case ("rotation a poly")
                     read (value_str, *, iostat=ios) params%omega_exp_damp_poly_A
-                case ("rotation B poly")
+                case ("rotation b poly")
                     read (value_str, *, iostat=ios) params%omega_exp_damp_poly_B
                 case ("omega damping a")
                     read (value_str, *, iostat=ios) params%omega_damp_active_time
@@ -1081,7 +1100,7 @@ contains
                     else
                         params%use_self_gravity = .False.
                     end if
-                case ("max Legendre ex")
+                case ("max legendre ex")
                     read (value_str, *, iostat=ios) params%Norder_self_gravity
                 case ("total bins used")
                     read (value_str, *, iostat=ios) params%Nbins
@@ -1115,6 +1134,16 @@ contains
                     else
                         params%use_moon_soft_sphere_col = .False.
                     end if
+                case ("moon-moon epsil")
+                    read (value_str, *, iostat=ios) params%epsilon_col_moon
+                case ("moon-moon tdur ")
+                    read (value_str, *, iostat=ios) params%Tdur_col_moon
+                case ("use moon explic")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_moon_soft_explicit_col = .True.
+                    else
+                        params%use_moon_soft_explicit_col = .False.
+                    end if
                 case ("moon-moon kappa")
                     read (value_str, *, iostat=ios) params%kappa_col_moon
                 case ("moon-moon gamma")
@@ -1130,6 +1159,16 @@ contains
                         params%use_part_soft_sphere_col = .True.
                     else
                         params%use_part_soft_sphere_col = .False.
+                    end if
+                case ("part-part epsil")
+                    read (value_str, *, iostat=ios) params%epsilon_col_part
+                case ("part-part tdur ")
+                    read (value_str, *, iostat=ios) params%Tdur_col_part
+                case ("use part explic")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_part_soft_explicit_col = .True.
+                    else
+                        params%use_part_soft_explicit_col = .False.
                     end if
                 case ("part-part kappa")
                     read (value_str, *, iostat=ios) params%kappa_col_part
@@ -1149,6 +1188,14 @@ contains
                     read (value_str, *, iostat=ios) params%f_col_part
                 case ("coulomb cap for")
                     read (value_str, *, iostat=ios) params%coulomb_mu_col
+                case ("deactivate coll")
+                    if (((auxch1 == "y") .or. (auxch1 == "s"))) then
+                        params%use_only_repulsive_col = .True.
+                    else
+                        params%use_only_repulsive_col = .False.
+                    end if
+                case ("min effective s")
+                    read (value_str, *, iostat=ios) params%dr_factor_col
                 case ("stop if no part")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_stop_no_part_left = .True.
@@ -1167,15 +1214,15 @@ contains
                     read (value_str, *, iostat=ios) params%grid_col_max_cells
                 case ("min cell size f")
                     read (value_str, *, iostat=ios) params%grid_col_min_cell_size
-                case ("use Verlet list")
+                case ("use verlet list")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_verlet_col = .True.
                     else
                         params%use_verlet_col = .False.
                     end if
-                case ("Verlet skin fac")
+                case ("verlet skin fac")
                     read (value_str, *, iostat=ios) params%verlet_skin_factor
-                case ("use Verlet with")
+                case ("use verlet with")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_verlet_with_moons = .True.
                     else
@@ -1351,8 +1398,8 @@ contains
                             & boulders_in(j, 2), &
                             & boulders_in(j, 3)
                         if (io /= 0) then
-                            write (*, *) "ERROR: Al leer boulder:", j
-                            stop 1
+                            write (err_msg, '(A,G0)') "Al leer boulder:", j
+                            call fatal_error(err_msg)
                         end if
                         j = j + 1
                     end do
@@ -1394,8 +1441,8 @@ contains
                                 & moons_in(j, 6), &
                                 & moons_in(j, 7)
                             if (io /= 0) then
-                                write (*, *) "ERROR: Al leer luna:", j
-                                stop 1
+                                write (err_msg, '(A,G0)') "Al leer luna:", j
+                                call fatal_error(err_msg)
                             end if
                             j = j + 1
                         end do
@@ -1436,8 +1483,8 @@ contains
                                 & particles_in(j, 4), &
                                 & particles_in(j, 5)
                             if (io /= 0) then
-                                write (*, *) "ERROR: Al leer partícula:", j
-                                stop 1
+                                write (err_msg, '(A,G0)') "Al leer partícula:", j
+                                call fatal_error(err_msg)
                             end if
                             j = j + 1
                         end do
@@ -1454,6 +1501,7 @@ contains
         type(sim_params_st), intent(inout) :: derived
         integer(kind=4) :: i
         character(:), allocatable :: aux_ch1, aux_ch2
+        character(256) :: err_msg
 
         ! ----------------------- GLOBALS ---------------------------------
         if (derived%use_command_body) then
@@ -1468,26 +1516,26 @@ contains
 
         !! Times
         if ((derived%case_output_type < 0) .or. (derived%case_output_type > 2)) then
-            write (*, *) "ERROR: Output times distribution method not recognized:", derived%case_output_type
-            stop 1
+            write (err_msg, '(A,G0)') "Output times distribution must be 0, 1, or 2. Given: ", derived%case_output_type
+            call fatal_error(err_msg)
         end if
 
         !! Negative time selector
         if ((derived%negative_time_selector > 1) .or. (derived%negative_time_selector < -1)) then
-            write (*, *) "ERROR: Negative time selector must be -1, 0, or 1. Option not recognized:", derived%negative_time_selector
-            stop 1
+            write (err_msg, '(A,G0)') "Negative time selector must be -1, 0, or 1. Given: ", derived%negative_time_selector
+            call fatal_error(err_msg)
         end if
 
         !! Expand checkpoints
         if (derived%extra_checkpoints < 0) then
-            write (*, *) "ERROR: Extra checkpoint number can not be lower than 0."
-            stop 1
+            write (err_msg, '(A,G0)') "Extra checkpoint number can not be lower than 0. Given: ", derived%extra_checkpoints
+            call fatal_error(err_msg)
         end if
 
         !! Boulders
         if (derived%Nboulders < 0) then
-            write (*, *) "ERROR: Nboulders can not be negative."
-            stop 1
+            write (err_msg, '(A,G0)') "Nboulders can not be negative. Given: ", derived%Nboulders
+            call fatal_error(err_msg)
         end if
         derived%use_boulders = derived%Nboulders > 0
 
@@ -1495,28 +1543,28 @@ contains
         if (derived%use_triaxial) then
             ! Check order and values
             if (derived%triax_c_primary < cero) then
-                write (*, *) "ERROR: Semi-axis 'c' can not be negative"
-                stop 1
+                write (err_msg, '(A,G0)') "Semi-axis 'c' can not be negative. Given: ", derived%triax_c_primary
+                call fatal_error(err_msg)
             else if (derived%triax_b_primary < cero) then
-                write (*, *) "ERROR: Semi-axis 'b' can not be negative"
-                stop 1
+                write (err_msg, '(A,G0)') "Semi-axis 'b' can not be negative. Given: ", derived%triax_b_primary
+                call fatal_error(err_msg)
             else if (derived%triax_a_primary <=cero) then
-                write (*, *) "ERROR: Semi-axis 'a' must be positive."
-                stop 1
+                write (err_msg, '(A,G0)') "Semi-axis 'a' must be positive. Given: ", derived%triax_a_primary
+                call fatal_error(err_msg)
             else if (derived%triax_b_primary > derived%triax_a_primary) then
-                write (*, *) "ERROR: Semi-axis 'b' can not be greater than semi-axis 'a'."
-                stop 1
+                write (err_msg, '(A,G0)') "Semi-axis 'b' can not be greater than semi-axis 'a'. Given: ", derived%triax_b_primary
+                call fatal_error(err_msg)
             else if (derived%triax_c_primary > derived%triax_b_primary) then
-                write (*, *) "ERROR: Semi-axis 'c' can not be greater than semi-axis 'b'."
-                stop 1
+                write (err_msg, '(A,G0)') "Semi-axis 'c' can not be greater than semi-axis 'b'. Given: ", derived%triax_c_primary
+                call fatal_error(err_msg)
             end if
             ! Set values of not defined
             if (derived%triax_b_primary == cero) derived%triax_b_primary = derived%triax_a_primary
             if (derived%triax_c_primary == cero) derived%triax_c_primary = derived%triax_b_primary
             ! Check NO BOULDERS
             if (derived%use_boulders) then
-                write (*, *) "ERROR: Can not set tri-axial model with boulders."
-                stop 1
+                write (err_msg, '(A)') "Can not set tri-axial model with boulders."
+                call fatal_error(err_msg)
             end if
             if (derived%triax_a_primary - derived%triax_c_primary < myepsilon) then
                 write (*, *) "WARNING: Tri-axial model with equal semi-axis."
@@ -1581,8 +1629,8 @@ contains
             derived%omega_damp_active_time = cero
         else if ((derived%use_lin_omega_damp .and. (derived%use_exp_omega_damp .or. derived%use_poly_omega_damp)) .or. &
                  (derived%use_exp_omega_damp .and. derived%use_poly_omega_damp)) then
-            write (*, *) "ERROR: Can not use multiple omega dampings."
-            stop 1
+            write (err_msg, '(A)') "Can not use more than one omega damping at the same time."
+            call fatal_error(err_msg)
         end if
 
         !!! Boulders in Z
@@ -1599,21 +1647,21 @@ contains
             else if (derived%use_J2_from_primary) then
                 derived%gamma_J2 = uno
             else if (derived%gamma_J2 <=cero) then
-                write (*, *) "ERROR: Parameter gamma for manual J2 must be positive."
-                stop 1
+                write (err_msg, '(A)') "Parameter gamma for manual J2 must be positive."
+                call fatal_error(err_msg)
             end if
         else
             derived%manual_J2 = cero
         end if
         !!! Check no J2 and triaxial
         if (derived%use_manual_J2 .and. derived%use_triaxial) then
-            write (*, *) "ERROR: Can not use both manual J2 and triaxial object at the same time."
-            stop 1
+            write (err_msg, '(A)') "Can not use both manual J2 and triaxial object at the same time."
+            call fatal_error(err_msg)
         end if
         !!! Check no J2 and boulders in Z
         if (derived%use_manual_J2 .and. derived%use_boulder_z) then
-            write (*, *) "ERROR: Can not use both manual J2 and boudlers in Z at the same time."
-            stop 1
+            write (err_msg, '(A)') "Can not use both manual J2 and boudlers in Z at the same time."
+            call fatal_error(err_msg)
         end if
 
         ! ! Mass Damping [UNAVAILABLE YET]
@@ -1622,25 +1670,26 @@ contains
         ! Filter (fast check)
         if (derived%use_filter) then
             if (derived%filter_dt == cero) then
-                write (*, *) "ERROR: Filter dt must be different than 0."
-                stop 1
+                write (err_msg, '(A)') "Filter dt must be different than 0."
+                call fatal_error(err_msg)
             end if
             if (derived%filter_nsamples <=0) then
-                write (*, *) "ERROR: Filter n_samples must be greater than 0."
-                stop 1
+                write (err_msg, '(A)') "Filter n_samples must be greater than 0."
+                call fatal_error(err_msg)
             end if
             if (derived%filter_nwindows <=0) then
-                write (*, *) "ERROR: Filter n_windows must be greater than 0."
-                stop 1
+                write (err_msg, '(A)') "Filter n_windows must be greater than 0."
+                call fatal_error(err_msg)
             end if
             if (to_lower(trim(derived%filter_prefix)) == "") derived%filter_prefix = "filt"
             if ((derived%filter_model < 0) .or. (derived%filter_model > 4)) then
-                write (*, *) "ERROR: Filter model must be between 0 and 4 (included)."
-                stop 1
+                write (err_msg, '(A,G0)') "Filter model must be between 0 and 4 (included). Given: ", derived%filter_model
+                call fatal_error(err_msg)
             end if
             if (derived%filter_output_ratio <= 0 .or. derived%filter_output_ratio > 1) then
-                write (*, *) "ERROR: Filter output ratio must be between 0 and 1 (included)."
-                stop 1
+                write (err_msg, '(A,F0.2)') &
+                 & "Filter output ratio must be between 0 and 1 (included). Given: ", derived%filter_output_ratio
+                call fatal_error(err_msg)
             end if
         end if
 
@@ -1665,15 +1714,15 @@ contains
 
         ! Error
         if (derived%error_digits < 1) then
-            write (*, *) "ERROR: Number of presition digits must be greater than 0."
-            stop 1
+            write (err_msg, '(A)') "Number of precision digits must be greater than 0."
+            call fatal_error(err_msg)
         end if
         derived%error_tolerance = 10.e0_wp**(-derived%error_digits)
 
         ! Primary Radius
         if (derived%radius_primary <= 0) then
-            write (*, *) "ERROR: Primary radius must be positive."
-            stop 1
+            write (err_msg, '(A)') "Primary radius must be positive."
+            call fatal_error(err_msg)
         end if
 
         ! Parallel  (Many here are GLOBAL)
@@ -1684,8 +1733,8 @@ contains
                 my_threads = 1
                 derived%use_parallel = .False.
             else if (.not. compiled_with_openmp) then
-                write (*, *) "ERROR: Can not use paralelization withut OpenMP."
-                stop 1
+                write (err_msg, '(A)') "Can not use paralelization withut OpenMP."
+                call fatal_error(err_msg)
             end if
 !$          available_threads = OMP_GET_MAX_THREADS()
 !$          if (derived%requested_threads == -1) derived%requested_threads = available_threads
@@ -1698,16 +1747,16 @@ contains
 
         ! Output
         if (derived%use_datascreen .and. derived%use_percentage) then
-            write (*, *) "ERROR: Can not print both percentage and data on screen."
-            stop 1
+            write (err_msg, '(A)') "Can not print both percentage and data on screen."
+            call fatal_error(err_msg)
         end if
         if (derived%use_datascreen .and. derived%use_diagnostics) then
-            write (*, *) "ERROR: Can not print both data and diagnostics data."
-            stop 1
+            write (err_msg, '(A)') "Can not print both data and diagnostics data."
+            call fatal_error(err_msg)
         end if
         if (derived%use_percentage .and. derived%use_diagnostics) then
-            write (*, *) "ERROR: Can not print both percentage and diagnostics data."
-            stop 1
+            write (err_msg, '(A)') "Can not print both percentage and diagnostics data."
+            call fatal_error(err_msg)
         end if
 
         !! Geometric
@@ -1778,32 +1827,31 @@ contains
 
         ! Check no mutiple outputs and also both (elements and coordinates)
         if (derived%use_multiple_outputs .and. derived%int_elements_output == 2) then
-            write (*, *) "ERROR: Can not use both outputs (elements and coordinates) and mutiple outpues at the same time."
-            stop 1
+            write(err_msg, '(A)') "Can not use both multiple outputs and output of both elements and coordinates at the same time."
+            call fatal_error(err_msg)
         end if
 
         ! Check no TOM and Filter
         if (derived%use_tomfile .and. derived%use_filter) then
-            write (*, *) "ERROR: Can not use both filtering and TOM at the same time."
-            stop 1
+            write(err_msg, '(A)') "Can not use both filtering and TOM at the same time."
+            call fatal_error(err_msg)
         end if
 
         ! Check no Extra checkpoints and Filter
         if (derived%use_tomfile .and. (derived%extra_checkpoints > 0)) then
-            write (*, *) "ERROR: Can not use both filtering and extra checkpoints at the same time (yet)."
-            write (*, *) "       Set all checkpoints to outputs."
-            stop 1
+            write(err_msg, '(A)') "Can not use both filtering and extra checkpoints at the same time (yet)."
+            call fatal_error(err_msg)
         end if
 
         ! Check MEGNO with positive epsilon
         if (derived%use_megno .and. ((derived%megno_eps < myepsilon) .or. (derived%megno_eps > uno2))) then
-            write (*, *) "ERROR: MEGNO epsilon must be a small positive, non infinitesimal number."
-            stop 1
+            write(err_msg, '(A)') "MEGNO epsilon must be a small positive, non infinitesimal number."
+            call fatal_error(err_msg)
         else if (.not. derived%use_megno) then
             derived%megno_eps = cero
         else if ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2)) then
-            write (*, *) "ERROR: MEGNO can not be set with LeapFrog integrator yet."
-            stop 1
+            write(err_msg, '(A)') "MEGNO can not be set with LeapFrog integrator yet."
+            call fatal_error(err_msg)
         else
             derived%megno_active = .True.
         end if
@@ -1811,40 +1859,40 @@ contains
         ! Check if elements needed (includes MEGNO)
         derived%use_elements = derived%use_chaos .or. derived%use_megno .or. (derived%int_elements_output > 0)
 
-        ! Second check: If filter, then elements should be true bc of chaos or elems output...
+        ! Second check: If filter, then elements should be True bc of chaos or elems output...
         if (derived%use_filter .and. ((derived%int_elements_output == 0) .and. (.not. derived%use_chaos))) then
-            write (*, *) "ERROR: If filter is activated, elements output or chaos must be activated"
-            stop 1
+            write(err_msg, '(A)') "If filter is activated, elements output or chaos must be activated"
+            call fatal_error(err_msg)
         end if
 
         ! Check if valid surface
         if (derived%use_surface .and. (derived%surface_coord < 1 .or. derived%surface_coord > 6)) then
-            write (*, *) "ERROR: Surface section coordinate must be in [1, 6]. "
-            stop 1
+            write(err_msg, '(A,G0)') "Surface section coordinate must be in [1, 6]. Given: ", derived%surface_coord
+            call fatal_error(err_msg)
         end if
         
         ! First surface check: If surface, then no filter
         if (derived%use_filter .and. derived%use_surface) then
-            write (*, *) "ERROR: Can not create surface sections with activated filter."
-            stop 1
+            write(err_msg, '(A)') "Can not create surface sections with activated filter."
+            call fatal_error(err_msg)
         end if
 
         ! Third surface check: filename must be set
         if ((trim(derived%surfacefile) == "") .and. derived%use_surface) then
-            write (*, *) "ERROR: Surface file name not set."
-            stop 1
+            write(err_msg, '(A)') "Surface file name not set."
+            call fatal_error(err_msg)
         end if
 
         ! Fourth surface check: abs tolerance and time criteria can not both be 0
         if (derived%use_surface .and. (derived%surface_abs_tol < tini) .and. derived%surface_time_eps < tini) then
-            write (*, *) "ERROR: Surface section must have either positive abs tol or timestep crit."
-            stop 1
+            write(err_msg, '(A)') "Surface section must have either positive abs tol or timestep crit."
+            call fatal_error(err_msg)
         end if
 
         ! Second sinodic check: If sinodic, no damping
         if (derived%use_sinodic .and. derived%use_omega_damping) then
-            write (*, *) "ERROR: Sinodic system is not compatible with Omega damping."
-            stop 1
+            write(err_msg, '(A)') "Sinodic system is not compatible with Omega damping."
+            call fatal_error(err_msg)
         end if
 
         ! If no substeps, disabe sub_dt
@@ -1865,7 +1913,7 @@ contains
         integer(kind=4) :: im, ip
 
         ! Original sizes
-        n_moons     = size(moons_in, 1)
+        n_moons   = size(moons_in, 1)
         n_particles = size(particles_in, 1)
 
         !----------------------------------------
@@ -1910,235 +1958,201 @@ contains
     subroutine set_derived_parameters_post_bodies(derived)
         implicit none
         type(sim_params_st), intent(inout) :: derived
+        character(256) :: err_msg
 
-        !! NMoons
+        !===========================================================
+        ! Basic checks
+        !===========================================================
+
         if (derived%Nmoons < 0) then
-            write (*, *) "ERROR: Nmoons can not be negative."
-            stop 1
+            write (err_msg, '(A,G0)') "Nmoons can not be negative. Given: ", derived%Nmoons
+            call fatal_error(err_msg)
         end if
-        derived%use_moons = derived%Nmoons > 0
 
-        !! NParticles
         if (derived%Nparticles < 0) then
-            write (*, *) "ERROR: Nparticles can not be negative."
-            stop 1
+            write (err_msg, '(A,G0)') "Nparticles can not be negative. Given: ", derived%Nparticles
+            call fatal_error(err_msg)
         end if
+
+        derived%use_moons   = derived%Nmoons     > 0
         derived%use_particles = derived%Nparticles > 0
 
-        !! Forces
-        if (derived%Nmoons == 0) then
-            derived%use_stokes_with_moons = .False. ! Deactivaet stokes
-            derived%use_drag_with_moons = .False. ! Deactivate drag
-            derived%use_moon_gravity = .False.  ! Deactivate self gravity
-            derived%use_merge_massive = .False.  ! Deactivate merges
-            derived%use_stop_no_moon_left = .False. ! Deactivate Stops
+        !===========================================================
+        ! Disable impossible features
+        !===========================================================
+
+        if (.not. derived%use_moons) then
+            derived%use_stokes_with_moons = .False.
+            derived%use_drag_with_moons = .False.
+            derived%use_moon_gravity    = .False.
+            derived%use_merge_massive   = .False.
+            derived%use_stop_no_moon_left = .False.
+            derived%use_moon_soft_sphere_col = .False.
         end if
 
-        ! Merges
-        if (derived%Nparticles == 0) then
-            derived%use_merge_part_mass = .False.  ! Deactivate merges
-            derived%use_stop_no_part_left = .False.  ! Deactivate Stops
+        if (.not. derived%use_particles) then
+            derived%use_merge_part_mass = .False.
+            derived%use_stop_no_part_left = .False.
+            derived%use_part_soft_sphere_col = .False.
+            derived%use_part_hard_sphere_col = .False.
         end if
-             
+
         derived%use_any_merge = derived%use_merge_part_mass .or. derived%use_merge_massive
         derived%use_any_stop = derived%use_stop_no_part_left .or. derived%use_stop_no_moon_left
-        
-        ! Second surface check: No more than 1 particle/moon
+
+        !===========================================================
+        ! Global consistency checks
+        !===========================================================
+
         if (derived%use_surface .and. derived%Nactive > 2) then
-            write (*, *) "ERROR: Surface section is available with a single moon/particle."
-            stop 1
+            write (err_msg, '(A)') "Surface section requires a single moon/particle."
+            call fatal_error(err_msg)
         end if
 
-        ! First sinodic check: If sinodic, no moon
-        if (derived%use_sinodic .and. derived%Nmoons > 0) then
-            write (*, *) "ERROR: Sinodic system is available for systems with particles only."
-            stop 1
+        if (derived%use_sinodic .and. derived%use_moons) then
+            write (err_msg, '(A)') "Sinodic system requires particles only."
+            call fatal_error(err_msg)
         end if
 
-
-        ! Check Collisions of moons parameters
-        if (derived%Nmoons > 0) then
-
-            ! Check Soft Sphere
-            if (derived%use_moon_soft_sphere_col) then
-
-                if ((derived%kappa_col_moon < cero) .or. (derived%kappa_col_moon > uno)) then
-                    write (*, *) "ERROR: Collisional kappa for moons must be between 0 and 1."
-                    stop 1
-                end if
-
-                if ((derived%gamma_col_moon_n < cero) .or. (derived%gamma_col_moon_n > uno)) then
-                    write (*, *) "ERROR: Collisional gamma for moons must be between 0 and 1."
-                    stop 1
-                end if
-
-                if ((derived%beta_col_moon < cero) .or. (derived%beta_col_moon > uno)) then
-                    write (*, *) "ERROR: Collisional beta for moons must be between 0 and 1."
-                    stop 1
-                end if
-
-                if (derived%use_verlet_col .and. &
-                  & derived%use_verlet_with_moons .and. & 
-                  & (derived%verlet_skin_factor <= myepsilon)) then
-                    write (*, *) "ERROR: Verlet skin factor must be positive."
-                    stop 1
-                end if
-
-                if (derived%Nmoons == 1) then
-                    write (*, *) "WARNING: Only one moon. Moon collisions will be deactivated."
-                    derived%kappa_col_moon = cero  ! Means no check
-                end if
-
-                if (derived%kappa_col_moon < myepsilon) then
-                    derived%use_moon_soft_sphere_col = .False.
-                    derived%kappa_col_moon = cero
-                    derived%gamma_col_moon_n = cero
-                    derived%beta_col_moon = cero
-                end if
-
-            end if
-
-            ! Check Collisions of massive parameters
-            if ((derived%eta_col_moon < cero) .or. (derived%eta_col_moon > uno)) then
-                write (*, *) "ERROR: Collisional eta for moons must be between 0 and 1."
-                stop 1
-            end if
-
-            if ((derived%f_col_moon < cero) .or. (derived%f_col_moon > uno)) then
-                write (*, *) "ERROR: Collisional f for moons must be between 0 and 1."
-                stop 1
-            end if
-
-        else
-            derived%use_moon_soft_sphere_col = .False.
-
-        end if
-
-        ! Set tangential
-        derived%gamma_col_moon_t = derived%gamma_col_moon_n * derived%beta_col_moon
-
-        ! Check Collisions of particle parameters
-        if (derived%Nparticles > 0) then
-
-            ! Check if radius > 0
-            if ((derived%radius_particles <= cero) .and. &
-            & (derived%use_part_hard_sphere_col .or. derived%use_part_soft_sphere_col)) then
-                write (*, *) "WARNING: Non-positive particle radius. Collisions will be deactivated."
-                derived%eta_col_part = uno  ! Means no check
-                derived%use_part_hard_sphere_col = .False.
-                derived%use_part_soft_sphere_col = .False.
-            end if
-
-            ! Check Soft Sphere
-            if (derived%use_part_soft_sphere_col) then
-
-                if ((derived%kappa_col_part < cero) .or. (derived%kappa_col_part > uno)) then
-                    write (*, *) "ERROR: Collisional kappa for particles must be between 0 and 1."
-                    stop 1
-                end if
-
-                if ((derived%gamma_col_part_n < cero) .or. (derived%gamma_col_part_n > uno)) then
-                    write (*, *) "ERROR: Collisional gamma for particles must be between 0 and 1."
-                    stop 1
-                end if
-
-                if ((derived%beta_col_part < cero) .or. (derived%beta_col_part > uno)) then
-                    write (*, *) "ERROR: Collisional beta for particles must be between 0 and 1."
-                    stop 1
-                end if
-
-                if (derived%use_verlet_col .and. &
-                  & (.not. derived%use_verlet_with_moons) .and. & 
-                  & (derived%verlet_skin_factor <= myepsilon)) then
-                    write (*, *) "ERROR: Verlet skin factor must be positive."
-                    stop 1
-                end if
-
-                if (derived%Nparticles == 1) then
-                    write (*, *) "WARNING: Only one particle. Particle collisions will be deactivated."
-                    derived%kappa_col_part = cero  ! Means no check
-                end if
-
-                if (derived%kappa_col_part < myepsilon) then
-                    derived%use_part_soft_sphere_col = .False.
-                    derived%kappa_col_part = cero
-                    derived%gamma_col_part_n = cero
-                    derived%beta_col_part = cero
-                end if
-            end if
-
-            ! Check Hard Sphere
-            if (derived%use_part_hard_sphere_col) then
-                if ((derived%eta_col_part < cero) .or. (derived%eta_col_part > uno)) then
-                    write (*, *) "ERROR: Collisional eta for particles must be between 0 and 1."
-                    stop 1
-                end if
-
-                if ((derived%f_col_part < cero) .or. (derived%f_col_part > uno)) then
-                    write (*, *) "ERROR: Collisional f for particles must be between 0 and 1."
-                    stop 1
-                end if
-            else
-
-                derived%eta_col_part = uno  ! Means no check
-            end if
-
-        else
-            derived%eta_col_part = uno  ! Means no check
-            derived%use_part_hard_sphere_col = .False.
-            derived%use_part_soft_sphere_col = .False.
-        end if
-
-        ! Check no megno and hard or soft sphere (particle) collisions
         if (derived%use_megno .and. (derived%use_part_soft_sphere_col .or. derived%use_part_hard_sphere_col)) then
-            write (*, *) "ERROR: Can not use MEGNO with particle collisions."
-            stop 1
+            write (err_msg, '(A)') "MEGNO can not be used with particle collisions."
+            call fatal_error(err_msg)
         end if
 
-        ! If soft-sphere, check the grid params
-        if ((derived%use_part_soft_sphere_col) .or. (derived%use_moon_soft_sphere_col)) then
+        !===========================================================
+        ! Moon collisions
+        !===========================================================
 
-            if (derived%grid_col_min_bodies <= cero) then
-                write (*, *) "ERROR: Collision grid min bodies must be positive."
-                stop 1
+        ! Impossible with <= 1 moon
+        if (derived%Nmoons <= 1) then
+            derived%use_moon_soft_sphere_col = .False.
+        end if
+
+        ! Verlet consistency
+        if (derived%use_moon_soft_sphere_col .and. &
+                & (derived%use_verlet_col .and. derived%use_verlet_with_moons) .and. &
+                & (derived%verlet_skin_factor <= myepsilon)) then
+                    write (err_msg, '(A)') "Verlet skin factor must be positive."
+                    call fatal_error(err_msg)
+        end if
+
+        ! Hard-sphere moon parameters
+        if (derived%eta_col_moon < cero .or. derived%eta_col_moon > uno) then
+            write (err_msg, '(A,G0)') "Moon collision eta must be between 0 and 1. Given: ", derived%eta_col_moon
+            call fatal_error(err_msg)
+        end if
+
+        if (derived%f_col_moon < cero .or. derived%f_col_moon > uno) then
+            write (err_msg, '(A,G0)') "Moon collision f must be between 0 and 1. Given: ", derived%f_col_moon
+            call fatal_error(err_msg)
+        end if
+
+        !===========================================================
+        ! Particle collisions
+        !===========================================================
+
+        ! Impossible with <= 1 particle
+        if (derived%Nparticles <= 1) then
+            derived%use_part_soft_sphere_col = .False.
+            derived%use_part_hard_sphere_col = .False.
+        end if
+
+        ! Radius required
+        if (derived%radius_particles <= cero) then
+            derived%use_part_soft_sphere_col = .False.
+            derived%use_part_hard_sphere_col = .False.
+        end if
+
+        !-----------------------------------------------------------
+        ! Soft sphere
+        !-----------------------------------------------------------
+
+        if (derived%use_part_soft_sphere_col .and. &
+            & derived%use_verlet_col .and. &
+            & (.not. derived%use_verlet_with_moons) .and. &
+            & (derived%verlet_skin_factor <= myepsilon)) then
+                write (err_msg, '(A,G0)') "Verlet skin factor must be positive. Given: ", derived%verlet_skin_factor
+                call fatal_error(err_msg)
+        end if
+
+        !-----------------------------------------------------------
+        ! Hard sphere
+        !-----------------------------------------------------------
+
+        if (derived%use_part_hard_sphere_col) then
+
+            if (derived%eta_col_part < cero .or. derived%eta_col_part > uno) then
+                write (err_msg, '(A,G0)') "Particle collision eta must be between 0 and 1. Given: ", derived%eta_col_part
+                call fatal_error(err_msg)
             end if
 
-            if (derived%grid_col_max_cells <= cero) then
-                write (*, *) "ERROR: Collision grid max cells must be positive."
-                stop 1
+            if (derived%f_col_part < cero .or. derived%f_col_part > uno) then
+                write (err_msg, '(A,G0)') "Particle collision f must be between 0 and 1. Given: ", derived%f_col_part
+                call fatal_error(err_msg)
+            end if
+
+        else
+
+            derived%eta_col_part = cero
+            derived%f_col_part = cero
+
+        end if
+
+        !===========================================================
+        ! Global soft-sphere settings
+        !===========================================================
+
+        derived%use_soft_sphere_col = derived%use_moon_soft_sphere_col .or. derived%use_part_soft_sphere_col
+
+        if (derived%use_soft_sphere_col) then
+
+            if (derived%grid_col_min_bodies <= 0) then
+                write (err_msg, '(A,G0)') "Collision grid min bodies must be positive. Given: ", derived%grid_col_min_bodies
+                call fatal_error(err_msg)
+            end if
+
+            if (derived%grid_col_max_cells <= 0) then
+                write (err_msg, '(A,G0)') "Collision grid max cells must be positive. Given: ", derived%grid_col_max_cells
+                call fatal_error(err_msg)
             end if
 
             if (derived%grid_col_min_cell_size <= cero) then
-                write (*, *) "ERROR: Collision grid min cell size must be positive."
-                stop 1
+                write (err_msg, '(A,G0)') "Collision grid min cell size must be positive. Given: ", &
+                    & derived%grid_col_min_cell_size
+                call fatal_error(err_msg)
             end if
 
-             ! Minimum 100 bodies per cell to avoid too many cells with few bodies
-            derived%grid_col_min_bodies = max(derived%grid_col_min_bodies, 100) 
-            derived%use_soft_sphere_col = .True.
-        end if
+            derived%grid_col_min_bodies = max(derived%grid_col_min_bodies, 100)
 
-        ! Set gamma tangential for particles
-        derived%gamma_col_part_t = derived%gamma_col_part_n * derived%beta_col_part
+            if (derived%coulomb_mu_col < cero .or. derived%coulomb_mu_col > uno) then
 
-        ! Check cap between 0 and 1
-        if (derived%use_soft_sphere_col .and. ((derived%coulomb_mu_col < cero) .or. (derived%coulomb_mu_col > uno))) then
-            write (*, *) "ERROR: Collisional cap for particles must be between 0 and 1."
-            stop 1
-        end if
+                write (err_msg, '(A,G0)') "Coulomb friction coefficient must be between 0 and 1. Given: ", &
+                    & derived%coulomb_mu_col
+                call fatal_error(err_msg)
 
-        ! IF no soft-sphere, no need for substeps or Verlet
-        if (.not. derived%use_soft_sphere_col) then
-            derived%use_substeps_col = .False.
+            end if
+
+            if (derived%dr_factor_col < cero .or. derived%dr_factor_col > uno) then
+
+                write (err_msg, '(A,G0)') "Collision dr factor must be between 0 and 1. Given: ", derived%dr_factor_col
+                call fatal_error(err_msg)
+
+            end if
+
+        else
+
             derived%use_verlet_col = .False.
-        end if            
+            derived%use_substeps_col = .False.
 
-        ! If soft-sphere, and substeps, check that dt is not 0
-        if (derived%use_substeps_col) then
-            if (abs(derived%dt_substeps) < myepsilon) then
-                write (*, *) "ERROR: Sub-timestep for collision detection is too small."
-                stop 1
-            end if
+        end if
+
+        !===========================================================
+        ! Substeps
+        !===========================================================
+
+        if (derived%use_substeps_col .and. (abs(derived%dt_substeps) <= myepsilon)) then
+            write (err_msg, '(A,G0)') "Collision sub-timestep is too small. Given: ", derived%dt_substeps
+            call fatal_error(err_msg)
         end if
 
     end subroutine set_derived_parameters_post_bodies

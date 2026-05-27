@@ -74,9 +74,9 @@ contains
 
     subroutine set_pos_derivatives(y, der, N_total)
         implicit none
-        real(wp), dimension(:), intent(in)    :: y
+        real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: N_total
+        integer(kind=4),        intent(in) :: N_total
 
         integer(kind=4) :: i, idx
 
@@ -95,10 +95,10 @@ contains
 
     subroutine dydt_grav_inertial(t, y, der, first_particle, N_total)
         implicit none
-        real(wp),               intent(in)    :: t
-        real(wp), dimension(:), intent(in)    :: y
+        real(wp),               intent(in) :: t
+        real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: first_particle, N_total
+        integer(kind=4),        intent(in) :: first_particle, N_total
 
         ! ── Scalar shared state ──────────
         real(wp) :: theta, omega
@@ -123,14 +123,14 @@ contains
         integer(kind=4) :: i, idx, j, jdx, vdx, last_moon
 
         last_moon = first_particle - 1
-        theta     = y(1)
-        omega     = y(2)
-        coords_A  = y(3:6)
-        torque    = cero
-        Gmast     = G*m_arr(1)
+        theta = y(1)
+        omega = y(2)
+        coords_A = y(3:6)
+        torque = cero
+        Gmast = G*m_arr(1)
 
         if (use_stokes)   stokes_f = uno2*(uno + tanh(1.e1_wp*(uno - t/stokes_time)))
-        if (use_drag)     drag_f   = uno2*(uno + tanh(1.e1_wp*(uno - t/drag_time)))
+        if (use_drag)     drag_f = uno2*(uno + tanh(1.e1_wp*(uno - t/drag_time)))
         if (use_ellipsoid) then
             c2th = cos(dos*theta)
             s2th = sin(dos*theta)
@@ -163,7 +163,7 @@ contains
             coords_M = y(jdx:jdx + 3)
 
             dr_vec = coords_M(1:2) - coords_A(1:2)
-            dr2    = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+            dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
 
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
@@ -171,8 +171,8 @@ contains
                 cycle
             end if
 
-            dr      = sqrt(dr2)
-            Gmj     = G*m_arr(j)
+            dr = sqrt(dr2)
+            Gmj = G*m_arr(j)
             inv_dr3 = uno/(dr2*dr)
             acc_grav = cero
 
@@ -182,11 +182,11 @@ contains
                 &  + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
                     hard_exit = .True.
                 end if
-                inv_dr2  = inv_dr3*dr
-                Q_eff    = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th &
+                inv_dr2 = inv_dr3*dr
+                Q_eff = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th &
                            &   + dos*dr_vec(1)*dr_vec(2)*s2th )*inv_dr2*inv_dr2
-                dQdx     = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)
-                dQdy     = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)
+                dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)
+                dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)
                 acc_grav(1) = -(Gmast*inv_dr3)*( dr_vec(1) &
                               &  - K_coef*dr_vec(1)*inv_dr2 &
                               &  - L_coef*(dQdx*inv_dr2 - dr_vec(1)*Q_eff) )
@@ -205,19 +205,19 @@ contains
             end if
 
             der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
-            der(5:6)              = der(5:6) - acc_grav*m_arr(j)/m_arr(1)
+            der(5:6) = der(5:6) - acc_grav*m_arr(j)/m_arr(1)
 
             if (use_drag_moons .or. use_stokes_moons) then
-                Gmcomb   = Gmast + Gmj
-                inv_dr   = inv_dr3*dr2
-                dr_ver   = dr_vec*inv_dr
-                dv_vec   = coords_M(3:4) - coords_A(3:4)
-                v2       = dot_product(dv_vec, dv_vec)
+                Gmcomb = Gmast + Gmj
+                inv_dr = inv_dr3*dr2
+                dr_ver = dr_vec*inv_dr
+                dv_vec = coords_M(3:4) - coords_A(3:4)
+                v2 = dot_product(dv_vec, dv_vec)
                 two_ener = dos*Gmcomb*inv_dr - v2
                 if (two_ener > cero) then
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmcomb
                     if (use_drag_moons) then
-                        vel_radial      = dot_product(dr_ver, dv_vec)
+                        vel_radial = dot_product(dr_ver, dv_vec)
                         acc_radial_drag = -drag_coef*mean_movement*vel_radial
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) &
                                               & + acc_radial_drag*dr_ver*drag_f
@@ -255,7 +255,7 @@ contains
             coords_P = y(jdx:jdx + 3)
 
             dr_vec = coords_P(1:2) - coords_A(1:2)
-            dr2    = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+            dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
 
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
@@ -264,7 +264,7 @@ contains
                 cycle
             end if
 
-            dr      = sqrt(dr2)
+            dr = sqrt(dr2)
             inv_dr3 = uno/(dr2*dr)
             acc_grav = cero
 
@@ -277,10 +277,10 @@ contains
                     cycle
                 end if
                 inv_dr2 = inv_dr3*dr
-                Q_eff   = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th &
+                Q_eff = 5*( (dr_vec(1)**2 - dr_vec(2)**2)*c2th &
                           &   + dos*dr_vec(1)*dr_vec(2)*s2th )*inv_dr2*inv_dr2
-                dQdx    = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)
-                dQdy    = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)
+                dQdx = dos*(dr_vec(1)*c2th + dr_vec(2)*s2th)
+                dQdy = -dos*(dr_vec(2)*c2th - dr_vec(1)*s2th)
                 acc_grav(1) = -(Gmast*inv_dr3)*( dr_vec(1) &
                               &  - K_coef*dr_vec(1)*inv_dr2 &
                               &  - L_coef*(dQdx*inv_dr2 - dr_vec(1)*Q_eff) )
@@ -291,9 +291,9 @@ contains
             else if (use_manual_J2_from_cm) then
                 acc_grav = Gmast*dr_vec*J2K_coef/dr2*inv_dr3
                 if (sim%megno_active) then
-                    vdx      = get_variational_index(j, first_particle, N_total)
+                    vdx = get_variational_index(j, first_particle, N_total)
                     coords_P = y(vdx:vdx + 3)
-                    inv_dr7  = inv_dr3 * inv_dr3 / dr
+                    inv_dr7 = inv_dr3 * inv_dr3 / dr
                     aux_real = Gmast*J2K_coef*inv_dr7
                     der(vdx + 2) = der(vdx + 2) + aux_real*( &
                             & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
@@ -307,7 +307,7 @@ contains
                 aux_inv_dr3_boulder_z = uno/(dr2 + dz2_boulder_z_coef)**(1.5e0_wp)
                 acc_grav = -Gmboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z
                 if (sim%megno_active) then
-                    vdx      = get_variational_index(j, first_particle, N_total)
+                    vdx = get_variational_index(j, first_particle, N_total)
                     coords_P = y(vdx:vdx + 3)
                     aux_real = Gmboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
                     der(vdx + 2) = der(vdx + 2) + aux_real*( &
@@ -325,18 +325,18 @@ contains
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
                 dv_vec = coords_P(3:4) - coords_A(3:4)
-                v2     = dot_product(dv_vec, dv_vec)
+                v2 = dot_product(dv_vec, dv_vec)
                 if (use_manual_J2_from_cm) then
-                    aux_J2K       = J2K_coef/dr2
-                    two_ener      = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
+                    aux_J2K = J2K_coef/dr2
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
                     mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
                 else
-                    two_ener      = dos*Gmast*inv_dr - v2
+                    two_ener = dos*Gmast*inv_dr - v2
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast
                 end if
                 if (two_ener > cero) then
                     if (use_drag) then
-                        vel_radial      = dot_product(dr_ver, dv_vec)
+                        vel_radial = dot_product(dr_ver, dv_vec)
                         acc_radial_drag = -drag_coef*mean_movement*vel_radial
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) &
                                               & + acc_radial_drag*dr_ver*drag_f
@@ -361,16 +361,16 @@ contains
             boulders_coords(0, 1) = boulders_data(0, 4)*cos(theta + boulders_data(0, 3))
             boulders_coords(0, 2) = boulders_data(0, 4)*sin(theta + boulders_data(0, 3))
             boulders_coords(0, 3) = -omega*boulders_coords(0, 2)
-            boulders_coords(0, 4) =  omega*boulders_coords(0, 1)
+            boulders_coords(0, 4) = omega*boulders_coords(0, 1)
             boulders_coords(0, :) = boulders_coords(0, :) + coords_A
             Gmi = G*boulders_data(0, 1)
 
             do j = 2, last_moon  ! serial: der(5:6) and torque conflict
                 jdx = get_index(j)
                 coords_M = y(jdx:jdx + 3)
-                dr_vec   = coords_M(1:2) - boulders_coords(0, 1:2)
-                dr2      = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                rcoll    = boulders_data(0, 2) + R_arr(j)
+                dr_vec = coords_M(1:2) - boulders_coords(0, 1:2)
+                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
                     hard_exit = .True.
                     cycle
@@ -382,7 +382,7 @@ contains
                     acc_grav = -Gmi*dr_vec/(dr2*dr)
                 end if
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
-                der(5:6)              = der(5:6) - acc_grav*m_arr(j)/m_arr(1)
+                der(5:6) = der(5:6) - acc_grav*m_arr(j)/m_arr(1)
                 torque = torque + cross2D_z(boulders_coords(0, 1:2) - coords_A(1:2), -acc_grav*m_arr(j))
             end do
 
@@ -396,9 +396,9 @@ contains
             do j = first_particle, N_total
                 jdx = get_index(j)
                 coords_P = y(jdx:jdx + 3)
-                dr_vec   = coords_P(1:2) - boulders_coords(0, 1:2)
-                dr2      = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                rcoll    = boulders_data(0, 2) + R_arr(j)
+                dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)
+                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
                     !$OMP ATOMIC WRITE
                     hard_exit = .True.
@@ -426,24 +426,24 @@ contains
                 boulders_coords(i, 1) = boulders_data(i, 4)*cos(theta + boulders_data(i, 3))
                 boulders_coords(i, 2) = boulders_data(i, 4)*sin(theta + boulders_data(i, 3))
                 boulders_coords(i, 3) = -omega*boulders_coords(i, 2)
-                boulders_coords(i, 4) =  omega*boulders_coords(i, 1)
+                boulders_coords(i, 4) = omega*boulders_coords(i, 1)
                 boulders_coords(i, :) = boulders_coords(i, :) + coords_A
                 Gmi = G*boulders_data(i, 1)
 
                 do j = 2, last_moon  ! serial: conflicts on der(5:6) and torque
                     jdx = get_index(j)
                     coords_M = y(jdx:jdx + 3)
-                    dr_vec   = coords_M(1:2) - boulders_coords(i, 1:2)
-                    dr2      = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    rcoll    = boulders_data(i, 2) + R_arr(j)
+                    dr_vec = coords_M(1:2) - boulders_coords(i, 1:2)
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                    rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
                         hard_exit = .True.
                         cycle
                     end if
-                    dr       = sqrt(dr2)
+                    dr = sqrt(dr2)
                     acc_grav = -Gmi*dr_vec/(dr2*dr)
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
-                    der(5:6)              = der(5:6) - acc_grav*m_arr(j)/m_arr(1)
+                    der(5:6) = der(5:6) - acc_grav*m_arr(j)/m_arr(1)
                     torque = torque + cross2D_z(boulders_coords(i, 1:2) - coords_A(1:2), -acc_grav*m_arr(j))
                 end do
 
@@ -456,15 +456,15 @@ contains
                 do j = first_particle, N_total
                     jdx = get_index(j)
                     coords_P = y(jdx:jdx + 3)
-                    dr_vec   = coords_P(1:2) - boulders_coords(i, 1:2)
-                    dr2      = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    rcoll    = boulders_data(i, 2) + R_arr(j)
+                    dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                    rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
                         !$OMP ATOMIC WRITE
                         hard_exit = .True.
                         cycle
                     end if
-                    dr       = sqrt(dr2)
+                    dr = sqrt(dr2)
                     acc_grav = -Gmi*dr_vec/(dr2*dr)
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
                     if (sim%megno_active) then
@@ -494,14 +494,14 @@ contains
                 do j = i + 1, last_moon
                     jdx = get_index(j)
                     coords_P = y(jdx:jdx + 3)
-                    dr_vec   = coords_P(1:2) - coords_M(1:2)
-                    dr2      = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    rcoll    = R_arr(i) + R_arr(j)
+                    dr_vec = coords_P(1:2) - coords_M(1:2)
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                    rcoll = R_arr(i) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
                         hard_exit = .True.
                         cycle
                     end if
-                    dr         = sqrt(dr2)
+                    dr = sqrt(dr2)
                     acc_grav_m = G*dr_vec/(dr2*dr)
                     der(idx + 2:idx + 3) = der(idx + 2:idx + 3) + acc_grav_m*m_arr(j)
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) - acc_grav_m*m_arr(i)
@@ -513,7 +513,7 @@ contains
         ! ── Moon → particles  (serial outer i, PARALLEL inner j) ───────────
         ! ===================================================================
         do i = 2, last_moon
-            idx      = get_index(i)
+            idx = get_index(i)
             coords_M = y(idx:idx + 3)
 
             !$OMP PARALLEL DO                             &
@@ -525,15 +525,15 @@ contains
             do j = first_particle, N_total
                 jdx = get_index(j)
                 coords_P = y(jdx:jdx + 3)
-                dr_vec   = coords_P(1:2) - coords_M(1:2)
-                dr2      = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                rcoll    = R_arr(i) + R_arr(j)
+                dr_vec = coords_P(1:2) - coords_M(1:2)
+                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                rcoll = R_arr(i) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
                     !$OMP ATOMIC WRITE
                     hard_exit = .True.
                     cycle
                 end if
-                dr       = sqrt(dr2)
+                dr = sqrt(dr2)
                 aux_real = -G*m_arr(i)/(dr2*dr)
                 der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + aux_real*dr_vec
                 if (sim%megno_active) then
@@ -552,10 +552,10 @@ contains
 
     subroutine dydt_grav_sinodic(t, y, der, dummy, N_total)
         implicit none
-        real(wp),               intent(in)    :: t
-        real(wp), dimension(:), intent(in)    :: y
+        real(wp),               intent(in) :: t
+        real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: dummy, N_total
+        integer(kind=4),        intent(in) :: dummy, N_total
 
         real(wp) :: theta, omega
         real(wp) :: coords_P(4), dr_vec(2), dr, dr2
@@ -577,7 +577,7 @@ contains
         Gmast = G*m_arr(1)
 
         if (use_stokes) stokes_f = uno2*(uno + tanh(1.e1_wp*(uno - t/stokes_time)))
-        if (use_drag)   drag_f   = uno2*(uno + tanh(1.e1_wp*(uno - t/drag_time)))
+        if (use_drag)   drag_f = uno2*(uno + tanh(1.e1_wp*(uno - t/drag_time)))
         if (sim%max_distance <= cero) then
             rescape = infinito
         else
@@ -606,7 +606,7 @@ contains
             coords_P = y(jdx:jdx + 3)
 
             dr_vec = coords_P(1:2)
-            dr2    = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+            dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
 
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
@@ -615,7 +615,7 @@ contains
                 cycle
             end if
 
-            dr      = sqrt(dr2)
+            dr = sqrt(dr2)
             inv_dr3 = uno/(dr2*dr)
             acc_grav = cero
 
@@ -625,8 +625,8 @@ contains
                     hard_exit = .True.
                     cycle
                 end if
-                inv_dr2  = inv_dr3*dr
-                Q_eff    = 5*( dr_vec(1)**2 - dr_vec(2)**2 )*inv_dr2*inv_dr2
+                inv_dr2 = inv_dr3*dr
+                Q_eff = 5*( dr_vec(1)**2 - dr_vec(2)**2 )*inv_dr2*inv_dr2
                 acc_grav(1) = -(Gmast*inv_dr3)*dr_vec(1)*( uno &
                               &  - K_coef*inv_dr2 &
                               &  - L_coef*(dos*inv_dr2 - Q_eff) )
@@ -637,9 +637,9 @@ contains
             else if (use_manual_J2_from_cm) then
                 acc_grav = Gmast*dr_vec*J2K_coef/dr2*inv_dr3
                 if (sim%megno_active) then
-                    vdx      = get_variational_index(j, first_particle, N_total)
+                    vdx = get_variational_index(j, first_particle, N_total)
                     coords_P = y(vdx:vdx + 3)
-                    inv_dr7  = inv_dr3 * inv_dr3 / dr
+                    inv_dr7 = inv_dr3 * inv_dr3 / dr
                     aux_real = Gmast*J2K_coef*inv_dr7
                     der(vdx + 2) = der(vdx + 2) + aux_real*( &
                             & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
@@ -653,7 +653,7 @@ contains
                 aux_inv_dr3_boulder_z = uno/(dr2 + dz2_boulder_z_coef)**(1.5e0_wp)
                 acc_grav = -Gmboulder_z_coef*dr_vec*aux_inv_dr3_boulder_z
                 if (sim%megno_active) then
-                    vdx      = get_variational_index(j, first_particle, N_total)
+                    vdx = get_variational_index(j, first_particle, N_total)
                     coords_P = y(vdx:vdx + 3)
                     aux_real = Gmboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
                     der(vdx + 2) = der(vdx + 2) + aux_real*( &
@@ -673,7 +673,7 @@ contains
                                   & + y(2)**2 * y(jdx:jdx + 1)
 
             if (sim%megno_active) then
-                vdx      = get_variational_index(j, first_particle, N_total)
+                vdx = get_variational_index(j, first_particle, N_total)
                 coords_P = y(vdx:vdx + 3)
                 der(vdx + 2) = der(vdx + 2) + dos*omega*coords_P(4) + omega*omega*coords_P(1)
                 der(vdx + 3) = der(vdx + 3) - dos*omega*coords_P(3) + omega*omega*coords_P(2)
@@ -683,18 +683,18 @@ contains
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
                 dv_vec = coords_P(3:4)
-                v2     = dot_product(dv_vec, dv_vec)
+                v2 = dot_product(dv_vec, dv_vec)
                 if (use_manual_J2_from_cm) then
-                    aux_J2K       = J2K_coef/dr2
-                    two_ener      = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
+                    aux_J2K = J2K_coef/dr2
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
                     mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
                 else
-                    two_ener      = dos*Gmast*inv_dr - v2
+                    two_ener = dos*Gmast*inv_dr - v2
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast
                 end if
                 if (two_ener > cero) then
                     if (use_drag) then
-                        vel_radial      = dot_product(dr_ver, dv_vec)
+                        vel_radial = dot_product(dr_ver, dv_vec)
                         acc_radial_drag = -drag_coef*mean_movement*vel_radial
                         der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) &
                                               & + acc_radial_drag*dr_ver*drag_f
@@ -726,9 +726,9 @@ contains
             do j = first_particle, N_total
                 jdx = get_index(j)
                 coords_P = y(jdx:jdx + 3)
-                dr_vec   = coords_P(1:2) - boulders_coords(0, 1:2)
-                dr2      = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                rcoll    = boulders_data(0, 2) + R_arr(j)
+                dr_vec = coords_P(1:2) - boulders_coords(0, 1:2)
+                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
                     !$OMP ATOMIC WRITE
                     hard_exit = .True.
@@ -763,15 +763,15 @@ contains
                 do j = first_particle, N_total
                     jdx = get_index(j)
                     coords_P = y(jdx:jdx + 3)
-                    dr_vec   = coords_P(1:2) - boulders_coords(i, 1:2)
-                    dr2      = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    rcoll    = boulders_data(i, 2) + R_arr(j)
+                    dr_vec = coords_P(1:2) - boulders_coords(i, 1:2)
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                    rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
                         !$OMP ATOMIC WRITE
                         hard_exit = .True.
                         cycle
                     end if
-                    dr       = sqrt(dr2)
+                    dr = sqrt(dr2)
                     acc_grav = -Gmi*dr_vec/(dr2*dr)
                     der(jdx + 2:jdx + 3) = der(jdx + 2:jdx + 3) + acc_grav
                     if (sim%megno_active) then
@@ -797,38 +797,33 @@ contains
 
     subroutine dydt_coll(t, y, der, first_particle, N_total)
         implicit none
-        real(wp),               intent(in)    :: t
-        real(wp), dimension(:), intent(in)    :: y
+        real(wp),               intent(in) :: t
+        real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: first_particle, N_total
+        integer(kind=4),        intent(in) :: first_particle, N_total
 
         integer(kind=4) :: last_moon, N_particles
-        real(wp)        :: gamma_n, gamma_t
 
-        last_moon   = first_particle - 1
+        last_moon = first_particle - 1
         N_particles = N_total - last_moon
 
         if (sim%use_moon_soft_sphere_col .and. (last_moon > 3)) then
-            gamma_n = uno
-            gamma_t = uno
             if (last_moon <= sim%grid_col_min_bodies + 1) then
-                call collisions_brute(y, der, 2, last_moon, gamma_n, gamma_t, .True.)
+                call collisions_brute(y, der, 2, last_moon, .True.)
             else if (sim%use_verlet_col .and. sim%use_verlet_with_moons) then
-                call collisions_verlet(t, y, der, 2, last_moon, gamma_n, gamma_t, .True.)
+                call collisions_verlet(t, y, der, 2, last_moon, .True.)
             else
-                call collisions_grid(y, der, 2, last_moon, gamma_n, gamma_t, .True.)
+                call collisions_grid(y, der, 2, last_moon, .True.)
             end if
         end if
 
         if (sim%use_part_soft_sphere_col) then
-            gamma_n = min(sim%gamma_col_part_n, uno) * dos * sqrt(sim%kappa_col_part)
-            gamma_t = min(sim%gamma_col_part_t, uno) * dos * sqrt(sim%kappa_col_part)
             if (N_particles <= sim%grid_col_min_bodies) then
-                call collisions_brute(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
+                call collisions_brute(y, der, first_particle, N_total, .False.)
             else if (sim%use_verlet_col .and. .not. sim%use_verlet_with_moons) then
-                call collisions_verlet(t, y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
+                call collisions_verlet(t, y, der, first_particle, N_total, .False.)
             else
-                call collisions_grid(y, der, first_particle, N_total, gamma_n, gamma_t, .False.)
+                call collisions_grid(y, der, first_particle, N_total, .False.)
             end if
         end if
 
@@ -841,10 +836,10 @@ contains
 
     subroutine dydt_megno(t, y, der, first_particle, N_total)
         implicit none
-        real(wp),               intent(in)    :: t
-        real(wp), dimension(:), intent(in)    :: y
+        real(wp),               intent(in) :: t
+        real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: first_particle, N_total
+        integer(kind=4),        intent(in) :: first_particle, N_total
 
         integer(kind=4) :: i, vdx
         real(wp) :: prod, dist, glob_prod, glob_dist
@@ -890,15 +885,15 @@ contains
         implicit none
         real(wp),               intent(in) :: t
         real(wp), dimension(:), intent(in) :: y
-        real(wp), dimension(size(y))       :: der
+        real(wp), dimension(size(y)) :: der
 
         integer(kind=4) :: last_moon, first_particle, N_total
 
         der = cero
 
-        last_moon      = 1 + sim%Nmoon_active
+        last_moon = 1 + sim%Nmoon_active
         first_particle = last_moon + 1
-        N_total        = last_moon + sim%Npart_active
+        N_total = last_moon + sim%Npart_active
 
         call dydt_grav(t, y, der, first_particle, N_total)
         call dydt_coll(t, y, der, first_particle, N_total)
@@ -911,15 +906,15 @@ contains
         implicit none
         real(wp),               intent(in) :: t
         real(wp), dimension(:), intent(in) :: y
-        real(wp), dimension(size(y))       :: der
+        real(wp), dimension(size(y)) :: der
 
         integer(kind=4) :: last_moon, first_particle, N_total
 
         der = cero
 
-        last_moon      = 1 + sim%Nmoon_active
+        last_moon = 1 + sim%Nmoon_active
         first_particle = last_moon + 1
-        N_total        = last_moon + sim%Npart_active
+        N_total = last_moon + sim%Npart_active
 
         call dydt_grav(t, y, der, first_particle, N_total)
 
@@ -929,15 +924,15 @@ contains
         implicit none
         real(wp),               intent(in) :: t
         real(wp), dimension(:), intent(in) :: y
-        real(wp), dimension(size(y))       :: der
+        real(wp), dimension(size(y)) :: der
 
         integer(kind=4) :: last_moon, first_particle, N_total
 
         der = cero
 
-        last_moon      = 1 + sim%Nmoon_active
+        last_moon = 1 + sim%Nmoon_active
         first_particle = last_moon + 1
-        N_total        = last_moon + sim%Npart_active
+        N_total = last_moon + sim%Npart_active
 
         call dydt_coll(t, y, der, first_particle, N_total)
 

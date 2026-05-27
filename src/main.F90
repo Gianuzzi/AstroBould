@@ -9,7 +9,7 @@ program main
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
     use surface, only: init_section, crossed_section, get_jacobi_constant
-    use collisions, only: verlet_rebuilds
+    use collisions, only: verlet_rebuilds, set_coll_parameters
 
     implicit none
 
@@ -121,6 +121,9 @@ program main
         !!! Collisions factors
         !! --- Moons ---  (SOFT-SPHERE (or not) and HARD-SPHERE)
         input%use_moon_soft_sphere_col = .False. ! If true, they are used at every timestep
+        input%epsilon_col_moon = cero  ! Restitution coefficient (0: Inelastic, 1: Elastic)  ! SOFT SPHERE
+        input%Tdur_col_moon = cero  ! Contact duration (if zero, treated as instantaneous)  ! SOFT SPHERE
+        input%use_moon_soft_explicit_col = .False. ! Whether to use epsilon and Tdur, or kappa and gamma explicitly  ! SOFT SPHERE
         input%kappa_col_moon = cero  ! 0: No bounce, 1: Full bounce.  ! SOFT SPHERE
         input%gamma_col_moon_n = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE 
         input%beta_col_moon = cero  ! beta = gamma_t / gamma_n ! Only active if SOFT-SPHERE collisions and gamma_t > 0
@@ -128,6 +131,9 @@ program main
         input%f_col_moon = uno  ! Bounded: Etot < -f |Epot|  ! HARD SPHERE
         !! --- Particles --- (SOFT-SPHERE and / or HARD-SPHERE)
         input%use_part_soft_sphere_col = .False. ! If true, they are used at every timestep
+        input%epsilon_col_part = cero  ! Restitution coefficient (0: Inelastic, 1: Elastic)  ! SOFT SPHERE
+        input%Tdur_col_part = cero  ! Contact duration (if zero, treated as instantaneous)  ! SOFT SPHERE
+        input%use_part_soft_explicit_col = .False. ! Whether to use epsilon and Tdur, or kappa and gamma explicitly  ! SOFT SPHERE
         input%kappa_col_part = cero  ! 0: No bounce, 1: Full bounce.  ! SOFT SPHERE
         input%gamma_col_part_n = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE
         input%beta_col_part = cero  ! beta = gamma_t / gamma_n ! Only active if SOFT-SPHERE collisions and gamma_t > 0
@@ -841,6 +847,7 @@ program main
         write (*, *) ACHAR(5)
     end if
 
+
     ! <<<< Escape/Colisión >>>>
     if (sim%min_distance < cero) then
     !! Check
@@ -861,51 +868,70 @@ program main
     else
         sim%max_distance = sim%max_distance*unit_dist
     end if
+
     if ((sim%max_distance > cero) .and. (sim%max_distance <= sim%min_distance)) then
         write (*, *) ACHAR(10)
         write (*, *) "ERROR: rmax <= rmin"
         stop 1
     end if
+
+    ! SOFT-SPHERE COLLISIONS [Configure parameters]
+
+    !! Moons
+    if (sim%use_moon_soft_sphere_col) then
+        call set_coll_parameters(sim%kappa_col_moon, sim%gamma_col_moon_n, &
+                               & sim%epsilon_col_moon, sim%Tdur_col_moon, &
+                               & sim%gamma_col_moon_t, sim%beta_col_moon, &
+                               & sim%use_moon_soft_explicit_col)
+    end if
+
+    ! Disable if no actual collisions
+    if (sim%kappa_col_moon <= cero .or. sim%epsilon_col_moon <= cero) then
+        sim%use_moon_soft_sphere_col = .False.
+    end if
+
+    ! Bounds
+    if (sim%use_moon_soft_sphere_col .and. (sim%beta_col_moon < cero .or. sim%beta_col_moon > uno)) then
+        error stop "Moon collision beta must be between 0 and 1."
+    end if
+
+    !! Particles
+    ! Configure parameters
+    if (sim%use_part_soft_sphere_col) then
+        call set_coll_parameters(sim%kappa_col_part, sim%gamma_col_part_n, &
+                            & sim%epsilon_col_part, sim%Tdur_col_part, &
+                            & sim%gamma_col_part_t, sim%beta_col_part, &
+                            & sim%use_part_soft_explicit_col)
+    end if
+
+    ! Disable if no actual collisions
+    if (sim%kappa_col_part <= cero .or. sim%epsilon_col_part <= cero) then
+        sim%use_part_soft_sphere_col = .False.
+    end if
+
+    ! Bounds
+    if (sim%use_part_soft_sphere_col .and. (sim%beta_col_part < cero .or. sim%beta_col_part > uno)) then
+        error stop "Particle collision beta must be between 0 and 1."
+    end if
+
+    ! Messages
     if (sim%use_screen) then
         write (*, *) "Conditions for escape / collision"
+
         if (sim%min_distance > myepsilon) then
             write (*, s1r1) "   rmin : ", sim%min_distance/unit_dist, "[km] =", sim%min_distance/system%asteroid%radius, "[Rast]"
         else
             write (*, s1r1) "   rmin : Asteroid surface ~", system%asteroid%radius/unit_dist, "[km]"
         end if
+
         if (sim%max_distance > cero) then
             write (*, s1r1) "   rmax : ", sim%max_distance/unit_dist, "[km] =", sim%max_distance/system%asteroid%radius, "[Rast]"
         else
             write (*, *) "   rmax : Infinity"
         end if
+
         write (*, *) ACHAR(5)
-        if (sim%use_particles) then
-            if (sim%use_merge_part_mass) then
-                write (*, *) "Colliding particles into massive bodies will be removed."
-            else
-                write (*, *) "Colliding particles into massive bodies will stop the integration."
-            end if
-            write (*, *) ACHAR(5)
-            if (sim%use_part_hard_sphere_col) then
-                write (*, *) "Particle-particle hard-sphere collisions activated."
-                write (*, s1r1) "  Collisional eta (distance) factor:", sim%eta_col_part
-                write (*, s1r1) "  Collisional f (velocity) factor:", sim%f_col_part
-            end if
-            if (sim%use_part_soft_sphere_col) then
-                write (*, *) "Particle-particle soft-sphere collisions activated."
-                write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_part
-                write (*, s1r1) "  Collisional gamma (damping) normal factor:", sim%gamma_col_part_n
-                write (*, s1r1) "  Collisional gamma (damping) tangential factor:", sim%gamma_col_part_t
-                if (sim%use_verlet_col .and. .not. sim%use_verlet_with_moons) then
-                    write(*, *) ACHAR(5)
-                    write(*, s1r1) " Using Verlet for collisions between particles, with skin factor:", sim%verlet_skin_factor
-                end if
-            end if
-            if ((.not. sim%use_part_soft_sphere_col) .and. (.not. sim%use_part_hard_sphere_col)) then
-                write (*, *) "Particle-particle collisions deactivated."
-            end if
-            write (*, *) ACHAR(5)
-        end if
+
         if (sim%use_moons) then
             write (*, *) ACHAR(5)
             if (sim%eta_col_moon == uno) then
@@ -920,9 +946,16 @@ program main
             end if
             if (sim%use_moon_soft_sphere_col) then
                 write (*, *) "Moon-moon soft-sphere collisions activated."
-                write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_moon
-                write (*, s1r1) "  Collisional gamma (damping) normal factor:", sim%gamma_col_moon_n
-                write (*, s1r1) "  Collisional gamma (damping) tangential factor:", sim%gamma_col_moon_t
+                if (sim%use_moon_soft_explicit_col) then
+                    write (*, *) "  Using explicit method for moons soft-sphere collisions."
+                else
+                    write (*, *) "  Using implicit method for moons soft-sphere collisions."
+                end if
+                write (*, s1r1) "  Collisional epsilon (overlap) factor:", sim%epsilon_col_moon
+                write (*, s1r1) "  Collisional Tduration:", sim%Tdur_col_moon, "[days]"
+                write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_moon, "[days⁻²]"
+                write (*, s1r1) "  Collisional gamma (damping) normal factor:", sim%gamma_col_moon_n, "[days⁻¹]"
+                write (*, s1r1) "  Collisional gamma (damping) tangential factor:", sim%gamma_col_moon_t, "[days⁻¹]"
                 if (sim%use_verlet_col .and. sim%use_verlet_with_moons) then
                     write(*, *) ACHAR(5)
                     write(*, s1r1) " Using Verlet for collisions between moons, with skin factor:", sim%verlet_skin_factor
@@ -930,13 +963,59 @@ program main
             else
                 write (*, *) "Moon-moon soft-sphere collisions deactivated."
             end if
+
             write (*, *) ACHAR(5)
+
         end if
+
+        if (sim%use_particles) then
+            if (sim%use_merge_part_mass) then
+                write (*, *) "Colliding particles into massive bodies will be removed."
+            else
+                write (*, *) "Colliding particles into massive bodies will stop the integration."
+            end if
+
+            write (*, *) ACHAR(5)
+
+            if (sim%use_part_hard_sphere_col) then
+                write (*, *) "Particle-particle hard-sphere collisions activated."
+                write (*, s1r1) "  Collisional eta (distance) factor:", sim%eta_col_part
+                write (*, s1r1) "  Collisional f (velocity) factor:", sim%f_col_part
+            end if
+
+            if (sim%use_part_soft_sphere_col) then
+                write (*, *) "Particle-particle soft-sphere collisions activated."
+                if (sim%use_part_soft_explicit_col) then
+                    write (*, *) "  Using explicit method for particles soft-sphere collisions."
+                else
+                    write (*, *) "  Using implicit method for particles soft-sphere collisions."
+                end if
+                write (*, s1r1) "  Collisional epsilon (overlap) factor:", sim%epsilon_col_part
+                write (*, s1r1) "  Collisional Tduration:", sim%Tdur_col_part, "[days]"
+                write (*, s1r1) "  Collisional kappa (bouncing) factor:", sim%kappa_col_part, "[days⁻²]"
+                write (*, s1r1) "  Collisional gamma (damping) normal factor:", sim%gamma_col_part_n, "[days⁻¹]"
+                write (*, s1r1) "  Collisional gamma (damping) tangential factor:", sim%gamma_col_part_t, "[days⁻¹]"
+                if (sim%use_verlet_col .and. .not. sim%use_verlet_with_moons) then
+                    write(*, *) ACHAR(5)
+                    write(*, s1r1) " Using Verlet for collisions between particles, with skin factor:", sim%verlet_skin_factor
+                end if
+            end if
+
+            if ((.not. sim%use_part_soft_sphere_col) .and. (.not. sim%use_part_hard_sphere_col)) then
+                write (*, *) "Particle-particle collisions deactivated."
+            end if
+
+            write (*, *) ACHAR(5)
+
+        end if
+
         if (sim%use_soft_sphere_col) then
             write (*, s1r1) " Soft-Sphere Coulomb cap mu factor:", sim%coulomb_mu_col
             write (*, *) ACHAR(5)
         end if
+
         write (*, *) ACHAR(5)
+
         if (sim%use_any_stop) then
             if (sim%use_stop_no_part_left .and. sim%use_particles) then
                 write (*, *) "Simulation will stop if no more particles are left."
@@ -947,8 +1026,11 @@ program main
         else
             write (*, *) "Simulation will stop if no more particles and moons are left."
         end if
+
         write (*, *) ACHAR(5)
+
     end if
+
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! MAPS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

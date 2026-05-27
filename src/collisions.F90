@@ -2,12 +2,12 @@
 module collisions
     use iso_fortran_env, only: int64
     use omp_lib
-    use constants, only: wp, G, cero, uno, uno2, dos, twopi, tini
+    use constants, only: wp, G, cero, uno, uno2, dos, pi, twopi, tini
     use auxiliary, only: rotate2D
     use parameters, only: sim, m_arr, R_arr, get_index
 
     private
-    public :: init_collisions, collisions_brute, collisions_grid, collisions_verlet, verlet_rebuilds
+    public :: init_collisions, set_coll_parameters, collisions_brute, collisions_grid, collisions_verlet, verlet_rebuilds
 
     abstract interface
         subroutine get_xy_rotated_tem(xy, r, dt, mu, omega)
@@ -21,13 +21,13 @@ module collisions
     procedure(get_xy_rotated_tem), pointer :: get_xy_rotated => null()
 
     integer(kind=4), save :: vlist_n
-    real(wp), save        :: vrcut
+    real(wp), save :: vrcut
     integer(kind=4), save, allocatable :: vlist(:, :)
-    real(wp), save, allocatable        :: vlist_pos(:, :)
-    real(wp), save, allocatable        :: vlist_r(:)
-    real(wp), save                     :: vlist_time
-    logical,  save                     :: vlist_built = .False.
-    logical,  save, allocatable        :: list_collided(:)
+    real(wp), save, allocatable :: vlist_pos(:, :)
+    real(wp), save, allocatable :: vlist_r(:)
+    real(wp), save :: vlist_time
+    logical,  save :: vlist_built = .False.
+    logical,  save, allocatable :: list_collided(:)
 
     integer(int64), save :: verlet_rebuilds = 0_int64
 
@@ -50,36 +50,59 @@ contains
 
     end subroutine init_collisions
 
+    subroutine set_coll_parameters(kappa_n, gamma_n, epsilon, Tdur, gamma_t, beta, explicit)
+        implicit none
+        real(wp), intent(inout) :: kappa_n, gamma_n
+        real(wp), intent(inout) :: epsilon, Tdur
+        real(wp), intent(inout) :: gamma_t
+        real(wp), intent(in) :: beta
+        logical, intent(in) :: explicit
+
+        real(wp) :: dzeta, eta
+
+        if (explicit) then
+            dzeta = min(gamma_n / (dos * sqrt(kappa_n)), uno - tini)
+            eta = dzeta * pi / sqrt(uno - dzeta*dzeta)
+            epsilon = exp(-eta)
+            Tdur = sqrt((pi*pi + eta*eta) / kappa_n)
+        else
+            eta = -log(epsilon)
+            kappa_n = (pi*pi + eta*eta) / Tdur**2
+            gamma_n = dos * eta / Tdur
+        end if
+
+        gamma_t = beta * gamma_n
+
+    end subroutine set_coll_parameters
+
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!! SOFT-SPHERE COLLISION ROUTINES !!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     !> Soft-sphere force kernel with ATOMIC writes on all der and list_collided.
     !> Safe to call from any parallel region.
-    subroutine soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
+    subroutine soft_sphere_force(y, der, i, j, are_moons)
         implicit none
-        real(wp), dimension(:), intent(in)    :: y
+        real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: i, j
-        real(wp),               intent(in)    :: gamma_n, gamma_t
-        logical,                intent(in)    :: are_moons
+        integer(kind=4),        intent(in) :: i, j
+        logical,                intent(in) :: are_moons
 
         integer(kind=4) :: idx, jdx
         real(wp) :: dr_vec(2), dr2, dr, rcoll, overlap
         real(wp) :: dr_ver(2), dt_ver(2)
         real(wp) :: dv_vec(2), dvr, dvt
         real(wp) :: F_n, F_t, F_vec(2)
-        real(wp) :: gamma_n_pair, gamma_t_pair
-        real(wp) :: mi, mj
+        real(wp) :: kappa_pair, gamma_n_pair, gamma_t_pair
+        real(wp) :: mi, mj, meff
         real(wp) :: rand1, rn
-        real(wp) :: aux_real
 
         idx = get_index(i)
         jdx = get_index(j)
 
         dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
-        dr2    = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-        rcoll  = R_arr(i) + R_arr(j)
+        dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+        rcoll = R_arr(i) + R_arr(j)
 
         if (dr2 >= rcoll*rcoll) return
 
@@ -87,43 +110,48 @@ contains
             dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
             rn = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
             if (rn > tini) then
-                rn     = sqrt(rn)
+                rn = sqrt(rn)
                 dr_ver = dv_vec / rn
             else
                 call random_number(rand1)
-                rand1  = twopi * rand1
+                rand1 = twopi * rand1
                 dr_ver = [cos(rand1), sin(rand1)]
             end if
-            dr      = tini
+            dr = tini
             overlap = rcoll
         else
-            dr      = sqrt(dr2)
-            overlap = rcoll - dr
-            dr_ver  = dr_vec / dr
+            dr = sqrt(dr2)
+            dr_ver = dr_vec / dr
+            overlap = rcoll - dr 
         end if
 
+        overlap = max(overlap, sim%dr_factor_col * rcoll)
         dt_ver = [-dr_ver(2), dr_ver(1)]
 
         if (are_moons) then
-            mi       = m_arr(i)
-            mj       = m_arr(j)
-            aux_real = dos * sqrt(sim%kappa_col_moon * (mi * mj / (mi + mj)))
-            gamma_n_pair = min(sim%gamma_col_moon_n, uno) * aux_real
-            gamma_t_pair = min(sim%gamma_col_moon_t, uno) * aux_real
+            mi = m_arr(i)
+            mj = m_arr(j)
+            meff = mi * mj / (mi + mj)
+            kappa_pair = sim%kappa_col_moon
+            gamma_n_pair = sim%gamma_col_moon_n
+            gamma_t_pair = sim%gamma_col_moon_t
         else
-            mi           = uno
-            mj           = uno
-            gamma_n_pair = gamma_n
-            gamma_t_pair = gamma_t
+            mi = uno
+            mj = uno
+            meff = uno2
+            kappa_pair = sim%kappa_col_part
+            gamma_n_pair = sim%gamma_col_part_n
+            gamma_t_pair = sim%gamma_col_part_t
         end if
 
         dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
-        dvr    = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
-        dvt    = dv_vec(1)*dt_ver(1) + dv_vec(2)*dt_ver(2)
+        dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
+        dvt = dv_vec(1)*dt_ver(1) + dv_vec(2)*dt_ver(2)
 
-        F_n = sim%kappa_col_part * overlap
-        if (gamma_n_pair > cero) F_n = F_n - gamma_n_pair * min(dvr, cero)
-        F_n = max(F_n, cero)
+        F_n = kappa_pair * overlap
+        if (dvr < cero .or. (.not. sim%use_only_repulsive_col)) then
+            F_n = F_n - gamma_n_pair * dvr
+        end if
 
         F_t = cero
         if ((gamma_t_pair > cero) .and. (sim%coulomb_mu_col > cero) .and. (F_n > cero)) then
@@ -131,7 +159,7 @@ contains
             F_t = sign(min(abs(F_t), sim%coulomb_mu_col * F_n), F_t)
         end if
 
-        F_vec = F_n * dr_ver + F_t * dt_ver
+        F_vec = meff * (F_n * dr_ver + F_t * dt_ver)
 
         ! ── Newton's 3rd law — ATOMIC on all four velocity slots ────────────
         !$OMP ATOMIC UPDATE
@@ -154,23 +182,22 @@ contains
     !> Brute-force O(N²).
     !> Outer i loop is PARALLEL — atomics inside soft_sphere_force handle conflicts.
     !> DYNAMIC schedule because the triangular inner loop makes load uneven.
-    subroutine collisions_brute(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
+    subroutine collisions_brute(y, der, first_index, last_index, are_moons)
         implicit none
-        real(wp), dimension(:), intent(in)    :: y
+        real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: first_index, last_index
-        real(wp),               intent(in)    :: gamma_n, gamma_t
-        logical,                intent(in)    :: are_moons
+        integer(kind=4),        intent(in) :: first_index, last_index
+        logical,                intent(in) :: are_moons
 
         integer(kind=4) :: i, j
 
         !$OMP PARALLEL DO                  &
         !$OMP   DEFAULT(SHARED)            &
         !$OMP   PRIVATE(i, j)              &
-        !$OMP   SCHEDULE(DYNAMIC, 40)
+        !$OMP   SCHEDULE(DYNAMIC, 8)
         do i = first_index, last_index - 1
             do j = i + 1, last_index
-                call soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
+                call soft_sphere_force(y, der, i, j, are_moons)
             end do
         end do
         !$OMP END PARALLEL DO
@@ -182,13 +209,12 @@ contains
     !> The linked-list traversal (head/next) is not thread-safe to build in
     !> parallel, so this routine stays serial. The force kernel itself is called
     !> serially here — if this loop ever becomes the bottleneck, use colouring.
-    subroutine collisions_grid(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
+    subroutine collisions_grid(y, der, first_index, last_index, are_moons)
         implicit none
-        real(wp), dimension(:), intent(in)    :: y
+        real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: first_index, last_index
-        real(wp),               intent(in)    :: gamma_n, gamma_t
-        logical,                intent(in)    :: are_moons
+        integer(kind=4),        intent(in) :: first_index, last_index
+        logical,                intent(in) :: are_moons
 
         real(wp) :: L_cell, x_min, x_max, y_min, y_max
         integer(int64) :: Ncx, Ncy, Nc
@@ -210,7 +236,7 @@ contains
         y_max = y_min
 
         do i = first_index, last_index
-            idx   = get_index(i)
+            idx = get_index(i)
             x_min = min(x_min, y(idx))
             x_max = max(x_max, y(idx))
             y_min = min(y_min, y(idx+1))
@@ -226,7 +252,7 @@ contains
         Ncy = max(1, ceiling((y_max - y_min) / L_cell))
 
         if (Ncx > sim%grid_col_max_cells / Ncy) then
-            call collisions_brute(y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
+            call collisions_brute(y, der, first_index, last_index, are_moons)
             return
         end if
 
@@ -236,19 +262,19 @@ contains
 
         do i = first_index, last_index
             idx = get_index(i)
-            cx  = min(int((y(idx)   - x_min) / L_cell, int64), Ncx - 1_int64)
-            cy  = min(int((y(idx+1) - y_min) / L_cell, int64), Ncy - 1_int64)
-            cx  = max(cx, 0_int64)
-            cy  = max(cy, 0_int64)
-            ci  = cx + Ncx * cy
-            next(i)  = head(ci)
+            cx = min(int((y(idx)   - x_min) / L_cell, int64), Ncx - 1_int64)
+            cy = min(int((y(idx+1) - y_min) / L_cell, int64), Ncy - 1_int64)
+            cx = max(cx, 0_int64)
+            cy = max(cy, 0_int64)
+            ci = cx + Ncx * cy
+            next(i) = head(ci)
             head(ci) = i
         end do
 
         do i = first_index, last_index
             idx = get_index(i)
-            cx  = min(max(int((y(idx)   - x_min) / L_cell, int64), 0_int64), Ncx - 1_int64)
-            cy  = min(max(int((y(idx+1) - y_min) / L_cell, int64), 0_int64), Ncy - 1_int64)
+            cx = min(max(int((y(idx)   - x_min) / L_cell, int64), 0_int64), Ncx - 1_int64)
+            cy = min(max(int((y(idx+1) - y_min) / L_cell, int64), 0_int64), Ncy - 1_int64)
 
             do dcy = -1, 1
                 do dcx = -1, 1
@@ -257,9 +283,9 @@ contains
                     if (cx2 < 0_int64 .or. cx2 >= Ncx) cycle
                     if (cy2 < 0_int64 .or. cy2 >= Ncy) cycle
                     ci2 = cx2 + Ncx * cy2
-                    j   = head(ci2)
+                    j = head(ci2)
                     do while (j /= -1)
-                        if (j > i) call soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
+                        if (j > i) call soft_sphere_force(y, der, i, j, are_moons)
                         j = next(j)
                     end do
                 end do
@@ -295,8 +321,8 @@ contains
         else
             vrcut = dos * R_arr(first_index)
         end if
-        vrcut  = max(vrcut, sim%grid_col_min_cell_size)
-        r_cut  = vrcut * (uno + sim%verlet_skin_factor)
+        vrcut = max(vrcut, sim%grid_col_min_cell_size)
+        r_cut = vrcut * (uno + sim%verlet_skin_factor)
         r_cut2 = r_cut * r_cut
 
         allocate(tmp_list(2, N_particles*(N_particles-1)/2))
@@ -308,7 +334,7 @@ contains
         y_max = y_min
 
         do i = first_index, last_index
-            idx   = get_index(i)
+            idx = get_index(i)
             x_min = min(x_min, y(idx))
             x_max = max(x_max, y(idx))
             y_min = min(y_min, y(idx+1))
@@ -327,9 +353,9 @@ contains
             do i = first_index, last_index - 1
                 idx = get_index(i)
                 do j = i + 1, last_index
-                    jdx    = get_index(j)
+                    jdx = get_index(j)
                     dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
-                    dr2    = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     if (dr2 < r_cut2) then
                         npairs = npairs + 1
                         tmp_list(1, npairs) = i
@@ -344,19 +370,19 @@ contains
 
             do i = first_index, last_index
                 idx = get_index(i)
-                cx  = min(int((y(idx)   - x_min) / vrcut, int64), Ncx - 1_int64)
-                cy  = min(int((y(idx+1) - y_min) / vrcut, int64), Ncy - 1_int64)
-                cx  = max(cx, 0_int64)
-                cy  = max(cy, 0_int64)
-                ci  = cx + Ncx * cy
-                next(i)  = head(ci)
+                cx = min(int((y(idx)   - x_min) / vrcut, int64), Ncx - 1_int64)
+                cy = min(int((y(idx+1) - y_min) / vrcut, int64), Ncy - 1_int64)
+                cx = max(cx, 0_int64)
+                cy = max(cy, 0_int64)
+                ci = cx + Ncx * cy
+                next(i) = head(ci)
                 head(ci) = i
             end do
 
             do i = first_index, last_index
                 idx = get_index(i)
-                cx  = min(max(int((y(idx)   - x_min) / vrcut, int64), 0_int64), Ncx - 1_int64)
-                cy  = min(max(int((y(idx+1) - y_min) / vrcut, int64), 0_int64), Ncy - 1_int64)
+                cx = min(max(int((y(idx)   - x_min) / vrcut, int64), 0_int64), Ncx - 1_int64)
+                cy = min(max(int((y(idx+1) - y_min) / vrcut, int64), 0_int64), Ncy - 1_int64)
 
                 do dcy = -1, 1
                     do dcx = -1, 1
@@ -365,12 +391,12 @@ contains
                         if (cx2 < 0_int64 .or. cx2 >= Ncx) cycle
                         if (cy2 < 0_int64 .or. cy2 >= Ncy) cycle
                         ci2 = cx2 + Ncx * cy2
-                        j   = head(ci2)
+                        j = head(ci2)
                         do while (j /= -1)
                             if (j > i) then
-                                jdx    = get_index(j)
+                                jdx = get_index(j)
                                 dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
-                                dr2    = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                                 if (dr2 < r_cut2) then
                                     npairs = npairs + 1
                                     tmp_list(1, npairs) = i
@@ -398,14 +424,14 @@ contains
         allocate(vlist_pos(2, first_index:last_index))
         allocate(vlist_r(first_index:last_index))
         do i = first_index, last_index
-            idx           = get_index(i)
+            idx = get_index(i)
             vlist_pos(1, i) = y(idx)
             vlist_pos(2, i) = y(idx+1)
-            vlist_r(i)      = sqrt(y(idx)**2 + y(idx+1)**2)
+            vlist_r(i) = sqrt(y(idx)**2 + y(idx+1)**2)
         end do
 
         vlist_built = .True.
-        vlist_time  = time
+        vlist_time = time
 
         !$OMP ATOMIC UPDATE
         verlet_rebuilds = verlet_rebuilds + 1_int64
@@ -416,17 +442,16 @@ contains
     !> Verlet pair loop — PARALLEL over k (pairs).
     !> Each pair calls soft_sphere_force which uses ATOMIC writes internally.
     !> Rebuild check is serial (modifies global saved state).
-    subroutine collisions_verlet(time, y, der, first_index, last_index, gamma_n, gamma_t, are_moons)
+    subroutine collisions_verlet(time, y, der, first_index, last_index, are_moons)
         implicit none
-        real(wp),               intent(in)    :: time
-        real(wp), dimension(:), intent(in)    :: y
+        real(wp),               intent(in) :: time
+        real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
-        integer(kind=4),        intent(in)    :: first_index, last_index
-        real(wp),               intent(in)    :: gamma_n, gamma_t
-        logical,                intent(in)    :: are_moons
+        integer(kind=4),        intent(in) :: first_index, last_index
+        logical,                intent(in) :: are_moons
 
         integer(kind=4) :: i, j, k, idx
-        real(wp)        :: r_skin2, dx, dy, drift2, dt
+        real(wp) :: r_skin2, dx, dy, drift2, dt
         real(wp), dimension(2) :: xyr
 
         ! ── Rebuild check (serial — touches global saved state) ─────────────
@@ -436,14 +461,14 @@ contains
             call build_verlet_list(time, y, first_index, last_index, are_moons)
         else
             r_skin2 = (vrcut * sim%verlet_skin_factor * uno2)**2
-            dt      = time - vlist_time
+            dt = time - vlist_time
 
             do i = first_index, last_index
-                idx    = get_index(i)
-                xyr    = vlist_pos(:, i)
+                idx = get_index(i)
+                xyr = vlist_pos(:, i)
                 call get_xy_rotated(xyr, vlist_r(i), dt, G*m_arr(1), y(2))
-                dx     = y(idx)   - xyr(1)
-                dy     = y(idx+1) - xyr(2)
+                dx = y(idx)   - xyr(1)
+                dy = y(idx+1) - xyr(2)
                 drift2 = dx*dx + dy*dy
                 if (drift2 > r_skin2) then
                     call build_verlet_list(time, y, first_index, last_index, are_moons)
@@ -460,7 +485,7 @@ contains
         do k = 1, vlist_n
             i = vlist(1, k)
             j = vlist(2, k)
-            call soft_sphere_force(y, der, i, j, gamma_n, gamma_t, are_moons)
+            call soft_sphere_force(y, der, i, j, are_moons)
         end do
         !$OMP END PARALLEL DO
 
@@ -470,21 +495,21 @@ contains
     pure subroutine get_xy_rotated_inertial(xy, r, dt, GM, dummy)
         implicit none
         real(wp), dimension(2), intent(inout) :: xy
-        real(wp),               intent(in)    :: r, dt, GM, dummy
+        real(wp),               intent(in) :: r, dt, GM, dummy
         real(wp) :: n, dphi
-        n    = sqrt(GM / r**3)
+        n = sqrt(GM / r**3)
         dphi = n * dt
-        xy   = rotate2D(xy, dphi)
+        xy = rotate2D(xy, dphi)
     end subroutine get_xy_rotated_inertial
 
     pure subroutine get_xy_rotated_sinodic(xy, r, dt, GM, omega)
         implicit none
         real(wp), dimension(2), intent(inout) :: xy
-        real(wp),               intent(in)    :: r, dt, GM, omega
+        real(wp),               intent(in) :: r, dt, GM, omega
         real(wp) :: n, dphi
-        n    = sqrt(GM / r**3)
+        n = sqrt(GM / r**3)
         dphi = (n - omega) * dt
-        xy   = rotate2D(xy, dphi)
+        xy = rotate2D(xy, dphi)
     end subroutine get_xy_rotated_sinodic
 
 end module collisions
