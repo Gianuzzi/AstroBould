@@ -3,6 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 
+G = 4.9823394e-10 # gravitational constant in Kg^-1 Km^3 day^-2
+
 chaos_names = [
     "nsim",
     "idx",
