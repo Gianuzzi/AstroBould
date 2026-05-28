@@ -9,7 +9,7 @@ program main
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
     use surface, only: init_section, crossed_section, get_jacobi_constant
-    use collisions, only: set_coll_parameters, verlet_rebuilds, verlet_caches
+    use collisions, only: set_coll_parameters, verlet_rebuilds, verlet_caches, list_collided
 
     implicit none
 
@@ -2911,6 +2911,7 @@ program main
                 end do loop_surface
 
             else
+                print*, "Integrating..."
 
                 if (sim%use_substeps_col) then
                     ! INTEGRATE
@@ -2919,12 +2920,13 @@ program main
                                             & sub_timestep, dydt_coll_f, &
                                             & timestep, y_arr_new(:y_nvalues), check_func)
 
-
                 else
                     ! INTEGRATE
                     call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 end if
+
+                print*, "Integrated."
 
                 ! Check if it might be hard_exit
                 if (hard_exit) then
@@ -2948,7 +2950,7 @@ program main
 
             ! Modulate theta
             y_arr(1) = modulo(y_arr(1), twopi)
-
+            
             ! Update from y_new
             call update_system_from_array(system, time, y_arr)
 
@@ -2996,6 +2998,12 @@ program main
 
             ! Update j; only if not premature
             if (.not. is_premature_exit) j = j + 1
+
+            print*, ""
+            print*, "Pairs collisions: ", count(list_collided)
+            print*, "Verlet rebuilds: ", verlet_rebuilds, " Verlet caches: ", verlet_caches
+            print*, "Ratio: ", real(verlet_caches-verlet_rebuilds)/real(verlet_caches)
+            print*, "Time: ", time/unit_time, " days"
 
         end do main_loop_normal
 

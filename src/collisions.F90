@@ -9,7 +9,7 @@ module collisions
     private
     public :: init_collisions, set_coll_parameters, &
             & collisions_brute, collisions_grid, collisions_verlet, &
-            & verlet_rebuilds, verlet_caches
+            & verlet_rebuilds, verlet_caches, list_collided
 
     abstract interface
         subroutine get_xy_rotated_tem(xy, r, dt, mu, omega)
@@ -27,6 +27,8 @@ module collisions
     integer(kind=4), save, allocatable :: vlist(:, :)
     real(wp), save, allocatable :: vlist_pos(:, :)
     real(wp), save, allocatable :: vlist_r(:)
+    real(wp), save, allocatable :: vlist_n_kep(:)
+    real(wp), save :: vlist_mean_n_kep
     real(wp), save :: vlist_time
     logical, save :: vlist_built = .False.
     logical, save, allocatable :: list_collided(:)
@@ -103,14 +105,19 @@ contains
         idx = get_index(i)
         jdx = get_index(j)
 
-        dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
+        dr_vec(1) = y(jdx) - y(idx)
+        dr_vec(2) = y(jdx+1) - y(idx+1)
+
         dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
         rcoll = R_arr(i) + R_arr(j)
 
         if (dr2 >= rcoll*rcoll) return
 
+        dv_vec(1) = y(jdx+2) - y(idx+2)
+        dv_vec(2) = y(jdx+3) - y(idx+3)
+
         if (dr2 < tini) then
-            dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
+
             rn = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
             if (rn > tini) then
                 rn = sqrt(rn)
@@ -118,18 +125,24 @@ contains
             else
                 call random_number(rand1)
                 rand1 = twopi * rand1
-                dr_ver = [cos(rand1), sin(rand1)]
+                dr_ver(1) = cos(rand1)
+                dr_ver(2) = sin(rand1)
             end if
+
             dr = tini
             overlap = rcoll
+
         else
+
             dr = sqrt(dr2)
             dr_ver = dr_vec / dr
             overlap = rcoll - dr 
+
         end if
 
         overlap = max(overlap, sim%dr_factor_col * rcoll)
-        dt_ver = [-dr_ver(2), dr_ver(1)]
+        dt_ver(1) = -dr_ver(2)
+        dt_ver(2) = dr_ver(1)
 
         if (are_moons) then
             mi = m_arr(i)
@@ -147,7 +160,6 @@ contains
             gamma_t_pair = sim%gamma_col_part_t
         end if
 
-        dv_vec = y(jdx+2:jdx+3) - y(idx+2:idx+3)
         dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
         dvt = dv_vec(1)*dt_ver(1) + dv_vec(2)*dt_ver(2)
 
@@ -174,9 +186,8 @@ contains
         !$OMP ATOMIC UPDATE
         der(idx+3) = der(idx+3) - F_vec(2) / mi
 
-        !$OMP ATOMIC WRITE
+        ! Not need to  be ATOMIC bc only changes to TRUE
         list_collided(i) = .True.
-        !$OMP ATOMIC WRITE
         list_collided(j) = .True.
 
     end subroutine soft_sphere_force
@@ -194,10 +205,10 @@ contains
 
         integer(kind=4) :: i, j
 
-        !$OMP PARALLEL DO                  &
-        !$OMP   DEFAULT(SHARED)            &
-        !$OMP   PRIVATE(i, j)              &
-        !$OMP   SCHEDULE(DYNAMIC, 8)
+        !$OMP PARALLEL DO                &
+        !$OMP DEFAULT(SHARED)            &
+        !$OMP PRIVATE(i, j)              &
+        !$OMP SCHEDULE(GUIDED,64)
         do i = first_index, last_index - 1
             do j = i + 1, last_index
                 call soft_sphere_force(y, der, i, j, are_moons)
@@ -238,13 +249,20 @@ contains
         y_min = y(get_index(first_index)+1)
         y_max = y_min
 
+        !$OMP PARALLEL DO &
+        !$OMP DEFAULT(SHARED) &
+        !$OMP PRIVATE(i, idx) &
+        !$OMP REDUCTION(min:x_min,y_min) &
+        !$OMP REDUCTION(max:x_max,y_max)
         do i = first_index, last_index
             idx = get_index(i)
+
             x_min = min(x_min, y(idx))
             x_max = max(x_max, y(idx))
             y_min = min(y_min, y(idx+1))
             y_max = max(y_max, y(idx+1))
         end do
+        !$OMP END PARALLEL DO
 
         x_min = x_min - L_cell
         x_max = x_max + L_cell
@@ -263,6 +281,7 @@ contains
         allocate(head(0:Nc-1), next(first_index:last_index))
         head = -1
 
+        ! Create linked lists serially — if this becomes a bottleneck, use colouring to parallelise.
         do i = first_index, last_index
             idx = get_index(i)
             cx = min(int((y(idx)   - x_min) / L_cell, int64), Ncx - 1_int64)
@@ -274,6 +293,10 @@ contains
             head(ci) = i
         end do
 
+        !$OMP PARALLEL DO                                         &
+        !$OMP DEFAULT(SHARED)                                     &
+        !$OMP PRIVATE(i, idx, cx, cy, cx2, cy2, ci2, j, dcx, dcy) &
+        !$OMP SCHEDULE(DYNAMIC, 32)
         do i = first_index, last_index
             idx = get_index(i)
             cx = min(max(int((y(idx)   - x_min) / L_cell, int64), 0_int64), Ncx - 1_int64)
@@ -288,12 +311,15 @@ contains
                     ci2 = cx2 + Ncx * cy2
                     j = head(ci2)
                     do while (j /= -1)
-                        if (j > i) call soft_sphere_force(y, der, i, j, are_moons)
+                        if (j > i) then
+                            call soft_sphere_force(y, der, i, j, are_moons)
+                        end if
                         j = next(j)
                     end do
                 end do
             end do
         end do
+        !$OMP END PARALLEL DO
 
         deallocate(head, next)
 
@@ -316,6 +342,9 @@ contains
         integer(int64) :: Ncx, Ncy, Nc, cx, cy, ci, cx2, cy2, ci2
         integer(kind=4) :: dcx, dcy
         integer(kind=4), allocatable :: head(:), next(:)
+        real(wp) :: sq_GM
+
+        sq_GM = sqrt(G * m_arr(1))
 
         N_particles = last_index - first_index + 1
 
@@ -336,13 +365,18 @@ contains
         y_min = y(get_index(first_index)+1)
         y_max = y_min
 
+        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i,idx) &
+        !$OMP REDUCTION(min:x_min,y_min) &
+        !$OMP REDUCTION(max:x_max,y_max)
         do i = first_index, last_index
             idx = get_index(i)
+
             x_min = min(x_min, y(idx))
             x_max = max(x_max, y(idx))
             y_min = min(y_min, y(idx+1))
             y_max = max(y_max, y(idx+1))
         end do
+        !$OMP END PARALLEL DO
 
         x_min = x_min - vrcut
         x_max = x_max + vrcut
@@ -371,6 +405,7 @@ contains
             allocate(head(0:Nc-1), next(first_index:last_index))
             head = -1
 
+            ! Create linked lists serially — if this becomes a bottleneck, use colouring to parallelise.
             do i = first_index, last_index
                 idx = get_index(i)
                 cx = min(int((y(idx)   - x_min) / vrcut, int64), Ncx - 1_int64)
@@ -411,13 +446,14 @@ contains
                     end do
                 end do
             end do
-
+            
             deallocate(head, next)
         end if
 
         if (allocated(vlist))     deallocate(vlist)
         if (allocated(vlist_pos)) deallocate(vlist_pos)
         if (allocated(vlist_r))   deallocate(vlist_r)
+        if (allocated(vlist_n_kep)) deallocate(vlist_n_kep)
 
         allocate(vlist(2, npairs))
         vlist(:, 1:npairs) = tmp_list(:, 1:npairs)
@@ -426,17 +462,26 @@ contains
 
         allocate(vlist_pos(2, first_index:last_index))
         allocate(vlist_r(first_index:last_index))
+        allocate(vlist_n_kep(first_index:last_index))
+
+        !$OMP PARALLEL DO           &
+        !$OMP DEFAULT(SHARED)       &
+        !$OMP PRIVATE(i, idx)       &
+        !$OMP SCHEDULE(STATIC)
         do i = first_index, last_index
             idx = get_index(i)
             vlist_pos(1, i) = y(idx)
             vlist_pos(2, i) = y(idx+1)
             vlist_r(i) = sqrt(y(idx)**2 + y(idx+1)**2)
+            vlist_n_kep(i) = sq_GM / vlist_r(i)**(1.5_wp)
         end do
+        !$OMP END PARALLEL DO
+
+        vlist_mean_n_kep = sum(vlist_n_kep(first_index:last_index)) / real(N_particles, wp)
 
         vlist_built = .True.
         vlist_time = time
 
-        !$OMP ATOMIC UPDATE
         verlet_rebuilds = verlet_rebuilds + 1_int64
 
     end subroutine build_verlet_list
@@ -454,22 +499,28 @@ contains
         logical,                intent(in) :: are_moons
 
         integer(kind=4) :: i, j, k, idx
-        real(wp) :: r_skin2, dx, dy, drift2, dt
+        real(wp) :: r_skin2, dx, dy, drift2, dt, drift_max
         real(wp), dimension(2) :: xyr
+        real(wp) :: sq_GM
+        
+        drift_max = cero
 
         ! ── Rebuild check (serial — touches global saved state) ─────────────
         if (.not. vlist_built) then
             call build_verlet_list(time, y, first_index, last_index, are_moons)
+
         else if (size(vlist_pos, 2) /= last_index - first_index + 1) then
             call build_verlet_list(time, y, first_index, last_index, are_moons)
+
         else
             r_skin2 = (vrcut * sim%verlet_skin_factor * uno2)**2
             dt = time - vlist_time
+            sq_GM = sqrt(G * m_arr(1))
 
             do i = first_index, last_index
                 idx = get_index(i)
                 xyr = vlist_pos(:, i)
-                call get_xy_rotated(xyr, vlist_r(i), dt, G*m_arr(1), y(2))
+                call get_xy_rotated(xyr, vlist_r(i), dt, sq_GM, vlist_mean_n_kep)
                 dx = y(idx)   - xyr(1)
                 dy = y(idx+1) - xyr(2)
                 drift2 = dx*dx + dy*dy
@@ -477,14 +528,19 @@ contains
                     call build_verlet_list(time, y, first_index, last_index, are_moons)
                     exit
                 end if
+                drift_max = max(drift_max, drift2)
             end do
+
         end if
 
+        ! Reset collision flags for this step — not strictly needed if only used for output, but good to keep clean.
+        list_collided = .False.
+
         ! ── Pair force loop (PARALLEL over k) ──────
-        !$OMP PARALLEL DO              &
-        !$OMP   DEFAULT(SHARED)        &
-        !$OMP   PRIVATE(k, i, j)       &
-        !$OMP   SCHEDULE(DYNAMIC, 192)
+        !$OMP PARALLEL DO            &
+        !$OMP DEFAULT(SHARED)        &
+        !$OMP PRIVATE(k, i, j)       &
+        !$OMP SCHEDULE(STATIC)
         do k = 1, vlist_n
             i = vlist(1, k)
             j = vlist(2, k)
@@ -497,22 +553,22 @@ contains
     end subroutine collisions_verlet
 
 
-    pure subroutine get_xy_rotated_inertial(xy, r, dt, GM, dummy)
+    pure subroutine get_xy_rotated_inertial(xy, r, dt, sq_GM, dummy)
         implicit none
         real(wp), dimension(2), intent(inout) :: xy
-        real(wp),               intent(in) :: r, dt, GM, dummy
+        real(wp),               intent(in) :: r, dt, sq_GM, dummy
         real(wp) :: n, dphi
-        n = sqrt(GM / r**3)
+        n = sq_GM / r**(1.5_wp)
         dphi = n * dt
         xy = rotate2D(xy, dphi)
     end subroutine get_xy_rotated_inertial
 
-    pure subroutine get_xy_rotated_sinodic(xy, r, dt, GM, omega)
+    pure subroutine get_xy_rotated_sinodic(xy, r, dt, sq_GM, omega)
         implicit none
         real(wp), dimension(2), intent(inout) :: xy
-        real(wp),               intent(in) :: r, dt, GM, omega
+        real(wp),               intent(in) :: r, dt, sq_GM, omega
         real(wp) :: n, dphi
-        n = sqrt(GM / r**3)
+        n = sq_GM / r**(1.5_wp)
         dphi = (n - omega) * dt
         xy = rotate2D(xy, dphi)
     end subroutine get_xy_rotated_sinodic

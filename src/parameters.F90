@@ -140,8 +140,8 @@ module parameters
         !! Moons
         logical :: use_moon_soft_sphere_col = .False.  ! Checked between moons at every timestep
         real(wp) :: epsilon_col_moon = cero  ! 0 < epsilon < 1 ! Used to calculate kappa and gamma for moons.  ! SOFT-SPHERE
-        real(wp) :: Tdur_col_moon = cero  ! > 0 ! Duration of the collision. Same as dt_min. ! Used to calculate kappa and gamma for moons.  ! SOFT-SPHERE
-        logical :: use_moon_soft_explicit_col = .False.  ! Whether to use the explicit parameters for moons instead of calculating them with epsilon and Tdur
+        real(wp) :: Tdur_col_moon = cero  ! > 0 ! Duration of the collision ! Same as epsilon ! SOFT-SPHERE
+        logical :: use_moon_soft_explicit_col = .False.  ! Whether to use the explicit parameters for moons
         real(wp) :: kappa_col_moon = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
         real(wp) :: gamma_col_moon_n = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, normal component
         real(wp) :: beta_col_moon = uno  ! Ratio tangential to normal damping. Only used if gamma_col_moon_n > 0.  ! SOFT-SPHERE
@@ -150,8 +150,8 @@ module parameters
         !! Particles
         logical :: use_part_soft_sphere_col = .False.  ! Checked between particles at every timestep
         real(wp) :: epsilon_col_part = cero  ! 0 < epsilon < 1 ! Used to calculate kappa and gamma for particles.  ! SOFT-SPHERE
-        real(wp) :: Tdur_col_part = cero  ! > 0 ! Duration of the collision. Same as dt_min. ! Used to calculate kappa and gamma for particles.  ! SOFT-SPHERE
-        logical :: use_part_soft_explicit_col = .False.  ! Whether to use the explicit parameters for particles instead of calculating them with epsilon and Tdur
+        real(wp) :: Tdur_col_part = cero  ! > 0 ! Duration of the collision. ! Same as epsilon ! SOFT-SPHERE
+        logical :: use_part_soft_explicit_col = .False.  ! Whether to use the explicit parameters for particles 
         real(wp) :: kappa_col_part = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
         real(wp) :: gamma_col_part_n = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, normal component
         real(wp) :: beta_col_part = uno  ! Ratio tangential to normal damping. Only used if gamma_col_part_n > 0.  ! SOFT-SPHERE
@@ -163,10 +163,10 @@ module parameters
         logical :: use_stop_no_moon_left = .True.
         real(wp) :: coulomb_mu_col = cero  ! Coulomb friction coeff. Only active if SOFT-SPHERE collisions and gamma_t > 0
         logical :: use_only_repulsive_col = .False.  ! Whether to use only the repulsive part of the collision
-        real(wp) :: dr_factor_col = uno  ! Factor to multiply the repulsive part of the collision. Only active if use_only_repulsive_col is True
+        real(wp) :: dr_factor_col = uno  ! Minimum dr assumed at collisions ! SOFT-SPHERE
         logical :: use_verlet_col = .False.  ! Whether to use Verlet list for collisions (only for particles)
         real(wp) :: verlet_skin_factor = 0.1_wp  ! skin = factor * 2R
-        logical :: use_verlet_with_moons = .False.  ! Whether to use Verlet list for collisions involving moons instead of particles.
+        logical :: use_verlet_with_moons = .False.  ! Same as verlet_col but including only moons in the Verlet list
         !! Grid collisions
         integer(kind=4) :: grid_col_min_bodies = 100  ! Do not even consider grid if number of bodies is below this threshold
         integer(kind=4) :: grid_col_max_cells = 10000  ! Max amount of cells before falling back to brute-force
@@ -2093,7 +2093,7 @@ contains
 
         else
 
-            derived%eta_col_part = cero
+            derived%eta_col_part = uno
             derived%f_col_part = cero
 
         end if
@@ -2525,7 +2525,7 @@ contains
         ! theta
         el_filtered(1) = modulo(atan2(sin_th, cos_th), twopi)
         do j = 1, nbodies
-            idx = 4*j - 1  ! From derivates
+            idx = get_index(j)
             ! e ?
             if (simu%filter_use_KH) then
                 el_filtered(idx + 1) = sqrt(cos_an(j, 2)*cos_an(j, 2) + sin_an(j, 2)*sin_an(j, 2))
