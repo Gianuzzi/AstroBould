@@ -86,6 +86,16 @@ endif
 
 
 #--------------------------------------------------------------------------
+# PERF configurations
+
+ifdef PERF
+	ifneq ($(DEBUG),1)
+  		MYCFLAGS += -g
+	endif
+endif
+
+
+#--------------------------------------------------------------------------
 # Final flags per compiler
 ifeq ($(INTEL),1)
   FFLAGS = $(WARN_INTEL) $(STD) $(ARCH) $(MYCFLAGS) $(MYFFLAGS) -module $(OBJ_DIR)
@@ -103,7 +113,7 @@ LDFLAGS = $(MYCFLAGS) $(MYFFLAGS)
 
 
 #--------------------------------------------------------------------------
-# CPP configurations
+# DEBUG configurations
 
 ifdef DEBUG
   FFLAGS += -DDEBUG

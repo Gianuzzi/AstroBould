@@ -312,9 +312,12 @@ contains
         real(wp), dimension(2), intent(in) :: a
         real(wp), intent(in) :: theta
         real(wp), dimension(2) :: res
+        real(wp) :: cos_theta, sin_theta
+        cos_theta = cos(theta)
+        sin_theta = sin(theta)
 
-        res = (/a(1)*cos(theta) - a(2)*sin(theta), & ! x cos(th) - y sin(th),
-                a(1)*sin(theta) + a(2)*cos(theta)/)  ! x sin(th) + y cos(th)
+        res = (/a(1)*cos_theta - a(2)*sin_theta, & ! x cos(th) - y sin(th),
+                a(1)*sin_theta + a(2)*cos_theta/)  ! x sin(th) + y cos(th)
     end function rotate2D
 
     ! Read a file with data structured in columns
@@ -396,29 +399,48 @@ contains
         close (11)
     end subroutine read_columns_file
 
-    ! Write percentage to file unit or std out
     subroutine percentage(tout, tstop, file_unit)
         implicit none
+
         real(wp), intent(in) :: tout, tstop
         integer(kind=4), intent(in), optional :: file_unit
-        integer(kind=4) :: funit = 6  ! 6 is STD_OUTPUT
-        integer(kind=4) :: iper
-        character(len=100) :: guiones
-        character(len=4) :: cestado
 
+        integer(kind=4) :: funit, iper
+        character(len=100) :: bar
+        character(len=4)   :: cestado
+
+        logical, save :: first_call = .True.
+
+        funit = 6
         if (present(file_unit)) funit = file_unit
 
-        iper = nint(100.0e0_wp*tout/tstop)
-        guiones = repeat('.', iper)
+        iper = min(100, nint(100.0_wp*tout/tstop))
+        bar  = repeat('.', iper)
 
-        if (iper < 100) then
-            write (cestado, '(i3)') iper
-            write (funit, '(a)', advance='no') char(13)//trim(guiones)//trim(adjustl(cestado))//'%'
-        else
-            write (funit, '(a)', advance='no') char(13)//trim(guiones)//'. FIN'
-            write (funit, *)
+        ! Move cursor up and clear previous output
+        if (.not. first_call) then
+            write(funit,'(a)',advance='no') achar(27)//'[2F' ! up 2 lines
+            write(funit,'(a)',advance='no') achar(27)//'[2K' ! clear line
+            write(funit,'(a)',advance='no') achar(27)//'[1B' ! down 1 line
+            write(funit,'(a)',advance='no') achar(27)//'[2K' ! clear line
+            write(funit,'(a)',advance='no') achar(27)//'[1A' ! back up 1 line
         end if
-        flush (funit)
-    end subroutine percentage
+
+        ! First line
+        write(funit,'(a,1x,1PE15.7," / ",1PE15.7)') "Done:", tout, tstop
+
+        ! Second line
+        if (iper < 100) then
+            write(cestado,'(i3)') iper
+            write(funit,'(a,1x,a,a)') &
+                trim(bar), trim(adjustl(cestado)), '%'
+        else
+            write(funit,'(a)') trim(bar)//' FIN'
+        end if
+
+        flush(funit)
+
+        first_call = .False.
+    end subroutine
 
 end module auxiliary

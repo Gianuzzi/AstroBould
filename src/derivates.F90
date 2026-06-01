@@ -126,6 +126,7 @@ contains
         real(wp) :: v2, two_ener, mean_movement
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z
         real(wp) :: aux_real, aux_real2(2)
+        real(wp) :: Gmass_arr(0:sim%Nboulders), t_cut
         integer(kind=4) :: i, idx, j, jdx, vdx, last_moon
 
         last_moon = first_particle - 1
@@ -143,18 +144,55 @@ contains
             c2th = cos(dos*theta)
             s2th = sin(dos*theta)
         else
-            do i = 0, sim%Nboulders
-                aux_real = theta + boulders_data(i, 3)
-                ! ── Boulder 0 (serial coordinate setup + serial moon loop) ───
-                boulders_coords(i, 1) = boulders_data(i, 4)*cos(aux_real)
-                boulders_coords(i, 2) = boulders_data(i, 4)*sin(aux_real)
-                boulders_coords(i, 3) = -omega*boulders_coords(i, 2)
-                boulders_coords(i, 4) = omega*boulders_coords(i, 1)
-                boulders_coords(i, 1) = boulders_coords(i, 1) - coords_A(1)
-                boulders_coords(i, 2) = boulders_coords(i, 2) - coords_A(2)
-                boulders_coords(i, 3) = boulders_coords(i, 3) - coords_A(3)
-                boulders_coords(i, 4) = boulders_coords(i, 4) - coords_A(4)
-            end do
+            t_cut = twopi / omega * 50.0_wp  ! arbitrary time scale for boulder mass distribution (must be >> orbital period)
+
+            if (t < t_cut) then  ! Now, only for m0 and 1 boulder
+
+                Gmass_arr(0) = (boulders_data(0, 1) - m_arr(1)) / t_cut * t + m_arr(1)  ! linear growth from mAst to mAst + mBoul
+
+                do i = 1, sim%Nboulders
+                    Gmass_arr(i) = boulders_data(i, 1) / t_cut * t  ! linear growth from 0 to full mass
+                end do
+
+                aux_real = boulders_data(0, 2)/m_arr(1)
+                !! Boulder data has: !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
+                cth = cos(theta + boulders_data(0, 3))
+                sth = sin(theta + boulders_data(0, 3))
+                boulders_coords(0, 1) = Gmass_arr(1) * aux_real * cth
+                boulders_coords(0, 2) = Gmass_arr(1) * aux_real * sth
+                boulders_coords(0, 3) = -omega*boulders_coords(0, 2)
+                boulders_coords(0, 4) = omega*boulders_coords(0, 1)
+
+                cth = cos(theta + boulders_data(1, 3))
+                sth = sin(theta + boulders_data(1, 3))
+                boulders_coords(1, 1) = Gmass_arr(0) * aux_real * cth
+                boulders_coords(1, 2) = Gmass_arr(0) * aux_real * sth
+                boulders_coords(1, 3) = -omega*boulders_coords(1, 2)
+                boulders_coords(1, 4) = omega*boulders_coords(1, 1)
+
+                do i = 0, sim%Nboulders
+                    boulders_coords(i, 1) = boulders_coords(i, 1) - coords_A(1)
+                    boulders_coords(i, 2) = boulders_coords(i, 2) - coords_A(2)
+                    boulders_coords(i, 3) = boulders_coords(i, 3) - coords_A(3)
+                    boulders_coords(i, 4) = boulders_coords(i, 4) - coords_A(4)
+                end do
+            else
+                do i = 0, sim%Nboulders
+                    aux_real = theta + boulders_data(i, 3)
+                    boulders_coords(i, 1) = boulders_data(i, 4)*cos(aux_real)
+                    boulders_coords(i, 2) = boulders_data(i, 4)*sin(aux_real)
+                    boulders_coords(i, 3) = -omega*boulders_coords(i, 2)
+                    boulders_coords(i, 4) = omega*boulders_coords(i, 1)
+                    boulders_coords(i, 1) = boulders_coords(i, 1) - coords_A(1)
+                    boulders_coords(i, 2) = boulders_coords(i, 2) - coords_A(2)
+                    boulders_coords(i, 3) = boulders_coords(i, 3) - coords_A(3)
+                    boulders_coords(i, 4) = boulders_coords(i, 4) - coords_A(4)
+                    Gmass_arr(i) = boulders_data(i, 1)
+                end do
+            end if
+
+            Gmass_arr = G * Gmass_arr
+
         end if
 
         if (sim%max_distance <= cero) then
@@ -288,7 +326,8 @@ contains
             if (.not. use_ellipsoid) then
 
                 ! Boulder 0 first
-                Gmi = G*boulders_data(0, 1)
+                Gmi = Gmass_arr(0)
+                ! Gmi = G*boulders_data(0, 1)
                 dr_vec(1) = coords_M(1) - boulders_coords(0, 1)
                 dr_vec(2) = coords_M(2) - boulders_coords(0, 2)
 
@@ -320,7 +359,8 @@ contains
                 ! ── Remaining boulders (serial outer i, parallel inner j) ─────
                 do i = 1, sim%Nboulders
 
-                    Gmi = G*boulders_data(i, 1)                    
+                    Gmi = Gmass_arr(i)
+                    ! Gmi = G*boulders_data(i, 1)
                     dr_vec(1) = coords_M(1) - boulders_coords(i, 1)
                     dr_vec(2) = coords_M(2) - boulders_coords(i, 2)
 
@@ -368,7 +408,7 @@ contains
         !$OMP         vel_circ, vel_radial,         &
         !$OMP         acc_radial_drag,              &
         !$OMP         v2, two_ener, mean_movement)  &
-        !$OMP SCHEDULE(DYNAMIC, 256)
+        !$OMP SCHEDULE(STATIC)
         do j = first_particle, N_total
             jdx = get_index(j)
             coords_P(1) = y(jdx)
@@ -503,7 +543,8 @@ contains
             if (.not. use_ellipsoid) then
 
                 ! Boulder 0 first
-                Gmi = G*boulders_data(0, 1)                
+                Gmi = Gmass_arr(0)
+                ! Gmi = G*boulders_data(0, 1)
                 dr_vec(1) = coords_P(1) - boulders_coords(0, 1)
                 dr_vec(2) = coords_P(2) - boulders_coords(0, 2)
 
@@ -537,7 +578,8 @@ contains
 
                 ! ── Remaining boulders (serial outer i, parallel inner j) ─────
                 do i = 1, sim%Nboulders
-                    Gmi = G*boulders_data(i, 1)
+                    Gmi = Gmass_arr(i)
+                    ! Gmi = G*boulders_data(i, 1)
                     dr_vec(1) = coords_P(1) - boulders_coords(i, 1)
                     dr_vec(2) = coords_P(2) - boulders_coords(i, 2)
 
@@ -720,7 +762,7 @@ contains
         !$OMP         vel_circ, vel_radial,          &
         !$OMP         acc_radial_drag,               &
         !$OMP         v2, two_ener, mean_movement)   &
-        !$OMP SCHEDULE(DYNAMIC, 256)
+        !$OMP SCHEDULE(STATIC)
         do j = first_particle, N_total
             jdx = get_index(j)
             coords_P = y(jdx:jdx + 3)

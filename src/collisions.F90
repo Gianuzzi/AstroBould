@@ -11,16 +11,6 @@ module collisions
             & collisions_brute, collisions_grid, collisions_verlet, &
             & verlet_rebuilds, verlet_caches, list_collided
 
-    abstract interface
-        subroutine get_xy_rotated_tem(xy, r, dt, mu, omega)
-            import :: wp
-            implicit none
-            real(wp), dimension(2), intent(inout) :: xy
-            real(wp), intent(in) :: r, dt, mu, omega
-        end subroutine get_xy_rotated_tem
-    end interface
-
-    procedure(get_xy_rotated_tem), pointer :: get_xy_rotated => null()
 
     integer(kind=4), save :: vlist_n
     real(wp), save :: vrcut
@@ -47,11 +37,8 @@ contains
         allocate(list_collided(N_total))
         list_collided = .False.
 
-        if (sinodic) then
-            get_xy_rotated => get_xy_rotated_sinodic
-        else
-            get_xy_rotated => get_xy_rotated_inertial
-        end if
+        ! TBD
+        ! If sinodic, set get_xy_rotated to a function that rotates by the synodic frequency 
 
     end subroutine init_collisions
 
@@ -501,7 +488,7 @@ contains
         integer(kind=4) :: i, j, k, idx
         real(wp) :: r_skin2, dx, dy, drift2, dt, drift_max
         real(wp), dimension(2) :: xyr
-        real(wp) :: sq_GM
+        real(wp) :: dphi, cos_dphi, sin_dphi
         
         drift_max = cero
 
@@ -515,20 +502,27 @@ contains
         else
             r_skin2 = (vrcut * sim%verlet_skin_factor * uno2)**2
             dt = time - vlist_time
-            sq_GM = sqrt(G * m_arr(1))
+            dphi = vlist_mean_n_kep * dt
+            cos_dphi = cos(dphi)
+            sin_dphi = sin(dphi)
 
             do i = first_index, last_index
                 idx = get_index(i)
-                xyr = vlist_pos(:, i)
-                call get_xy_rotated(xyr, vlist_r(i), dt, sq_GM, vlist_mean_n_kep)
+                ! xyr = vlist_pos(:, i)
+                xyr(1) = vlist_pos(1, i) * cos_dphi - vlist_pos(2, i) * sin_dphi
+                xyr(2) = vlist_pos(1, i) * sin_dphi + vlist_pos(2, i) * cos_dphi
+
                 dx = y(idx)   - xyr(1)
                 dy = y(idx+1) - xyr(2)
+
                 drift2 = dx*dx + dy*dy
                 if (drift2 > r_skin2) then
                     call build_verlet_list(time, y, first_index, last_index, are_moons)
                     exit
                 end if
+
                 drift_max = max(drift_max, drift2)
+
             end do
 
         end if
@@ -551,26 +545,5 @@ contains
         verlet_caches = verlet_caches + 1_int64
 
     end subroutine collisions_verlet
-
-
-    pure subroutine get_xy_rotated_inertial(xy, r, dt, sq_GM, dummy)
-        implicit none
-        real(wp), dimension(2), intent(inout) :: xy
-        real(wp),               intent(in) :: r, dt, sq_GM, dummy
-        real(wp) :: n, dphi
-        n = sq_GM / r**(1.5_wp)
-        dphi = n * dt
-        xy = rotate2D(xy, dphi)
-    end subroutine get_xy_rotated_inertial
-
-    pure subroutine get_xy_rotated_sinodic(xy, r, dt, sq_GM, omega)
-        implicit none
-        real(wp), dimension(2), intent(inout) :: xy
-        real(wp),               intent(in) :: r, dt, sq_GM, omega
-        real(wp) :: n, dphi
-        n = sq_GM / r**(1.5_wp)
-        dphi = (n - omega) * dt
-        xy = rotate2D(xy, dphi)
-    end subroutine get_xy_rotated_sinodic
 
 end module collisions
