@@ -148,7 +148,7 @@ contains
             c2th = cos(dos*theta)
             s2th = sin(dos*theta)
         else
-            t_cut = sim%growth_timescale  ! arbitrary time scale for boulder mass distribution (must be >> orbital period)
+            t_cut = sim%tau_boulders  ! arbitrary time scale for boulder mass distribution (must be >> orbital period)
 
             if (t < t_cut) then  ! Now, only for m0 and 1 boulder
 

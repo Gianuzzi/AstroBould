@@ -157,7 +157,7 @@ program main
         ! Additional forces
 
         !! Manual boulder linear growth
-        sim%growth_timescale = cero ! Timescale for linear growth of boulders mass (if zero, no growth) [day]
+        sim%tau_boulders = cero ! Timescale for linear growth of boulders mass (if zero, no growth) [day]
 
         !! Manual J2 (for primary or asteroid)
         input%use_manual_J2 = .False.
@@ -559,7 +559,7 @@ program main
                             & sim%eta_col_moon, sim%f_col_moon, &
                             & sim%eta_col_part, sim%f_col_part, &
                             & sim%radius_particles*unit_dist, &
-                            & sim%growth_timescale*unit_time, &
+                            & sim%tau_boulders*unit_time, &
                             & sim%manual_J2, sim%use_J2_from_primary)  ! Extra parameters
 
     ! <<<< Fill auxiliar arrays >>>>
@@ -837,13 +837,13 @@ program main
     end if
 
     !! <<<< Linear mass growth >>>>
-    if (abs(sim%growth_timescale) > myepsilon) then
-        sim%growth_timescale = system%asteroid%t_growth
+    if (abs(sim%tau_boulders) > myepsilon) then
+        sim%tau_boulders = system%asteroid%tau_boulders
         call recalculate_all(system, .True.)
         if (sim%use_screen) then
             write (*, *) "Linear boulder mass growth activated."
-            write (*, s1r1) "  t_growth: ", sim%growth_timescale, "[days] = ", &
-                                & sim%growth_timescale/(system%asteroid%rotational_period/unit_time), "[Prot]"
+            write (*, s1r1) "  tau boulders: ", sim%tau_boulders, "[days] = ", &
+                                & sim%tau_boulders/(system%asteroid%rotational_period/unit_time), "[Prot]"
             write (*, *) ACHAR(5)
         end if
         any_extra_effect = .True.

@@ -74,7 +74,7 @@ module parameters
         logical :: use_particlesfile = .False.
         character(30) :: particlesfile = ""
         ! Extra forces/effects -
-        real(wp) :: growth_timescale = cero
+        real(wp) :: tau_boulders = cero
         logical :: use_moon_gravity = .True.
         logical :: use_manual_J2 = .False.
         real(wp) :: manual_J2 = cero
@@ -936,6 +936,8 @@ contains
                         params%use_particlesfile = .False.
                         params%particlesfile = ""
                     end if
+                case ("boulders growth")
+                    read (value_str, *, iostat=ios) params%tau_boulders
                 case ("deactivate grav")
                     if (((auxch1 == "y") .or. (auxch1 == "s"))) then
                         params%use_moon_gravity = .False.
@@ -1980,7 +1982,7 @@ contains
 
         ! If no boudlers, no growth
         if (.not. derived%use_boulders) then
-            derived%growth_timescale = cero
+            derived%tau_boulders = cero
         end if
 
         !===========================================================

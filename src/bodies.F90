@@ -76,7 +76,7 @@ module bodies
         real(wp) :: e_rot = cero ! Rotational energy [dynamic]
         real(wp) :: e_kin = cero ! Kinetic energy [dynamic]
         type(chaos_st) :: chaos
-        real(wp) :: t_growth = cero ! Timescale for boulders linear mass growth
+        real(wp) :: tau_boulders = cero ! Timescale for boulders linear mass growth
     end type asteroid_st
 
     type :: particle_st
@@ -811,9 +811,9 @@ contains
         real(wp) :: R0
         integer :: i
 
-        if (self%asteroid%t_growth <= cero) return  ! No growth
+        if (self%asteroid%tau_boulders <= cero) return  ! No growth
 
-        growth = min(uno, max(cero, self%time/self%asteroid%t_growth))
+        growth = min(uno, max(cero, self%time/self%asteroid%tau_boulders))
 
         !------------------------------------------
         ! Update masses
@@ -1167,7 +1167,7 @@ contains
     end subroutine update_geometric
 
     ! (Re)calculate all system main parameters
-    subroutine recalculate_all(self, re_mass)
+    pure subroutine recalculate_all(self, re_mass)
         implicit none
         type(system_st), intent(inout) :: self
         logical, intent(in), optional :: re_mass
@@ -1183,16 +1183,7 @@ contains
         end if
 
         ! Recalculate mass if needed
-        if (recalculate_mass) then
-            call update_masses(self)
-            print*, "Masses updated according to growth timescale."
-            print*, "Asteroid mass:", self%asteroid%mass
-            print*, "Primary mass:", self%asteroid%primary%mass
-            print*, "Boulder_z mass:", self%asteroid%boulder_z%mass
-            do i = 1, self%asteroid%Nboulders
-                print*, "Boulder ", i, " mass:", self%asteroid%boulders(i)%mass
-            end do
-        end if
+        if (recalculate_mass) call update_masses(self)
 
         ! Get mass and then CM too
         call get_cm(self, total_mass, rvcm)
@@ -1301,14 +1292,14 @@ contains
     pure subroutine set_system_extra(self, time, &
                     & eta_col_moon, f_col_moon, eta_col_part, f_col_part, &
                     & radius_particles, &
-                    & time_growth, &
+                    & growth_timescale, &
                     & manual_J2, J2_from_primary)
         implicit none
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: time
         real(wp), intent(in) :: eta_col_moon, f_col_moon, eta_col_part, f_col_part
         real(wp), intent(in) :: radius_particles
-        real(wp), intent(in) :: time_growth
+        real(wp), intent(in) :: growth_timescale
         real(wp), intent(in) :: manual_J2
         logical, intent(in) :: J2_from_primary
 
@@ -1326,10 +1317,10 @@ contains
         self%particles_radius = radius_particles
 
         ! Set time growth for boulders
-        if (time_growth > myepsilon) then
-            self%asteroid%t_growth = time_growth
-        else if (time_growth < -myepsilon) then
-            self%asteroid%t_growth = abs(time_growth) * self%asteroid%rotational_period
+        if (growth_timescale > myepsilon) then
+            self%asteroid%tau_boulders = growth_timescale
+        else if (growth_timescale < -myepsilon) then
+            self%asteroid%tau_boulders = abs(growth_timescale) * self%asteroid%rotational_period
         end if
 
         ! Set J2. If manual_J2 is given and primary is a sphere, set C20 = -J2 in the primary or asteroid
