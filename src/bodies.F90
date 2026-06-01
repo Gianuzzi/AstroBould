@@ -249,7 +249,7 @@ contains
 
         self%primary%C20 = (dos*semi_c_primary**2 - semi_a_primary**2 - semi_b_primary**2) &
                             & /(10.e0_wp*radius_primary**2)
-        self%primary%C22 = (semi_a_primary**2 - semi_b_primary**2)/(20.e0_wp*radius_primary**2)
+        self%primary%C22 = (semi_a_primary**2 - semi_b_primary**2) / (20.e0_wp*radius_primary**2)
 
     end subroutine add_primary
 

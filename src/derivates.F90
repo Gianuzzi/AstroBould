@@ -147,6 +147,7 @@ contains
             sth = sin(theta)
             c2th = cos(dos*theta)
             s2th = sin(dos*theta)
+            inertia = asteroid_data(3)
         else
             t_cut = sim%tau_boulders  ! arbitrary time scale for boulder mass distribution (must be >> orbital period)
 
