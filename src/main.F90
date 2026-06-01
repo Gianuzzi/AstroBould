@@ -156,6 +156,9 @@ program main
 
         ! Additional forces
 
+        !! Manual boulder linear growth
+        sim%growth_timescale = cero ! Timescale for linear growth of boulders mass (if zero, no growth) [day]
+
         !! Manual J2 (for primary or asteroid)
         input%use_manual_J2 = .False.
         input%manual_J2 = cero
@@ -556,10 +559,8 @@ program main
                             & sim%eta_col_moon, sim%f_col_moon, &
                             & sim%eta_col_part, sim%f_col_part, &
                             & sim%radius_particles*unit_dist, &
+                            & sim%growth_timescale*unit_time, &
                             & sim%manual_J2, sim%use_J2_from_primary)  ! Extra parameters
-
-    ! <<<< Save initial data >>>>
-    initial_system = system
 
     ! <<<< Fill auxiliar arrays >>>>
     allocate (boulders_data(0:sim%Nboulders, 4))   ! To use in dydt
@@ -587,6 +588,10 @@ program main
         boulders_data(i, 3) = system%asteroid%boulders(i)%initial_theta
         boulders_data(i, 4) = system%asteroid%boulders(i)%dist_to_asteroid
     end do
+
+
+    ! <<<< Save initial data >>>>
+    initial_system = system
 
     !! <<<< Messages >>>>
 
@@ -826,6 +831,19 @@ program main
             write (*, *) "Drag"
             write (*, s1r1) "  eta   : ", sim%drag_coefficient
             write (*, s1r1) "  t_drag: ", sim%drag_active_time, "[days]"
+            write (*, *) ACHAR(5)
+        end if
+        any_extra_effect = .True.
+    end if
+
+    !! <<<< Linear mass growth >>>>
+    if (abs(sim%growth_timescale) > myepsilon) then
+        sim%growth_timescale = system%asteroid%t_growth
+        call recalculate_all(system, .True.)
+        if (sim%use_screen) then
+            write (*, *) "Linear boulder mass growth activated."
+            write (*, s1r1) "  t_growth: ", sim%growth_timescale, "[days] = ", &
+                                & sim%growth_timescale/(system%asteroid%rotational_period/unit_time), "[Prot]"
             write (*, *) ACHAR(5)
         end if
         any_extra_effect = .True.
@@ -2911,7 +2929,7 @@ program main
                 end do loop_surface
 
             else
-                print*, "Integrating..."
+                ! print*, "Integrating..."
 
                 if (sim%use_substeps_col) then
                     ! INTEGRATE
@@ -2926,7 +2944,7 @@ program main
 
                 end if
 
-                print*, "Integrated."
+                ! print*, "Integrated."
 
                 ! Check if it might be hard_exit
                 if (hard_exit) then
@@ -2999,11 +3017,13 @@ program main
             ! Update j; only if not premature
             if (.not. is_premature_exit) j = j + 1
 
-            print*, ""
-            print*, "Pairs collisions: ", count(list_collided)
-            print*, "Verlet rebuilds: ", verlet_rebuilds, " Verlet caches: ", verlet_caches
-            print*, "Ratio: ", real(verlet_caches-verlet_rebuilds)/real(verlet_caches)
-            print*, "Time: ", time/unit_time, " days"
+            if (verlet_caches > 0) then
+                print*, ""
+                print*, "Pairs collisions: ", count(list_collided)
+                print*, "Verlet rebuilds: ", verlet_rebuilds, " Verlet caches: ", verlet_caches
+                print*, "Ratio: ", real(verlet_caches-verlet_rebuilds)/real(verlet_caches)
+                print*, "Time: ", time/unit_time, " days"
+            end if
 
         end do main_loop_normal
 

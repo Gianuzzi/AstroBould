@@ -6,7 +6,7 @@ module bodies
     use auxiliary, only: quickargsort, quickargsort_int, rotate2D
 
     implicit none
-    logical, parameter :: use_binary_output = .True.  ! Whether to use binary output or not (for debugging mostly)
+    logical, parameter :: use_binary_output = .False.  ! Whether to use binary output or not (for debugging mostly)
 
     type :: chaos_st
         real(wp), dimension(2) :: a = (/infinito, cero/) ! (a_min, a_max)
@@ -21,7 +21,7 @@ module bodies
     type :: sphere_st
         integer(kind=4) :: id = -1  ! Identifier
         real(wp) :: mu_to_primary = cero ! Mass ratio to primary body [config]
-        real(wp) :: mu_to_asteroid = cero ! Mass ratio to asteroid
+        real(wp) :: mu_to_asteroid = cero ! Mass ratio to asteroid [MAINLY INTERNAL, CONSTANT FROM INIT]
         real(wp) :: mass = cero  ! Mass
         real(wp) :: radius = cero  ! Radius  [config]
         real(wp) :: initial_theta ! Initial angle from X (asteroid CM)
@@ -76,6 +76,7 @@ module bodies
         real(wp) :: e_rot = cero ! Rotational energy [dynamic]
         real(wp) :: e_kin = cero ! Kinetic energy [dynamic]
         type(chaos_st) :: chaos
+        real(wp) :: t_growth = cero ! Timescale for boulders linear mass growth
     end type asteroid_st
 
     type :: particle_st
@@ -504,6 +505,7 @@ contains
         ! Set Inertia
         !! Iz of Ellipsoid, or sphere if equal
         self%inertia = 0.2e0_wp*self%primary%mass*(self%primary%semi_axis(1)**2 + self%primary%semi_axis(2)**2)
+        self%inertia = self%inertia + self%primary%mass*(self%primary%dist_to_asteroid**2)  ! Steiner of primary
         do i = 1, self%Nboulders
             !! Inertia Sphere boulder
             aux_real = 0.4e0_wp*self%boulders(i)%mass*self%boulders(i)%radius**2
@@ -777,13 +779,21 @@ contains
         ! Get cm
         call get_cm(self, mcm, rv_cm)
 
-        ! Shif asteroid
-        call shift_asteroid(self%asteroid, self%asteroid%coordinates - rv_cm)
+        ! If no moons, set asteroid at origin manually
+        if (self%Nmoons_active == 0) then
+            call shift_asteroid(self%asteroid, (/cero, cero, cero, cero/))
+        
+        else
 
-        ! Shift moons
-        do i = 1, self%Nmoons_active
-            call shift_single_moon(self%moons(i), self%moons(i)%coordinates - rv_cm)
-        end do
+            ! Shif asteroid
+            call shift_asteroid(self%asteroid, self%asteroid%coordinates - rv_cm)
+
+            ! Shift moons
+            do i = 1, self%Nmoons_active
+                call shift_single_moon(self%moons(i), self%moons(i)%coordinates - rv_cm)
+            end do
+        
+        end if
 
         ! Shift particles
         do i = 1, self%Nparticles_active
@@ -791,6 +801,83 @@ contains
         end do
 
     end subroutine center_sytem
+
+    ! Modify boulders mass according to timescale
+    pure subroutine update_masses(self)
+        class(system_st), intent(inout) :: self
+        real(wp) :: growth
+        real(wp) :: cm_x, cm_y, cm_vx, cm_vy
+        real(wp) :: xrel, yrel, vxrel, vyrel
+        real(wp) :: R0
+        integer :: i
+
+        if (self%asteroid%t_growth <= cero) return  ! No growth
+
+        growth = min(uno, max(cero, self%time/self%asteroid%t_growth))
+
+        !------------------------------------------
+        ! Update masses
+        !------------------------------------------
+        do i = 1, self%asteroid%Nboulders
+            self%asteroid%boulders(i)%mass = growth * self%asteroid%boulders(i)%mu_to_asteroid * self%mass
+        end do
+
+        self%asteroid%primary%mass = self%mass - self%asteroid%boulder_z%mass - sum(self%asteroid%boulders(:)%mass)
+
+        !------------------------------------------
+        ! Instantaneous COM wrt primary centre
+        !------------------------------------------
+        R0 = self%asteroid%primary%radius
+        cm_x = cero
+        cm_y = cero
+        cm_vx = cero
+        cm_vy = cero
+
+        do i = 1, self%asteroid%Nboulders
+            xrel = R0 * cos(self%asteroid%boulders(i)%theta_from_primary)
+            yrel = R0 * sin(self%asteroid%boulders(i)%theta_from_primary)
+            vxrel = -self%asteroid%omega * yrel
+            vyrel = self%asteroid%omega * xrel
+
+            cm_x = cm_x + self%asteroid%boulders(i)%mass*xrel
+            cm_y = cm_y + self%asteroid%boulders(i)%mass*yrel
+            cm_vx = cm_vx + self%asteroid%boulders(i)%mass*vxrel
+            cm_vy = cm_vy + self%asteroid%boulders(i)%mass*vyrel
+        end do
+
+        cm_x = cm_x/self%mass
+        cm_y = cm_y/self%mass
+        cm_vx = cm_vx/self%mass
+        cm_vy = cm_vy/self%mass
+
+
+        !------------------------------------------
+        ! Distances and positions to asteroid COM
+        !------------------------------------------
+        ! Primary
+        self%asteroid%primary%coordinates_CM(1) = -cm_x
+        self%asteroid%primary%coordinates_CM(2) = -cm_y
+        self%asteroid%primary%coordinates_CM(3) = -cm_vx
+        self%asteroid%primary%coordinates_CM(4) = -cm_vy
+        self%asteroid%primary%dist_to_asteroid = sqrt(cm_x*cm_x + cm_y*cm_y)
+
+        ! Boulder z
+        self%asteroid%boulder_z%dist_to_asteroid = sqrt(R0**2 - self%asteroid%primary%dist_to_asteroid**2)
+
+        ! Boulders
+        do i = 1, self%asteroid%Nboulders
+            xrel = R0 * cos(self%asteroid%boulders(i)%theta_from_primary) -  cm_x
+            yrel = R0 * sin(self%asteroid%boulders(i)%theta_from_primary) -  cm_y
+            vxrel = -self%asteroid%omega * (R0 * sin(self%asteroid%boulders(i)%theta_from_primary)) -  cm_vx
+            vyrel = self%asteroid%omega * (R0 * cos(self%asteroid%boulders(i)%theta_from_primary)) -  cm_vy
+
+            self%asteroid%boulders(i)%coordinates_CM(1) = xrel
+            self%asteroid%boulders(i)%coordinates_CM(2) = yrel
+            self%asteroid%boulders(i)%coordinates_CM(3) = vxrel
+            self%asteroid%boulders(i)%coordinates_CM(4) = vyrel
+            self%asteroid%boulders(i)%dist_to_asteroid = sqrt(xrel*xrel + yrel*yrel)
+        end do
+    end subroutine update_masses
 
     !  ---------------------   GET PARAMETERS    --------------------------
 
@@ -1080,12 +1167,32 @@ contains
     end subroutine update_geometric
 
     ! (Re)calculate all system main parameters
-    pure subroutine recalculate_all(self)
+    subroutine recalculate_all(self, re_mass)
         implicit none
         type(system_st), intent(inout) :: self
+        logical, intent(in), optional :: re_mass
         real(wp) :: total_mass, energy, ang_mom, inertia
         real(wp) :: rvcm(4)
+        logical :: recalculate_mass
         integer(kind=4) :: i
+
+        if (present(re_mass)) then
+            recalculate_mass = re_mass
+        else 
+            recalculate_mass = .False.
+        end if
+
+        ! Recalculate mass if needed
+        if (recalculate_mass) then
+            call update_masses(self)
+            print*, "Masses updated according to growth timescale."
+            print*, "Asteroid mass:", self%asteroid%mass
+            print*, "Primary mass:", self%asteroid%primary%mass
+            print*, "Boulder_z mass:", self%asteroid%boulder_z%mass
+            do i = 1, self%asteroid%Nboulders
+                print*, "Boulder ", i, " mass:", self%asteroid%boulders(i)%mass
+            end do
+        end if
 
         ! Get mass and then CM too
         call get_cm(self, total_mass, rvcm)
@@ -1194,12 +1301,14 @@ contains
     pure subroutine set_system_extra(self, time, &
                     & eta_col_moon, f_col_moon, eta_col_part, f_col_part, &
                     & radius_particles, &
+                    & time_growth, &
                     & manual_J2, J2_from_primary)
         implicit none
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: time
         real(wp), intent(in) :: eta_col_moon, f_col_moon, eta_col_part, f_col_part
         real(wp), intent(in) :: radius_particles
+        real(wp), intent(in) :: time_growth
         real(wp), intent(in) :: manual_J2
         logical, intent(in) :: J2_from_primary
 
@@ -1215,6 +1324,13 @@ contains
 
         ! Set Radius particles
         self%particles_radius = radius_particles
+
+        ! Set time growth for boulders
+        if (time_growth > myepsilon) then
+            self%asteroid%t_growth = time_growth
+        else if (time_growth < -myepsilon) then
+            self%asteroid%t_growth = abs(time_growth) * self%asteroid%rotational_period
+        end if
 
         ! Set J2. If manual_J2 is given and primary is a sphere, set C20 = -J2 in the primary or asteroid
         if ((abs(manual_J2) > cero) .and. self%asteroid%primary%is_sphere) then
@@ -1632,6 +1748,9 @@ contains
 
         ! Update TIME
         self%time = time
+
+        ! Update masses
+        call update_masses(self)
 
         ! Update Asteroid rotation
         call spin_asteroid(self%asteroid, array(1), array(2))

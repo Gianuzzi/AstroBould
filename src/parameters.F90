@@ -74,6 +74,7 @@ module parameters
         logical :: use_particlesfile = .False.
         character(30) :: particlesfile = ""
         ! Extra forces/effects -
+        real(wp) :: growth_timescale = cero
         logical :: use_moon_gravity = .True.
         logical :: use_manual_J2 = .False.
         real(wp) :: manual_J2 = cero
@@ -1976,6 +1977,11 @@ contains
 
         derived%use_moons   = derived%Nmoons     > 0
         derived%use_particles = derived%Nparticles > 0
+
+        ! If no boudlers, no growth
+        if (.not. derived%use_boulders) then
+            derived%growth_timescale = cero
+        end if
 
         !===========================================================
         ! Disable impossible features

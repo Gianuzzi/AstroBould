@@ -113,6 +113,10 @@ contains
         real(wp) :: damp_f, drag_f, stokes_f
         real(wp) :: rcoll, rescape
 
+        !  ── For mass growth ──────────
+        real(wp) :: t_cut, growth, m_boul_tot, com_x, com_y, rel_x, rel_y
+        real(wp) :: inertia
+
         ! ── Per-iteration locals (PRIVATE in parallel regions) ──────
         real(wp) :: coords_M(4), coords_P(4), coords_V(2)
         real(wp) :: dr_vec(2), dr, dr2
@@ -126,7 +130,7 @@ contains
         real(wp) :: v2, two_ener, mean_movement
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z
         real(wp) :: aux_real, aux_real2(2)
-        real(wp) :: Gmass_arr(0:sim%Nboulders), t_cut
+        real(wp) :: Gmass_arr(0:sim%Nboulders)
         integer(kind=4) :: i, idx, j, jdx, vdx, last_moon
 
         last_moon = first_particle - 1
@@ -144,52 +148,100 @@ contains
             c2th = cos(dos*theta)
             s2th = sin(dos*theta)
         else
-            t_cut = twopi / omega * 50.0_wp  ! arbitrary time scale for boulder mass distribution (must be >> orbital period)
+            t_cut = sim%growth_timescale  ! arbitrary time scale for boulder mass distribution (must be >> orbital period)
 
             if (t < t_cut) then  ! Now, only for m0 and 1 boulder
 
-                Gmass_arr(0) = (boulders_data(0, 1) - m_arr(1)) / t_cut * t + m_arr(1)  ! linear growth from mAst to mAst + mBoul
+                growth = t/t_cut
+
+                !--------------------------------------------------
+                ! Time-dependent masses
+                !--------------------------------------------------
+                m_boul_tot = cero
 
                 do i = 1, sim%Nboulders
-                    Gmass_arr(i) = boulders_data(i, 1) / t_cut * t  ! linear growth from 0 to full mass
+                    Gmass_arr(i) = growth * boulders_data(i,1)
+                    m_boul_tot = m_boul_tot + Gmass_arr(i)
                 end do
 
-                aux_real = boulders_data(0, 2)/m_arr(1)
-                !! Boulder data has: !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
-                cth = cos(theta + boulders_data(0, 3))
-                sth = sin(theta + boulders_data(0, 3))
-                boulders_coords(0, 1) = Gmass_arr(1) * aux_real * cth
-                boulders_coords(0, 2) = Gmass_arr(1) * aux_real * sth
-                boulders_coords(0, 3) = -omega*boulders_coords(0, 2)
-                boulders_coords(0, 4) = omega*boulders_coords(0, 1)
+                ! m0 shrinks while total mass remains constant
+                Gmass_arr(0) = m_arr(1) - m_boul_tot
 
-                cth = cos(theta + boulders_data(1, 3))
-                sth = sin(theta + boulders_data(1, 3))
-                boulders_coords(1, 1) = Gmass_arr(0) * aux_real * cth
-                boulders_coords(1, 2) = Gmass_arr(0) * aux_real * sth
-                boulders_coords(1, 3) = -omega*boulders_coords(1, 2)
-                boulders_coords(1, 4) = omega*boulders_coords(1, 1)
+                !--------------------------------------------------
+                ! Relative boulder positions wrt m0
+                !--------------------------------------------------
+                com_x = cero
+                com_y = cero
 
-                do i = 0, sim%Nboulders
-                    boulders_coords(i, 1) = boulders_coords(i, 1) - coords_A(1)
-                    boulders_coords(i, 2) = boulders_coords(i, 2) - coords_A(2)
-                    boulders_coords(i, 3) = boulders_coords(i, 3) - coords_A(3)
-                    boulders_coords(i, 4) = boulders_coords(i, 4) - coords_A(4)
+                do i = 1, sim%Nboulders
+                    aux_real = theta + boulders_data(i,3)
+
+                    rel_x = boulders_data(0,2)*cos(aux_real)
+                    rel_y = boulders_data(0,2)*sin(aux_real)
+
+                    ! accumulate COM contribution
+                    com_x = com_x + Gmass_arr(i)*rel_x
+                    com_y = com_y + Gmass_arr(i)*rel_y
+
+                    ! temporarily store relative positions
+                    boulders_coords(i,1) = rel_x
+                    boulders_coords(i,2) = rel_y
                 end do
+
+                !--------------------------------------------------
+                ! Position of m0 from asteroid COM conservation
+                !--------------------------------------------------
+                boulders_coords(0,1) = -com_x/m_arr(1)
+                boulders_coords(0,2) = -com_y/m_arr(1)
+
+                !--------------------------------------------------
+                ! Absolute positions of boulders
+                !--------------------------------------------------
+                do i = 1, sim%Nboulders
+                    boulders_coords(i,1) = boulders_coords(0,1) + boulders_coords(i,1)
+                    boulders_coords(i,2) = boulders_coords(0,2) + boulders_coords(i,2)
+                end do
+
+                !--------------------------------------------------
+                ! Get inertia
+                !--------------------------------------------------
+                !! Iz of Ellipsoid, or sphere if equal
+                inertia = 0.4e0_wp * boulders_data(0,2)**2
+                inertia = Gmass_arr(0) * (inertia + (boulders_coords(0,1)**2 + boulders_coords(0,2)**2))  ! Steiner of m0
+                do i = 1, sim%Nboulders
+                    !! Inertia Sphere boulder
+                    aux_real = 0.4e0_wp * boulders_data(i,2)**2
+                    !! Sphere + Steiner
+                    inertia = inertia + Gmass_arr(i) * (aux_real + boulders_coords(i,1)**2 + boulders_coords(i,2)**2)
+                end do
+                inertia = inertia / G  ! Convert back to mass units for torque calculation
+                
+
             else
+
                 do i = 0, sim%Nboulders
                     aux_real = theta + boulders_data(i, 3)
-                    boulders_coords(i, 1) = boulders_data(i, 4)*cos(aux_real)
-                    boulders_coords(i, 2) = boulders_data(i, 4)*sin(aux_real)
-                    boulders_coords(i, 3) = -omega*boulders_coords(i, 2)
-                    boulders_coords(i, 4) = omega*boulders_coords(i, 1)
-                    boulders_coords(i, 1) = boulders_coords(i, 1) - coords_A(1)
-                    boulders_coords(i, 2) = boulders_coords(i, 2) - coords_A(2)
-                    boulders_coords(i, 3) = boulders_coords(i, 3) - coords_A(3)
-                    boulders_coords(i, 4) = boulders_coords(i, 4) - coords_A(4)
+                    boulders_coords(i, 1) = boulders_data(i, 4) * cos(aux_real)
+                    boulders_coords(i, 2) = boulders_data(i, 4) * sin(aux_real)
                     Gmass_arr(i) = boulders_data(i, 1)
+
                 end do
+
+                inertia = asteroid_data(3)
+
             end if
+
+            !--------------------------------------------------------------------
+            ! Get velocities and move to asteroid, to transform to inertial frame
+            !--------------------------------------------------------------------
+            do i = 0, sim%Nboulders
+                boulders_coords(i, 3) = -omega*boulders_coords(i, 2)
+                boulders_coords(i, 4) = omega*boulders_coords(i, 1)
+                boulders_coords(i, 1) = boulders_coords(i, 1) + coords_A(1)
+                boulders_coords(i, 2) = boulders_coords(i, 2) + coords_A(2)
+                boulders_coords(i, 3) = boulders_coords(i, 3) + coords_A(3)
+                boulders_coords(i, 4) = boulders_coords(i, 4) + coords_A(4)
+            end do
 
             Gmass_arr = G * Gmass_arr
 
@@ -612,7 +664,7 @@ contains
         !$OMP END PARALLEL DO
 
         ! ── Torque → asteroid spin (serial) ───────────────────────────
-        der(2) = der(2) + torque/asteroid_data(3)
+        der(2) = der(2) + torque / inertia
 
         ! =================================================================
         ! ── Mutual moon gravity  (serial: both i and j sides written) ────
