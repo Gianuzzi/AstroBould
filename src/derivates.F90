@@ -463,8 +463,7 @@ contains
         !$OMP         coords_P, dr_vec, dr, dr2,    &
         !$OMP         rcoll, inv_dr, inv_dr2,       &
         !$OMP         inv_dr3,                      &
-        !$OMP         acc_grav, Q_eff, dQdx, dQdy,  &
-        !$OMP         xy_rotated, coords_V,         &
+        !$OMP         acc_grav, Q_eff, coords_V,    &
         !$OMP         aux_inv_dr3_boulder_z,        &
         !$OMP         aux_J2K, aux_real, aux_real2, &
         !$OMP         dr_ver, dv_vec,               &
@@ -1248,6 +1247,7 @@ contains
         !$OMP END PARALLEL DO
 
         aux_real = glob_prod / glob_dist
+        vdx = get_variational_index(N_total, first_particle, N_total)
         der(vdx + 7) = aux_real
         der(vdx + 8) = aux_real * t / megno_factor
         if (t > cero) der(vdx + 9) = dos * y(vdx + 8) / t
