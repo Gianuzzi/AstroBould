@@ -885,7 +885,8 @@ contains
             else
                 
                 do i = 0, sim%Nboulders
-                    coords_B(i, 1:2) = boulders_coords(i, 1:2)
+                    coords_B(i, 1) = boulders_coords(i, 1) - coords_A(1)
+                    coords_B(i, 2) = boulders_coords(i, 2) - coords_A(2)
                     Gmass_arr(i) = boulders_data(i, 1)
                 end do
 
@@ -1029,12 +1030,12 @@ contains
             der(jdx + 3) = der(jdx + 3) + acc_grav(2)
 
             ! Coriolis and centrifugal
-            der(jdx + 2) = der(jdx + 2) + omega * (dos * coords_P(4) + omega * coords_P(1))
-            der(jdx + 3) = der(jdx + 3) - omega * (dos * coords_P(3) + omega * coords_P(2))
+            der(jdx + 2) = der(jdx + 2) + omega * (omega * coords_P(1) + dos * coords_P(4))
+            der(jdx + 3) = der(jdx + 3) + omega * (omega * coords_P(2) - dos * coords_P(3))
 
             if (sim%megno_active) then
-                der(vdx + 2) = der(vdx + 2) + omega*(dos*coords_V(4) + omega*coords_V(1))
-                der(vdx + 3) = der(vdx + 3) - omega*(dos*coords_V(3) + omega*coords_V(2))
+                der(vdx + 2) = der(vdx + 2) + omega * (omega*coords_V(1) + dos * coords_V(4))
+                der(vdx + 3) = der(vdx + 3) + omega * (omega*coords_V(2) - dos * coords_V(3))
             end if
 
             if (use_drag .or. use_stokes) then
