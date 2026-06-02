@@ -10,7 +10,7 @@ module integrators
     
     implicit none
     private
-    public :: init_integrator, free_integrator, integrate, integrate_substeps, check_integrator, fallback_integrator
+    public :: init_integrator, free_integrator, integrate, integrate_substeps
 
     ! Pointer to leapfrog used
     procedure(integrator_caller), pointer :: integrate => null()
@@ -127,7 +127,7 @@ contains
 
         else if (integrator == 0) then
             call init_BS(SIZEY0)
-            integrate => BStoer_caller
+            integrate => safe_BS_integrator
 
         else if (integrator >= 1) then
             call init_embedded(SIZEY0, integrator)
@@ -165,6 +165,26 @@ contains
         call init_integrator(which, SIZEY0, NDIM, EXTRA, DT_MIN, E_TOL, BETA, FIXED_DT)
 
     end subroutine fallback_integrator
+
+    subroutine safe_BS_integrator(t, y, dt_adap, dydt, dt, ynew, check_fun)
+        implicit none
+        real(wp), intent(in) :: t
+        real(wp), dimension(:), intent(in) :: y
+        real(wp), intent(inout) :: dt_adap  ! This is each sub-step
+        procedure(dydt_tem) :: dydt
+        real(wp), intent(in) :: dt ! This is full step
+        real(wp), dimension(size(y)), intent(out) :: ynew
+        procedure(function_check_keep_tem), optional :: check_fun
+        
+        call BStoer_caller(t, y, dt_adap, dydt, dt, ynew, check_fun)
+
+        if (reached_underflow) then
+            reached_underflow = .False. ! Reset the flag for future checks
+            call fallback_integrator()
+            dt_adap = DT_MIN ! Reset dt_adap to minimum for the new integrator
+            call integrate(t, y, dt_adap, dydt, dt, ynew, check_fun) ! Call the new integrator immediately
+        end if
+    end subroutine safe_BS_integrator
 
     subroutine check_integrator(aux_logical)
         implicit none

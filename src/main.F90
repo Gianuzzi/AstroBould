@@ -1,7 +1,7 @@
 program main
     use version_info, only: print_version
     use parameters
-    use integrators, only: integrate, integrate_substeps, init_integrator, free_integrator, check_integrator
+    use integrators, only: integrate, integrate_substeps, init_integrator, free_integrator
     use celestial, only: get_Period, coord2geom
     use bodies
     use times, only: set_output_times, expand_checkpoints, select_fraction_symmetric
@@ -2940,10 +2940,6 @@ program main
                 else
                     ! INTEGRATE
                     call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
-                    call check_integrator(aux_logical)
-                    if (aux_logical) then! REDO
-                        call integrate(time, y_arr(:y_nvalues), fixed_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
-                    end if
 
                 end if
 
