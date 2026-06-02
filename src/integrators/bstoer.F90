@@ -4,7 +4,7 @@ module bstoer
     
     implicit none
     private
-    public :: init_BS, free_BS, BStoer_caller
+    public :: init_BS, free_BS, BStoer_caller, reached_underflow
 
     ! Workspace arrays
     real(wp), allocatable :: ysav(:), yseq(:), yerr(:), yscal(:) ! bstep
@@ -20,6 +20,12 @@ module bstoer
     real(wp) :: xnew = -1e29_wp
     real(wp) :: epsold = -ONE
     logical :: first = .True.
+
+    ! Underflow tracking
+    logical, save :: reached_underflow = .False.
+    integer(kind=8), save :: underflows = 0
+    integer(kind=8), parameter :: MAX_UNDERFLOWS = 50000
+
 
 contains
 
@@ -126,10 +132,12 @@ contains
             do k = 1, kmax ! Evaluate the sequence of modiﬁed midpoint integrations.
                 xnew = x + h
                 if (abs(xnew - x) < SAFE_LOW) then !E_TOL?
-                    print *, "Step size underflow in bstep at ", x
+                    ! print *, "Step size underflow in bstep at ", x
+                    underflows = underflows + 1
+                    if (underflows >= MAX_UNDERFLOWS) then
+                        reached_underflow = .True.
+                    end if
                     exit main_loop ! Luckily, hard_exit will handle it
-                    ! stop 2
-                    ! return
                 end if
                 call mmid(sizey, ysav(:sizey), der(:sizey), x, h, nseq(k), yseq(:sizey), dydt)
                 xest = (h/real(nseq(k), kind=wp))**2 ! Squared, since error series is even.
@@ -303,6 +311,11 @@ contains
             dt_try = dt_adap
 
             call bstep(sizey, ynew, dydt, time, dt_try, dt_used, dt_adap)
+
+            if (reached_underflow) then
+                dt_adap = time - t ! Replace dt_adap with actual dt used
+                return
+            end if
 
             time = time + dt_used
 

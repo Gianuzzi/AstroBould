@@ -74,11 +74,13 @@ module shared
     real(wp), parameter :: SAFE_LOW = sqrt(tiny(1.0_wp))
 
     ! BASIC CONFIGURATION INPUT
+    integer(kind=4) :: SIZEY0 = 0 ! Initial size of y, used in init_integrator to allocate der
     integer(kind=4) :: NDIM = 1  ! Number of dimensions
     real(wp) :: E_TOL = 1.e-14_wp ! Error tolerance
     real(wp) :: BETA = 0.15e0_wp  ! Learning rate
     real(wp) :: DT_MIN = 1.e-6_wp  ! Minimum dt
     integer(kind=4) :: EXTRA = 0  ! Amount of extra variables (without der) that are not POS
+    logical :: FIXED_DT = .False.  ! Whether to use fixed dt or not
     !! derived
     integer(kind=4) :: NDIM2 = 2
     integer(kind=4) :: EXTRA2 = 0
