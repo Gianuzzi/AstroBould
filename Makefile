@@ -63,12 +63,12 @@ else
   # Release build
   MYCFLAGS = -O$(OPT)
   ifeq ($(INTEL),1)
-    MYFFLAGS = -funsafe-math-optimizations -funroll-loops \
+    MYFFLAGS = -funsafe-math-optimizations -funroll-loops -ipo \
                -qopt-report -fimf-domain-exclusion=15
   else ifeq ($(AMD),1)
     MYFFLAGS = -ffast-math -funroll-loops -fvectorize
   else
-    MYFFLAGS = -ffinite-math-only -funsafe-math-optimizations \
+    MYFFLAGS = -ffinite-math-only -funsafe-math-optimizations -finline-functions \
                -funroll-loops -ftree-vectorize -finit-real=zero
   endif
 endif
