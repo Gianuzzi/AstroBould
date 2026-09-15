@@ -290,11 +290,12 @@ module parameters
 
     ! ----  <<<<<    SURFACE SECTION     >>>>>   -----
     type(section_st) :: section
-    logical :: has_crossed_surface = .False.
+    logical, dimension(:), allocatable :: has_crossed_surface
     real(wp), dimension(:), allocatable :: y_cross    ! Coordinates array at the crossing time (interpolated with alpha)
     ! ==========    EXTRA SURFACE SECTION    ==========
     ! Uses tmp_adapt_timestep
-    logical :: had_crossed_surface = .False.
+    logical :: has_any_crossed_surface = .False.  ! Flag if any particle has crossed the surface
+    logical :: had_any_crossed_surface = .False.  ! Flag if any particle had crossed the surface in the previous step
     real(wp) :: surf_old_timestep  ! Previous timestep before crossing attempt
     real(wp) :: surf_min_timestep  ! Minimum timestep to consider surface crossing
     real(wp) :: surf_alpha  ! alpha for interpolation to find crossing time
@@ -2014,6 +2015,7 @@ contains
         if (allocated(y_pre_filter)) deallocate (y_pre_filter)
         if (allocated(elem_filtered)) deallocate (elem_filtered)
         if (allocated(tmp_y_arr)) deallocate (tmp_y_arr)
+        if (allocated(has_crossed_surface)) deallocate (has_crossed_surface)
         if (allocated(y_cross)) deallocate (y_cross)
     end subroutine free_parameters_arays
 

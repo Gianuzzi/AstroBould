@@ -22,11 +22,6 @@ module surface
         character(2) :: condition_name = "NO"
     end type section_st
 
-    integer(kind=4), parameter :: offset = 6
-    integer(kind=4), parameter :: idx_x = offset + 1
-    integer(kind=4), parameter :: idx_y = offset + 2
-    integer(kind=4), parameter :: idx_vx = offset + 3
-    integer(kind=4), parameter :: idx_vy = offset + 4
     character(len=2), dimension(6), parameter :: names = (/"x ", "y ", "vx", "vy", "r ", "vr"/) 
 
 contains
@@ -52,8 +47,8 @@ contains
         sec%surface_is_r = idx_surface == 5
         sec%surface_is_vr = idx_surface == 6
 
-        ! Add offset
-        sec%idx_surface = idx_surface + offset
+        ! Set index
+        sec%idx_surface = idx_surface
 
         ! Set with units
         if ((idx_surface == 1) .or. (idx_surface == 2) .or. (idx_surface == 5)) then
@@ -76,8 +71,8 @@ contains
                 sec%condition_is_r = idx_condition == 5
                 sec%condition_is_vr = idx_condition == 6
 
-                ! Add offset
-                sec%idx_condition = idx_condition + offset
+                ! Set condition index
+                sec%idx_condition = idx_condition
 
                 ! Set with units
                 if ((idx_condition == 1) .or. (idx_condition == 2) .or. (idx_condition == 5)) then
@@ -104,7 +99,7 @@ contains
         real(wp), intent(in) :: y(:)
         real(wp) :: r
 
-        r = sqrt(y(idx_x)**2 + y(idx_y)**2)
+        r = sqrt(y(1)**2 + y(2)**2)
 
     end function compute_r
 
@@ -119,7 +114,7 @@ contains
         if (r < myepsilon) then
             vr = cero
         else
-            vr = (y(idx_x)*y(idx_vx) + y(idx_y)*y(idx_vy)) / r
+            vr = (y(1)*y(3) + y(2)*y(4)) / r
         end if
 
     end function compute_vr
@@ -129,67 +124,83 @@ contains
         type(section_st), intent(in) :: sec
         real(wp), intent(in) :: y_old(:), y_new(:)
         real(wp), intent(inout) :: alpha, error
-        logical, intent(inout) :: has_crossed
+        logical, intent(inout) :: has_crossed(:)
         real(wp) :: val_old, val_new, f_old, f_new
         logical :: direction_ok, condition_ok
+        real(wp) :: y_old_this(4), y_new_this(4)
+        integer(kind=4) :: ntotal, idx
+        
+        ntotal = size(has_crossed)
 
         ! Default
-        alpha = uno2
+        alpha = infinito
         error = infinito
-        has_crossed = .False.
+        do idx = 1, ntotal
+            has_crossed(idx) = .False.
+        end do
 
         ! No surface
-        if (.not. sec%active) return        
+        if (.not. sec%active) return
 
-         ! ---- Surface evaluation ----
-        if (sec%surface_is_r) then
-            val_old = compute_r(y_old)
-            val_new = compute_r(y_new)
-        else if (sec%surface_is_vr) then
-            val_old = compute_vr(y_old)
-            val_new = compute_vr(y_new)
-        else
-            val_old = y_old(sec%idx_surface)
-            val_new = y_new(sec%idx_surface)
-        end if
+        ! Loop over all particles
+        do idx = 1, ntotal
 
-        ! Get values
-        f_old = val_old - sec%valor
-        f_new = val_new - sec%valor
+            y_old_this = y_old(4*idx + 3 : 4*idx + 6) ! [TODO : This is a bit ugly, but works]
+            y_new_this = y_new(4*idx + 3 : 4*idx + 6) ! [TODO : This is a bit ugly, but works]
 
-        ! Must change sign
-        if (f_old * f_new > cero) return
-
-        ! ---- Direction control ----
-        select case (sec%direction)
-            case (1)
-                direction_ok = (f_old <= cero) .and. (f_new > cero)
-            case (-1)
-                direction_ok = (f_old >= cero) .and. (f_new < cero)
-            case default
-                direction_ok = .True.
-        end select
-
-        if (.not. direction_ok) return
-
-        ! Optional extra condition (evaluated at new step)
-        if (sec%use_condition) then
-            if (sec%condition_is_r) then
-                condition_ok = compute_r(y_new) > sec%condition_min
-            else if (sec%condition_is_vr) then
-                condition_ok = compute_vr(y_new) > sec%condition_min
+            ! ---- Surface evaluation ----
+            if (sec%surface_is_r) then
+                val_old = compute_r(y_old_this)
+                val_new = compute_r(y_new_this)
+            else if (sec%surface_is_vr) then
+                val_old = compute_vr(y_old_this)
+                val_new = compute_vr(y_new_this)
             else
-                condition_ok = y_new(sec%idx_condition) > sec%condition_min
+                val_old = y_old_this(sec%idx_surface)
+                val_new = y_new_this(sec%idx_surface)
             end if
 
-            if (.not. condition_ok) return
-        end if
+            ! Get values
+            f_old = val_old - sec%valor
+            f_new = val_new - sec%valor
+
+            ! Must change sign
+            if (f_old * f_new > cero) cycle  ! This not crossing
+
+            ! ---- Direction control ----
+            select case (sec%direction)
+                case (1)
+                    direction_ok = (f_old <= cero) .and. (f_new > cero)
+                case (-1)
+                    direction_ok = (f_old >= cero) .and. (f_new < cero)
+                case default
+                    direction_ok = .True.
+            end select
+
+            if (.not. direction_ok) cycle  ! This not crossing in the right direction
+
+            ! Optional extra condition (evaluated at new step)
+            if (sec%use_condition) then
+                if (sec%condition_is_r) then
+                    condition_ok = compute_r(y_new_this) > sec%condition_min
+                else if (sec%condition_is_vr) then
+                    condition_ok = compute_vr(y_new_this) > sec%condition_min
+                else
+                    condition_ok = y_new_this(sec%idx_condition) > sec%condition_min
+                end if
+
+                if (.not. condition_ok) cycle  ! This not crossing because extra condition not satisfied
+            end if
 
 
-        ! Crossed!
-        has_crossed = .True.
-        alpha = abs(-f_old / (f_new - f_old))  ! abs just in case, but should be positive since they have different signs
-        error = min(abs(f_old), abs(f_new))  ! Estimate of the error in the crossing point (the smaller of the two values)
+            ! Crossed!
+            has_crossed(idx) = .True.
+            ! abs just in case, but should be positive since they have different signs
+            alpha = min(alpha, abs(-f_old / (f_new - f_old)))
+            ! Estimate of the error in the crossing point (the smaller of the two values) 
+            error = min(error, min(abs(f_old), abs(f_new)))  
+        
+        end do
 
     end subroutine crossed_section
 

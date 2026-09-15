@@ -1198,7 +1198,10 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! SURFACE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    if (sim%use_surface) allocate (y_cross(y_nvalues))  ! Array to store the crossing state (theta, omega, coord, secon_coord)
+    if (sim%use_surface) then
+        allocate (y_cross(y_nvalues))  ! Array to store the crossing state (theta, omega, coord, secon_coord)
+        allocate (has_crossed_surface(sim%Npart_active))  ! Array to store whether each particle has crossed the surface
+    end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! FILTER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2543,7 +2546,7 @@ program main
 
                 ! Restart dynamic variables
                 surf_counter = 0
-                had_crossed_surface = .False.
+                had_any_crossed_surface = .False.
                 surf_old_timestep = cero  ! Just to be sure, not really needed now
                 
                 loop_surface: do while (timestep > tini)
@@ -2574,10 +2577,13 @@ program main
                     end if
 
                     ! Check if crossed
-                    call crossed_section(section, y_arr, y_arr_new, surf_alpha, surf_error, has_crossed_surface)
+                    call crossed_section(section, y_arr, y_arr_new, surf_alpha, surf_error, has_crossed_surface(:sim%Nactive - 1))
+
+                    ! Check if crossed surface
+                    has_any_crossed_surface = any(has_crossed_surface(:sim%Nactive - 1))
 
                     ! Get alpha
-                    if (has_crossed_surface) then
+                    if (has_any_crossed_surface) then
                         surf_at_edge = surf_error < myepsilon
                     else
                         surf_at_edge = .False.
@@ -2590,10 +2596,10 @@ program main
                                          & .or. (surf_counter > surf_max_counter)
 
                     ! Two possibilities:
-                    if (has_crossed_surface .and. .not. surf_accepted_step) then  ! Crossed too large
+                    if (has_any_crossed_surface .and. .not. surf_accepted_step) then  ! Crossed too large
 
                         ! Update past
-                        had_crossed_surface = .True.
+                        had_any_crossed_surface = .True.
                         surf_old_timestep = timestep
 
                         ! Update timestep
@@ -2609,7 +2615,7 @@ program main
                     else ! Accepted step. Might have crossed, but we would be at y ~ surface
                         
                         ! Check if y = surface
-                        if (has_crossed_surface .and. surf_accepted_step) then  ! At y = surface
+                        if (has_any_crossed_surface .and. surf_accepted_step) then  ! At y = surface
 
                             ! Get crossing point, interpolated or not
                             if (sim%surface_use_interpolated) then
@@ -2621,36 +2627,48 @@ program main
                                 y_cross(:y_nvalues) = y_arr(:y_nvalues)  ! Non-interpolated previous crossing point
                             end if
 
-                            ! Get jacobi constant
-                            if (sim%use_sinodic) then
-                                jacobi_constant = get_jacobi_constant(&
-                                                & y_cross(7), y_cross(8), &
-                                                & y_cross(9), y_cross(10), &
-                                                & boulders_data(0:, 1), &
-                                                & boulders_coords(0:, :), &
-                                                & system%asteroid%omega)
-                            else
-                                ! Go to rotating frame to calculate jacobi
-                                jacobi_constant = get_jacobi_constant(&
-                                                & y_cross(7), y_cross(8), &
-                                                & y_cross(9) + y_cross(8) * system%asteroid%omega, &
-                                                & y_cross(10) - y_cross(7) * system%asteroid%omega, &
-                                                & boulders_data(0:, 1), &
-                                                & boulders_coords(0:, :), &
-                                                & system%asteroid%omega)
-                            end if
+                            ! Loop over all particles and check if any crossed
+                            do aux_int = 1, sim%Nactive - 1  ! Skip idx = 0, which is the asteroid
+                                
+                                if (.not. has_crossed_surface(aux_int)) cycle  ! Skip if not crossed
 
-                            ! Write surface crossing to file, with interpolated values
-                            write(u_surfacefile,'(8E23.15,1X)') time + surf_alpha * timestep, &
-                            & y_cross(1:2), &
-                            & y_cross(7:10), &
-                            & jacobi_constant
+                                ! Get particle idx [TODO : This is a bit ugly, but works]
+                                i = 4*aux_int + 3 
+
+                                ! Get jacobi constant
+                                if (sim%use_sinodic) then
+                                    jacobi_constant = get_jacobi_constant(&
+                                                    & y_cross(i), y_cross(i+1), &
+                                                    & y_cross(i+2), y_cross(i+3), &
+                                                    & boulders_data(0:, 1), &
+                                                    & boulders_coords(0:, :), &
+                                                    & system%asteroid%omega)
+                                else
+                                    ! Go to rotating frame to calculate jacobi
+                                    jacobi_constant = get_jacobi_constant(&
+                                                    & y_cross(i), y_cross(i+1), &
+                                                    & y_cross(i+2) + y_cross(i+1) * system%asteroid%omega, &
+                                                    & y_cross(i+3) - y_cross(i) * system%asteroid%omega, &
+                                                    & boulders_data(0:, 1), &
+                                                    & boulders_coords(0:, :), &
+                                                    & system%asteroid%omega)
+                                end if
+
+                                ! Write surface crossing to file, with interpolated values
+                                write(u_surfacefile, '(I8,1X,8(E23.15,1X))') &
+                                & aux_int, &
+                                & time + surf_alpha * timestep, &
+                                & y_cross(1:2), &
+                                & y_cross(i:i+3), &
+                                & jacobi_constant
+
+                            end do
 
                             ! Restart counter
                             surf_counter = 0
 
                             ! Restart past
-                            had_crossed_surface = .False.
+                            had_any_crossed_surface = .False.
                             surf_old_timestep = cero
 
                         end if
@@ -2660,10 +2678,10 @@ program main
                         time = time + timestep
 
                         ! Update timestep, according to the past
-                        if (had_crossed_surface .and. surf_old_timestep > timestep) then
+                        if (had_any_crossed_surface .and. surf_old_timestep > timestep) then
                             ! Try to keep the same timestep as before crossing, but not too large
                             timestep = min(surf_old_timestep - timestep, checkpoint_times(j) - time)
-                            had_crossed_surface = .False.                        
+                            had_any_crossed_surface = .False.                        
                         else
                             timestep = checkpoint_times(j) - time
                         end if
