@@ -226,7 +226,6 @@ contains
                     coords_B(i, 1) = boulders_data(i, 4) * cos(aux_real)
                     coords_B(i, 2) = boulders_data(i, 4) * sin(aux_real)
                     Gmass_arr(i) = boulders_data(i, 1)
-
                 end do
 
                 inertia = asteroid_data(3)
@@ -885,11 +884,10 @@ contains
             else
                 
                 do i = 0, sim%Nboulders
-                    coords_B(i, 1) = boulders_coords(i, 1) - coords_A(1)
-                    coords_B(i, 2) = boulders_coords(i, 2) - coords_A(2)
+                    coords_B(i, 1) = boulders_coords(i, 1)
+                    coords_B(i, 2) = boulders_coords(i, 2)
                     Gmass_arr(i) = boulders_data(i, 1)
                 end do
-
 
             end if
 
