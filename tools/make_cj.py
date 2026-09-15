@@ -15,11 +15,23 @@ lam = 21.5423471626332
 # Lambda keplerian
 wkep = 45.42973133885822
 
-# Radio mínimo
+# Radio (y mínimo)
 R = 115
 
-# A cuánto aspiro?
+# A qué valor de Constante de Jacobi aspiro?
 CJ_target = 2.032 * (wkep * R) ** 2
+
+# Método a utilizar para generar partículas (1: fixed CJ, 2: grid x-vx)
+method1 = False
+r_range = (R * 4.5, R * 5)  # Para el método 1
+x_range = (R * 2.7, R * 5.1)  # Para el método 2
+vx_range = (R * wkep * (-0.2), R * wkep * (0.2))  # Para el método 2
+
+# Nombre de archivo de salida
+outname = "particles_cj.dat"
+
+# Imprimir en pantalla el CJ de cada partícula generada
+verbose = True
 
 
 # ---------------------------------------------------------------
@@ -82,54 +94,57 @@ if __name__ == "__main__":
 
     # Genero partículas
 
-    ## Method 1
-    particles = cm.generate_particles_fixed_CJ(
-        N=100,
-        CJ=CJ_target,
-        masses=masses,
-        lam=lam,
-        r_range=(R * 4.5, R * 5),
-        phi_range=(0, 2 * np.pi),
-        z_range=(0, 0),
-        clockwise=True,
-        verbose=True,
-    )
-
-    ## Method 2
-    # particles = cm.generate_grid_x_vx(
-    #     CJ=CJ_target,
-    #     masses=masses,
-    #     lam=lam,
-    #     x_range=(R * 2.7, R * 5.1),
-    #     vx_range=(R * wkep * (-2), R * wkep * (2)),
-    #     Nx=20,
-    #     Nvx=20,
-    #     y0=0.0,
-    #     clockwise=True,
-    #     verbose=True,
-    # )
+    if method1:
+        ## Method 1
+        particles = cm.generate_particles_fixed_CJ(
+            N=100,
+            CJ=CJ_target,
+            masses=masses,
+            lam=lam,
+            r_range=r_range,
+            phi_range=(0, 2 * np.pi),
+            z_range=(0, 0),
+            clockwise=True,
+            verbose=True,
+        )
+    else:
+        # Method 2
+        particles = cm.generate_grid_x_vx(
+            CJ=CJ_target,
+            masses=masses,
+            lam=lam,
+            x_range=x_range,
+            vx_range=vx_range,
+            Nx=20,
+            Nvx=20,
+            y0=0.0,
+            clockwise=True,
+            verbose=True,
+        )
 
     # Write to file
-    write_elements_to_file("particles_cj.dat", particles, msum, coord=False)
+    write_elements_to_file(outname, particles, msum, coord=False)
 
-    # Report
-    for particle in particles:
-        x, y, z, vx, vy, vz = cm.rotating_to_inertial(*particle, lam)
-        print(
-            cm.jacobi_constant_inertial(
+    if verbose:
+        print(f"Particles written to {outname}")
+        # Report
+        for particle in particles:
+            x, y, z, vx, vy, vz = cm.rotating_to_inertial(*particle, lam)
+            print(
+                cm.jacobi_constant_inertial(
+                    x,
+                    y,
+                    z,
+                    vx,
+                    vy,
+                    vz,
+                    masses=masses,
+                    lam=lam,
+                ),
                 x,
                 y,
                 z,
                 vx,
                 vy,
                 vz,
-                masses=masses,
-                lam=lam,
-            ),
-            x,
-            y,
-            z,
-            vx,
-            vy,
-            vz,
-        )
+            )
