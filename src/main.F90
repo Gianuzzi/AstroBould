@@ -618,8 +618,12 @@ program main
 
     ! Moons positions
     if (sim%use_screen .and. sim%use_moons) then
-        write (*, *) "   Barycentric moons: [x, y, vx, vy, mass, distance, radius]"
-        do i = 1, sim%Nmoons
+        if (sim%Nmoon_active > 10) then
+            write (*, *) "  Barycentric moons: [x, y, vx, vy, mass, distance, radius] (Only first 10 shown)"
+        else
+            write (*, *) "  Barycentric moons: [x, y, vx, vy, mass, distance, radius]"
+        end if
+        do i = 1, min(sim%Nmoons, 10)
             write (*, i1r7) i, &
                 & system%moons(i)%coordinates(1:2)/unit_dist, &
                 & system%moons(i)%coordinates(3:4)/unit_vel, &
@@ -632,8 +636,12 @@ program main
 
     ! Particles positions
     if (sim%use_screen .and. sim%use_particles) then
-        write (*, *) "   Barycentric particles: [x, y, vx, vy, distance, radius]"
-        do i = 1, sim%Nparticles
+        if (sim%Npart_active > 10) then
+            write (*, *) "  Barycentric particles: [x, y, vx, vy, distance, radius] (Only first 10 shown)"
+        else
+            write (*, *) "  Barycentric particles: [x, y, vx, vy, distance, radius]"
+        end if
+        do i = 1, min(sim%Nparticles, 10)
             write (*, i1r7) i, &
                      & system%particles(i)%coordinates(1:2)/unit_dist, &
                      & system%particles(i)%coordinates(3:4)/unit_vel, &
@@ -954,6 +962,7 @@ program main
 
     ! Initial message
     if (sim%use_screen) then
+        write (*, *) ACHAR(5)
         write (*, *) "----- Integration reference frame ------"
         write (*, *) ACHAR(5)
         if (sim%use_sinodic) then
@@ -1444,10 +1453,19 @@ program main
     !! Archivo de salida general
     if (sim%use_datafile) then
         if (sim%int_elements_output == 2) then
-            open (unit=u_datafile, file="elem_"//trim(sim%datafile), status='replace', action='write')
-            open (unit=u_datafile+1, file="coor_"//trim(sim%datafile), status='replace', action='write')
+            if (use_binary_output) then
+                open (unit=u_datafile, file="elem_"//trim(sim%datafile), status='replace', access='stream', form='unformatted')
+                open (unit=u_datafile+1, file="coor_"//trim(sim%datafile), status='replace', access='stream', form='unformatted')
+            else
+                open (unit=u_datafile, file="elem_"//trim(sim%datafile), status='replace', action='write')
+                open (unit=u_datafile+1, file="coor_"//trim(sim%datafile), status='replace', action='write')
+            end if
         else
-            open (unit=u_datafile, file=trim(sim%datafile), status='replace', action='write')
+            if (use_binary_output) then
+                open (unit=u_datafile, file=trim(sim%datafile), status='replace', access='stream', form='unformatted')
+            else
+                open (unit=u_datafile, file=trim(sim%datafile), status='replace', action='write')
+            end if
         end if
     end if
 
@@ -1458,7 +1476,11 @@ program main
 
     !! Geometric file
     if (sim%use_geometricfile) then
-        open (unit=u_geometricfile, file=trim(sim%geometricfile), status='replace', action='write')
+        if (use_binary_output) then
+            open (unit=u_geometricfile, file=trim(sim%geometricfile), status='replace', access='stream', form='unformatted')
+        else
+            open (unit=u_geometricfile, file=trim(sim%geometricfile), status='replace', action='write')
+        end if
     end if
 
     !! Geometric chaos file
@@ -1470,8 +1492,13 @@ program main
     if (sim%use_multiple_outputs) then
         do i = 0, sim%Ntotal  ! 0 is the asteroid
             write (aux_character20, *) i
-            open (unit=u_multfile + i, file=trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
-                & status='replace', action='write')
+            if (use_binary_output) then
+                open (unit=u_multfile + i, file=trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
+                    & status='replace', access='stream', form='unformatted')
+            else
+                open (unit=u_multfile + i, file=trim(sim%multfile)//"_"//trim(adjustl(aux_character20)), &
+                    & status='replace', action='write')
+            end if
         end do
     end if
 
@@ -2656,11 +2683,11 @@ program main
 
                                 ! Write surface crossing to file, with interpolated values
                                 write(u_surfacefile, '(I8,1X,8(E23.15,1X))') &
-                                & aux_int, &
-                                & time + surf_alpha * timestep, &
-                                & y_cross(1:2), &
-                                & y_cross(i:i+3), &
-                                & jacobi_constant
+                                    & aux_int, &
+                                    & time + surf_alpha * timestep, &
+                                    & y_cross(1:2), &
+                                    & y_cross(i:i+3), &
+                                    & jacobi_constant
 
                             end do
 

@@ -6,6 +6,7 @@ module bodies
     use auxiliary, only: quickargsort, quickargsort_int, rotate2D
 
     implicit none
+    logical, parameter :: use_binary_output = .False.  ! Whether to use binary output or not (for debugging mostly)
 
     type :: chaos_st
         real(wp), dimension(2) :: a = (/infinito, cero/) ! (a_min, a_max)
@@ -298,7 +299,7 @@ contains
         slot_found = .False. ! Default
 
         ! Ensure not massless
-        if (mu_to_asteroid < myepsilon) then
+        if (mu_to_asteroid < tini) then
             write (*, *) "ERROR: Moons can not have zero or negative mass (I think)..."
             stop 1
         end if
@@ -690,7 +691,7 @@ contains
         real(wp) :: growth
         integer(kind=4) :: i
 
-        if (mass_to_add < myepsilon) return  ! No mass to add
+        if (mass_to_add < tini) return  ! No mass to add
 
         ! Get mass growth ratio
         growth = uno + (mass_to_add/self%mass)
@@ -2232,7 +2233,7 @@ contains
         real(wp) :: m_cm, rv_cm(4)
         real(wp) :: L_rot, L_orb
         real(wp) :: aux_real, ang_mom, aux_real24(2, 4)
-        real(wp) :: mi, mj
+        real(wp) :: mi, mj, radiusi, radiusj
         real(wp) :: ri(2), rj(2)
         real(wp) :: vi(2), vj(2)
         real(wp) :: dr_vec(2), dr, dr2, dr_ver(2)
@@ -2274,6 +2275,10 @@ contains
         mi = self%moons(i)%mass
         mj = self%moons(j)%mass
 
+        ! Radii
+        radiusi = self%moons(i)%radius
+        radiusj = self%moons(j)%radius
+
         ! Relative attrs
         m_cm = mi + mj  ! Combined mass
 
@@ -2288,7 +2293,7 @@ contains
         ! Are they already moving appart ?
         if (dv_rad > cero) then
             ! Push apart proportionally to masses
-            overlap = self%moons(i)%radius + self%moons(j)%radius - dr
+            overlap = radiusi + radiusj - dr
             if (overlap > cero) then
                 corr1 = overlap*(mj/m_cm)
                 corr2 = overlap*(mi/m_cm)
@@ -2347,12 +2352,14 @@ contains
             self%moons(i)%mu_to_asteroid = m_cm/self%asteroid%mass
 
             ! Update RADIUS
-            self%moons(i)%radius = max(self%moons(i)%radius, self%moons(j)%radius)   ! HEURISTIC Maybe mean density ???
+            ! self%moons(i)%radius = max(self%moons(i)%radius, self%moons(j)%radius)   ! HEURISTIC Maybe mean density ???
+            self%moons(i)%radius = (dos * m_cm * (radiusi*radiusj)**3 / (mi*(radiusj**3) + mj*(radiusi**3)))**(uno3) ! Mean density
 
             ! Update ENERGY and ANGULAR MOMENTUM
             self%moons(i)%inertia = 0.4e0_wp*m_cm*self%moons(i)%radius*self%moons(i)%radius
             self%moons(i)%ang_mom_rot = self%moons(i)%ang_mom_rot + self%moons(j)%ang_mom_rot + L_rot
-            self%moons(i)%e_rot = self%moons(i)%e_rot + self%moons(j)%e_rot + (uno2*L_rot*L_rot/self%moons(i)%inertia)
+            ! self%moons(i)%e_rot = self%moons(i)%e_rot + self%moons(j)%e_rot + (uno2*L_rot*L_rot/self%moons(i)%inertia)
+            self%moons(i)%e_rot = uno2 * self%moons(i)%ang_mom_rot * self%moons(i)%ang_mom_rot / self%moons(i)%inertia
 
             ! Add the flag
             self%moons(j)%merged_to = self%moons(i)%id  ! Merged j into i
@@ -2384,7 +2391,7 @@ contains
             vjn_new = ((mi*vin + mj*vjn) + (uno - self%eta_col)*mi*(vin - vjn))/m_cm
 
             ! --- Position correction (push apart to avoid overlap) ---
-            overlap = self%moons(i)%radius + self%moons(j)%radius - dr
+            overlap = radiusi + radiusj - dr
             if (overlap > cero) then
                 corr1 = overlap*(mj/m_cm)
                 corr2 = overlap*(mi/m_cm)
@@ -2615,7 +2622,7 @@ contains
         type(system_st), intent(inout) :: self
         real(wp), intent(in) :: r_min
         integer(kind=4), intent(in), optional :: unit_file
-        integer(kind=4) :: i, j
+        integer(kind=4) :: i, j, k
         integer(kind=4) :: m_act0, p_act0
         integer(kind=4) :: m_act, p_act
         integer(kind=4) :: moon_id
@@ -2625,6 +2632,7 @@ contains
         real(wp) :: dr_vec(2), dr2, coll_dist2
         real(wp) :: xy_rotated(2), dx, dy  ! For ellipsoid
         logical :: again, do_write, was_any_moon_something
+        integer(kind=4), parameter :: MAX_P2P_REPETITIONS = 4 ! To avoid infinite loops
 
         ! Init
         do_write = present(unit_file)
@@ -2725,8 +2733,9 @@ contains
 
         ! Particles -> Particles (only if eta_col < 1)
         if (self%eta_col < uno) then
+            k = 0
             again = .True.
-            do while (again)
+            do while (k < MAX_P2P_REPETITIONS .and. again)
 
                 again = .False.
                 p_act0 = self%Nparticles_active
@@ -2734,14 +2743,14 @@ contains
                     inner_loop_part: do i = j - 1, 1, -1  ! Backwards loop
                         call collide_2_particles(self, i, j, outcome)
                         if (outcome == 2) then
+                            again = .True.
                             if (do_write) write (unit_file, s1i5x5) "Collision between particle ", j, &
                                             & "(", self%particles(j)%id, ") and particle ", &
                                             & i, "(", self%particles(i)%id, ")."
                         end if
                     end do inner_loop_part
                 end do
-
-                again = again .or. ((self%Nparticles_active .ge. 1) .and. (p_act0 > self%Nparticles_active))
+                k = k + 1
             end do
         end if
 
@@ -2942,49 +2951,66 @@ contains
         implicit none
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: unit_file
+        integer(kind=4) :: ibuf(2)
+        real(wp) :: rbuf(16)
 
-        write (unit_file, i2r16) &
-            & 0, &  ! ID
-            & 0, &  ! type
-            & self%time/unit_time, &  ! time
-            & self%asteroid%theta*degree, &  ! theta
-            & self%asteroid%omega*unit_time, &  ! omega
-            & self%asteroid%elements(1)/unit_dist, &  ! a
-            & self%asteroid%elements(2), &  ! e
-            & self%asteroid%elements(3)*degree, &  ! M
-            & self%asteroid%elements(4)*degree, &  ! w
-            & cero, &   ! MMR
-            & self%asteroid%mass/unit_mass, &  ! mass
-            & self%asteroid%radius/unit_dist, &  ! radius
-            & self%asteroid%dist_to_cm/unit_dist, &  ! distance
-            & self%asteroid%chaos%a/unit_dist, &  ! da
-            & self%asteroid%chaos%e, & ! de
-            & cero  ! MEGNO
+        ibuf(1) = 0  ! ID
+        ibuf(2) = 0  ! type
+
+        rbuf(1) = self%time/unit_time  ! time
+        rbuf(2) = self%asteroid%theta*degree  ! theta
+        rbuf(3) = self%asteroid%omega*unit_time  ! omega
+        rbuf(4) = self%asteroid%elements(1)/unit_dist  ! a
+        rbuf(5) = self%asteroid%elements(2)  ! e
+        rbuf(6) = self%asteroid%elements(3)*degree  ! M
+        rbuf(7) = self%asteroid%elements(4)*degree  ! w
+        rbuf(8) = cero  ! MMR
+        rbuf(9) = self%asteroid%mass/unit_mass  ! mass
+        rbuf(10) = self%asteroid%radius/unit_dist  ! radius
+        rbuf(11) = self%asteroid%dist_to_cm/unit_dist  ! distance
+        rbuf(12:13) = self%asteroid%chaos%a/unit_dist  ! da
+        rbuf(14:15) = self%asteroid%chaos%e  ! de
+        rbuf(16) = cero  ! MEGNO
+
+        if (use_binary_output) then
+            write (unit_file) ibuf, rbuf
+        else
+            write (unit_file, i2r16) ibuf, rbuf
+        end if
     end subroutine write_ast_elem
+
 
     ! Write elements moon i
     subroutine write_moon_i_elem(self, i, unit_file)
         implicit none
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: i, unit_file
+        integer(kind=4) :: ibuf(2)
+        real(wp) :: rbuf(16)
 
-        write (unit_file, i2r16) &
-            & self%moons(i)%id, &  ! ID
-            & 1, &  ! type
-            & self%time/unit_time, &  ! time
-            & self%asteroid%theta*degree, &  ! theta
-            & self%asteroid%omega*unit_time, &  ! omega
-            & self%moons(i)%elements(1)/unit_dist, &  ! a
-            & self%moons(i)%elements(2), &  ! e
-            & self%moons(i)%elements(3)*degree, &  ! M
-            & self%moons(i)%elements(4)*degree, &  ! w
-            & self%moons(i)%mmr, &  ! MMR
-            & self%moons(i)%mass/unit_mass, &  ! mass
-            & self%moons(i)%radius/unit_dist, &  ! radius
-            & self%moons(i)%dist_to_cm/unit_dist, &  ! distance
-            & self%moons(i)%chaos%a/unit_dist, &  ! da
-            & self%moons(i)%chaos%e, & ! de
-            & cero  ! MEGNO
+        ibuf(1) = self%moons(i)%id  ! ID
+        ibuf(2) = 1  ! type
+
+        rbuf(1) = self%time/unit_time  ! time
+        rbuf(2) = self%asteroid%theta*degree  ! theta
+        rbuf(3) = self%asteroid%omega*unit_time  ! omega
+        rbuf(4) = self%moons(i)%elements(1)/unit_dist  ! a
+        rbuf(5) = self%moons(i)%elements(2)  ! e
+        rbuf(6) = self%moons(i)%elements(3)*degree  ! M
+        rbuf(7) = self%moons(i)%elements(4)*degree  ! w
+        rbuf(8) = self%moons(i)%mmr  ! MMR
+        rbuf(9) = self%moons(i)%mass/unit_mass  ! mass
+        rbuf(10) = self%moons(i)%radius/unit_dist  ! radius
+        rbuf(11) = self%moons(i)%dist_to_cm/unit_dist  ! distance
+        rbuf(12:13) = self%moons(i)%chaos%a/unit_dist  ! da
+        rbuf(14:15) = self%moons(i)%chaos%e  ! de
+        rbuf(16) = cero  ! MEGNO
+
+        if (use_binary_output) then
+            write (unit_file) ibuf, rbuf
+        else
+            write (unit_file, i2r16) ibuf, rbuf
+        end if
     end subroutine write_moon_i_elem
 
     ! Write elements particle i
@@ -2992,24 +3018,32 @@ contains
         implicit none
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: i, unit_file
-        
-        write (unit_file, i2r16) &
-            & self%particles(i)%id, &   ! ID
-            & 2, &  ! type
-            & self%time/unit_time, &  ! time
-            & self%asteroid%theta*degree, &  ! theta
-            & self%asteroid%omega*unit_time, &  ! omega
-            & self%particles(i)%elements(1)/unit_dist, &  ! a
-            & self%particles(i)%elements(2), &  ! e
-            & self%particles(i)%elements(3)*degree, &  ! M
-            & self%particles(i)%elements(4)*degree, &  ! w
-            & self%particles(i)%mmr, &  ! MMR
-            & cero, &  ! mass
-            & self%particles_radius/unit_dist, &  ! radius
-            & self%particles(i)%dist_to_cm/unit_dist, &  ! distance
-            & self%particles(i)%chaos%a/unit_dist, &  ! da
-            & self%particles(i)%chaos%e, & ! de
-            & self%particles(i)%chaos%megno ! MEGNO
+        integer(kind=4) :: ibuf(2)
+        real(wp) :: rbuf(16)
+
+        ibuf(1) = self%particles(i)%id  ! ID
+        ibuf(2) = 2  ! type
+
+        rbuf(1) = self%time/unit_time  ! time
+        rbuf(2) = self%asteroid%theta*degree  ! theta
+        rbuf(3) = self%asteroid%omega*unit_time  ! omega
+        rbuf(4) = self%particles(i)%elements(1)/unit_dist  ! a
+        rbuf(5) = self%particles(i)%elements(2)  ! e
+        rbuf(6) = self%particles(i)%elements(3)*degree  ! M
+        rbuf(7) = self%particles(i)%elements(4)*degree  ! w
+        rbuf(8) = self%particles(i)%mmr  ! MMR
+        rbuf(9) = cero  ! mass
+        rbuf(10) = self%particles_radius/unit_dist  ! radius
+        rbuf(11) = self%particles(i)%dist_to_cm/unit_dist  ! distance
+        rbuf(12:13) = self%particles(i)%chaos%a/unit_dist  ! da
+        rbuf(14:15) = self%particles(i)%chaos%e  ! de
+        rbuf(16) = self%particles(i)%chaos%megno  ! MEGNO
+
+        if (use_binary_output) then
+            write (unit_file) ibuf, rbuf
+        else
+            write (unit_file, i2r16) ibuf, rbuf
+        end if
     end subroutine write_particle_i_elem
 
     ! Write elements ALL
@@ -3058,48 +3092,64 @@ contains
         integer(kind=4), intent(in) :: unit_file
         integer(kind=4) :: i
         real(wp) :: coords(4)
+        integer(kind=4) :: ibuf(2)
+        real(wp) :: rbuf(9)
 
-        ! Asteroid
-        write (unit_file, i2r9) &
-                & 0, &  ! ID
-                & 0, &  ! type
-                & self%time/unit_time, &  !time
-                & self%asteroid%theta*degree, &  ! theta
-                & self%asteroid%omega*unit_time, &  ! omega
-                & self%asteroid%coordinates(1:2)/unit_dist, &  ! x y
-                & self%asteroid%coordinates(3:4)/unit_vel, &  ! vx vy
-                & self%asteroid%mass/unit_mass, &  ! mass
-                & self%asteroid%radius/unit_dist  ! radius
+        ibuf(1) = 0  ! ID
+        ibuf(2) = 0  ! type
+        rbuf(1) = self%time/unit_time  ! time
+        rbuf(2) = self%asteroid%theta*degree  ! theta
+        rbuf(3) = self%asteroid%omega*unit_time  ! omega
+        rbuf(4:5) = self%asteroid%coordinates(1:2)/unit_dist  ! x y
+        rbuf(6:7) = self%asteroid%coordinates(3:4)/unit_vel  ! vx vy
+        rbuf(8) = self%asteroid%mass/unit_mass  ! mass
+        rbuf(9) = self%asteroid%radius/unit_dist  ! radius
+
+        if (use_binary_output) then
+            write (unit_file) ibuf, rbuf
+        else
+            write (unit_file, i2r9) ibuf, rbuf
+        end if
 
         ! Else, only if at least 1 boulder
         if (self%asteroid%Nboulders == 0) return
 
         ! Primary
         coords = self%asteroid%primary%coordinates_CM + self%asteroid%coordinates
-        write (unit_file, i2r9) &
-            & -1, &  ! ID
-            & -1, &  ! type
-            & self%time/unit_time, &  !time
-            & (self%asteroid%theta + self%asteroid%primary%initial_theta)*degree, &  ! theta
-            & self%asteroid%omega*unit_time, &  ! omega
-            & coords(1:2)/unit_dist, &  ! x y
-            & coords(3:4)/unit_vel, &  ! vx vy
-            & self%asteroid%primary%mass/unit_mass, &  ! mass
-            & self%asteroid%primary%radius/unit_dist  ! radius
+        ibuf(1) = -1  ! ID
+        ibuf(2) = -1  ! type
+        rbuf(1) = self%time/unit_time  ! time
+        rbuf(2) = (self%asteroid%theta + self%asteroid%primary%initial_theta)*degree  ! theta
+        rbuf(3) = self%asteroid%omega*unit_time  ! omega
+        rbuf(4:5) = coords(1:2)/unit_dist  ! x y
+        rbuf(6:7) = coords(3:4)/unit_vel  ! vx vy
+        rbuf(8) = self%asteroid%primary%mass/unit_mass  ! mass
+        rbuf(9) = self%asteroid%primary%radius/unit_dist  ! radius
+
+        if (use_binary_output) then
+            write (unit_file) ibuf, rbuf
+        else
+            write(unit_file, i2r9) ibuf, rbuf
+        end if
 
         ! Boulders
         do i = 1, self%asteroid%Nboulders
             coords = self%asteroid%boulders(i)%coordinates_CM + self%asteroid%coordinates
-            write (unit_file, i2r9) &
-                & -i-1, &  ! ID
-                & -1, &  ! type
-                & self%time/unit_time, &  !time
-                & (self%asteroid%theta + self%asteroid%boulders(i)%initial_theta)*degree, &  ! theta
-                & self%asteroid%omega*unit_time, &  ! omega
-                & coords(1:2)/unit_dist, &  ! x y
-                & coords(3:4)/unit_vel, &  ! vx vy
-                & self%asteroid%boulders(i)%mass/unit_mass, &  ! mass
-                & self%asteroid%boulders(i)%radius/unit_dist  ! radius
+            ibuf(1) = -i-1  ! ID
+            ibuf(2) = -1  ! type
+            rbuf(1) = self%time/unit_time  ! time
+            rbuf(2) = (self%asteroid%theta + self%asteroid%boulders(i)%initial_theta)*degree  ! theta
+            rbuf(3) = self%asteroid%omega*unit_time  ! omega
+            rbuf(4:5) = coords(1:2)/unit_dist  ! x y
+            rbuf(6:7) = coords(3:4)/unit_vel  ! vx vy
+            rbuf(8) = self%asteroid%boulders(i)%mass/unit_mass  ! mass
+            rbuf(9) = self%asteroid%boulders(i)%radius/unit_dist  ! radius
+
+            if (use_binary_output) then
+                write (unit_file) ibuf, rbuf
+            else
+                write(unit_file, i2r9) ibuf, rbuf
+            end if
         end do
 
     end subroutine write_ast_coor
@@ -3109,17 +3159,24 @@ contains
         implicit none
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: i, unit_file
+        integer(kind=4) :: ibuf(2)
+        real(wp) :: rbuf(9)
 
-        write (unit_file, i2r9) &
-            & self%moons(i)%id, &  ! ID + Nbould to avoid duplicates
-            & 1, &  ! type
-            & self%time/unit_time, &  !time
-            & self%asteroid%theta*degree, &  ! theta
-            & self%asteroid%omega*unit_time, &  ! omega
-            & self%moons(i)%coordinates(1:2)/unit_dist, &  ! x y
-            & self%moons(i)%coordinates(3:4)/unit_vel, &  ! vx vy
-            & self%moons(i)%mass/unit_mass, &  ! mass
-            & self%moons(i)%radius/unit_dist  ! radius
+        ibuf(1) = self%moons(i)%id  ! ID
+        ibuf(2) = 1  ! type
+        rbuf(1) = self%time/unit_time  ! time
+        rbuf(2) = self%asteroid%theta*degree  ! theta
+        rbuf(3) = self%asteroid%omega*unit_time  ! omega
+        rbuf(4:5) = self%moons(i)%coordinates(1:2)/unit_dist  ! x y
+        rbuf(6:7) = self%moons(i)%coordinates(3:4)/unit_vel  ! vx vy
+        rbuf(8) = self%moons(i)%mass/unit_mass  ! mass
+        rbuf(9) = self%moons(i)%radius/unit_dist  ! radius
+
+        if (use_binary_output) then
+            write (unit_file) ibuf, rbuf
+        else
+            write (unit_file, i2r9) ibuf, rbuf
+        end if
     end subroutine write_moon_i_coor
 
     ! Write coordinates particle i
@@ -3127,17 +3184,24 @@ contains
         implicit none
         type(system_st), intent(in) :: self
         integer(kind=4), intent(in) :: i, unit_file
+        integer(kind=4) :: ibuf(2)
+        real(wp) :: rbuf(9)
 
-        write (unit_file, i2r9) &
-            & self%particles(i)%id, &  ! ID + Nbould to avoid duplicates
-            & 2, &  ! type
-            & self%time/unit_time, &  !time
-            & self%asteroid%theta*degree, &  ! theta
-            & self%asteroid%omega*unit_time, &  ! omega
-            & self%particles(i)%coordinates(1:2)/unit_dist, &  ! x y
-            & self%particles(i)%coordinates(3:4)/unit_vel, &  ! vx vy
-            & self%particles(i)%chaos%megno, &  ! megno
-            & self%particles_radius/unit_dist  ! radius
+        ibuf(1) = self%particles(i)%id  ! ID
+        ibuf(2) = 2  ! type
+        rbuf(1) = self%time/unit_time  ! time
+        rbuf(2) = self%asteroid%theta*degree  ! theta
+        rbuf(3) = self%asteroid%omega*unit_time  ! omega
+        rbuf(4:5) = self%particles(i)%coordinates(1:2)/unit_dist  ! x y
+        rbuf(6:7) = self%particles(i)%coordinates(3:4)/unit_vel  ! vx vy
+        rbuf(8) = cero  ! mass
+        rbuf(9) = self%particles_radius  ! radius
+
+        if (use_binary_output) then
+            write (unit_file) ibuf, rbuf
+        else
+            write (unit_file, i2r9) ibuf, rbuf
+        end if
     end subroutine write_particle_i_coor
 
     ! Write coordinates ALL
