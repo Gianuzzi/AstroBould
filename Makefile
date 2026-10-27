@@ -64,7 +64,7 @@ else
   MYCFLAGS = -O$(OPT)
   ifeq ($(INTEL),1)
     MYFFLAGS = -funsafe-math-optimizations -funroll-loops -ipo \
-               -qopt-report -fimf-domain-exclusion=15
+               -qopt-report=0 -fimf-domain-exclusion=15
   else ifeq ($(AMD),1)
     MYFFLAGS = -ffast-math -funroll-loops -fvectorize
   else
