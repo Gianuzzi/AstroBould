@@ -212,7 +212,7 @@ contains
 
                 ! Torque to Asteroid
                 theta_moon = atan2(dr_vec(2), dr_vec(1))
-                torque = torque - dos*m_arr(j)*L_coef*inv_dr3*sin(dos*(theta_moon - theta))
+                torque = torque + dos*Gmast*m_arr(j)*L_coef*inv_dr3*sin(dos*(theta_moon - theta))
 
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
