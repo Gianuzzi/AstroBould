@@ -922,8 +922,7 @@ contains
         !$OMP         coords_P, dr_vec, dr, dr2,    &
         !$OMP         rcoll, inv_dr, inv_dr2,       &
         !$OMP         inv_dr3,                      &
-        !$OMP         acc_grav, Q_eff, dQdx, dQdy,  &
-        !$OMP         xy_rotated, coords_V,         &
+        !$OMP         acc_grav, Q_eff, coords_V,    &
         !$OMP         aux_inv_dr3_boulder_z,        &
         !$OMP         aux_J2K, aux_real, aux_real2, &
         !$OMP         dr_ver, dv_vec,               &
