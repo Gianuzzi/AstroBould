@@ -30,6 +30,12 @@ program main
     ! Set program name
     call get_command_argument(0, PROGRAM_NAME)
 
+    ! Check if HELP wanted
+    if (check_help()) then
+        call help()
+        stop 0
+    end if
+
     use_configfile = .True. ! Manual override if needed
     if (use_configfile) call read_config_file(input, "config.ini", configfile_exists) ! Leemos archivo de configuración
 
@@ -3000,6 +3006,7 @@ program main
 end program main
 
 subroutine create_map(sim, system)
+    use, intrinsic :: ieee_arithmetic
     use constants, only: wp, cero
     use bodies, only: system_st, get_acc_and_pot_xy
     use parameters, only: sim_params_st, u_mapfile
@@ -3010,6 +3017,14 @@ subroutine create_map(sim, system)
     real(wp), dimension(:, :, :), allocatable :: acc
     real(wp) :: dx_nx, dy_ny, rb(2)
     integer(kind=4) :: i, j
+    real(wp) :: nan
+    logical :: is_inside
+
+    ! Define nan
+    if (.not. ieee_support_nan(cero)) then
+        error stop "IEEE NaN is not supported"
+    end if
+    nan = ieee_value(cero, ieee_quiet_nan)
 
     !!! Check
     if ((sim%map_grid_size_x < 2) .or. (sim%map_grid_size_y < 2)) then
@@ -3039,7 +3054,11 @@ subroutine create_map(sim, system)
         do j = 1, sim%map_grid_size_y
             rb(1) = sim%map_min_x + (i - 1) * dx_nx
             rb(2) = sim%map_min_y + (j - 1) * dy_ny
-            call get_acc_and_pot_xy(system, rb, acc(i, j, :), pot(i, j))
+            call get_acc_and_pot_xy(system, rb, acc(i, j, :), pot(i, j), is_inside)
+            if (is_inside) then
+                pot(i, j) = nan
+                acc(i, j, :) = nan
+            end if
         end do
     end do
     !$OMP END DO
