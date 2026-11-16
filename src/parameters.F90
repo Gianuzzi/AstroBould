@@ -431,6 +431,90 @@ contains
         allocate (particles_in(Nparticles, 5))  ! FROM 1 to Nparticles, columns: a, e, M, w, MMR
     end subroutine allocate_params_particles
 
+    ! Output the help message to the screen
+    subroutine help()
+        implicit none
+
+        write (*, *) "Uso: "//trim(PROGRAM_NAME)//" <ea> <ee> <eM> <ew> <mmr> [args]"
+        write (*, *) "    ea   : Elemento a de la partícula/luna (km)"
+        write (*, *) "    ee   : Elemento e de la partícula/luna"
+        write (*, *) "    eM   : Elemento M de la partícula/luna (deg)"
+        write (*, *) "    ew   : Elemento w de la partícula/luna (deg)"
+        write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional. 0 si no se utiliza.]"
+        write (*, *) "    --onlyprint   : No integrar; solo imprimir configuraciones"
+        write (*, *) "    -nsim         : Número de simulación [int]"
+        write (*, *) "    -ast_mass     : Masa del asteroide (kg)"
+        write (*, *) "    -ast_radius   : Radio del asteroide (km)"
+        write (*, *) "    -ast_period   : Período de rotación del asteroide (horas)"
+        write (*, *) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
+        write (*, *) "    -radius       : Radio de la partícula/luna individual (km)."
+        write (*, *) "    -datafile     : Nombre de archivo de salida de datos"
+        write (*, *) "    --nodataf     : No guardar datos de salida"
+        write (*, *) "    -chaosfile    : Nombre de archivo de salida caos"
+        write (*, *) "    --nochaosf    : No guardar salida de caos"
+        write (*, *) "    -geomfile     : Nombre de archivo de salida de elementos geométricos"
+        write (*, *) "    --nogeomf     : No guardar salida de elementos geométricos"
+        write (*, *) "    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)"
+        write (*, *) "    --nofilter    : No utilizar filtro"
+        write (*, *) "    --screen      : Imprimir información en pantalla"
+        write (*, *) "    --noscreen    : No imprimir en pantalla"
+        write (*, *) "    --perc        : Imprimir porcentaje de integración"
+        write (*, *) "    --noperc      : No imprimir porcentaje de integración"
+        write (*, *) "    --datascr     : Imprimir datos de salida en pantalla"
+        write (*, *) "    --nodatascr   : No imprimir datos de salida en pantalla"
+        write (*, *) "    --diagnostic  : Imprimir datos de diagnóstico en pantalla"
+        write (*, *) "    --nodiagnostic: No imprimir datos de diagnóstico en pantalla"
+        write (*, *) "    -multifile    : Nombre base de archivo de salida de datos individuales"
+        write (*, *) "    --nomultif    : No guardar datos en archivos individuales"
+        write (*, *) "    -mapfile      : Nombre de archivo de mapa"
+        write (*, *) "    --nomapf      : No guardar mapa de potencial"
+        write (*, *) "    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]"
+        write (*, *) "    --noelem      : Imprimir coordenadas baricéntricas"
+        write (*, *) "    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
+        write (*, *) "    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
+        write (*, *) "    -moonfile     : Nombre de archivo de lunas a utilizar"
+        write (*, *) "    --nomoonfile  : No utilizar archivo de lunas"
+        write (*, *) "    -partfile     : Nombre de archivo de partículas a utilizar"
+        write (*, *) "    --nopartfile  : No utilizar archivo de partículas"
+        write (*, *) "    --noconfig    : No leer archivo de configuración"
+        write (*, *) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
+        write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Toda"
+        write (*, *) "    -stopif       : Detener la integración sin más objetos del tipo [int]:"
+        write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
+        write (*, *) "    --megno       : Calcular MEGNO para partículas"
+        write (*, *) "    --nomegno     : No calcular MEGNO"
+        write (*, *) "    --sinodic     : Integar en sistema rotante"
+        write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
+        write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int] (deprecated)"
+        write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles (deprecated)"
+        write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas (deprecated)"
+        write (*, *) "    --help        : Mostrar esta ayuda"
+    end subroutine help
+
+    ! Check if help wanted
+    function check_help() result(need_help)
+        implicit none
+        integer(kind=4) :: i
+        character(30) :: aux_character30
+        logical :: need_help
+
+        need_help = .False.
+        ! Leemos de la línea de comandos
+        arguments_number = command_argument_count()  ! Global variable
+
+        if (arguments_number > 0) then
+            do i = 1, arguments_number
+                call get_command_argument(i, aux_character30)
+                select case (trim(aux_character30))
+                    case ("--help")
+                        need_help = .True.
+                    case default 
+                        cycle
+                end select
+            end do
+        end if
+    end function check_help
+
     ! 1. Read command line input
     subroutine load_command_line_arguments(params, use_config)
         implicit none
@@ -444,8 +528,8 @@ contains
         character(20) :: aux_character20
         character(30) :: aux_character30
 
-        ! Leemos de la línea de comandos
-        arguments_number = command_argument_count()  ! Global variable
+        ! ! Leemos de la línea de comandos
+        ! arguments_number = command_argument_count()  ! Global variable
 
         aux_logical = .False. ! Leí los parámetros numéricos?
         aux_integer = 0
@@ -458,282 +542,229 @@ contains
                 end if
                 call get_command_argument(i, aux_character30)
                 select case (trim(aux_character30))
-                case ("--onlyprint")
-                    params%only_print = .True.
-                case ("-nsim")
-                    call get_command_argument(i + 1, aux_character20)
-                    read (aux_character20, *) simulation_number  ! Global variable
-                    aux_integer = 1
-                case ("-ast_mass")
-                    call get_command_argument(i + 1, aux_character20)
-                    read (aux_character20, *) params%mass_primary
-                    aux_integer = 1
-                case ("-ast_radius")
-                    call get_command_argument(i + 1, aux_character20)
-                    read (aux_character20, *) params%radius_primary
-                    aux_integer = 1
-                case ("-ast_period")
-                    call get_command_argument(i + 1, aux_character20)
-                    read (aux_character20, *) params%asteroid_rotational_period
-                    aux_integer = 1
-                case ("-mumoon")
-                    call get_command_argument(i + 1, aux_character20)
-                    read (aux_character20, *) cl_body_in(1)  ! Global variable
-                    aux_integer = 1
-                case ("-radius")
-                    call get_command_argument(i + 1, aux_character20)
-                    read (aux_character20, *) cl_body_in(7)  ! Global variable
-                    aux_integer = 1
-                case ("-datafile")
-                    params%use_datafile = .True.
-                    call get_command_argument(i + 1, params%datafile)
-                    aux_integer = 1
-                case ("--nodataf")
-                    params%use_datafile = .False.
-                    params%datafile = ""
-                case ("-chaosfile")
-                    params%use_chaosfile = .True.
-                    call get_command_argument(i + 1, params%chaosfile)
-                    aux_integer = 1
-                case ("--nochaosf")
-                    params%use_chaosfile = .False.
-                    params%chaosfile = ""
-                case ("-geomfile")
-                    params%use_geometricfile = .True.
-                    call get_command_argument(i + 1, params%geometricfile)
-                    aux_integer = 1
-                case ("--nogeomf")
-                    params%use_geometricfile = .False.
-                    params%geometricfile = ""
-                case ("-filtfile")
-                    params%use_filter = .True.
-                    call get_command_argument(i + 1, params%filter_prefix)
-                    aux_integer = 1
-                case ("--nofilter")
-                    params%use_filter = .False.
-                case ("--screen")
-                    params%use_screen = .True.
-                case ("--noscreen")
-                    params%use_screen = .False.
-                case ("--perc")
-                    params%use_percentage = .True.
-                    params%use_diagnostics = .False.
-                    params%use_datascreen = .False.
-                case ("--noperc")
-                    params%use_percentage = .False.
-                case ("--datascr")
-                    params%use_datascreen = .True.
-                    params%use_percentage = .False.
-                    params%use_diagnostics = .False.
-                case ("--nodatascr")
-                    params%use_datascreen = .False.
-                case ("--diagnostic")
-                    params%use_diagnostics = .True.
-                    params%use_datascreen = .False.
-                    params%use_percentage = .False.
-                case ("--nodiagnostic")
-                    params%use_diagnostics = .False.
-                case ("-multifile")
-                    params%use_multiple_outputs = .True.
-                    call get_command_argument(i + 1, params%multfile)
-                    aux_integer = 1
-                case ("--nomultif")
-                    params%use_multiple_outputs = .False.
-                    params%multfile = ""
-                case ("-mapfile")
-                    params%use_potential_map = .True.
-                    call get_command_argument(i + 1, params%mapfile)
-                    aux_integer = 1
-                case ("--nomapf")
-                    params%use_potential_map = .False.
-                    params%mapfile = ""
-                case ("--elem")
-                    params%int_elements_output = 1
-                case ("--noelem")
-                    params%int_elements_output = 0
-                case ("-tomfile")
-                    params%use_tomfile = .True.
-                    call get_command_argument(i + 1, params%tomfile)
-                    aux_integer = 1
-                case ("--notomfile")
-                    params%use_tomfile = .False.
-                    params%tomfile = ""
-                case ("-moonfile")
-                    params%use_moonsfile = .True.
-                    call get_command_argument(i + 1, params%moonsfile)
-                    aux_integer = 1
-                case ("--moonfile")
-                    params%use_moonsfile = .False.
-                    params%moonsfile = ""
-                case ("-partfile")
-                    params%use_particlesfile = .True.
-                    call get_command_argument(i + 1, params%particlesfile)
-                    aux_integer = 1
-                case ("--nopartfile")
-                    params%use_particlesfile = .False.
-                    params%particlesfile = ""
-                case ("--noconfig")
-                    use_config = .False.  ! Inout variable
-                case ("-merge")
-                    call get_command_argument(i + 1, aux_character20)
-                    read (aux_character20, *) merge_type
-                    if (merge_type == 0) then ! No merge
-                        params%use_merge_part_mass = .False.
-                        params%use_merge_massive = .False.
-                    else if (merge_type == 1) then ! Only particle-massive
-                        params%use_merge_part_mass = .True.
-                        params%use_merge_massive = .False.
-                    else if (merge_type == 2) then ! Only massive-massive
-                        params%use_merge_part_mass = .False.
-                        params%use_merge_massive = .True.
-                    else if (merge_type == 3) then ! All merges
-                        params%use_merge_part_mass = .True.
-                        params%use_merge_massive = .True.
-                    else
-                        write (*, *) "ERROR: Merge type not recognized: ", merge_type
-                        stop 1
-                    end if
-                    aux_integer = 1
-                case ("-stopif")
-                    call get_command_argument(i + 1, aux_character20)
-                    read (aux_character20, *) stop_type
-                    if (stop_type == 0) then ! No stop
-                        params%use_stop_no_moon_left = .False.
-                        params%use_stop_no_part_left = .False.
-                    else if (stop_type == 1) then ! Only if no more moons
-                        params%use_stop_no_moon_left = .True.
-                        params%use_stop_no_part_left = .False.
-                    else if (stop_type == 2) then ! Only if no more particles
-                        params%use_stop_no_moon_left = .False.
-                        params%use_stop_no_part_left = .True.
-                    else if (stop_type == 3) then ! Stop if any deactivation
-                        params%use_stop_no_moon_left = .True.
-                        params%use_stop_no_part_left = .True.
-                    else
-                        write (*, *) "ERROR: Stop criteria not recognized: ", stop_type
-                        stop 1
-                    end if
-                    aux_integer = 1
-                case ("--megno")
-                    params%use_megno = .True.
-                case ("--nomegno")
-                    params%use_megno = .False.
-                case ("--sinodic")
-                    params%use_sinodic = .True.
-                case ("--nosinodic")
-                    params%use_sinodic = .False.
-                case ("-parallel")
-                    params%use_parallel = .True.
-                    call get_command_argument(i + 1, aux_character20)
-                    read (aux_character20, *) params%requested_threads
-                    aux_integer = 1
-                case ("--parallel")
-                    params%use_parallel = .True.
-                    params%requested_threads = -1
-                case ("--noparallel")
-                    params%use_parallel = .False.
-                    params%requested_threads = 1
-                case ("--version")
-                    params%use_version = .True.
-                case ("--help")
-                    call get_command_argument(0, aux_character30)
-                    write (*, *) "Uso: "//trim(aux_character30)//" <ea> <ee> <eM> <ew> <mmr> [args]"
-                    write (*, *) "    ea   : Elemento a de la partícula/luna (km)"
-                    write (*, *) "    ee   : Elemento e de la partícula/luna"
-                    write (*, *) "    eM   : Elemento M de la partícula/luna (deg)"
-                    write (*, *) "    ew   : Elemento w de la partícula/luna (deg)"
-                    write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional. 0 si no se utiliza.]"
-                    write (*, *) "    --onlyprint   : No integrar; solo imprimir configuraciones"
-                    write (*, *) "    -nsim         : Número de simulación [int]"
-                    write (*, *) "    -ast_mass     : Masa del asteroide (kg)"
-                    write (*, *) "    -ast_radius   : Radio del asteroide (km)"
-                    write (*, *) "    -ast_period   : Período de rotación del asteroide (horas)"
-                    write (*, *) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
-                    write (*, *) "    -radius       : Radio de la partícula/luna individual (km)."
-                    write (*, *) "    -datafile     : Nombre de archivo de salida de datos"
-                    write (*, *) "    --nodataf     : No guardar datos de salida"
-                    write (*, *) "    -chaosfile    : Nombre de archivo de salida caos"
-                    write (*, *) "    --nochaosf    : No guardar salida de caos"
-                    write (*, *) "    -geomfile     : Nombre de archivo de salida de elementos geométricos"
-                    write (*, *) "    --nogeomf     : No guardar salida de elementos geométricos"
-                    write (*, *) "    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)"
-                    write (*, *) "    --nofilter    : No utilizar filtro"
-                    write (*, *) "    --screen      : Imprimir información en pantalla"
-                    write (*, *) "    --noscreen    : No imprimir en pantalla"
-                    write (*, *) "    --perc        : Imprimir porcentaje de integración"
-                    write (*, *) "    --noperc      : No imprimir porcentaje de integración"
-                    write (*, *) "    --datascr     : Imprimir datos de salida en pantalla"
-                    write (*, *) "    --nodatascr   : No imprimir datos de salida en pantalla"
-                    write (*, *) "    --diagnostic  : Imprimir datos de diagnóstico en pantalla"
-                    write (*, *) "    --nodiagnostic: No imprimir datos de diagnóstico en pantalla"
-                    write (*, *) "    -multifile    : Nombre base de archivo de salida de datos individuales"
-                    write (*, *) "    --nomultif    : No guardar datos en archivos individuales"
-                    write (*, *) "    -mapfile      : Nombre de archivo de mapa"
-                    write (*, *) "    --nomapf      : No guardar mapa de potencial"
-                    write (*, *) "    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]"
-                    write (*, *) "    --noelem      : Imprimir coordenadas baricéntricas"
-                    write (*, *) "    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
-                    write (*, *) "    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
-                    write (*, *) "    -moonfile     : Nombre de archivo de lunas a utilizar"
-                    write (*, *) "    --nomoonfile  : No utilizar archivo de lunas"
-                    write (*, *) "    -partfile     : Nombre de archivo de partículas a utilizar"
-                    write (*, *) "    --nopartfile  : No utilizar archivo de partículas"
-                    write (*, *) "    --noconfig    : No leer archivo de configuración"
-                    write (*, *) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
-                    write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Toda"
-                    write (*, *) "    -stopif       : Detener la integración sin más objetos del tipo [int]:"
-                    write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
-                    write (*, *) "    --megno       : Calcular MEGNO para partículas"
-                    write (*, *) "    --nomegno     : No calcular MEGNO"
-                    write (*, *) "    --sinodic     : Integar en sistema rotante"
-                    write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
-                    write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int] (deprecated)"
-                    write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles (deprecated)"
-                    write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas (deprecated)"
-                    write (*, *) "    --help        : Mostrar esta ayuda"
-                    stop 0
-                case default  ! Si no es un argumento reconocido...
-                    is_number = .False.
-                    call get_command_argument(i, aux_character30)
-                    do j = 0, 9
-                        if (aux_character30(1:1) == char(48 + j)) then ! check if it's a number
-                            is_number = .True.
-                            exit
+                    case ("--onlyprint")
+                        params%only_print = .True.
+                    case ("-nsim")
+                        call get_command_argument(i + 1, aux_character20)
+                        read (aux_character20, *) simulation_number  ! Global variable
+                        aux_integer = 1
+                    case ("-ast_mass")
+                        call get_command_argument(i + 1, aux_character20)
+                        read (aux_character20, *) params%mass_primary
+                        aux_integer = 1
+                    case ("-ast_radius")
+                        call get_command_argument(i + 1, aux_character20)
+                        read (aux_character20, *) params%radius_primary
+                        aux_integer = 1
+                    case ("-ast_period")
+                        call get_command_argument(i + 1, aux_character20)
+                        read (aux_character20, *) params%asteroid_rotational_period
+                        aux_integer = 1
+                    case ("-mumoon")
+                        call get_command_argument(i + 1, aux_character20)
+                        read (aux_character20, *) cl_body_in(1)  ! Global variable
+                        aux_integer = 1
+                    case ("-radius")
+                        call get_command_argument(i + 1, aux_character20)
+                        read (aux_character20, *) cl_body_in(7)  ! Global variable
+                        aux_integer = 1
+                    case ("-datafile")
+                        params%use_datafile = .True.
+                        call get_command_argument(i + 1, params%datafile)
+                        aux_integer = 1
+                    case ("--nodataf")
+                        params%use_datafile = .False.
+                        params%datafile = ""
+                    case ("-chaosfile")
+                        params%use_chaosfile = .True.
+                        call get_command_argument(i + 1, params%chaosfile)
+                        aux_integer = 1
+                    case ("--nochaosf")
+                        params%use_chaosfile = .False.
+                        params%chaosfile = ""
+                    case ("-geomfile")
+                        params%use_geometricfile = .True.
+                        call get_command_argument(i + 1, params%geometricfile)
+                        aux_integer = 1
+                    case ("--nogeomf")
+                        params%use_geometricfile = .False.
+                        params%geometricfile = ""
+                    case ("-filtfile")
+                        params%use_filter = .True.
+                        call get_command_argument(i + 1, params%filter_prefix)
+                        aux_integer = 1
+                    case ("--nofilter")
+                        params%use_filter = .False.
+                    case ("--screen")
+                        params%use_screen = .True.
+                    case ("--noscreen")
+                        params%use_screen = .False.
+                    case ("--perc")
+                        params%use_percentage = .True.
+                        params%use_diagnostics = .False.
+                        params%use_datascreen = .False.
+                    case ("--noperc")
+                        params%use_percentage = .False.
+                    case ("--datascr")
+                        params%use_datascreen = .True.
+                        params%use_percentage = .False.
+                        params%use_diagnostics = .False.
+                    case ("--nodatascr")
+                        params%use_datascreen = .False.
+                    case ("--diagnostic")
+                        params%use_diagnostics = .True.
+                        params%use_datascreen = .False.
+                        params%use_percentage = .False.
+                    case ("--nodiagnostic")
+                        params%use_diagnostics = .False.
+                    case ("-multifile")
+                        params%use_multiple_outputs = .True.
+                        call get_command_argument(i + 1, params%multfile)
+                        aux_integer = 1
+                    case ("--nomultif")
+                        params%use_multiple_outputs = .False.
+                        params%multfile = ""
+                    case ("-mapfile")
+                        params%use_potential_map = .True.
+                        call get_command_argument(i + 1, params%mapfile)
+                        aux_integer = 1
+                    case ("--nomapf")
+                        params%use_potential_map = .False.
+                        params%mapfile = ""
+                    case ("--elem")
+                        params%int_elements_output = 1
+                    case ("--noelem")
+                        params%int_elements_output = 0
+                    case ("-tomfile")
+                        params%use_tomfile = .True.
+                        call get_command_argument(i + 1, params%tomfile)
+                        aux_integer = 1
+                    case ("--notomfile")
+                        params%use_tomfile = .False.
+                        params%tomfile = ""
+                    case ("-moonfile")
+                        params%use_moonsfile = .True.
+                        call get_command_argument(i + 1, params%moonsfile)
+                        aux_integer = 1
+                    case ("--moonfile")
+                        params%use_moonsfile = .False.
+                        params%moonsfile = ""
+                    case ("-partfile")
+                        params%use_particlesfile = .True.
+                        call get_command_argument(i + 1, params%particlesfile)
+                        aux_integer = 1
+                    case ("--nopartfile")
+                        params%use_particlesfile = .False.
+                        params%particlesfile = ""
+                    case ("--noconfig")
+                        use_config = .False.  ! Inout variable
+                    case ("-merge")
+                        call get_command_argument(i + 1, aux_character20)
+                        read (aux_character20, *) merge_type
+                        if (merge_type == 0) then ! No merge
+                            params%use_merge_part_mass = .False.
+                            params%use_merge_massive = .False.
+                        else if (merge_type == 1) then ! Only particle-massive
+                            params%use_merge_part_mass = .True.
+                            params%use_merge_massive = .False.
+                        else if (merge_type == 2) then ! Only massive-massive
+                            params%use_merge_part_mass = .False.
+                            params%use_merge_massive = .True.
+                        else if (merge_type == 3) then ! All merges
+                            params%use_merge_part_mass = .True.
+                            params%use_merge_massive = .True.
+                        else
+                            write (*, *) "ERROR: Merge type not recognized: ", merge_type
+                            stop 1
                         end if
-                    end do
-                    if (.not. is_number) then ! No es un número
-                        write (*, '(A, I0, A, A)') "ERROR: Argument not recognized ", i, ": ", trim(aux_character30)
-                        call get_command_argument(0, aux_character30)
-                        write (*, *) "   For more help run: ", trim(aux_character30), " --help"
-                        write (*, *) "Exiting."
+                        aux_integer = 1
+                    case ("-stopif")
+                        call get_command_argument(i + 1, aux_character20)
+                        read (aux_character20, *) stop_type
+                        if (stop_type == 0) then ! No stop
+                            params%use_stop_no_moon_left = .False.
+                            params%use_stop_no_part_left = .False.
+                        else if (stop_type == 1) then ! Only if no more moons
+                            params%use_stop_no_moon_left = .True.
+                            params%use_stop_no_part_left = .False.
+                        else if (stop_type == 2) then ! Only if no more particles
+                            params%use_stop_no_moon_left = .False.
+                            params%use_stop_no_part_left = .True.
+                        else if (stop_type == 3) then ! Stop if any deactivation
+                            params%use_stop_no_moon_left = .True.
+                            params%use_stop_no_part_left = .True.
+                        else
+                            write (*, *) "ERROR: Stop criteria not recognized: ", stop_type
+                            stop 1
+                        end if
+                        aux_integer = 1
+                    case ("--megno")
+                        params%use_megno = .True.
+                    case ("--nomegno")
+                        params%use_megno = .False.
+                    case ("--sinodic")
+                        params%use_sinodic = .True.
+                    case ("--nosinodic")
+                        params%use_sinodic = .False.
+                    case ("-parallel")
+                        params%use_parallel = .True.
+                        call get_command_argument(i + 1, aux_character20)
+                        read (aux_character20, *) params%requested_threads
+                        aux_integer = 1
+                    case ("--parallel")
+                        params%use_parallel = .True.
+                        params%requested_threads = -1
+                    case ("--noparallel")
+                        params%use_parallel = .False.
+                        params%requested_threads = 1
+                    case ("--version")
+                        params%use_version = .True.
+                    case ("--help")
+                        write(*,*) "WARNING: Help should have been checked before calling this subroutine."
+                        call help()
                         stop 1
-                    end if
-                    if (.not. aux_logical) then ! No leí los parámetros aún
-                        if (arguments_number < i + 3) then
-                            write (*, *) "ERROR: Could not read all particle orbital elements."
-                            write (*, '(A,I0,A)') "        Missing ", 4 - arguments_number, " elements."
+                    case default  ! Si no es un argumento reconocido...
+                        is_number = .False.
+                        call get_command_argument(i, aux_character30)
+                        do j = 0, 9
+                            if (aux_character30(1:1) == char(48 + j)) then ! check if it's a number
+                                is_number = .True.
+                                exit
+                            end if
+                        end do
+                        if (.not. is_number) then ! No es un número
+                            write (*, '(A, I0, A, A)') "ERROR: Argument not recognized ", i, ": ", trim(aux_character30)
+                            call get_command_argument(0, aux_character30)
+                            write (*, *) "   For more help run: ", trim(aux_character30), " --help"
                             write (*, *) "Exiting."
                             stop 1
-                        else ! Leo los argumentos numéricos. Considero que es 1 sola partícula
-                            ! Para generar prioridad, reallocatamos de ser necesario
-                            params%use_command_body = .True.  ! Switch
-                            ! Read
-                            call get_command_argument(i, aux_character20)
-                            read (aux_character20, *) cl_body_in(2)
-                            call get_command_argument(i + 1, aux_character20)
-                            read (aux_character20, *) cl_body_in(3)
-                            call get_command_argument(i + 2, aux_character20)
-                            read (aux_character20, *) cl_body_in(4)
-                            call get_command_argument(i + 3, aux_character20)
-                            read (aux_character20, *) cl_body_in(5)
-                            aux_integer = 3
-                            aux_logical = .True.
-                            cl_body_in(6) = cero
                         end if
-                    else ! Ya leí los numéricos. Falta leer eR
-                        call get_command_argument(i, aux_character20)
-                        read (aux_character20, *) cl_body_in(6)
-                    end if
+                        if (.not. aux_logical) then ! No leí los parámetros aún
+                            if (arguments_number < i + 3) then
+                                write (*, *) "ERROR: Could not read all particle orbital elements."
+                                write (*, '(A,I0,A)') "        Missing ", 4 - arguments_number, " elements."
+                                write (*, *) "Exiting."
+                                stop 1
+                            else ! Leo los argumentos numéricos. Considero que es 1 sola partícula
+                                ! Para generar prioridad, reallocatamos de ser necesario
+                                params%use_command_body = .True.  ! Switch
+                                ! Read
+                                call get_command_argument(i, aux_character20)
+                                read (aux_character20, *) cl_body_in(2)
+                                call get_command_argument(i + 1, aux_character20)
+                                read (aux_character20, *) cl_body_in(3)
+                                call get_command_argument(i + 2, aux_character20)
+                                read (aux_character20, *) cl_body_in(4)
+                                call get_command_argument(i + 3, aux_character20)
+                                read (aux_character20, *) cl_body_in(5)
+                                aux_integer = 3
+                                aux_logical = .True.
+                                cl_body_in(6) = cero
+                            end if
+                        else ! Ya leí los numéricos. Falta leer eR
+                            call get_command_argument(i, aux_character20)
+                            read (aux_character20, *) cl_body_in(6)
+                        end if
                 end select
             end do
         end if
