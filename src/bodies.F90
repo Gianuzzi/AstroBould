@@ -2078,6 +2078,8 @@ contains
             end if
         end do
 
+        if (has_inside) inside = is_inside
+
     end subroutine get_acc_and_pot_xy
 
     !  ------------------   COLLISIONS/ESCAPES   --------------------------
