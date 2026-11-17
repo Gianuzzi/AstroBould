@@ -33,9 +33,10 @@ module integrators
             procedure(function_check_keep_tem), optional :: check_fun
         end subroutine integrator_caller
 
-        subroutine integrator_substep_caller(t, y, dt_large, dydt_slow, dt_small, dydt_fast, dt, ynew, check_fun)
+        subroutine integrator_substep_caller(t, y, dt_large, dydt_slow, dt_small, drift_fast, dt, ynew, check_fun)
             import :: wp
             import :: dydt_tem
+            import :: drift_fast_tem
             import :: function_check_keep_tem
             implicit none
             real(wp), intent(in) :: t
@@ -43,7 +44,7 @@ module integrators
             real(wp), intent(inout) :: dt_large
             procedure(dydt_tem) :: dydt_slow
             real(wp), intent(in) :: dt_small
-            procedure(dydt_tem) :: dydt_fast
+            procedure(drift_fast_tem) :: drift_fast
             real(wp), intent(in) :: dt
             real(wp), dimension(size(y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun
@@ -59,7 +60,7 @@ contains
         real(wp), intent(in) :: min_dt, err_tol, learning_beta
         logical, intent(in) :: fix_dt
         logical, intent(in), optional :: standard
-        logical :: is_std = .False.
+        logical :: is_std
 
         ! Size of y
         SIZEY0 = sizey
@@ -89,13 +90,16 @@ contains
         BETA = learning_beta
 
         ! Check if std
+        is_std = .False.  ! (not initialised in the declaration: that would make it SAVEd)
         if (present(standard)) is_std = standard
 
         ! Set the integrator
         if (integrator == -30) then
             call init_leapfrog_multirate(SIZEY0, 0)
             integrate_substeps => leapfrog_multirate_caller
-            print*, "ALL SET"
+            ! Plain KDK (whole derivative, no sub-stepping) so that "integrate" is never left unassociated
+            call init_leapfrog(SIZEY0, 1, is_std)
+            integrate => leapfrog_fixed_caller
         
         else if (integrator > -30 .and. integrator < -3) then
             call init_runge_kutta(SIZEY0, abs(integrator + 3))
@@ -145,6 +149,7 @@ contains
         if (allocated(der)) deallocate (der)
         call free_BS2()
         call free_leapfrog()
+        call free_leapfrog_multirate()
         call free_BS()
         call free_embedded()
         call free_runge_kutta()
@@ -180,6 +185,8 @@ contains
 
         if (reached_underflow) then
             reached_underflow = .False. ! Reset the flag for future checks
+            write (*, *) "WARNING: Bulirsch-Stoer step size underflow. Switching to the fallback integrator", &
+                       & " (RK6 adaptive / Dopri8 fixed) for the rest of the run."
             call fallback_integrator()
             dt_adap = DT_MIN ! Reset dt_adap to minimum for the new integrator
             call integrate(t, y, dt_adap, dydt, dt, ynew, check_fun) ! Call the new integrator immediately

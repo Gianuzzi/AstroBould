@@ -5,11 +5,12 @@ program main
     use celestial, only: get_Period, coord2geom
     use bodies
     use times, only: set_output_times, expand_checkpoints, select_fraction_symmetric
-    use derivates, only: dydt, set_dydt, dydt_grav_f, dydt_coll_f
+    use derivates, only: dydt, set_dydt, dydt_grav_f, drift_coll_f
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
-    use surface, only: init_section, crossed_section, get_jacobi_constant
-    use collisions, only: set_coll_parameters, verlet_rebuilds, verlet_caches, list_collided
+    use surface, only: init_section, crossed_section
+    use collisions, only: set_coll_parameters, verlet_rebuilds, verlet_caches, list_collided, &
+                        & mr_steps, mr_active_sum, mr_pairs_sum, mr_missed
 
     implicit none
 
@@ -30,6 +31,12 @@ program main
 
     ! Set program name
     call get_command_argument(0, PROGRAM_NAME)
+
+    ! Check if HELP wanted
+    if (check_help()) then
+        call help()
+        stop 0
+    end if
 
     use_configfile = .True. ! Manual override if needed
     if (use_configfile) call read_config_file(input, "config.ini", configfile_exists) ! Leemos archivo de configuración
@@ -137,7 +144,7 @@ program main
         input%kappa_col_part = cero  ! 0: No bounce, 1: Full bounce.  ! SOFT SPHERE
         input%gamma_col_part_n = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE
         input%beta_col_part = cero  ! beta = gamma_t / gamma_n ! Only active if SOFT-SPHERE collisions and gamma_t > 0
-        input%use_part_hard_sphere_col = .False. ! If true, they are used at every output
+        input%use_part_hard_sphere_col = .False. ! If true, approaching contacts are resolved at every integrator step
         input%eta_col_part = uno  ! 0: Elastic, 1: Plastic  ! HARD SPHERE
         input%f_col_part = uno  ! Bounded: Etot < -f |Epot|  ! HARD SPHERE
         !! --- Both --- (SOFT-SPHERE)
@@ -404,7 +411,7 @@ program main
             stop 1
         end if
         if (sim%use_screen) write (*, *) "Reading particles from file: ", trim(sim%particlesfile)
-        !!!! Formato: [mu, a, e, M, w, MMR]
+        !!!! Formato: [a, e, M, w, MMR]  (MMR optional)
         call read_columns_file(sim%particlesfile, aux_2D)
         sim%Nparticles = size(aux_2D, 1)
         if (sim%Nparticles == 0) then
@@ -418,10 +425,15 @@ program main
             write (*, s1i1) "  Read ", sim%Nparticles, " rows."
             write (*, s1i1) "  Read ", aux_int, " columns."
         end if
+        if (aux_int > 5) then
+            write (*, *) ACHAR(10)
+            write (*, s1i1) "ERROR: Particles file must have at most 5 columns [a, e, M, w, MMR]. Found:", aux_int
+            stop 1
+        end if
         call allocate_params_particles(sim%Nparticles)
         ! Fill the arrays
         particles_in = cero
-        do i = 1, min(aux_int, 6)
+        do i = 1, aux_int
             particles_in(:sim%Nparticles, i) = aux_2D(:, i)
         end do
         deallocate (aux_2D)
@@ -562,8 +574,12 @@ program main
                             & sim%tau_boulders*unit_time, &
                             & sim%manual_J2, sim%use_J2_from_primary)  ! Extra parameters
 
+    ! Effective J2 of the integrated asteroid (geometric elements)
+    call set_effective_J2(system%asteroid, sim%manual_J2, sim%gamma_J2, sim%use_J2_from_primary)
+    call recalculate_all(system)  ! Energy with the full asteroid potential (needs the J2 data above)
+
     ! <<<< Fill auxiliar arrays >>>>
-    allocate (boulders_data(0:sim%Nboulders, 4))   ! To use in dydt
+    allocate (boulders_data(0:sim%Nboulders, 5))   ! To use in dydt
     allocate (boulders_coords(0:sim%Nboulders, 4)) ! To use in dydt
 
     !! Asteroid
@@ -576,6 +592,7 @@ program main
     boulders_data(0, 2) = system%asteroid%primary%radius
     boulders_data(0, 3) = system%asteroid%primary%initial_theta
     boulders_data(0, 4) = system%asteroid%primary%dist_to_asteroid
+    boulders_data(0, 5) = cero  ! Angle from the primary (unused for the primary)
 
     !! BouldersZ
     ! Nothing
@@ -587,6 +604,7 @@ program main
         boulders_data(i, 2) = system%asteroid%boulders(i)%radius
         boulders_data(i, 3) = system%asteroid%boulders(i)%initial_theta
         boulders_data(i, 4) = system%asteroid%boulders(i)%dist_to_asteroid
+        boulders_data(i, 5) = system%asteroid%boulders(i)%theta_from_primary
     end do
 
 
@@ -789,8 +807,9 @@ program main
                 write (*, *) ACHAR(5)
             end if
         else if (sim%use_poly_omega_damp) then
-            call init_damping(sim%omega_exp_damp_poly_A, &
-                            & sim%omega_exp_damp_poly_A, &
+            ! omega = omega0 exp(A t^B)  =>  domega/dt = (A B) t^(B-1) omega
+            call init_damping(sim%omega_exp_damp_poly_A*sim%omega_exp_damp_poly_B, &
+                            & sim%omega_exp_damp_poly_B, &
                             & sim%omega_damp_active_time*unit_time, &
                             & 3)
 
@@ -904,7 +923,9 @@ program main
     end if
 
     ! Disable if no actual collisions
-    if (sim%kappa_col_moon <= cero .or. sim%epsilon_col_moon <= cero) then
+    ! (with explicit parameters, epsilon = 0 is an overdamped contact, which is still active)
+    if (sim%kappa_col_moon <= cero .or. &
+      & ((sim%epsilon_col_moon <= cero) .and. (.not. sim%use_moon_soft_explicit_col))) then
         sim%use_moon_soft_sphere_col = .False.
     end if
 
@@ -923,7 +944,9 @@ program main
     end if
 
     ! Disable if no actual collisions
-    if (sim%kappa_col_part <= cero .or. sim%epsilon_col_part <= cero) then
+    ! (with explicit parameters, epsilon = 0 is an overdamped contact, which is still active)
+    if (sim%kappa_col_part <= cero .or. &
+      & ((sim%epsilon_col_part <= cero) .and. (.not. sim%use_part_soft_explicit_col))) then
         sim%use_part_soft_sphere_col = .False.
     end if
 
@@ -931,6 +954,28 @@ program main
     if (sim%use_part_soft_sphere_col .and. (sim%beta_col_part < cero .or. sim%beta_col_part > uno)) then
         error stop "Particle collision beta must be between 0 and 1."
     end if
+
+    ! Bodies carry no spin: tangential friction cannot hand the angular momentum over to it
+    if ((sim%use_part_soft_sphere_col .and. sim%gamma_col_part_t > cero) .or. &
+      & (sim%use_moon_soft_sphere_col .and. sim%gamma_col_moon_t > cero)) then
+        write (*, *) "WARNING: Tangential friction is active (beta > 0). Spins are not integrated,"
+        write (*, *) "         so it does not conserve the total angular momentum."
+    end if
+
+    ! Keep the derived flags consistent with what is actually active
+    sim%use_soft_sphere_col = sim%use_moon_soft_sphere_col .or. sim%use_part_soft_sphere_col
+    if (.not. sim%use_soft_sphere_col) then
+        sim%use_verlet_col = .False.
+        sim%use_substeps_col = .False.
+    end if
+
+    ! If moon contacts are integrated, the hard-sphere check must only resolve merges
+    system%soft_col_moon = sim%use_moon_soft_sphere_col
+
+    ! Hard-sphere particle collisions: detected at every integrator step (not only at checkpoints).
+    ! Only if they are actually resolved (eta < 1), and not when contacts are integrated (soft-sphere)
+    use_hs_step_check = sim%use_part_hard_sphere_col .and. (sim%eta_col_part < uno) .and. &
+                      & (.not. sim%use_part_soft_sphere_col)
 
     ! Messages
     if (sim%use_screen) then
@@ -1091,10 +1136,11 @@ program main
     !! Configuration
     if (sim%use_megno) then
         call init_megno(system, sim%megno_eps)
+        ! Nothing to do without particles (whatever the screen setting is)
+        if (sim%Npart_active == 0) sim%megno_active = .False.
         if (sim%use_screen) then
             if (sim%Npart_active == 0) then
                 write (*, *) "WARNING: MEGNO Activated but no particles found."
-                sim%megno_active = .False.
             else 
                 write (*, *) "ACTIVATED. Applied only in particles"
             end if
@@ -1129,9 +1175,9 @@ program main
             write (*, *) ACHAR(5)
             write (*, *) "ACTIVATED."
             if (sim%use_sinodic) then
-                write (*, *) " Working on inertial frame."
-            else
                 write (*, *) " Working on rotating frame."
+            else
+                write (*, *) " Working on inertial frame."
             end if
             write (*, *) ACHAR(5)
             write (*, *)    " Surface coordiante selected: " // section%name
@@ -1360,10 +1406,36 @@ program main
                 write (*, *) ACHAR(5)
             end if
             sim%integrator_ID = -30  ! Leap-Frog KDK with substeps
+            ! The sub-stepped drift finds its own pairs: the Verlet list and the grid options are not used
+            if (sim%use_verlet_col) then
+                sim%use_verlet_col = .False.
+                if (sim%use_screen) then
+                    write (*, *) " Verlet list disabled: substeps use their own pair search."
+                end if
+            end if
         end if
     else if (sim%use_screen) then
         write (*, *) "Substeps for collisions deactivated."
         write (*, *) ACHAR(5)
+    end if
+
+    ! A soft-sphere contact lasts Tdur: the step that integrates it must resolve it
+    if (sim%use_soft_sphere_col) then
+        if (sim%use_substeps_col) then
+            aux_real = sub_timestep
+        else
+            aux_real = sim%dt_min
+        end if
+        if (sim%use_moon_soft_sphere_col .and. (aux_real > sim%Tdur_col_moon / 10)) then
+            write (*, *) "WARNING: Moon contacts are poorly resolved by the timestep."
+            write (*, s1r1) "  Timestep:", aux_real/unit_time, "[day]. Contact duration:", sim%Tdur_col_moon/unit_time, "[day]."
+            write (*, *) "  Use a (sub)timestep of Tdur/20 or less, or a larger Tdur."
+        end if
+        if (sim%use_part_soft_sphere_col .and. (aux_real > sim%Tdur_col_part / 10)) then
+            write (*, *) "WARNING: Particle contacts are poorly resolved by the timestep."
+            write (*, s1r1) "  Timestep:", aux_real/unit_time, "[day]. Contact duration:", sim%Tdur_col_part/unit_time, "[day]."
+            write (*, *) "  Use a (sub)timestep of Tdur/20 or less, or a larger Tdur."
+        end if
     end if
 
     ! Get minimum and maximum periods (already have internal units)
@@ -1411,6 +1483,10 @@ program main
     
     call set_dydt(sim%Ntotal, sim%use_sinodic)
 
+    ! Re-check of the hard-exit conditions on accepted states (the gravity part holds all of them,
+    ! and has no side effects on the collision lists)
+    dydt_recheck => dydt_grav_f
+
     ! Initial message
     if (sim%use_screen) then
         write (*, *) ACHAR(5)
@@ -1427,7 +1503,14 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! SURFACE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    if (sim%use_surface) allocate (y_cross(y_nvalues))  ! Array to store the crossing state (theta, omega, coord, secon_coord)
+    if (sim%use_surface) then
+        allocate (y_cross(y_nvalues))  ! Array to store the crossing state (theta, omega, coord, secon_coord)
+        ! Sized with every non-asteroid body (moons + particles), as indexed in crossed_section
+        allocate (has_crossed_surface(sim%Nactive - 1))  ! Whether each body has crossed the surface
+        allocate (surf_alpha(sim%Nactive - 1))  ! Per-body crossing fraction of the step
+        allocate (surf_error(sim%Nactive - 1))  ! Per-body crossing error
+        allocate (surf_converged(sim%Nactive - 1))  ! Per-body crossing resolved
+    end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! FILTER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1876,10 +1959,12 @@ program main
             timestep = next_time - time
 
             ! INTEGRATE
+            hard_exit = .False.  ! Only flags raised during this call matter
+            integration_stopped = .False.
             call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
             ! Check if it might be hard_exit
-            if (hard_exit) then
+            if (integration_stopped) then
 
                 !! If so, the dt used is in dt_adap
                 timestep = adaptive_timestep
@@ -1888,7 +1973,7 @@ program main
                 if (timestep > cero) then
                     is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                 else  ! Weird case of timestep 0
-                    is_premature_exit = next_time - time < myepsilon
+                    is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                 end if
 
             end if
@@ -1968,10 +2053,12 @@ program main
                 if (abs(timestep) < myepsilon) exit loop_until_first_filter !! Manual CHECK
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -1979,7 +2066,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < myepsilon
+                        is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                     end if
 
                 end if
@@ -2062,6 +2149,8 @@ program main
                 if (.not. sim%use_adaptive) adaptive_timestep_filt = fixed_timestep
 
                 ! INTEGRATE (without check)
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt, y_arr_new(:y_nvalues))
 
                 !! Update time
@@ -2119,10 +2208,12 @@ program main
                 timestep = next_time - time
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
 
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
@@ -2131,7 +2222,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < myepsilon
+                        is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                     end if
 
                 end if
@@ -2200,6 +2291,8 @@ program main
                 if (time > next_t_filt) then
 
                     ! We reset the system up to the tmp values
+                    ! Events up to the time reached so far were already written: do not write them again
+                    t_redo_until = max(t_redo_until, time)
                     j = tmp_j
                     sim = tmp_sim
                     time = tmp_time
@@ -2207,11 +2300,9 @@ program main
                     y_nvalues = tmp_y_nvalues
                     adaptive_timestep = tmp_adapt_timestep
                     y_arr(:y_nvalues) = tmp_y_arr(:y_nvalues)
-                    aux_int = unit_file  ! For coll/escp writing
-
-                else
-                    aux_int = -1  ! For coll/escp writing
-
+                    ! Masses/radii (and the asteroid data) may have changed after tmp: rebuild them
+                    call generate_arrays(system, m_arr, R_arr, y_arr_new)  ! y_arr_new only as scratch
+                    call update_forces_and_constants(system)
                 end if
 
                 !! Now we just need to integrate the normal system up to next filter time
@@ -2245,10 +2336,12 @@ program main
                     timestep = checkpoint_times(j) - time
 
                     ! INTEGRATE
+                    hard_exit = .False.  ! Only flags raised during this call matter
+                    integration_stopped = .False.
                     call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                     ! Check if it might be hard_exit
-                    if (hard_exit) then
+                    if (integration_stopped) then
                         !! If so, the dt used is in dt_adap
                         timestep = adaptive_timestep
 
@@ -2256,7 +2349,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                         else
-                            is_premature_exit = checkpoint_times(j) - time < myepsilon
+                            is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                         end if
                     end if
 
@@ -2275,7 +2368,7 @@ program main
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                     ! Apply escapes and colissions and check
-                    call check_esc_and_col(sim, system, aux_int)
+                    call check_esc_and_col(sim, system, unit_file)  ! Already-written times are skipped
 
                     ! Update Nactive and y_nvalues if necessary
                     call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -2321,10 +2414,12 @@ program main
                     if (abs(timestep) < myepsilon) exit loop_until_second_filter !! Manual CHECK
 
                     ! INTEGRATE
+                    hard_exit = .False.  ! Only flags raised during this call matter
+                    integration_stopped = .False.
                     call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                     ! Check if it might be hard_exit
-                    if (hard_exit) then
+                    if (integration_stopped) then
                         !! If so, the dt used is in dt_adap
                         timestep = adaptive_timestep
 
@@ -2332,7 +2427,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                         else  ! Weird case of timestep 0
-                            is_premature_exit = next_time - time < myepsilon
+                            is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                         end if
 
                     end if
@@ -2442,6 +2537,8 @@ program main
                 if (.not. sim%use_adaptive) adaptive_timestep_filt = fixed_timestep
 
                 !! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt,&
                                 &  y_arr_new(:y_nvalues))  ! No checks here
 
@@ -2494,10 +2591,12 @@ program main
                 timestep = checkpoint_times(j) - time
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -2505,7 +2604,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                     end if
                 end if
 
@@ -2572,6 +2671,8 @@ program main
             !! In this case, then next filter time has already passed
             if (time > next_t_filt) then
                 ! We reset the system up to the tmp values
+                ! Events up to the time reached so far were already written: do not write them again
+                t_redo_until = max(t_redo_until, time)
                 j = tmp_j
                 sim = tmp_sim
                 time = tmp_time
@@ -2579,11 +2680,9 @@ program main
                 y_nvalues = tmp_y_nvalues
                 adaptive_timestep = tmp_adapt_timestep
                 y_arr(:y_nvalues) = tmp_y_arr(:y_nvalues)
-                aux_int = unit_file  ! For coll/escp writing
-
-            else
-                aux_int = -1  ! For coll/escp writing
-
+                ! Masses/radii (and the asteroid data) may have changed after tmp: rebuild them
+                call generate_arrays(system, m_arr, R_arr, y_arr_new)  ! y_arr_new only as scratch
+                call update_forces_and_constants(system)
             end if
 
             !! Now we just need to integrate the normal system up to next filter time
@@ -2609,10 +2708,12 @@ program main
                 timestep = checkpoint_times(j) - time
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -2620,7 +2721,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                     end if
                 end if
 
@@ -2639,7 +2740,7 @@ program main
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                 ! Apply escapes and colissions and check
-                call check_esc_and_col(sim, system, aux_int)
+                call check_esc_and_col(sim, system, unit_file)  ! Already-written times are skipped
 
                 ! Update Nactive and y_nvalues if necessary
                 call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -2683,10 +2784,12 @@ program main
                 if (abs(timestep) < myepsilon) exit loop2_until_second_filter !! Manual EXIT
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -2694,7 +2797,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < myepsilon
+                        is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                     end if
 
                 end if
@@ -2799,16 +2902,18 @@ program main
 
                 ! Restart dynamic variables
                 surf_counter = 0
-                had_crossed_surface = .False.
+                had_any_crossed_surface = .False.
                 surf_old_timestep = cero  ! Just to be sure, not really needed now
                 
                 loop_surface: do while (timestep > tini)
                 
                     ! INTEGRATE
+                    hard_exit = .False.  ! Only flags raised during this call matter
+                    integration_stopped = .False.
                     call integrate(time, y_arr(:y_nvalues), tmp_adapt_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                     ! Check if it might be hard_exit
-                    if (hard_exit) then
+                    if (integration_stopped) then
                         !! If so, the dt used is in dt_adap
                         timestep = tmp_adapt_timestep
 
@@ -2817,7 +2922,7 @@ program main
                             is_premature_exit = ((checkpoint_times(j) - (time + timestep)) / timestep > 1e-3_wp) &
                                                 & .or. (timestep > surf_min_timestep) 
                         else
-                            is_premature_exit = checkpoint_times(j) - time < myepsilon
+                            is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                         end if
 
                         !! Do we leave?
@@ -2829,32 +2934,45 @@ program main
                         end if
                     end if
 
-                    ! Check if crossed
-                    call crossed_section(section, y_arr, y_arr_new, surf_alpha, surf_error, has_crossed_surface)
+                    ! Check if crossed (per-particle alpha and error)
+                    call crossed_section(section, y_arr, y_arr_new, &
+                                         & surf_alpha(:sim%Nactive - 1), &
+                                         & surf_error(:sim%Nactive - 1), &
+                                         & has_crossed_surface(:sim%Nactive - 1))
 
-                    ! Get alpha
-                    if (has_crossed_surface) then
-                        surf_at_edge = surf_error < myepsilon
-                    else
-                        surf_at_edge = .False.
-                    end if
+                    ! Check if crossed surface
+                    has_any_crossed_surface = any(has_crossed_surface(:sim%Nactive - 1))
 
-                    ! Check if accepted step
-                    surf_accepted_step = (timestep < surf_min_timestep) .or. &
-                                         & surf_at_edge .or. &
-                                         & (surf_error < sim%surface_abs_tol) &
-                                         & .or. (surf_counter > surf_max_counter)
+                    ! Per-particle convergence: either it did not cross, or its own crossing is resolved
+                    ! (at the edge, or within tolerance). Each particle is judged with its OWN error.
+                    surf_converged(:sim%Nactive - 1) = (.not. has_crossed_surface(:sim%Nactive - 1)) .or. &
+                        & (surf_error(:sim%Nactive - 1) < max(sim%surface_abs_tol, myepsilon))
+
+                    ! Forced acceptance (cannot / should not shrink any more)
+                    surf_force_accept = (timestep < surf_min_timestep) .or. (surf_counter > surf_max_counter)
+
+                    ! Accepted only if ALL crossings inside this step are resolved
+                    surf_accepted_step = surf_force_accept .or. all(surf_converged(:sim%Nactive - 1))
 
                     ! Two possibilities:
-                    if (has_crossed_surface .and. .not. surf_accepted_step) then  ! Crossed too large
+                    if (has_any_crossed_surface .and. .not. surf_accepted_step) then  ! Crossed too large
+
+                        ! Earliest UNRESOLVED crossing. Already-resolved ones are ignored here: if one of
+                        ! them sits at alpha ~ 0 it would otherwise collapse the timestep to ~0.
+                        ! Crossings later than this one fall out of the shrunk step and are resolved
+                        ! in later steps; earlier ones stay inside and are written with their own alpha.
+                        surf_alpha_min = minval(surf_alpha(:sim%Nactive - 1), &
+                                              & mask=.not. surf_converged(:sim%Nactive - 1))
 
                         ! Update past
-                        had_crossed_surface = .True.
+                        had_any_crossed_surface = .True.
                         surf_old_timestep = timestep
 
                         ! Update timestep
                         if (sim%surface_use_adaptive) then
-                            timestep = surf_alpha * timestep  ! Redo with smaller timestep, but not too small
+                            ! Redo with smaller timestep. Since this crossing is unresolved,
+                            ! |f_old|, |f_new| >= tol, so 0 < surf_alpha_min < 1 (no clamping needed)
+                            timestep = surf_alpha_min * timestep
                         else
                             timestep = uno2 * timestep  ! Redo with half timestep
                         end if
@@ -2865,48 +2983,60 @@ program main
                     else ! Accepted step. Might have crossed, but we would be at y ~ surface
                         
                         ! Check if y = surface
-                        if (has_crossed_surface .and. surf_accepted_step) then  ! At y = surface
+                        if (has_any_crossed_surface) then  ! At y = surface
 
-                            ! Get crossing point, interpolated or not
-                            if (sim%surface_use_interpolated) then
-                                ! Interpolated crossing point
-                                y_cross(:y_nvalues) = y_arr(:y_nvalues) + surf_alpha * (y_arr_new(:y_nvalues) - y_arr(:y_nvalues))
-                            else if (surf_alpha > uno2) then
-                                y_cross(:y_nvalues) = y_arr_new(:y_nvalues)  ! Non-interpolated next crossing point
-                            else
-                                y_cross(:y_nvalues) = y_arr(:y_nvalues)  ! Non-interpolated previous crossing point
-                            end if
+                            ! Loop over all particles and check if any crossed
+                            do aux_int = 1, sim%Nactive - 1  ! Skip idx = 0, which is the asteroid
+                                
+                                if (.not. has_crossed_surface(aux_int)) cycle  ! Skip if not crossed
 
-                            ! Get jacobi constant
-                            if (sim%use_sinodic) then
-                                jacobi_constant = get_jacobi_constant(&
-                                                & y_cross(7), y_cross(8), &
-                                                & y_cross(9), y_cross(10), &
-                                                & boulders_data(0:, 1), &
-                                                & boulders_coords(0:, :), &
-                                                & system%asteroid%omega)
-                            else
-                                ! Go to rotating frame to calculate jacobi
-                                jacobi_constant = get_jacobi_constant(&
-                                                & y_cross(7), y_cross(8), &
-                                                & y_cross(9) + y_cross(8) * system%asteroid%omega, &
-                                                & y_cross(10) - y_cross(7) * system%asteroid%omega, &
-                                                & boulders_data(0:, 1), &
-                                                & boulders_coords(0:, :), &
-                                                & system%asteroid%omega)
-                            end if
+                                ! Get particle idx [TODO : This is a bit ugly, but works]
+                                i = 4*aux_int + 3 
 
-                            ! Write surface crossing to file, with interpolated values
-                            write(u_surfacefile,'(8E23.15,1X)') time + surf_alpha * timestep, &
-                            & y_cross(1:2), &
-                            & y_cross(7:10), &
-                            & jacobi_constant
+                                ! This particle's own crossing fraction
+                                surf_alpha_this = min(max(surf_alpha(aux_int), cero), uno)
+
+                                ! Get crossing point, interpolated or not (only the needed components)
+                                if (sim%surface_use_interpolated) then
+                                    y_cross(1:6) = y_arr(1:6) + surf_alpha_this * (y_arr_new(1:6) - y_arr(1:6))
+                                    y_cross(i:i+3) = y_arr(i:i+3) + surf_alpha_this * (y_arr_new(i:i+3) - y_arr(i:i+3))
+                                else if (surf_alpha_this > uno2) then
+                                    y_cross(1:6) = y_arr_new(1:6)  ! Non-interpolated next crossing point
+                                    y_cross(i:i+3) = y_arr_new(i:i+3)
+                                else
+                                    y_cross(1:6) = y_arr(1:6)  ! Non-interpolated previous crossing point
+                                    y_cross(i:i+3) = y_arr(i:i+3)
+                                end if
+
+                                ! Jacobi constant, in the asteroid BODY frame (centred on its CM), with the
+                                ! same potential as the dynamics:  C = omega^2 r^2 + 2 U - v^2
+                                surf_rel(1:4) = y_cross(i:i+3) - y_cross(3:6)  ! Relative to the asteroid
+                                if (.not. sim%use_sinodic) then
+                                    ! Inertial: rotate by -theta, and remove omega x r from the velocity
+                                    surf_rel(1:2) = rotate2D(surf_rel(1:2), -y_cross(1))
+                                    surf_rel(3:4) = rotate2D(surf_rel(3:4), -y_cross(1))
+                                    surf_rel(3) = surf_rel(3) + y_cross(2)*surf_rel(2)
+                                    surf_rel(4) = surf_rel(4) - y_cross(2)*surf_rel(1)
+                                end if  ! Sinodic: the state is already in the body frame
+                                jacobi_constant = y_cross(2)**2*(surf_rel(1)**2 + surf_rel(2)**2) &
+                                                & + dos*body_frame_potential(surf_rel(1), surf_rel(2)) &
+                                                & - (surf_rel(3)**2 + surf_rel(4)**2)
+
+                                ! Write surface crossing to file, with this particle's interpolated values
+                                write(u_surfacefile, '(I8,1X,8(E23.15,1X))') &
+                                    & aux_int, &
+                                    & time + surf_alpha_this * timestep, &
+                                    & y_cross(1:2), &
+                                    & y_cross(i:i+3), &
+                                    & jacobi_constant
+
+                            end do
 
                             ! Restart counter
                             surf_counter = 0
 
                             ! Restart past
-                            had_crossed_surface = .False.
+                            had_any_crossed_surface = .False.
                             surf_old_timestep = cero
 
                         end if
@@ -2915,11 +3045,15 @@ program main
                         y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
                         time = time + timestep
 
+                        ! Step accepted: restart the retry counter (it bounds the retries of ONE step;
+                        ! accumulating it across steps forces acceptances with unresolved crossings)
+                        surf_counter = 0
+
                         ! Update timestep, according to the past
-                        if (had_crossed_surface .and. surf_old_timestep > timestep) then
+                        if (had_any_crossed_surface .and. surf_old_timestep > timestep) then
                             ! Try to keep the same timestep as before crossing, but not too large
                             timestep = min(surf_old_timestep - timestep, checkpoint_times(j) - time)
-                            had_crossed_surface = .False.                        
+                            had_any_crossed_surface = .False.                        
                         else
                             timestep = checkpoint_times(j) - time
                         end if
@@ -2932,19 +3066,23 @@ program main
 
                 if (sim%use_substeps_col) then
                     ! INTEGRATE
+                    hard_exit = .False.  ! Only flags raised during this call matter
+                    integration_stopped = .False.
                     call integrate_substeps(time, y_arr(:y_nvalues), &
                                             & adaptive_timestep, dydt_grav_f, &
-                                            & sub_timestep, dydt_coll_f, &
+                                            & sub_timestep, drift_coll_f, &
                                             & timestep, y_arr_new(:y_nvalues), check_func)
 
                 else
                     ! INTEGRATE
+                    hard_exit = .False.  ! Only flags raised during this call matter
+                    integration_stopped = .False.
                     call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 end if
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -2952,7 +3090,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                     end if
                 end if
 
@@ -2985,7 +3123,9 @@ program main
             if (sim%use_percentage) call percentage(time, sim%final_time)
 
             ! Check update from TOM
-            if (checkpoint_is_tom(j) .and. (tom%index_number <= tom%total_number)) then
+            ! Only once the checkpoint is actually reached (not on a premature exit, after which
+            ! the same checkpoint j is integrated to again)
+            if (checkpoint_is_tom(j) .and. (tom%index_number <= tom%total_number) .and. (.not. is_premature_exit)) then
                 if (tom%use_domega) call spin_asteroid(system%asteroid, &
                                                      & system%asteroid%theta, &
                                                      & system%asteroid%omega + tom%deltaomega(tom%index_number))
@@ -3014,14 +3154,6 @@ program main
             ! Update j; only if not premature
             if (.not. is_premature_exit) j = j + 1
 
-            if (verlet_caches > 0) then
-                print*, ""
-                print*, "Pairs collisions: ", count(list_collided)
-                print*, "Verlet rebuilds: ", verlet_rebuilds, " Verlet caches: ", verlet_caches
-                print*, "Ratio: ", real(verlet_caches-verlet_rebuilds)/real(verlet_caches)
-                print*, "Time: ", time/unit_time, " days"
-            end if
-
         end do main_loop_normal
 
     end if
@@ -3029,11 +3161,26 @@ program main
     !! Porcentaje final
     if (sim%use_percentage .and. time /= sim%final_time) call percentage(sim%final_time + uno, sim%final_time)
 
+    !! Multi-rate collision stepping
+    if (sim%use_screen .and. mr_steps > 0) then
+        write (*, *) ACHAR(10)
+        write (*, s1r1) "Collision sub-stepping: mean bodies sub-stepped per step:", &
+                      & real(mr_active_sum, wp)/real(mr_steps, wp)
+        write (*, s1r1) "                        mean candidate pairs per step:    ", &
+                      & real(mr_pairs_sum, wp)/real(mr_steps, wp)
+        write (*, s1i1) "                        missed contact onsets:            ", mr_missed
+        if (mr_missed > 0) then
+            write (*, *) "WARNING: Some contacts started between bodies that were not sub-stepped."
+            write (*, *) "         Increase the Verlet skin factor or reduce the timestep."
+        end if
+    end if
+
     !! Info sobre Verlet
     if (sim%use_screen .and. verlet_rebuilds > 0) then
         write (*, *) ACHAR(10)
         write (*, s1i1) "Total Verlet rebuilds: ", verlet_rebuilds
-        write (*, s1i1) "Total Verlet cache hits: ", verlet_caches
+        write (*, s1i1) "Total Verlet list uses: ", verlet_caches
+        write (*, s1i1) "Bodies in contact at the last evaluation: ", count(list_collided)
     end if
 
     !! Cerrar archivo de salida
@@ -3134,7 +3281,8 @@ program main
                 !! Chaosfile
                 inquire (unit=u_filtchaosfile, opened=aux_logical)
                 if (.not. aux_logical) then
-                    open (unit=u_filtchaosfile, file=trim(sim%chaosfile), status='unknown', action='write')
+                    open (unit=u_filtchaosfile, file=trim(sim%filter_prefix)//trim(sim%chaosfile), &
+                        & status='unknown', action='write')  ! Not the unfiltered chaos file
                 else
                     rewind (u_filtchaosfile)
                 end if
@@ -3143,7 +3291,7 @@ program main
                 !! Mensaje
                 if (sim%use_screen) then
                     write (*, *) ACHAR(10)
-                    write (*, *) "Filterd chaos data saved into: ", "fil"//trim(sim%chaosfile)
+                    write (*, *) "Filterd chaos data saved into: ", trim(sim%filter_prefix)//trim(sim%chaosfile)
                 end if
             end if
             if (sim%use_datascreen) then
@@ -3236,6 +3384,7 @@ program main
 end program main
 
 subroutine create_map(sim, system)
+    use, intrinsic :: ieee_arithmetic
     use constants, only: wp, cero
     use bodies, only: system_st, get_acc_and_pot_xy
     use parameters, only: sim_params_st, u_mapfile
@@ -3246,6 +3395,14 @@ subroutine create_map(sim, system)
     real(wp), dimension(:, :, :), allocatable :: acc
     real(wp) :: dx_nx, dy_ny, rb(2)
     integer(kind=4) :: i, j
+    real(wp) :: nan
+    logical :: is_inside
+
+    ! Define nan
+    if (.not. ieee_support_nan(cero)) then
+        error stop "IEEE NaN is not supported"
+    end if
+    nan = ieee_value(cero, ieee_quiet_nan)
 
     !!! Check
     if ((sim%map_grid_size_x < 2) .or. (sim%map_grid_size_y < 2)) then
@@ -3275,7 +3432,11 @@ subroutine create_map(sim, system)
         do j = 1, sim%map_grid_size_y
             rb(1) = sim%map_min_x + (i - 1) * dx_nx
             rb(2) = sim%map_min_y + (j - 1) * dy_ny
-            call get_acc_and_pot_xy(system, rb, acc(i, j, :), pot(i, j))
+            call get_acc_and_pot_xy(system, rb, acc(i, j, :), pot(i, j), is_inside)
+            if (is_inside) then
+                pot(i, j) = nan
+                acc(i, j, :) = nan
+            end if
         end do
     end do
     !$OMP END DO

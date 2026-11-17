@@ -4,10 +4,15 @@ module parameters
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
     use accelerations, only: init_ellipsoid, init_boulder_z, init_manual_J2, init_stokes, init_drag, init_damping, update_boulder_z
+    use accelerations, only: acc_ellipsoid => use_ellipsoid, acc_K => K_coef, acc_L => L_coef, &
+                           & acc_J2_cm => use_manual_J2_from_cm, acc_J2_primary => use_manual_J2_from_primary, &
+                           & acc_J2K => J2K_coef, acc_bz => use_boulder_z, acc_Gm_bz => Gmboulder_z_coef, &
+                           & acc_dz2_bz => dz2_boulder_z_coef
     use filtering, only: filter_st
     use omp_lib
     use tomodule, only: tom_st
     use surface, only: section_st
+    use shared, only: DT_MAX  ! Integrators: physical limit of a single step
 
     implicit none
 
@@ -156,7 +161,7 @@ module parameters
         real(wp) :: kappa_col_part = uno  ! 0: No bounce, 1: Full bounce.  ! SOFT-SPHERE
         real(wp) :: gamma_col_part_n = uno  ! 0: No damping, 1: Full damping.  ! SOFT-SPHERE, normal component
         real(wp) :: beta_col_part = uno  ! Ratio tangential to normal damping. Only used if gamma_col_part_n > 0.  ! SOFT-SPHERE
-        logical :: use_part_hard_sphere_col = .False.  ! Checked between particles at every output
+        logical :: use_part_hard_sphere_col = .False.  ! Approaching contacts detected at every integrator step
         real(wp) :: eta_col_part = uno  ! 0: Elastic, 1: Plastic  ! HARD-SPHERE
         real(wp) :: f_col_part = cero  ! Bounded: Etot < -f |Epot|  ! HARD-SPHERE
         !! Both
@@ -164,14 +169,15 @@ module parameters
         logical :: use_stop_no_moon_left = .True.
         real(wp) :: coulomb_mu_col = cero  ! Coulomb friction coeff. Only active if SOFT-SPHERE collisions and gamma_t > 0
         logical :: use_only_repulsive_col = .False.  ! Whether to use only the repulsive part of the collision
-        real(wp) :: dr_factor_col = uno  ! Minimum dr assumed at collisions ! SOFT-SPHERE
+        real(wp) :: dr_factor_col = cero  ! Minimum dr assumed at collisions, as a fraction of (R1 + R2) ! SOFT-SPHERE
         logical :: use_verlet_col = .False.  ! Whether to use Verlet list for collisions (only for particles)
         real(wp) :: verlet_skin_factor = 0.1_wp  ! skin = factor * 2R
         logical :: use_verlet_with_moons = .False.  ! Same as verlet_col but including only moons in the Verlet list
         !! Grid collisions
         integer(kind=4) :: grid_col_min_bodies = 100  ! Do not even consider grid if number of bodies is below this threshold
-        integer(kind=4) :: grid_col_max_cells = 10000  ! Max amount of cells before falling back to brute-force
-        real(wp) :: grid_col_min_cell_size = uno  ! Minimum cell size to avoid too much overhead
+        ! [UNUSED] The grid only stores occupied cells, of the contact size: kept so that old configs still read
+        integer(kind=4) :: grid_col_max_cells = 10000
+        real(wp) :: grid_col_min_cell_size = uno
         !! Substeps
         logical :: use_substeps_col = .False.  ! Whether to use substeps for collision detection.
         real(wp) :: dt_substeps = cero  ! If >0, subdt=min(subdt, dt); -1<subdt<0, subdt=|subdt|*dt; subdt<-1, subdt=dt/|subdt|
@@ -272,8 +278,10 @@ module parameters
 
     ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
     real(wp), dimension(3) :: asteroid_data !! |axis_a, axis_b, inertia|
+    logical :: use_hs_step_check = .False. !! Check hard-sphere particle collisions at every integrator step
+    type(cell_index_t), save :: hs_cells   !! Sorted cells of the hard-sphere check
     real(wp), dimension(:, :), allocatable :: boulders_coords !! (Nb, 4) |x,y,vx,vy|
-    real(wp), dimension(:, :), allocatable :: boulders_data !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
+    real(wp), dimension(:, :), allocatable :: boulders_data !! (Nb, 5) |mass,radius,theta_Ast0,dist_Ast,theta_from_primary|
 
     ! ----  <<<<<    TIME     >>>>>   -----
     real(wp) :: time  ! Actual time of the integration
@@ -326,18 +334,23 @@ module parameters
 
     ! ----  <<<<<    SURFACE SECTION     >>>>>   -----
     type(section_st) :: section
-    logical :: has_crossed_surface = .False.
+    logical, dimension(:), allocatable :: has_crossed_surface
     real(wp), dimension(:), allocatable :: y_cross    ! Coordinates array at the crossing time (interpolated with alpha)
     ! ==========   EXTRA SURFACE SECTION  ==========
     ! Uses tmp_adapt_timestep
-    logical :: had_crossed_surface = .False.
+    logical :: has_any_crossed_surface = .False.  ! Flag if any particle has crossed the surface
+    logical :: had_any_crossed_surface = .False.  ! Flag if any particle had crossed the surface in the previous step
     real(wp) :: surf_old_timestep  ! Previous timestep before crossing attempt
     real(wp) :: surf_min_timestep  ! Minimum timestep to consider surface crossing
-    real(wp) :: surf_alpha  ! alpha for interpolation to find crossing time
-    real(wp) :: surf_error  ! Error of the linear interpolation to find crossing time. 
-    logical :: surf_at_edge  ! Flag if we are at the edge of crossing
+    real(wp), dimension(:), allocatable :: surf_alpha  ! Per-particle alpha for interpolation to find crossing time
+    real(wp), dimension(:), allocatable :: surf_error  ! Per-particle error of the linear interpolation
+    logical, dimension(:), allocatable :: surf_converged  ! Per-particle: not crossed, or crossing resolved within tol
+    real(wp) :: surf_alpha_min  ! Smallest alpha among the unresolved crossings (drives the step shrinking)
+    real(wp) :: surf_alpha_this  ! alpha of the particle being written
+    logical :: surf_force_accept  ! Step accepted regardless of the crossing errors (min timestep / max counter)
     logical :: surf_accepted_step  ! Flag if the step is accepted after crossing check
     real(wp) :: jacobi_constant  ! Self explained
+    real(wp) :: surf_rel(4)  ! Body-frame state relative to the asteroid (for the Jacobi constant)
     integer(kind=4) :: surf_counter = 0  ! Counter of how many times we tried to cross the surface
     integer(kind=4), parameter :: surf_max_counter = 250  ! Maximum number of times to try to cross the surface before giving up
 
@@ -390,7 +403,21 @@ module parameters
     procedure(int_i_template), pointer :: flush_geometric => null()
     procedure(int_i_template), pointer :: flush_geomchaos => null()
 
+    ! Re-check of the hard-exit conditions on an accepted state (set to the derivatives in main)
+    procedure(state_dydt_template), pointer :: dydt_recheck => null()
+    real(wp) :: t_last_dydt = cero  !! Time of the last derivative evaluation
+    logical :: integration_stopped = .False.  !! The integrator returned early (check_func said stop)
+    real(wp) :: t_redo_until = -huge(uno)  !! A filter rollback re-integrates up to here: events already written
+
     abstract interface
+
+        function state_dydt_template(t, y) result(der)
+            import :: wp
+            implicit none
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), dimension(size(y)) :: der
+        end function state_dydt_template
 
         subroutine simple_ptr_template()
             implicit none
@@ -425,6 +452,83 @@ module parameters
     end interface
 
 contains
+
+    ! Output the help message to the screen
+    subroutine help()
+        implicit none
+
+        write (*, *) "Uso: "//trim(PROGRAM_NAME)//" <ea> <ee> <eM> <ew> <mmr> [args]"
+        write (*, *) "    ea   : Elemento a de la partícula/luna (km)"
+        write (*, *) "    ee   : Elemento e de la partícula/luna"
+        write (*, *) "    eM   : Elemento M de la partícula/luna (deg)"
+        write (*, *) "    ew   : Elemento w de la partícula/luna (deg)"
+        write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional]"
+        write (*, *) "    --onlyprint   : No integrar; solo imprimir configuraciones"
+        write (*, *) "    -nsim         : Número de simulación [int]"
+        write (*, *) "    -ast_mass     : Masa del asteroide (kg)"
+        write (*, *) "    -ast_radius   : Radio del asteroide (km)"
+        write (*, *) "    -ast_period   : Período de rotación del asteroide (horas)"
+        write (*, *) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
+        write (*, *) "    -radius       : Radio de la partícula/luna individual (km)"
+        write (*, *) "    -datafile     : Nombre de archivo de salida de datos"
+        write (*, *) "    --nodataf     : No guardar datos de salida"
+        write (*, *) "    -chaosfile    : Nombre de archivo de salida caos"
+        write (*, *) "    --nochaosf    : No guardar salida de caos"
+        write (*, *) "    -geomfile     : Nombre de archivo de salida de elementos geométricos"
+        write (*, *) "    --nogeomf     : No guardar salida de elementos geométricos"
+        write (*, *) "    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)"
+        write (*, *) "    --nofilter    : No utilizar filtro"
+        write (*, *) "    --screen      : Imprimir información en pantalla"
+        write (*, *) "    --noscreen    : No imprimir en pantalla"
+        write (*, *) "    --perc        : Imprimir porcentaje de integración"
+        write (*, *) "    --noperc      : No imprimir porcentaje de integración"
+        write (*, *) "    --datascr     : Imprimir datos de salida en pantalla"
+        write (*, *) "    --nodatascr   : No imprimir datos de salida en pantalla"
+        write (*, *) "    --diagnostic  : Imprimir datos de diagnóstico en pantalla"
+        write (*, *) "    --nodiagnostic: No imprimir datos de diagnóstico en pantalla"
+        write (*, *) "    -multifile    : Nombre base de archivo de salida de datos individuales"
+        write (*, *) "    --nomultif    : No guardar datos en archivos individuales"
+        write (*, *) "    -mapfile      : Nombre de archivo de mapa"
+        write (*, *) "    --nomapf      : No guardar mapa de potencial"
+        write (*, *) "    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]"
+        write (*, *) "    --noelem      : Imprimir coordenadas baricéntricas"
+        write (*, *) "    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
+        write (*, *) "    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
+        write (*, *) "    -moonfile     : Nombre de archivo de lunas a utilizar"
+        write (*, *) "    --nomoonfile  : No utilizar archivo de lunas"
+        write (*, *) "    -partfile     : Nombre de archivo de partículas a utilizar"
+        write (*, *) "    --nopartfile  : No utilizar archivo de partículas"
+        write (*, *) "    --noconfig    : No leer archivo de configuración"
+        write (*, *) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
+        write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Toda"
+        write (*, *) "    -stopif       : Detener la integración sin más objetos del tipo [int]:"
+        write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
+        write (*, *) "    --megno       : Calcular MEGNO para partículas"
+        write (*, *) "    --nomegno     : No calcular MEGNO"
+        write (*, *) "    --sinodic     : Integar en sistema rotante"
+        write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
+        write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int]"
+        write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
+        write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
+        write (*, *) "    --help        : Mostrar esta ayuda"
+    end subroutine help
+
+    ! Check if help wanted
+    function check_help() result(need_help)
+        implicit none
+        integer(kind=4) :: i
+        character(30) :: aux_character30
+        logical :: need_help
+
+        need_help = .False.
+        arguments_number = command_argument_count()  ! Global variable
+
+        do i = 1, arguments_number
+            call get_command_argument(i, aux_character30)
+            if (trim(aux_character30) == "--help") need_help = .True.
+        end do
+    end function check_help
+
 
     ! Error caller
     subroutine fatal_error(message)
@@ -483,9 +587,9 @@ contains
         logical, intent(inout) :: use_config
         logical :: is_number
         integer(kind=4) :: i, j
-        logical :: aux_logical = .False.
+        logical :: aux_logical
         integer(kind=4) :: aux_integer
-        integer(kind=4) :: merge_type = 0, stop_type = 0
+        integer(kind=4) :: merge_type, stop_type
         character(20) :: aux_character20
         character(30) :: aux_character30
         character(len=128) :: err_msg
@@ -682,61 +786,7 @@ contains
                 case ("--version")
                     params%use_version = .True.
                 case ("--help")
-                    call get_command_argument(0, aux_character30)
-                    write (*, *) "Uso: "//trim(aux_character30)//" <ea> <ee> <eM> <ew> <mmr> [args]"
-                    write (*, *) "    ea   : Elemento a de la partícula/luna (km)"
-                    write (*, *) "    ee   : Elemento e de la partícula/luna"
-                    write (*, *) "    eM   : Elemento M de la partícula/luna (deg)"
-                    write (*, *) "    ew   : Elemento w de la partícula/luna (deg)"
-                    write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional]"
-                    write (*, *) "    --onlyprint   : No integrar; solo imprimir configuraciones"
-                    write (*, *) "    -nsim         : Número de simulación [int]"
-                    write (*, *) "    -ast_mass     : Masa del asteroide (kg)"
-                    write (*, *) "    -ast_radius   : Radio del asteroide (km)"
-                    write (*, *) "    -ast_period   : Período de rotación del asteroide (horas)"
-                    write (*, *) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
-                    write (*, *) "    -radius       : Radio de la partícula/luna individual (km)"
-                    write (*, *) "    -datafile     : Nombre de archivo de salida de datos"
-                    write (*, *) "    --nodataf     : No guardar datos de salida"
-                    write (*, *) "    -chaosfile    : Nombre de archivo de salida caos"
-                    write (*, *) "    --nochaosf    : No guardar salida de caos"
-                    write (*, *) "    -geomfile     : Nombre de archivo de salida de elementos geométricos"
-                    write (*, *) "    --nogeomf     : No guardar salida de elementos geométricos"
-                    write (*, *) "    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)"
-                    write (*, *) "    --nofilter    : No utilizar filtro"
-                    write (*, *) "    --screen      : Imprimir información en pantalla"
-                    write (*, *) "    --noscreen    : No imprimir en pantalla"
-                    write (*, *) "    --perc        : Imprimir porcentaje de integración"
-                    write (*, *) "    --noperc      : No imprimir porcentaje de integración"
-                    write (*, *) "    --datascr     : Imprimir datos de salida en pantalla"
-                    write (*, *) "    --nodatascr   : No imprimir datos de salida en pantalla"
-                    write (*, *) "    --diagnostic  : Imprimir datos de diagnóstico en pantalla"
-                    write (*, *) "    --nodiagnostic: No imprimir datos de diagnóstico en pantalla"
-                    write (*, *) "    -multifile    : Nombre base de archivo de salida de datos individuales"
-                    write (*, *) "    --nomultif    : No guardar datos en archivos individuales"
-                    write (*, *) "    -mapfile      : Nombre de archivo de mapa"
-                    write (*, *) "    --nomapf      : No guardar mapa de potencial"
-                    write (*, *) "    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]"
-                    write (*, *) "    --noelem      : Imprimir coordenadas baricéntricas"
-                    write (*, *) "    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
-                    write (*, *) "    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
-                    write (*, *) "    -moonfile     : Nombre de archivo de lunas a utilizar"
-                    write (*, *) "    --nomoonfile  : No utilizar archivo de lunas"
-                    write (*, *) "    -partfile     : Nombre de archivo de partículas a utilizar"
-                    write (*, *) "    --nopartfile  : No utilizar archivo de partículas"
-                    write (*, *) "    --noconfig    : No leer archivo de configuración"
-                    write (*, *) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
-                    write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Toda"
-                    write (*, *) "    -stopif       : Detener la integración sin más objetos del tipo [int]:"
-                    write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
-                    write (*, *) "    --megno       : Calcular MEGNO para partículas"
-                    write (*, *) "    --nomegno     : No calcular MEGNO"
-                    write (*, *) "    --sinodic     : Integar en sistema rotante"
-                    write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
-                    write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int]"
-                    write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
-                    write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
-                    write (*, *) "    --help        : Mostrar esta ayuda"
+                    call help()
                     stop 0
                 case default  ! Si no es un argumento reconocido...
                     is_number = .False.
@@ -1634,6 +1684,10 @@ contains
                  (derived%use_exp_omega_damp .and. derived%use_poly_omega_damp)) then
             write (err_msg, '(A)') "Can not use more than one omega damping at the same time."
             call fatal_error(err_msg)
+        else if (derived%use_poly_omega_damp .and. &
+               & ((abs(derived%omega_exp_damp_poly_A) < myepsilon) .or. (derived%omega_exp_damp_poly_B < myepsilon))) then
+            write (err_msg, '(A)') "Poly-exponential omega damping needs A /= 0 and B > 0."
+            call fatal_error(err_msg)
         end if
 
         !!! Boulders in Z
@@ -1735,6 +1789,7 @@ contains
                 derived%requested_threads = 1
                 my_threads = 1
                 derived%use_parallel = .False.
+!$              call OMP_SET_NUM_THREADS(1)  ! Otherwise OpenMP uses its default (all cores)
             else if (.not. compiled_with_openmp) then
                 write (err_msg, '(A)') "Can not use paralelization withut OpenMP."
                 call fatal_error(err_msg)
@@ -1746,6 +1801,7 @@ contains
         else
             derived%requested_threads = 1
             my_threads = 1
+!$          call OMP_SET_NUM_THREADS(1)  ! Otherwise OpenMP uses its default (all cores)
         end if
 
         ! Output
@@ -1841,7 +1897,7 @@ contains
         end if
 
         ! Check no Extra checkpoints and Filter
-        if (derived%use_tomfile .and. (derived%extra_checkpoints > 0)) then
+        if (derived%use_filter .and. (derived%extra_checkpoints > 0)) then
             write(err_msg, '(A)') "Can not use both filtering and extra checkpoints at the same time (yet)."
             call fatal_error(err_msg)
         end if
@@ -1854,6 +1910,14 @@ contains
             derived%megno_eps = cero
         else if ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2)) then
             write(err_msg, '(A)') "MEGNO can not be set with LeapFrog integrator yet."
+            call fatal_error(err_msg)
+        else if (derived%use_triaxial) then
+            ! The variational equations of the ellipsoid potential are not implemented
+            write(err_msg, '(A)') "MEGNO can not be set with a triaxial asteroid yet."
+            call fatal_error(err_msg)
+        else if (derived%use_manual_J2 .and. derived%use_J2_from_primary) then
+            ! The variational equations of the J2 from the primary are not implemented
+            write(err_msg, '(A)') "MEGNO can not be set with manual J2 from the primary yet."
             call fatal_error(err_msg)
         else
             derived%megno_active = .True.
@@ -1893,6 +1957,18 @@ contains
         end if
 
         ! Second sinodic check: If sinodic, no damping
+        ! Leap-Frog (KDK) is only second order and symplectic for position-dependent forces.
+        ! The Coriolis force of the rotating frame depends on the velocity: block it
+        if (derived%use_sinodic .and. ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2))) then
+            write(err_msg, '(A)') "Sinodic system is not compatible with the LeapFrog integrator (Coriolis force)."
+            call fatal_error(err_msg)
+        end if
+        if ((derived%use_drag .or. derived%use_stokes) .and. &
+          & ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2))) then
+            write (*, *) "WARNING: Drag/Stokes forces depend on the velocity: the LeapFrog integrator"
+            write (*, *) "         is only first order with them. Prefer an adaptive integrator."
+        end if
+
         if (derived%use_sinodic .and. derived%use_omega_damping) then
             write(err_msg, '(A)') "Sinodic system is not compatible with Omega damping."
             call fatal_error(err_msg)
@@ -1917,7 +1993,11 @@ contains
 
         ! Original sizes
         n_moons   = size(moons_in, 1)
-        n_particles = size(particles_in, 1)
+        if (allocated(particles_in)) then
+            n_particles = size(particles_in, 1)
+        else
+            n_particles = 0
+        end if
 
         !----------------------------------------
         ! Count
@@ -1946,7 +2026,8 @@ contains
                 moons_tmp(im, :) = moons_in(i, :)
             else
                 ip = ip + 1
-                particles_tmp(ip, :) = moons_in(i, 1:5)
+                ! moons_in: [mass, a, e, M, w, MMR, radius]  ->  particles_in: [a, e, M, w, MMR]
+                particles_tmp(ip, :) = moons_in(i, 2:6)
             end if
         end do
 
@@ -2011,11 +2092,6 @@ contains
         !===========================================================
         ! Global consistency checks
         !===========================================================
-
-        if (derived%use_surface .and. derived%Nactive > 2) then
-            write (err_msg, '(A)') "Surface section requires a single moon/particle."
-            call fatal_error(err_msg)
-        end if
 
         if (derived%use_sinodic .and. derived%use_moons) then
             write (err_msg, '(A)') "Sinodic system requires particles only."
@@ -2119,17 +2195,6 @@ contains
                 call fatal_error(err_msg)
             end if
 
-            if (derived%grid_col_max_cells <= 0) then
-                write (err_msg, '(A,G0)') "Collision grid max cells must be positive. Given: ", derived%grid_col_max_cells
-                call fatal_error(err_msg)
-            end if
-
-            if (derived%grid_col_min_cell_size <= cero) then
-                write (err_msg, '(A,G0)') "Collision grid min cell size must be positive. Given: ", &
-                    & derived%grid_col_min_cell_size
-                call fatal_error(err_msg)
-            end if
-
             derived%grid_col_min_bodies = max(derived%grid_col_min_bodies, 100)
 
             if (derived%coulomb_mu_col < cero .or. derived%coulomb_mu_col > uno) then
@@ -2160,6 +2225,25 @@ contains
 
         if (derived%use_substeps_col .and. (abs(derived%dt_substeps) <= myepsilon)) then
             write (err_msg, '(A,G0)') "Collision sub-timestep is too small. Given: ", derived%dt_substeps
+            call fatal_error(err_msg)
+        end if
+
+        ! The sub-stepping integrator only advances positions and velocities
+        if (derived%use_substeps_col .and. derived%use_megno) then
+            write (err_msg, '(A)') "MEGNO can not be used with collision substeps."
+            call fatal_error(err_msg)
+        end if
+
+        ! The sub-stepping scheme is a leapfrog: the velocity-dependent Coriolis term of the
+        ! rotating frame makes its explicit kicks unstable
+        if (derived%use_substeps_col .and. derived%use_sinodic) then
+            write (err_msg, '(A)') "Collision substeps can not be used in the rotating frame. Use the inertial one."
+            call fatal_error(err_msg)
+        end if
+
+        ! Sub-stepping is only wired into the plain integration loop
+        if (derived%use_substeps_col .and. (derived%use_filter .or. derived%use_surface)) then
+            write (err_msg, '(A)') "Collision substeps can not be used with filtering or surface sections."
             call fatal_error(err_msg)
         end if
 
@@ -2282,8 +2366,213 @@ contains
         ! ! Here, we use the global hexit_arr  (Old Code)
         ! keep_going = all(hexit_arr == 0)
         ! if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
-        keep_going = .not. hard_exit
+        real(wp), allocatable :: aux_der(:)
+
+        keep_going = .True.
+        if (hard_exit) then
+            ! The flag is raised by ANY derivative evaluation, including the trial stages of a step
+            ! that was later rejected or shortened. Stop only if the condition holds on this
+            ! accepted state: re-evaluate it here (it sets hard_exit again if so)
+            hard_exit = .False.
+            if (associated(dydt_recheck)) then
+                allocate (aux_der(size(y)))
+                aux_der = dydt_recheck(t_last_dydt, y)
+                deallocate (aux_der)
+            else
+                hard_exit = .True.
+            end if
+            keep_going = .not. hard_exit
+        end if
+        ! Hard-sphere contacts are only seen between steps: limit the next step so that no pair
+        ! can go through each other within it (from this accepted state)
+        if (use_hs_step_check) DT_MAX = hs_step_cap(y)
+
+        ! Hard-sphere particle collisions are resolved between steps: stop at the first step
+        ! where two particles overlap while still approaching, so that the collision is resolved
+        ! where it happens (and not only at the next checkpoint)
+        if (keep_going .and. use_hs_step_check) then
+            if (any_approaching_overlap(y)) then
+                hard_exit = .True.
+                keep_going = .False.
+            end if
+        end if
+        if (.not. keep_going) integration_stopped = .True.  ! The integrator returns at this state
     end function check_func
+
+    !> Gravitational potential of the asteroid, U = -Phi > 0, at (x, y) in its BODY frame
+    !> (centred on the asteroid CM, axes fixed to the body at theta = 0). The same terms
+    !> as the dynamics (dydt): ellipsoid, or point masses (primary + boulders), manual J2
+    !> (from the CM or from the primary) and boulders in Z. During a boulder mass growth
+    !> the final configuration is used.
+    function body_frame_potential(x, y) result(U)
+        implicit none
+        real(wp), intent(in) :: x, y
+        real(wp) :: U
+        real(wp) :: r2, r, dx, dy, d2, d
+        integer(kind=4) :: i
+
+        U = cero
+        r2 = x*x + y*y
+        r = sqrt(r2)
+
+        if (acc_ellipsoid) then
+            ! Phi = -GM/r [1 - K/(3 r^2) + L (x^2 - y^2)/r^4]  (gives the accelerations used in dydt)
+            U = G*m_arr(1)/r*(uno - acc_K/(3*r2) + acc_L*(x*x - y*y)/(r2*r2))
+            return
+        end if
+
+        ! Point masses: primary (i = 0) and boulders
+        do i = 0, ubound(boulders_data, 1)
+            dx = x - boulders_data(i, 4)*cos(boulders_data(i, 3))
+            dy = y - boulders_data(i, 4)*sin(boulders_data(i, 3))
+            d2 = dx*dx + dy*dy
+            d = sqrt(d2)
+            if ((i == 0) .and. acc_J2_primary) then
+                U = U + G*boulders_data(i, 1)/d*(uno - acc_J2K/(3*d2))
+            else
+                U = U + G*boulders_data(i, 1)/d
+            end if
+        end do
+
+        ! Manual J2 from the CM (only the perturbation: the point masses give the monopole)
+        if (acc_J2_cm) then
+            U = U - G*m_arr(1)*acc_J2K/(3*r2*r)
+        else if (acc_bz) then
+            U = U + acc_Gm_bz/sqrt(r2 + acc_dz2_bz)
+        end if
+    end function body_frame_potential
+
+    !> Largest step for which no pair of particles can go through each other unseen: during it
+    !> a pair may close at most half a contact distance. The closing speed of a pair is bounded
+    !> by twice the largest speed relative to the circular flow, plus the Keplerian shear of the
+    !> circular flow across a contact distance (1.5 n 2R).
+    function hs_step_cap(y) result(dt_cap)
+        implicit none
+        real(wp), dimension(:), intent(in) :: y
+        real(wp) :: dt_cap
+        real(wp), parameter :: HS_STEP_FRACTION = 0.5_wp  ! Fraction of the contact distance per step
+        integer(kind=4) :: first, last, i, idx
+        real(wp) :: GMa, rx, ry, r, vc, vx, vy, ux, uy, u_max, n_max, omega, v_close
+
+        dt_cap = huge(uno)
+        first = 2 + sim%Nmoon_active
+        last = 1 + sim%Nmoon_active + sim%Npart_active
+        if (last - first < 1) return
+
+        GMa = G*m_arr(1)
+        omega = y(2)
+        u_max = cero
+        n_max = cero
+        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i, idx, rx, ry, r, vc, vx, vy, ux, uy) &
+        !$OMP REDUCTION(max:u_max, n_max) SCHEDULE(STATIC)
+        do i = first, last
+            idx = get_index(i)
+            rx = y(idx) - y(3)
+            ry = y(idx + 1) - y(4)
+            r = max(sqrt(rx*rx + ry*ry), tini)
+            vx = y(idx + 2) - y(5)
+            vy = y(idx + 3) - y(6)
+            if (sim%use_sinodic) then  ! Rotating frame: inertial velocity v + omega z x r
+                vx = vx - omega*ry
+                vy = vy + omega*rx
+            end if
+            vc = sqrt(GMa/r)
+            ux = vx + vc*ry/r  ! Velocity relative to the circular (prograde) flow
+            uy = vy - vc*rx/r
+            u_max = max(u_max, sqrt(ux*ux + uy*uy))
+            n_max = max(n_max, vc/r)
+        end do
+        !$OMP END PARALLEL DO
+
+        v_close = dos*u_max + 1.5_wp*n_max*dos*R_arr(first)
+        if (v_close > tini) dt_cap = HS_STEP_FRACTION*dos*R_arr(first)/v_close
+    end function hs_step_cap
+
+    !> Whether any pair of particles overlaps while approaching (cell list, O(N)).
+    !> The approach test (dr . dv < 0) does not depend on the frame (rotating or not).
+    function any_approaching_overlap(y) result(found)
+        use iso_fortran_env, only: int64
+        implicit none
+        real(wp), dimension(:), intent(in) :: y
+        logical :: found
+        integer(kind=4) :: first, last, i, j, idx, jdx, dcy, n, q, p, nth, tid, qa, qb, nteam
+        integer(kind=4) :: ptr(-1:1)
+        logical :: ptr_ok(-1:1)
+        integer(int64) :: klo
+        real(wp) :: L_cell, rc2, drx, dry
+        real(wp), allocatable :: pos(:, :)
+
+        found = .False.
+        first = 2 + sim%Nmoon_active
+        last = 1 + sim%Nmoon_active + sim%Npart_active
+        if (last - first < 1) return
+
+        L_cell = dos*R_arr(first)  ! Contact distance (all particles share the radius)
+        rc2 = L_cell*L_cell
+
+        ! Few particles: brute force
+        if (last - first + 1 < sim%grid_col_min_bodies) then
+            !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i, j, idx, jdx, drx, dry) &
+            !$OMP REDUCTION(.or.:found) SCHEDULE(DYNAMIC, 16)
+            do i = first, last - 1
+                idx = get_index(i)
+                do j = i + 1, last
+                    jdx = get_index(j)
+                    drx = y(jdx) - y(idx)
+                    dry = y(jdx + 1) - y(idx + 1)
+                    if (drx*drx + dry*dry >= rc2) cycle
+                    if (drx*(y(jdx + 2) - y(idx + 2)) + dry*(y(jdx + 3) - y(idx + 3)) < cero) found = .True.
+                end do
+            end do
+            !$OMP END PARALLEL DO
+            return
+        end if
+
+        ! Sorted cells of the contact size (no dense grid: the cells are never enlarged)
+        n = last - first + 1
+        allocate (pos(2, n))
+        do i = first, last
+            idx = get_index(i)
+            pos(1, i - first + 1) = y(idx)
+            pos(2, i - first + 1) = y(idx + 1)
+        end do
+        call cell_index_build(hs_cells, n, pos, L_cell)
+        deallocate (pos)
+
+        nth = 1
+        !$ nth = omp_get_max_threads()
+        nth = max(1, min(nth, n))
+        !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) &
+        !$OMP PRIVATE(tid, nteam, qa, qb, q, i, idx, p, j, jdx, dcy, klo, ptr, ptr_ok, drx, dry) &
+        !$OMP REDUCTION(.or.:found)
+        tid = 0
+        !$ tid = omp_get_thread_num()
+        ! Split by the ACTUAL team size: the runtime may give fewer threads than requested
+        nteam = 1
+        !$ nteam = omp_get_num_threads()
+        qa = int((int(n, int64)*tid)/nteam) + 1
+        qb = int((int(n, int64)*(tid + 1))/nteam)
+        ptr_ok = .False.
+        do q = qa, qb
+            i = hs_cells%ord(q) + first - 1
+            idx = get_index(i)
+            do dcy = -1, 1
+                klo = hs_cells%key(q) + int(dcy, int64)*hs_cells%Wx - 1_int64
+                call cell_index_advance(hs_cells, klo, ptr(dcy), ptr_ok(dcy))
+                do p = ptr(dcy), n
+                    if (hs_cells%key(p) > klo + 2_int64) exit
+                    j = hs_cells%ord(p) + first - 1
+                    if (j <= i) cycle  ! Each pair once
+                    drx = hs_cells%px(p) - hs_cells%px(q)
+                    dry = hs_cells%py(p) - hs_cells%py(q)
+                    if (drx*drx + dry*dry >= rc2) cycle
+                    jdx = get_index(j)
+                    if (drx*(y(jdx + 2) - y(idx + 2)) + dry*(y(jdx + 3) - y(idx + 3)) < cero) found = .True.
+                end do
+            end do
+        end do
+        !$OMP END PARALLEL
+    end function any_approaching_overlap
 
     ! Deallocate initial arrays
     subroutine free_initial_arays()
@@ -2314,6 +2603,10 @@ contains
         if (allocated(elem_filtered)) deallocate (elem_filtered)
         if (allocated(tmp_y_arr)) deallocate (tmp_y_arr)
         if (allocated(y_cross)) deallocate (y_cross)
+        if (allocated(has_crossed_surface)) deallocate (has_crossed_surface)
+        if (allocated(surf_alpha)) deallocate (surf_alpha)
+        if (allocated(surf_error)) deallocate (surf_error)
+        if (allocated(surf_converged)) deallocate (surf_converged)
     end subroutine free_parameters_arays
 
     ! Nullify pointers
@@ -2343,12 +2636,25 @@ contains
         simu%Nactive = 1 + Npart_active + Nmoon_active ! Update Nactive, including asteroid
     end subroutine update_sim_Nactive
 
-    ! Update forces and constant arrays data
-    subroutine update_forces_and_constants(simu, sistema)
+    ! Update the asteroid data used by the derivatives (dydt), after the asteroid changed
+    ! (moon merged into it, TOM mass/omega change). The geometry is unchanged: masses are scaled.
+    subroutine update_forces_and_constants(sistema)
         implicit none
-        type(sim_params_st), intent(in) :: simu
         type(system_st), intent(in) :: sistema
-        if (simu%use_merge_massive) asteroid_data(3) = sistema%asteroid%inertia
+        integer(kind=4) :: i
+
+        if (.not. allocated(boulders_data)) return
+
+        ! Full (grown) masses: the mass ratios are constant, so they do not depend on the growth stage
+        boulders_data(0, 1) = sistema%asteroid%primary%mu_to_asteroid*sistema%asteroid%mass
+        do i = 1, min(sistema%asteroid%Nboulders, ubound(boulders_data, 1))
+            boulders_data(i, 1) = sistema%asteroid%boulders(i)%mu_to_asteroid*sistema%asteroid%mass
+        end do
+
+        ! Moment of inertia (spin equation)
+        asteroid_data(3) = sistema%asteroid%inertia
+
+        ! Boulder in Z
         if (sistema%asteroid%boulder_z%active) call update_boulder_z(sistema%asteroid%boulder_z%mass)
     end subroutine update_forces_and_constants
 
@@ -2613,7 +2919,9 @@ contains
         type(system_st), intent(inout) :: syst
         integer(kind=4), intent(in) :: unit_out
 
-        if (unit_out < 0) then ! Use to avoid writing file
+        ! With filtering, the integration may go back in time and redo an interval (a rollback):
+        ! the events there, up to the time reached before the rollback, were already written
+        if ((unit_out < 0) .or. (syst%time <= t_redo_until)) then ! Use to avoid writing file
 
             ! Apply colissions and check
             call resolve_collisions(syst, simu%min_distance)
@@ -2648,17 +2956,24 @@ contains
         integer(kind=4) :: new_Nactive
         
         ! Get new_Nactive
-        call get_Nactive(system, new_Nactive)
+        call get_Nactive(syst, new_Nactive)
 
         ! Is different from old?
         if (new_Nactive < simu%Nactive) then
             call update_sim_Nactive(simu, syst%Nparticles_active, syst%Nmoons_active)  ! Update sim Nactive
             ynvalues = get_y_nvalues(syst)  ! Update nvalues to use in y
-            simu%megno_active = system%megno%active ! EXTRA: Update megno
+            simu%megno_active = syst%megno%active ! EXTRA: Update megno
             regenerate = .True.
         end if
 
         regenerate = regenerate .or. simu%megno_active  ! If still active, regenerate
+
+        ! A bounce (or a push-apart) changes the state without changing the amount of bodies:
+        ! without regenerating, the integration would restart from the pre-collision state
+        regenerate = regenerate .or. syst%state_changed
+
+        ! The asteroid may have changed (merges, TOM): keep the data used by dydt consistent with it
+        if (regenerate) call update_forces_and_constants(syst)
         
     end subroutine update_sim_from_system
 

@@ -85,6 +85,7 @@ module shared
     integer(kind=4) :: NDIM2 = 2
     integer(kind=4) :: EXTRA2 = 0
     real(wp) :: DT_MIN_NOW = 1.e-6_wp  ! Minimum dt can be lower if dt is low
+    real(wp) :: DT_MAX = huge(1.0_wp)  ! Maximum dt of a single step (set by the physics, e.g. hard-sphere contacts)
 
     ! Global
     real(wp), allocatable :: der(:) ! Used in callers
@@ -109,6 +110,15 @@ module shared
             real(wp), dimension(:), intent(in) :: y
             real(wp), dimension(size(y)) :: derivate
         end function dydt_tem
+
+        ! Drift of all bodies over dt_large, resolving contacts with sub-steps of ~dt_small
+        subroutine drift_fast_tem(t, y, dt_large, dt_small)
+            import :: wp
+            implicit none
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(inout) :: y
+            real(wp), intent(in) :: dt_large, dt_small
+        end subroutine drift_fast_tem
 
     end interface
 

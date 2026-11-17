@@ -9,19 +9,19 @@ module derivates
                           & asteroid_data, &
                           & boulders_coords, boulders_data, &
                           & m_arr, R_arr, &
-                          & hard_exit, &
-                          & get_index
+                          & hard_exit, t_last_dydt
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
                             & use_drag, use_drag_moons, drag_coef, drag_time, &
                             & use_stokes, use_stokes_moons, stokes_C, stokes_alpha, stokes_time, &
                             & use_ellipsoid, K_coef, L_coef, &
                             & use_manual_J2_from_cm, use_manual_J2_from_primary, J2K_coef, &
                             & use_boulder_z, Gmboulder_z_coef, dz2_boulder_z_coef
-    use collisions, only: init_collisions, collisions_brute, collisions_grid, collisions_verlet
+    use collisions, only: init_collisions, collisions_brute, collisions_grid, collisions_verlet, list_collided, &
+                        & collisions_drift
 
     implicit none
     private
-    public :: dydt, set_dydt, dydt_grav_f, dydt_coll_f
+    public :: dydt, set_dydt, dydt_grav_f, dydt_coll_f, drift_coll_f
 
     abstract interface
         function dydt_template(t, y) result(der)
@@ -46,6 +46,15 @@ module derivates
     procedure(dydt_grav_template), pointer :: dydt_grav => null()
 
 contains
+
+    !> Index of body i in the state array (local copy so that the compiler can inline it:
+    !> procedures from another module are not inlined without link-time optimization)
+    pure elemental function get_index(i) result(idx)
+        implicit none
+        integer(kind=4), intent(in) :: i
+        integer(kind=4) :: idx
+        idx = 4*i - 1
+    end function get_index
 
     subroutine set_dydt(Ntotal, sinodic)
         implicit none
@@ -129,7 +138,7 @@ contains
         real(wp) :: theta_moon, xy_rotated(2)
         real(wp) :: dr_ver(2), dv_vec(2)
         real(wp) :: vel_circ(2), vel_radial, acc_radial_drag
-        real(wp) :: v2, two_ener, mean_movement
+        real(wp) :: v2, two_ener, mean_movement, n_circ
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z
         real(wp) :: aux_real, aux_real2(2)
         integer(kind=4) :: i, idx, j, jdx, vdx, last_moon
@@ -166,8 +175,9 @@ contains
                     m_boul_tot = m_boul_tot + Gmass_arr(i)
                 end do
 
-                ! m0 shrinks while total mass remains constant
+                ! m0 shrinks while total mass remains constant (the boulders in Z act on their own)
                 Gmass_arr(0) = m_arr(1) - m_boul_tot
+                if (use_boulder_z) Gmass_arr(0) = Gmass_arr(0) - Gmboulder_z_coef/G
 
                 !--------------------------------------------------
                 ! Relative boulder positions wrt m0
@@ -176,7 +186,9 @@ contains
                 com_y = cero
 
                 do i = 1, sim%Nboulders
-                    aux_real = theta + boulders_data(i,3)
+                    ! Boulders sit on the primary surface: angle measured from the primary centre
+                    ! (boulders_data(i,3) is the angle from the asteroid CM, a different point)
+                    aux_real = theta + boulders_data(i,5)
 
                     rel_x = boulders_data(0,2)*cos(aux_real)
                     rel_y = boulders_data(0,2)*sin(aux_real)
@@ -216,7 +228,8 @@ contains
                     !! Sphere + Steiner
                     inertia = inertia + Gmass_arr(i) * (aux_real + coords_B(i,1)**2 + coords_B(i,2)**2)
                 end do
-                inertia = inertia / G  ! Convert back to mass units for torque calculation
+                ! Gmass_arr still holds masses here (it is multiplied by G further below),
+                ! so the inertia is already in mass units: nothing to convert
                 
 
             else
@@ -263,7 +276,14 @@ contains
                 case (2)
                     der(2) = der(2) - omega/damp_coef_1*damp_f
                 case (3)
-                    der(2) = der(2) + damp_coef_1*(t - cero + tini)**(damp_coef_2 - uno)*omega*damp_f
+                    ! (A B) t^(B-1) omega. For B < 1 the rate diverges at t = 0 (omega itself does not):
+                    ! before dt_min the mean rate over [0, dt_min], A dt_min^(B-1), is used instead,
+                    ! which gives the exact change of log(omega) at t = dt_min
+                    if ((damp_coef_2 < uno) .and. (t < sim%dt_min)) then
+                        der(2) = der(2) + (damp_coef_1/damp_coef_2)*sim%dt_min**(damp_coef_2 - uno)*omega*damp_f
+                    else
+                        der(2) = der(2) + damp_coef_1*max(t, cero)**(damp_coef_2 - uno)*omega*damp_f
+                    end if
             end select
         end if
 
@@ -283,7 +303,8 @@ contains
 
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
-                hard_exit = .True.
+                !$OMP ATOMIC WRITE
+                hard_exit = .True.  ! Atomic: written by several threads
                 cycle
             end if
 
@@ -300,9 +321,11 @@ contains
                 xy_rotated(1) = dr_vec(1)*cth + dr_vec(2)*sth
                 xy_rotated(2) = -dr_vec(1)*sth + dr_vec(2)*cth
 
-                if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
-                    hard_exit = .True.
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
+                & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                 end if
 
 
@@ -319,7 +342,7 @@ contains
 
                 theta_moon = atan2(dr_vec(2), dr_vec(1))
 
-                torque = torque - dos*m_arr(j)*L_coef*inv_dr3*sin(dos*(theta_moon - theta))
+                torque = torque + dos*Gmast*m_arr(j)*L_coef*inv_dr3*sin(dos*(theta_moon - theta))
 
             else if (use_manual_J2_from_cm) then
                 acc_grav = Gmi_r3*dr_vec*J2K_coef*inv_dr2
@@ -351,6 +374,7 @@ contains
                 if (two_ener > cero) then
 
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmcomb
+                    n_circ = sqrt(Gmcomb*inv_dr3)  ! Local circular mean motion
 
                     if (use_drag_moons) then
                         dr_ver = dr_vec*inv_dr
@@ -363,8 +387,9 @@ contains
                     end if
 
                     if (use_stokes_moons) then
-                        vel_circ(1) = mean_movement*(-dr_vec(2))
-                        vel_circ(2) = mean_movement*( dr_vec(1))
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ(1) = n_circ*(-dr_vec(2))
+                        vel_circ(2) = n_circ*( dr_vec(1))
                         aux_real2 = stokes_C*stokes_f*(dv_vec - stokes_alpha*vel_circ)
 
                         der(jdx + 2) = der(jdx + 2) - aux_real2(1)
@@ -389,7 +414,8 @@ contains
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle moon_loop
                 end if
 
@@ -426,7 +452,8 @@ contains
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
+                        !$OMP ATOMIC WRITE
+                        hard_exit = .True.  ! Atomic: written by several threads
                         cycle moon_loop
                     end if
 
@@ -468,7 +495,9 @@ contains
         !$OMP         dr_ver, dv_vec,               &
         !$OMP         vel_circ, vel_radial,         &
         !$OMP         acc_radial_drag,              &
-        !$OMP         v2, two_ener, mean_movement)  &
+        !$OMP         v2, two_ener, mean_movement,  &
+        !$OMP         n_circ,                       &
+        !$OMP         xy_rotated, dQdx, dQdy)       &
         !$OMP SCHEDULE(STATIC)
         particle_loop: do j = first_particle, N_total
             jdx = get_index(j)
@@ -483,7 +512,8 @@ contains
 
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
-                hard_exit = .True.
+                !$OMP ATOMIC WRITE
+                hard_exit = .True.  ! Atomic: written by several threads
                 cycle particle_loop
             end if
 
@@ -505,9 +535,11 @@ contains
                 xy_rotated(1) = dr_vec(1)*cth + dr_vec(2)*sth
                 xy_rotated(2) = -dr_vec(1)*sth + dr_vec(2)*cth
 
-                if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
-                    hard_exit = .True.
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
+                & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle particle_loop
                 end if
 
@@ -567,12 +599,16 @@ contains
                 v2 = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
 
                 if (use_manual_J2_from_cm) then
+                    ! a = -GM r/r^3 (1 - J2K/r^2): potential -GM/r (1 - J2K/(3 r^2)),
+                    ! circular mean motion sqrt(GM/r^3) (1 - J2K/(2 r^2)) to first order
                     aux_J2K = J2K_coef*inv_dr2
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
-                    mean_movement = sqrt(Gmi_r3)*(uno - aux_J2K*uno3)
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K*uno3) - v2
+                    mean_movement = sqrt(Gmi_r3)*(uno - aux_J2K*uno2)
+                    n_circ = mean_movement
                 else
                     two_ener = dos*Gmast*inv_dr - v2
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast
+                    n_circ = sqrt(Gmi_r3)
                 end if
 
                 if (two_ener > cero) then
@@ -588,8 +624,9 @@ contains
                     end if
 
                     if (use_stokes) then
-                        vel_circ(1) = mean_movement*(-dr_vec(2))
-                        vel_circ(2) = mean_movement*( dr_vec(1))
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ(1) = n_circ*(-dr_vec(2))
+                        vel_circ(2) = n_circ*( dr_vec(1))
                         aux_real2 = stokes_C*stokes_f * (dv_vec - stokes_alpha*vel_circ)
 
                         der(jdx + 2) = der(jdx + 2) - aux_real2(1)
@@ -614,7 +651,8 @@ contains
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle particle_loop
                 end if
 
@@ -651,7 +689,8 @@ contains
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
+                        !$OMP ATOMIC WRITE
+                        hard_exit = .True.  ! Atomic: written by several threads
                         cycle particle_loop
                     end if
 
@@ -705,8 +744,15 @@ contains
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     rcoll = R_arr(i) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
-                        cycle
+                        if (sim%use_moon_soft_sphere_col) then
+                            ! The contact is integrated by the soft-sphere force: overlapping is part of it,
+                            ! so keep integrating. Gravity keeps acting, bounded for deep overlaps.
+                            dr2 = max(dr2, 0.25e0_wp*rcoll*rcoll)
+                        else
+                            !$OMP ATOMIC WRITE
+                            hard_exit = .True.  ! Atomic: written by several threads
+                            cycle
+                        end if
                     end if
 
                     dr = sqrt(dr2)
@@ -731,6 +777,7 @@ contains
         !$OMP PRIVATE(i, idx, j, jdx, vdx,           &
         !$OMP         coords_M, dr_vec, dr, dr2,     &
         !$OMP         coords_P, Gmi_r3, rcoll,       &
+        !$OMP         inv_dr2,                       &
         !$OMP         coords_V, aux_real, aux_real2)
         do i = 2, last_moon
             idx = get_index(i)
@@ -752,7 +799,8 @@ contains
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 rcoll = R_arr(i) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle
                 end if
 
@@ -810,7 +858,7 @@ contains
         real(wp) :: Q_eff
         real(wp) :: dr_ver(2), dv_vec(2)
         real(wp) :: vel_circ(2), vel_radial, acc_radial_drag
-        real(wp) :: v2, two_ener, mean_movement
+        real(wp) :: v2, two_ener, mean_movement, n_circ
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z
         real(wp) :: aux_real, aux_real2(2)
         integer(kind=4) :: i, j, jdx, vdx
@@ -843,8 +891,9 @@ contains
                     m_boul_tot = m_boul_tot + Gmass_arr(i)
                 end do
 
-                ! m0 shrinks while total mass remains constant
+                ! m0 shrinks while total mass remains constant (the boulders in Z act on their own)
                 Gmass_arr(0) = m_arr(1) - m_boul_tot
+                if (use_boulder_z) Gmass_arr(0) = Gmass_arr(0) - Gmboulder_z_coef/G
 
                 !--------------------------------------------------
                 ! Relative boulder positions wrt m0
@@ -926,7 +975,8 @@ contains
         !$OMP         dr_ver, dv_vec,               &
         !$OMP         vel_circ, vel_radial,         &
         !$OMP         acc_radial_drag,              &
-        !$OMP         v2, two_ener, mean_movement)  &
+        !$OMP         v2, two_ener, mean_movement,  &
+        !$OMP         n_circ)                       &
         !$OMP SCHEDULE(STATIC)
         particle_loop: do j = first_particle, N_total
             jdx = get_index(j)
@@ -941,7 +991,8 @@ contains
 
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
-                hard_exit = .True.
+                !$OMP ATOMIC WRITE
+                hard_exit = .True.  ! Atomic: written by several threads
                 cycle particle_loop
             end if
 
@@ -962,9 +1013,11 @@ contains
 
             if (use_ellipsoid) then
 
-                if (((dr_vec(1) + R_arr(j)) / asteroid_data(1))**2 &
-                & + ((dr_vec(2) + R_arr(j)) / asteroid_data(2))**2 < uno) then
-                    hard_exit = .True.
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((dr_vec(1) / (asteroid_data(1) + R_arr(j)))**2 &
+                & + (dr_vec(2) / (asteroid_data(2) + R_arr(j)))**2 < uno) then
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle particle_loop
                 end if
 
@@ -1037,18 +1090,24 @@ contains
 
             if (use_drag .or. use_stokes) then
                 inv_dr = inv_dr3*dr2
-                dv_vec(1) = coords_P(3) - coords_A(3)
-                dv_vec(2) = coords_P(4) - coords_A(4)
+                ! The drag/Stokes laws use the inertial velocity relative to the asteroid:
+                ! v_in = v_rot + omega z x r (expressed in the rotating basis, as the force itself)
+                dv_vec(1) = coords_P(3) - coords_A(3) - omega*dr_vec(2)
+                dv_vec(2) = coords_P(4) - coords_A(4) + omega*dr_vec(1)
 
                 v2 = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
 
                 if (use_manual_J2_from_cm) then
+                    ! a = -GM r/r^3 (1 - J2K/r^2): potential -GM/r (1 - J2K/(3 r^2)),
+                    ! circular mean motion sqrt(GM/r^3) (1 - J2K/(2 r^2)) to first order
                     aux_J2K = J2K_coef*inv_dr2
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
-                    mean_movement = sqrt(Gmi_r3)*(uno - aux_J2K*uno3)
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K*uno3) - v2
+                    mean_movement = sqrt(Gmi_r3)*(uno - aux_J2K*uno2)
+                    n_circ = mean_movement
                 else
                     two_ener = dos*Gmast*inv_dr - v2
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast
+                    n_circ = sqrt(Gmi_r3)
                 end if
 
                 if (two_ener > cero) then
@@ -1064,8 +1123,9 @@ contains
                     end if
 
                     if (use_stokes) then
-                        vel_circ(1) = mean_movement*(-dr_vec(2))
-                        vel_circ(2) = mean_movement*( dr_vec(1))
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ(1) = n_circ*(-dr_vec(2))
+                        vel_circ(2) = n_circ*( dr_vec(1))
                         aux_real2 = stokes_C*stokes_f * (dv_vec - stokes_alpha*vel_circ)
 
                         der(jdx + 2) = der(jdx + 2) - aux_real2(1)
@@ -1090,11 +1150,13 @@ contains
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle particle_loop
                 end if
 
                 dr = sqrt(dr2)
+                inv_dr2 = uno/dr2  ! Distance to the primary (not to the CM)
                 Gmi_r3 = Gmi/(dr2*dr)
 
                 if (use_manual_J2_from_primary) then
@@ -1126,11 +1188,13 @@ contains
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
+                        !$OMP ATOMIC WRITE
+                        hard_exit = .True.  ! Atomic: written by several threads
                         cycle particle_loop
                     end if
 
                     dr = sqrt(dr2)
+                    inv_dr2 = uno/dr2  ! Distance to this boulder (not to the CM)
                     Gmi_r3 = Gmi/(dr2*dr)
 
                     acc_grav = -Gmi_r3*dr_vec
@@ -1172,7 +1236,11 @@ contains
         last_moon = first_particle - 1
         N_particles = N_total - last_moon
 
-        if (sim%use_moon_soft_sphere_col .and. (last_moon > 3)) then
+        ! Bodies in contact at this evaluation (diagnostics)
+        list_collided = .False.
+
+        ! Moons are bodies 2..last_moon: at least two of them are needed
+        if (sim%use_moon_soft_sphere_col .and. (last_moon > 2)) then
             if (last_moon <= sim%grid_col_min_bodies + 1) then
                 call collisions_brute(y, der, 2, last_moon, .True.)
             else if (sim%use_verlet_col .and. sim%use_verlet_with_moons) then
@@ -1271,6 +1339,7 @@ contains
         first_particle = last_moon + 1
         N_total = last_moon + sim%Npart_active
 
+        t_last_dydt = t  ! For the re-check of the hard-exit conditions on accepted states
         call dydt_grav(t, y, der, first_particle, N_total)
         call dydt_coll(t, y, der, first_particle, N_total)
         call set_pos_derivatives(y, der, N_total)
@@ -1292,6 +1361,7 @@ contains
         first_particle = last_moon + 1
         N_total = last_moon + sim%Npart_active
 
+        t_last_dydt = t  ! For the re-check of the hard-exit conditions on accepted states
         call dydt_grav(t, y, der, first_particle, N_total)
 
     end function dydt_grav_f
@@ -1313,5 +1383,19 @@ contains
         call dydt_coll(t, y, der, first_particle, N_total)
 
     end function dydt_coll_f
+
+    !> Drift of all bodies over dt_large with the soft-sphere contacts resolved by sub-steps
+    !> (used by the multi-rate leapfrog)
+    subroutine drift_coll_f(t, y, dt_large, dt_small)
+        implicit none
+        real(wp), intent(in) :: t
+        real(wp), dimension(:), intent(inout) :: y
+        real(wp), intent(in) :: dt_large, dt_small
+        integer(kind=4) :: last_moon, N_total
+
+        last_moon = 1 + sim%Nmoon_active
+        N_total = last_moon + sim%Npart_active
+        call collisions_drift(y, dt_large, dt_small, last_moon, N_total)
+    end subroutine drift_coll_f
 
 end module derivates

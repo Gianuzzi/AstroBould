@@ -27,7 +27,7 @@ contains
         if (abs(omega) < myepsilon) then
             acorot = cero
         else
-            acorot = (G*mass/(omega*omega))**(1/3.)
+            acorot = (G*mass/(omega*omega))**uno3  ! Double-precision exponent (1/3. is single precision)
         end if
     end function get_a_corot
 
@@ -143,23 +143,26 @@ contains
         implicit none
         real(wp), intent(in) :: dm, e
         real(wp), intent(out) :: u, f
-        real(wp) :: u0, dif, seno, cose
+        real(wp) :: du, seno, cose, tol
         integer(kind=4), parameter :: MAX_ITER = 100
         integer(kind=4) :: i
 
-        u0 = dm
-        dif = uno
-        i = 0
-        do while (dif > myepsilon)
-            u = dm + e*sin(u0)
-            dif = abs(u - u0)
-            u0 = u
-            i = i + 1
-            if (i > MAX_ITER) then
-                print *, 'aver: too many iterations. Error:', dif
-                exit
-            end if
+        ! Kepler equation u - e sin(u) = dm, by Newton's method.
+        ! (The fixed-point iteration u = dm + e sin(u) converges as e^n: too slowly for e -> 1.)
+        ! The tolerance is relative to |u|: an absolute epsilon is below the spacing of angles ~2 pi.
+        tol = 16*myepsilon*max(uno, abs(dm))
+        if (e < 0.8e0_wp) then
+            u = dm + e*sin(dm)
+        else
+            u = dm + sign(e, sin(dm))  ! Safe start for high eccentricities
+        end if
+        do i = 1, MAX_ITER
+            du = (u - e*sin(u) - dm)/(uno - e*cos(u))
+            u = u - du
+            if (abs(du) <= tol) exit
         end do
+        if (i > MAX_ITER) print *, 'aver: too many iterations. Error:', du
+
         seno = sqrt(uno + e)*sin(uno2*u)
         cose = sqrt(uno - e)*cos(uno2*u)
         f = dos*atan2(seno, cose)
@@ -190,9 +193,13 @@ contains
         hz = x*vy - y*vx
         h2 = hx*hx + hy*hy + hz*hz
         h = sqrt(h2)
-        inc = acos(hz/h)
-
-        fac = sqrt(hx*hx + hy*hy)/h
+        if (h > tini) then
+            inc = acos(max(-uno, min(uno, hz/h)))  ! Clamped: round-off can give |hz/h| > 1
+            fac = sqrt(hx*hx + hy*hy)/h
+        else  ! Radial orbit (h = 0): no orbital plane, take the reference one
+            inc = cero
+            fac = cero
+        end if
         if (fac < myepsilon) then
             capom = cero
             u = atan2(y, x)
@@ -321,23 +328,26 @@ contains
         end if
     end subroutine elem
 
+    ! Jacobi <-> astrocentric coordinates. Row 1 is the central body (left unchanged).
+    ! With a_i = r_i - r_1 (astrocentric) and j_i = r_i - R_{i-1}, R_{i-1} the CM of bodies 1..i-1:
+    !   j_i = a_i - S_{i-1}/M_{i-1},  S_{i-1} = sum_{k=2}^{i-1} m_k a_k,  M_{i-1} = sum_{k=1}^{i-1} m_k
+
     ! Get astrocentric from jacobi coordinates
     pure subroutine jacobi_to_astroc(mass_array, coords_j, coords_a)
         implicit none
         real(wp), dimension(:), intent(in) :: mass_array
         real(wp), dimension(:, :), intent(in) :: coords_j
         real(wp), dimension(:, :), intent(out) :: coords_a
-        real(wp) :: mass_acum, mass_acum_prev
+        real(wp) :: mass_acum, sum_ma(size(coords_j, 2))
         integer(kind=4) :: i
 
         coords_a = coords_j
-        mass_acum_prev = mass_array(1)  ! Arrancamos desde 1
+        mass_acum = mass_array(1)
+        sum_ma = cero
         do i = 2, size(coords_j, 1)
-            mass_acum = mass_acum_prev + mass_array(i)
-            coords_a(i, 1:4) = coords_j(i, 1:4) + &
-                            & (mass_acum_prev*(coords_a(i - 1, 1:4) - coords_j(i - 1, 1:4)) + &
-                            & mass_array(i)*coords_a(i - 1, 1:4))/mass_acum
-            mass_acum_prev = mass_acum
+            coords_a(i, :) = coords_j(i, :) + sum_ma/mass_acum
+            sum_ma = sum_ma + mass_array(i)*coords_a(i, :)
+            mass_acum = mass_acum + mass_array(i)
         end do
     end subroutine jacobi_to_astroc
 
@@ -347,17 +357,16 @@ contains
         real(wp), dimension(:), intent(in) :: mass_array
         real(wp), dimension(:, :), intent(in) :: coords_a
         real(wp), dimension(:, :), intent(out) :: coords_j
-        real(wp) :: mass_acum, mass_acum_prev
+        real(wp) :: mass_acum, sum_ma(size(coords_a, 2))
         integer(kind=4) :: i
 
         coords_j = coords_a
-        mass_acum_prev = mass_array(1)  ! Arrancamos desde 1
+        mass_acum = mass_array(1)
+        sum_ma = cero
         do i = 2, size(coords_a, 1)
-            mass_acum = mass_acum_prev + mass_array(i)
-            coords_j(i, 1:4) = coords_a(i, 1:4) - &
-                            & (mass_acum_prev*(coords_a(i - 1, 1:4) - coords_j(i - 1, 1:4)) + &
-                            & mass_array(i)*coords_a(i - 1, 1:4))/mass_acum
-            mass_acum_prev = mass_acum
+            coords_j(i, :) = coords_a(i, :) - sum_ma/mass_acum
+            sum_ma = sum_ma + mass_array(i)*coords_a(i, :)
+            mass_acum = mass_acum + mass_array(i)
         end do
     end subroutine astroc_to_jacob
 

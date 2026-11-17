@@ -42,9 +42,10 @@ contains
         implicit none
         integer(kind=4), intent(in) :: sizey
         logical, intent(in), optional :: standard
-        logical :: is_std = .False.
+        logical :: is_std
         integer(kind=4) :: n_x2
 
+        is_std = .False.  ! (not initialised in the declaration: that would make it SAVEd)
         if (present(standard)) is_std = standard
 
         if (MOD(sizey, 2) > 0) then
@@ -127,34 +128,41 @@ contains
         ! Calculate the scale array
         ! 1D variables
         do i = 1, EXTRA2
-            arr_scal(i) = ONE/(abs(y0(i)) + SAFE_LOW)
+            ! |y| + |h dy/dt|: a variable that is zero at the start (theta = 0 at t = 0) would
+            ! otherwise get a 1/SAFE_LOW scale, and its round-off would never pass the test
+            arr_scal(i) = ONE/(abs(y0(i)) + abs(htry*der0(i)) + SAFE_LOW)
         end do
 
         ! NDIM variables
         do i = 1, n_x
             auxi = EXTRA2 + (i - 1)*NDIM2 + 1  ! Starting index for this NDIM object
 
-            ! Calculate norms for positions and velocities
+            ! Calculate norms for positions and velocities, and for their change over the step
             tmp1 = ZERO
             tmp2 = ZERO
+            tmp0 = ZERO
+            errmax = ZERO
             do dim_idx = 0, NDIM - 1
                 tmp1 = tmp1 + y0(auxi + dim_idx)**2  ! Positions
                 tmp2 = tmp2 + y0(auxi + NDIM + dim_idx)**2  ! Velocities
+                tmp0 = tmp0 + der0(auxi + dim_idx)**2  ! Velocities (dx/dt)
+                errmax = errmax + der0(auxi + NDIM + dim_idx)**2  ! Accelerations (dv/dt)
             end do
 
-            ! Store scales for this NDIM object
+            ! Store scales for this NDIM object: |x| + |h v| and |v| + |h a|
+            ! (a body at rest at the origin would otherwise get a 1/SAFE_LOW scale)
             k = EXTRA2 + (i - 1)*2 + 1  ! Index in arr_scal for this object
-            arr_scal(k) = ONE/(sqrt(tmp1) + SAFE_LOW)  ! Position scale
-            arr_scal(k + 1) = ONE/(sqrt(tmp2) + SAFE_LOW)  ! Velocity scale
+            arr_scal(k) = ONE/(sqrt(tmp1) + abs(htry)*sqrt(tmp0) + SAFE_LOW)  ! Position scale
+            arr_scal(k + 1) = ONE/(sqrt(tmp2) + abs(htry)*sqrt(errmax) + SAFE_LOW)  ! Velocity scale
         end do
 
         dt = htry
         ! Try to do the step using current stepsize
         do ndo = 0, MAX_N_ITER
-            tt = t
 
             ! For each value of NS, do a modified-midpoint integration with 2N substeps
             do ns = 1, 8
+                tt = t  ! Each sequence starts again at t
                 h = dt*C1_2/real(ns, kind=wp)
                 h2(ns) = C1_4/(ns*real(ns, kind=wp))
                 hx2 = h*TWO
@@ -198,7 +206,7 @@ contains
                     end do
                 end do
 
-                tt = tt + hx2
+                tt = tt + h  ! The states advance by h at each half-stage
 
                 ! Subsequent steps of modified midpoint
                 do j = 2, ns
@@ -221,7 +229,7 @@ contains
                         end do
                     end do
 
-                    tt = tt + hx2
+                    tt = tt + h  ! The states advance by h at each half-stage
 
                     deraux(:sizey) = dydt(tt, yaux(:sizey))
 
@@ -242,7 +250,7 @@ contains
                         end do
                     end do
 
-                    tt = tt + hx2
+                    tt = tt + h  ! The states advance by h at each half-stage
                 end do
 
                 deraux(:sizey) = dydt(tt, yend(:sizey))
@@ -311,8 +319,13 @@ contains
                         end do
 
                         ! Recommend a stepsize for the next call to this subroutine
-                        if (ns >= 8) hnext = dt*SHRINK
-                        if (ns < 7) hnext = dt*GROW
+                        if (ns >= 8) then
+                            hnext = dt*SHRINK
+                        else if (ns < 7) then
+                            hnext = dt*GROW
+                        else
+                            hnext = dt
+                        end if
 
                         ! Update
                         hdid = dt
@@ -324,18 +337,19 @@ contains
             end do
 
             ! If errors were too large, redo the step with half the previous step size.
-            dt = dt*C1_2
+            ! (not after the last try: its extrapolation is the one kept below)
+            if (ndo < MAX_N_ITER) dt = dt*C1_2
         end do
 
-        ! Check max iter
-        if (ndo == MAX_N_ITER) then
-            print *, "Warning, E_TOL not reached in bstep2"
-            hdid = dt
-            hnext = hdid
-        end if
-
-        ! Update
+        ! E_TOL not reached after MAX_N_ITER halvings. y0 still holds the state at t, so returning it
+        ! would advance the time without moving the bodies: keep the best (last) extrapolation instead
+        print *, "Warning, E_TOL not reached in bstep2 at t =", t
+        y0(:sizey) = ZERO
+        do j = 1, 8
+            y0(:sizey) = y0(:sizey) + dy(1:sizey, j)
+        end do
         hdid = dt
+        hnext = dt
         y = y0(:sizey)
 
     end subroutine bstep
@@ -374,28 +388,34 @@ contains
 
         ! Calculate the scale array
         do i = 1, EXTRA2
-            arr_scal(i) = ONE/(abs(y0(i)) + SAFE_LOW)
+            ! |y| + |h dy/dt|: a variable that is zero at the start (theta = 0 at t = 0) would
+            ! otherwise get a 1/SAFE_LOW scale, and its round-off would never pass the test
+            arr_scal(i) = ONE/(abs(y0(i)) + abs(htry*der0(i)) + SAFE_LOW)
         end do
         do i = 1, n_x
             auxi = get_index(i)
             tmp1 = ZERO
             tmp2 = ZERO
+            tmp0 = ZERO
+            errmax = ZERO
             do idim2 = 0, NDIM2 - 2, 2
                 tmp1 = tmp1 + y0(auxi + idim2)**2  ! X
                 tmp2 = tmp2 + y0(auxi + idim2 + 1)**2  ! V
+                tmp0 = tmp0 + der0(auxi + idim2)**2  ! dX/dt
+                errmax = errmax + der0(auxi + idim2 + 1)**2  ! dV/dt
             end do
-            k = i + EXTRA2
-            arr_scal(k) = ONE/sqrt(tmp1 + SAFE_LOW)  ! X
-            arr_scal(k + 1) = ONE/sqrt(tmp2 + SAFE_LOW)  ! V
+            k = EXTRA2 + (i - 1)*2 + 1  ! Two entries (X, V) per object
+            arr_scal(k) = ONE/(sqrt(tmp1) + abs(htry)*sqrt(tmp0) + SAFE_LOW)  ! X
+            arr_scal(k + 1) = ONE/(sqrt(tmp2) + abs(htry)*sqrt(errmax) + SAFE_LOW)  ! V
         end do
 
         dt = htry
         ! Try to do the step using current stepsize
         do ndo = 0, MAX_N_ITER
-            tt = t
 
             ! For each value of NS, do a modified-midpoint integration with 2N substeps
             do ns = 1, 8
+                tt = t  ! Each sequence starts again at t
                 h = dt*C1_2/real(ns, kind=wp)
                 h2(ns) = C1_4/(ns*real(ns, kind=wp))
                 hx2 = h*TWO
@@ -410,7 +430,7 @@ contains
                     yend(i) = y0(i) + hx2*yaux(i + 1)
                     yend(i + 1) = y0(i + 1) + hx2*deraux(i + 1)
                 end do
-                tt = tt + hx2
+                tt = tt + h  ! The states advance by h at each half-stage
 
                 do j = 2, ns
                     deraux(:sizey) = dydt(tt, yend(:sizey))
@@ -418,14 +438,14 @@ contains
                         yaux(i) = yaux(i) + hx2*yend(i + 1)
                         yaux(i + 1) = yaux(i + 1) + hx2*deraux(i + 1)
                     end do
-                    tt = tt + hx2
+                    tt = tt + h  ! The states advance by h at each half-stage
 
                     deraux(:sizey) = dydt(tt, yaux(:sizey))
                     do i = 1, sizey, 2
                         yend(i) = yend(i) + hx2*yaux(i + 1)
                         yend(i + 1) = yend(i + 1) + hx2*deraux(i + 1)
                     end do
-                    tt = tt + hx2
+                    tt = tt + h  ! The states advance by h at each half-stage
                 end do
 
                 deraux(:sizey) = dydt(tt, yend(:sizey))
@@ -473,8 +493,13 @@ contains
                         end do
 
                         ! Recommend a stepsize for the next call to this subroutine
-                        if (ns >= 8) hnext = dt*SHRINK
-                        if (ns < 7) hnext = dt*GROW
+                        if (ns >= 8) then
+                            hnext = dt*SHRINK
+                        else if (ns < 7) then
+                            hnext = dt*GROW
+                        else
+                            hnext = dt
+                        end if
 
                         ! Update
                         hdid = dt
@@ -488,19 +513,19 @@ contains
 
             end do
             ! If errors were too large, redo the step with half the previous step size.
-            dt = dt*C1_2
-
+            ! (not after the last try: its extrapolation is the one kept below)
+            if (ndo < MAX_N_ITER) dt = dt*C1_2
         end do
 
-        ! Check max iter
-        if (ndo == MAX_N_ITER) then
-            print *, "Warning, E_TOL not reached in bstep2"
-            hdid = dt
-            hnext = hdid
-        end if
-
-        ! Update
+        ! E_TOL not reached after MAX_N_ITER halvings. y0 still holds the state at t, so returning it
+        ! would advance the time without moving the bodies: keep the best (last) extrapolation instead
+        print *, "Warning, E_TOL not reached in bstep2 at t =", t
+        y0(:sizey) = ZERO
+        do j = 1, 8
+            y0(:sizey) = y0(:sizey) + dy(1:sizey, j)
+        end do
         hdid = dt
+        hnext = dt
         y = y0(:sizey)
 
     end subroutine bstep_std
@@ -521,8 +546,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end, dt_try, dt_used
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)
@@ -541,7 +566,7 @@ contains
                 end if
             end if
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             dt_try = dt_adap
 
             call bstep_ptr(sizey, ynew, dydt, time, dt_try, dt_used, dt_adap)
