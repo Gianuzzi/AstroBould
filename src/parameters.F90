@@ -12,6 +12,7 @@ module parameters
     use omp_lib
     use tomodule, only: tom_st
     use surface, only: section_st
+    use shared, only: DT_MAX  ! Integrators: physical limit of a single step
 
     implicit none
 
@@ -2382,6 +2383,10 @@ contains
             end if
             keep_going = .not. hard_exit
         end if
+        ! Hard-sphere contacts are only seen between steps: limit the next step so that no pair
+        ! can go through each other within it (from this accepted state)
+        if (use_hs_step_check) DT_MAX = hs_step_cap(y)
+
         ! Hard-sphere particle collisions are resolved between steps: stop at the first step
         ! where two particles overlap while still approaching, so that the collision is resolved
         ! where it happens (and not only at the next checkpoint)
@@ -2436,6 +2441,52 @@ contains
             U = U + acc_Gm_bz/sqrt(r2 + acc_dz2_bz)
         end if
     end function body_frame_potential
+
+    !> Largest step for which no pair of particles can go through each other unseen: during it
+    !> a pair may close at most half a contact distance. The closing speed of a pair is bounded
+    !> by twice the largest speed relative to the circular flow, plus the Keplerian shear of the
+    !> circular flow across a contact distance (1.5 n 2R).
+    function hs_step_cap(y) result(dt_cap)
+        implicit none
+        real(wp), dimension(:), intent(in) :: y
+        real(wp) :: dt_cap
+        real(wp), parameter :: HS_STEP_FRACTION = 0.5_wp  ! Fraction of the contact distance per step
+        integer(kind=4) :: first, last, i, idx
+        real(wp) :: GMa, rx, ry, r, vc, vx, vy, ux, uy, u_max, n_max, omega, v_close
+
+        dt_cap = huge(uno)
+        first = 2 + sim%Nmoon_active
+        last = 1 + sim%Nmoon_active + sim%Npart_active
+        if (last - first < 1) return
+
+        GMa = G*m_arr(1)
+        omega = y(2)
+        u_max = cero
+        n_max = cero
+        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i, idx, rx, ry, r, vc, vx, vy, ux, uy) &
+        !$OMP REDUCTION(max:u_max, n_max) SCHEDULE(STATIC)
+        do i = first, last
+            idx = get_index(i)
+            rx = y(idx) - y(3)
+            ry = y(idx + 1) - y(4)
+            r = max(sqrt(rx*rx + ry*ry), tini)
+            vx = y(idx + 2) - y(5)
+            vy = y(idx + 3) - y(6)
+            if (sim%use_sinodic) then  ! Rotating frame: inertial velocity v + omega z x r
+                vx = vx - omega*ry
+                vy = vy + omega*rx
+            end if
+            vc = sqrt(GMa/r)
+            ux = vx + vc*ry/r  ! Velocity relative to the circular (prograde) flow
+            uy = vy - vc*rx/r
+            u_max = max(u_max, sqrt(ux*ux + uy*uy))
+            n_max = max(n_max, vc/r)
+        end do
+        !$OMP END PARALLEL DO
+
+        v_close = dos*u_max + 1.5_wp*n_max*dos*R_arr(first)
+        if (v_close > tini) dt_cap = HS_STEP_FRACTION*dos*R_arr(first)/v_close
+    end function hs_step_cap
 
     !> Whether any pair of particles overlaps while approaching (cell list, O(N)).
     !> The approach test (dr . dv < 0) does not depend on the frame (rotating or not).

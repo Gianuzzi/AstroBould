@@ -114,7 +114,7 @@ contains
             ! This is a fixed-step scheme: dt_large is the nominal step and is NOT shrunk here,
             ! or the short step that closes an interval would be inherited by every later call.
             ! The last step absorbs the round-off remainder instead of taking a ~0 extra step.
-            dt_step = min(dt_large, t_end - time)
+            dt_step = min(dt_large, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             if ((t_end - time) - dt_step < 1.e-10_wp * dt_large) dt_step = t_end - time
             DT_MIN_NOW = min(DT_MIN, dt_step)
 

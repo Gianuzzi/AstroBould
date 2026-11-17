@@ -387,7 +387,7 @@ contains
 
             ycaller(:sizey) = ynew
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
             der(:sizey) = dydt(time, ycaller(:sizey))
@@ -437,7 +437,7 @@ contains
 
             ycaller(:sizey) = ynew
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
             der(:sizey) = dydt(time, ycaller(:sizey))

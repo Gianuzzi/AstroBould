@@ -313,7 +313,7 @@ contains
                 end if
             end if
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             dt_try = dt_adap
 
             call bstep(sizey, ynew, dydt, time, dt_try, dt_used, dt_adap)
