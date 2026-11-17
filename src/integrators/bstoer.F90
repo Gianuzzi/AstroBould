@@ -25,6 +25,7 @@ module bstoer
     logical, save :: reached_underflow = .False.
     integer(kind=8), save :: underflows = 0
     integer(kind=8), parameter :: MAX_UNDERFLOWS = 50000
+    real(wp), parameter :: LOWEST_TIMESTEP = 1.0e-16_wp  ! Hardcoded lowest timestep, to avoid underflow in adaptive integrators
 
 
 contains
@@ -135,7 +136,7 @@ contains
         main_loop: do
             do k = 1, kmax ! Evaluate the sequence of modiﬁed midpoint integrations.
                 xnew = x + h
-                if (abs(xnew - x) < SAFE_LOW) then !E_TOL?
+                if ((abs(xnew - x) < SAFE_LOW) .or. (abs(h) < LOWEST_TIMESTEP)) then !E_TOL?
                     ! print *, "Step size underflow in bstep at ", x
                     underflows = underflows + 1
                     if (underflows >= MAX_UNDERFLOWS) then
