@@ -100,6 +100,10 @@ contains
         der(:sizey) = dydt(x, y)
         yscal(:sizey) = abs(y) + abs(htry*der(:sizey)) + SAFE_LOW
 
+        ! Defined values even if the very first trial underflows
+        km = 0
+        scala = ONE
+
         if (abs(E_TOL - epsold) > SAFE_LOW) then !E_TOL? ! A new tolerance, so reinitialize.
             hnext = -1.0e29_wp ! “Impossible” values.
             xnew = -1.0e29_wp
@@ -142,8 +146,9 @@ contains
                 call mmid(sizey, ysav(:sizey), der(:sizey), x, h, nseq(k), yseq(:sizey), dydt)
                 xest = (h/real(nseq(k), kind=wp))**2 ! Squared, since error series is even.
                 call pzextr(sizey, k, xest, yseq(:sizey), y, yerr(:sizey), qcolpz(1:sizey, :), xpz) ! Perform extrapolation.
-                ! yscal(:sizey) = abs(y) + abs(h*der(:sizey)) + SAFE_LOW
-                yscal(:sizey) = abs(y) + abs(yerr(:sizey)) + SAFE_LOW
+                ! The error scale is |y| + |h dy/dx| (set above, as in Numerical Recipes). A scale
+                ! built from the error itself (|y| + |yerr|) collapses where a component crosses zero,
+                ! forcing step reductions down to underflow
                 if (k /= 1) then ! Compute normalized error estimate eps(k).
                     errmax = tini
                     do i = 1, sizey
@@ -292,6 +297,7 @@ contains
         has_check = present(check_fun)
 
         call reset_bstep()
+        underflows = 0  ! Underflows are counted per call (one checkpoint interval), not per run
 
         ynew = y
         time = t

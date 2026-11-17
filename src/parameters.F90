@@ -4,6 +4,10 @@ module parameters
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
     use accelerations, only: init_ellipsoid, init_boulder_z, init_manual_J2, init_stokes, init_drag, init_damping, update_boulder_z
+    use accelerations, only: acc_ellipsoid => use_ellipsoid, acc_K => K_coef, acc_L => L_coef, &
+                           & acc_J2_cm => use_manual_J2_from_cm, acc_J2_primary => use_manual_J2_from_primary, &
+                           & acc_J2K => J2K_coef, acc_bz => use_boulder_z, acc_Gm_bz => Gmboulder_z_coef, &
+                           & acc_dz2_bz => dz2_boulder_z_coef
     use filtering, only: filter_st
     use omp_lib
     use tomodule, only: tom_st
@@ -274,7 +278,7 @@ module parameters
     real(wp), dimension(3) :: asteroid_data !! |axis_a, axis_b, inertia|
     logical :: use_hs_step_check = .False. !! Check hard-sphere particle collisions at every integrator step
     real(wp), dimension(:, :), allocatable :: boulders_coords !! (Nb, 4) |x,y,vx,vy|
-    real(wp), dimension(:, :), allocatable :: boulders_data !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
+    real(wp), dimension(:, :), allocatable :: boulders_data !! (Nb, 5) |mass,radius,theta_Ast0,dist_Ast,theta_from_primary|
 
     ! ----  <<<<<    TIME     >>>>>   -----
     real(wp) :: time  ! Actual time of the integration
@@ -343,6 +347,7 @@ module parameters
     logical :: surf_force_accept  ! Step accepted regardless of the crossing errors (min timestep / max counter)
     logical :: surf_accepted_step  ! Flag if the step is accepted after crossing check
     real(wp) :: jacobi_constant  ! Self explained
+    real(wp) :: surf_rel(4)  ! Body-frame state relative to the asteroid (for the Jacobi constant)
     integer(kind=4) :: surf_counter = 0  ! Counter of how many times we tried to cross the surface
     integer(kind=4), parameter :: surf_max_counter = 250  ! Maximum number of times to try to cross the surface before giving up
 
@@ -395,7 +400,21 @@ module parameters
     procedure(int_i_template), pointer :: flush_geometric => null()
     procedure(int_i_template), pointer :: flush_geomchaos => null()
 
+    ! Re-check of the hard-exit conditions on an accepted state (set to the derivatives in main)
+    procedure(state_dydt_template), pointer :: dydt_recheck => null()
+    real(wp) :: t_last_dydt = cero  !! Time of the last derivative evaluation
+    logical :: integration_stopped = .False.  !! The integrator returned early (check_func said stop)
+    real(wp) :: t_logged_esc_col = -huge(uno)  !! Latest time whose collisions/escapes were written
+
     abstract interface
+
+        function state_dydt_template(t, y) result(der)
+            import :: wp
+            implicit none
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), dimension(size(y)) :: der
+        end function state_dydt_template
 
         subroutine simple_ptr_template()
             implicit none
@@ -1935,6 +1954,18 @@ contains
         end if
 
         ! Second sinodic check: If sinodic, no damping
+        ! Leap-Frog (KDK) is only second order and symplectic for position-dependent forces.
+        ! The Coriolis force of the rotating frame depends on the velocity: block it
+        if (derived%use_sinodic .and. ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2))) then
+            write(err_msg, '(A)') "Sinodic system is not compatible with the LeapFrog integrator (Coriolis force)."
+            call fatal_error(err_msg)
+        end if
+        if ((derived%use_drag .or. derived%use_stokes) .and. &
+          & ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2))) then
+            write (*, *) "WARNING: Drag/Stokes forces depend on the velocity: the LeapFrog integrator"
+            write (*, *) "         is only first order with them. Prefer an adaptive integrator."
+        end if
+
         if (derived%use_sinodic .and. derived%use_omega_damping) then
             write(err_msg, '(A)') "Sinodic system is not compatible with Omega damping."
             call fatal_error(err_msg)
@@ -2343,7 +2374,23 @@ contains
         ! ! Here, we use the global hexit_arr  (Old Code)
         ! keep_going = all(hexit_arr == 0)
         ! if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
-        keep_going = .not. hard_exit
+        real(wp), allocatable :: aux_der(:)
+
+        keep_going = .True.
+        if (hard_exit) then
+            ! The flag is raised by ANY derivative evaluation, including the trial stages of a step
+            ! that was later rejected or shortened. Stop only if the condition holds on this
+            ! accepted state: re-evaluate it here (it sets hard_exit again if so)
+            hard_exit = .False.
+            if (associated(dydt_recheck)) then
+                allocate (aux_der(size(y)))
+                aux_der = dydt_recheck(t_last_dydt, y)
+                deallocate (aux_der)
+            else
+                hard_exit = .True.
+            end if
+            keep_going = .not. hard_exit
+        end if
         ! Hard-sphere particle collisions are resolved between steps: stop at the first step
         ! where two particles overlap while still approaching, so that the collision is resolved
         ! where it happens (and not only at the next checkpoint)
@@ -2353,7 +2400,51 @@ contains
                 keep_going = .False.
             end if
         end if
+        if (.not. keep_going) integration_stopped = .True.  ! The integrator returns at this state
     end function check_func
+
+    !> Gravitational potential of the asteroid, U = -Phi > 0, at (x, y) in its BODY frame
+    !> (centred on the asteroid CM, axes fixed to the body at theta = 0). The same terms
+    !> as the dynamics (dydt): ellipsoid, or point masses (primary + boulders), manual J2
+    !> (from the CM or from the primary) and boulders in Z. During a boulder mass growth
+    !> the final configuration is used.
+    function body_frame_potential(x, y) result(U)
+        implicit none
+        real(wp), intent(in) :: x, y
+        real(wp) :: U
+        real(wp) :: r2, r, dx, dy, d2, d
+        integer(kind=4) :: i
+
+        U = cero
+        r2 = x*x + y*y
+        r = sqrt(r2)
+
+        if (acc_ellipsoid) then
+            ! Phi = -GM/r [1 - K/(3 r^2) + L (x^2 - y^2)/r^4]  (gives the accelerations used in dydt)
+            U = G*m_arr(1)/r*(uno - acc_K/(3*r2) + acc_L*(x*x - y*y)/(r2*r2))
+            return
+        end if
+
+        ! Point masses: primary (i = 0) and boulders
+        do i = 0, ubound(boulders_data, 1)
+            dx = x - boulders_data(i, 4)*cos(boulders_data(i, 3))
+            dy = y - boulders_data(i, 4)*sin(boulders_data(i, 3))
+            d2 = dx*dx + dy*dy
+            d = sqrt(d2)
+            if ((i == 0) .and. acc_J2_primary) then
+                U = U + G*boulders_data(i, 1)/d*(uno - acc_J2K/(3*d2))
+            else
+                U = U + G*boulders_data(i, 1)/d
+            end if
+        end do
+
+        ! Manual J2 from the CM (only the perturbation: the point masses give the monopole)
+        if (acc_J2_cm) then
+            U = U - G*m_arr(1)*acc_J2K/(3*r2*r)
+        else if (acc_bz) then
+            U = U + acc_Gm_bz/sqrt(r2 + acc_dz2_bz)
+        end if
+    end function body_frame_potential
 
     !> Whether any pair of particles overlaps while approaching (cell list, O(N)).
     !> The approach test (dr . dv < 0) does not depend on the frame (rotating or not).
@@ -2805,7 +2896,9 @@ contains
         type(system_st), intent(inout) :: syst
         integer(kind=4), intent(in) :: unit_out
 
-        if (unit_out < 0) then ! Use to avoid writing file
+        ! With filtering, the integration may go back in time and redo an interval: the events
+        ! there were already written. Write only those after the latest time already written.
+        if ((unit_out < 0) .or. (syst%time <= t_logged_esc_col)) then ! Use to avoid writing file
 
             ! Apply colissions and check
             call resolve_collisions(syst, simu%min_distance)
@@ -2817,6 +2910,8 @@ contains
 
 
         else
+
+            t_logged_esc_col = syst%time
 
             ! Apply colissions and check
             call resolve_collisions(syst, simu%min_distance, unit_out)

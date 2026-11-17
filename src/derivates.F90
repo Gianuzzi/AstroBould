@@ -9,7 +9,7 @@ module derivates
                           & asteroid_data, &
                           & boulders_coords, boulders_data, &
                           & m_arr, R_arr, &
-                          & hard_exit
+                          & hard_exit, t_last_dydt
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
                             & use_drag, use_drag_moons, drag_coef, drag_time, &
                             & use_stokes, use_stokes_moons, stokes_C, stokes_alpha, stokes_time, &
@@ -138,7 +138,7 @@ contains
         real(wp) :: theta_moon, xy_rotated(2)
         real(wp) :: dr_ver(2), dv_vec(2)
         real(wp) :: vel_circ(2), vel_radial, acc_radial_drag
-        real(wp) :: v2, two_ener, mean_movement
+        real(wp) :: v2, two_ener, mean_movement, n_circ
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z
         real(wp) :: aux_real, aux_real2(2)
         integer(kind=4) :: i, idx, j, jdx, vdx, last_moon
@@ -175,8 +175,9 @@ contains
                     m_boul_tot = m_boul_tot + Gmass_arr(i)
                 end do
 
-                ! m0 shrinks while total mass remains constant
+                ! m0 shrinks while total mass remains constant (the boulders in Z act on their own)
                 Gmass_arr(0) = m_arr(1) - m_boul_tot
+                if (use_boulder_z) Gmass_arr(0) = Gmass_arr(0) - Gmboulder_z_coef/G
 
                 !--------------------------------------------------
                 ! Relative boulder positions wrt m0
@@ -185,7 +186,9 @@ contains
                 com_y = cero
 
                 do i = 1, sim%Nboulders
-                    aux_real = theta + boulders_data(i,3)
+                    ! Boulders sit on the primary surface: angle measured from the primary centre
+                    ! (boulders_data(i,3) is the angle from the asteroid CM, a different point)
+                    aux_real = theta + boulders_data(i,5)
 
                     rel_x = boulders_data(0,2)*cos(aux_real)
                     rel_y = boulders_data(0,2)*sin(aux_real)
@@ -369,6 +372,7 @@ contains
                 if (two_ener > cero) then
 
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmcomb
+                    n_circ = sqrt(Gmcomb*inv_dr3)  ! Local circular mean motion
 
                     if (use_drag_moons) then
                         dr_ver = dr_vec*inv_dr
@@ -381,8 +385,9 @@ contains
                     end if
 
                     if (use_stokes_moons) then
-                        vel_circ(1) = mean_movement*(-dr_vec(2))
-                        vel_circ(2) = mean_movement*( dr_vec(1))
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ(1) = n_circ*(-dr_vec(2))
+                        vel_circ(2) = n_circ*( dr_vec(1))
                         aux_real2 = stokes_C*stokes_f*(dv_vec - stokes_alpha*vel_circ)
 
                         der(jdx + 2) = der(jdx + 2) - aux_real2(1)
@@ -487,6 +492,7 @@ contains
         !$OMP         vel_circ, vel_radial,         &
         !$OMP         acc_radial_drag,              &
         !$OMP         v2, two_ener, mean_movement,  &
+        !$OMP         n_circ,                       &
         !$OMP         xy_rotated, dQdx, dQdy)       &
         !$OMP SCHEDULE(STATIC)
         particle_loop: do j = first_particle, N_total
@@ -587,12 +593,16 @@ contains
                 v2 = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
 
                 if (use_manual_J2_from_cm) then
+                    ! a = -GM r/r^3 (1 - J2K/r^2): potential -GM/r (1 - J2K/(3 r^2)),
+                    ! circular mean motion sqrt(GM/r^3) (1 - J2K/(2 r^2)) to first order
                     aux_J2K = J2K_coef*inv_dr2
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
-                    mean_movement = sqrt(Gmi_r3)*(uno - aux_J2K*uno3)
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K*uno3) - v2
+                    mean_movement = sqrt(Gmi_r3)*(uno - aux_J2K*uno2)
+                    n_circ = mean_movement
                 else
                     two_ener = dos*Gmast*inv_dr - v2
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast
+                    n_circ = sqrt(Gmi_r3)
                 end if
 
                 if (two_ener > cero) then
@@ -608,8 +618,9 @@ contains
                     end if
 
                     if (use_stokes) then
-                        vel_circ(1) = mean_movement*(-dr_vec(2))
-                        vel_circ(2) = mean_movement*( dr_vec(1))
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ(1) = n_circ*(-dr_vec(2))
+                        vel_circ(2) = n_circ*( dr_vec(1))
                         aux_real2 = stokes_C*stokes_f * (dv_vec - stokes_alpha*vel_circ)
 
                         der(jdx + 2) = der(jdx + 2) - aux_real2(1)
@@ -837,7 +848,7 @@ contains
         real(wp) :: Q_eff
         real(wp) :: dr_ver(2), dv_vec(2)
         real(wp) :: vel_circ(2), vel_radial, acc_radial_drag
-        real(wp) :: v2, two_ener, mean_movement
+        real(wp) :: v2, two_ener, mean_movement, n_circ
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z
         real(wp) :: aux_real, aux_real2(2)
         integer(kind=4) :: i, j, jdx, vdx
@@ -870,8 +881,9 @@ contains
                     m_boul_tot = m_boul_tot + Gmass_arr(i)
                 end do
 
-                ! m0 shrinks while total mass remains constant
+                ! m0 shrinks while total mass remains constant (the boulders in Z act on their own)
                 Gmass_arr(0) = m_arr(1) - m_boul_tot
+                if (use_boulder_z) Gmass_arr(0) = Gmass_arr(0) - Gmboulder_z_coef/G
 
                 !--------------------------------------------------
                 ! Relative boulder positions wrt m0
@@ -953,7 +965,8 @@ contains
         !$OMP         dr_ver, dv_vec,               &
         !$OMP         vel_circ, vel_radial,         &
         !$OMP         acc_radial_drag,              &
-        !$OMP         v2, two_ener, mean_movement)  &
+        !$OMP         v2, two_ener, mean_movement,  &
+        !$OMP         n_circ)                       &
         !$OMP SCHEDULE(STATIC)
         particle_loop: do j = first_particle, N_total
             jdx = get_index(j)
@@ -1073,12 +1086,16 @@ contains
                 v2 = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
 
                 if (use_manual_J2_from_cm) then
+                    ! a = -GM r/r^3 (1 - J2K/r^2): potential -GM/r (1 - J2K/(3 r^2)),
+                    ! circular mean motion sqrt(GM/r^3) (1 - J2K/(2 r^2)) to first order
                     aux_J2K = J2K_coef*inv_dr2
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2
-                    mean_movement = sqrt(Gmi_r3)*(uno - aux_J2K*uno3)
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K*uno3) - v2
+                    mean_movement = sqrt(Gmi_r3)*(uno - aux_J2K*uno2)
+                    n_circ = mean_movement
                 else
                     two_ener = dos*Gmast*inv_dr - v2
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast
+                    n_circ = sqrt(Gmi_r3)
                 end if
 
                 if (two_ener > cero) then
@@ -1094,8 +1111,9 @@ contains
                     end if
 
                     if (use_stokes) then
-                        vel_circ(1) = mean_movement*(-dr_vec(2))
-                        vel_circ(2) = mean_movement*( dr_vec(1))
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ(1) = n_circ*(-dr_vec(2))
+                        vel_circ(2) = n_circ*( dr_vec(1))
                         aux_real2 = stokes_C*stokes_f * (dv_vec - stokes_alpha*vel_circ)
 
                         der(jdx + 2) = der(jdx + 2) - aux_real2(1)
@@ -1307,6 +1325,7 @@ contains
         first_particle = last_moon + 1
         N_total = last_moon + sim%Npart_active
 
+        t_last_dydt = t  ! For the re-check of the hard-exit conditions on accepted states
         call dydt_grav(t, y, der, first_particle, N_total)
         call dydt_coll(t, y, der, first_particle, N_total)
         call set_pos_derivatives(y, der, N_total)
@@ -1328,6 +1347,7 @@ contains
         first_particle = last_moon + 1
         N_total = last_moon + sim%Npart_active
 
+        t_last_dydt = t  ! For the re-check of the hard-exit conditions on accepted states
         call dydt_grav(t, y, der, first_particle, N_total)
 
     end function dydt_grav_f

@@ -185,6 +185,8 @@ contains
 
         if (reached_underflow) then
             reached_underflow = .False. ! Reset the flag for future checks
+            write (*, *) "WARNING: Bulirsch-Stoer step size underflow. Switching to the fallback integrator", &
+                       & " (RK6 adaptive / Dopri8 fixed) for the rest of the run."
             call fallback_integrator()
             dt_adap = DT_MIN ! Reset dt_adap to minimum for the new integrator
             call integrate(t, y, dt_adap, dydt, dt, ynew, check_fun) ! Call the new integrator immediately
