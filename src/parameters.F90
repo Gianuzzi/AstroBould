@@ -407,7 +407,7 @@ module parameters
     procedure(state_dydt_template), pointer :: dydt_recheck => null()
     real(wp) :: t_last_dydt = cero  !! Time of the last derivative evaluation
     logical :: integration_stopped = .False.  !! The integrator returned early (check_func said stop)
-    real(wp) :: t_logged_esc_col = -huge(uno)  !! Latest time whose collisions/escapes were written
+    real(wp) :: t_redo_until = -huge(uno)  !! A filter rollback re-integrates up to here: events already written
 
     abstract interface
 
@@ -2495,7 +2495,7 @@ contains
         implicit none
         real(wp), dimension(:), intent(in) :: y
         logical :: found
-        integer(kind=4) :: first, last, i, j, idx, jdx, dcy, n, q, p, nth, tid, qa, qb
+        integer(kind=4) :: first, last, i, j, idx, jdx, dcy, n, q, p, nth, tid, qa, qb, nteam
         integer(kind=4) :: ptr(-1:1)
         logical :: ptr_ok(-1:1)
         integer(int64) :: klo
@@ -2543,12 +2543,15 @@ contains
         !$ nth = omp_get_max_threads()
         nth = max(1, min(nth, n))
         !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) &
-        !$OMP PRIVATE(tid, qa, qb, q, i, idx, p, j, jdx, dcy, klo, ptr, ptr_ok, drx, dry) &
+        !$OMP PRIVATE(tid, nteam, qa, qb, q, i, idx, p, j, jdx, dcy, klo, ptr, ptr_ok, drx, dry) &
         !$OMP REDUCTION(.or.:found)
         tid = 0
         !$ tid = omp_get_thread_num()
-        qa = int((int(n, int64)*tid)/nth) + 1
-        qb = int((int(n, int64)*(tid + 1))/nth)
+        ! Split by the ACTUAL team size: the runtime may give fewer threads than requested
+        nteam = 1
+        !$ nteam = omp_get_num_threads()
+        qa = int((int(n, int64)*tid)/nteam) + 1
+        qb = int((int(n, int64)*(tid + 1))/nteam)
         ptr_ok = .False.
         do q = qa, qb
             i = hs_cells%ord(q) + first - 1
@@ -2916,9 +2919,9 @@ contains
         type(system_st), intent(inout) :: syst
         integer(kind=4), intent(in) :: unit_out
 
-        ! With filtering, the integration may go back in time and redo an interval: the events
-        ! there were already written. Write only those after the latest time already written.
-        if ((unit_out < 0) .or. (syst%time <= t_logged_esc_col)) then ! Use to avoid writing file
+        ! With filtering, the integration may go back in time and redo an interval (a rollback):
+        ! the events there, up to the time reached before the rollback, were already written
+        if ((unit_out < 0) .or. (syst%time <= t_redo_until)) then ! Use to avoid writing file
 
             ! Apply colissions and check
             call resolve_collisions(syst, simu%min_distance)
@@ -2930,8 +2933,6 @@ contains
 
 
         else
-
-            t_logged_esc_col = syst%time
 
             ! Apply colissions and check
             call resolve_collisions(syst, simu%min_distance, unit_out)

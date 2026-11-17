@@ -2414,7 +2414,7 @@ contains
         type(system_st), intent(inout) :: self
         integer(kind=4), intent(in) :: i
         integer(kind=4), intent(inout), optional :: error
-        real(wp) :: aux_real, ang_mom
+        real(wp) :: aux_real, ang_mom, aux_inertia
 
         ! An inactive moon was already merged/removed: its mass must not be added twice
         if (.not. self%moons(i)%active) then
@@ -2435,7 +2435,7 @@ contains
         call check_coordinates(self, error)
 
         ! Check ANGULAR MOMENTUM
-        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_real)
+        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_inertia)  ! Distinct actuals
         aux_real = max(sqepsilon, abs(ang_mom))
         if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
             ! write (*, *) "WARNING: Total angular momentum relative error:", abs(ang_mom - self%ang_mom)/aux_real
@@ -2524,7 +2524,7 @@ contains
         integer(kind=4), intent(inout), optional :: error
         real(wp) :: m_cm, rv_cm(4)
         real(wp) :: L_rot
-        real(wp) :: aux_real, ang_mom, aux_real24(2, 4)
+        real(wp) :: aux_real, ang_mom, aux_real24(2, 4), aux_inertia
         real(wp) :: mi, mj
         real(wp) :: ri(2), rj(2)
         real(wp) :: vi(2), vj(2)
@@ -2719,7 +2719,7 @@ contains
         call check_coordinates(self, error)
 
         ! Check ANGULAR MOMENTUM
-        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_real)
+        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_inertia)  ! Distinct actuals
         aux_real = max(sqepsilon, abs(ang_mom))
         if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
             ! write (*, *) "WARNING: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real

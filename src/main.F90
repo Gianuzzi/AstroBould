@@ -2291,6 +2291,8 @@ program main
                 if (time > next_t_filt) then
 
                     ! We reset the system up to the tmp values
+                    ! Events up to the time reached so far were already written: do not write them again
+                    t_redo_until = max(t_redo_until, time)
                     j = tmp_j
                     sim = tmp_sim
                     time = tmp_time
@@ -2669,6 +2671,8 @@ program main
             !! In this case, then next filter time has already passed
             if (time > next_t_filt) then
                 ! We reset the system up to the tmp values
+                ! Events up to the time reached so far were already written: do not write them again
+                t_redo_until = max(t_redo_until, time)
                 j = tmp_j
                 sim = tmp_sim
                 time = tmp_time

@@ -318,7 +318,7 @@ contains
         logical,                intent(in) :: are_moons
 
         real(wp) :: L_cell, dx, dy, rc
-        integer(kind=4) :: i, j, idx, n, q, p, dcy, nth, tid, qa, qb
+        integer(kind=4) :: i, j, idx, n, q, p, dcy, nth, tid, qa, qb, nteam
         integer(kind=4) :: ptr(-1:1)
         logical :: ptr_ok(-1:1)
         integer(int64) :: klo
@@ -350,11 +350,14 @@ contains
         !$ nth = omp_get_max_threads()
         nth = max(1, min(nth, n))
         !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) &
-        !$OMP PRIVATE(tid, qa, qb, q, i, p, j, dcy, klo, ptr, ptr_ok, dx, dy, rc)
+        !$OMP PRIVATE(tid, nteam, qa, qb, q, i, p, j, dcy, klo, ptr, ptr_ok, dx, dy, rc)
         tid = 0
         !$ tid = omp_get_thread_num()
-        qa = int((int(n, int64)*tid)/nth) + 1
-        qb = int((int(n, int64)*(tid + 1))/nth)
+        ! Split by the ACTUAL team size: the runtime may give fewer threads than requested
+        nteam = 1
+        !$ nteam = omp_get_num_threads()
+        qa = int((int(n, int64)*tid)/nteam) + 1
+        qb = int((int(n, int64)*(tid + 1))/nteam)
         ptr_ok = .False.
         do q = qa, qb
             i = gcells%ord(q) + first_index - 1
@@ -789,7 +792,7 @@ contains
         real(wp), dimension(:), intent(in) :: y
         real(wp), intent(in) :: dt
         integer(kind=4), intent(in) :: first, last
-        integer(kind=4) :: i, j, idx, k, nb, p, q, dcy, row, lo, hi, mid, nth, tid, qa, qb
+        integer(kind=4) :: i, j, idx, k, nb, p, q, dcy, row, lo, hi, mid, nth, tid, qa, qb, nteam
         integer(kind=4) :: ptr(-1:1)
         logical :: ptr_ok(-1:1)
         integer(int64) :: cxmin, cymin, cxmax, cymax, Wx, kp, klo, khi
@@ -875,12 +878,15 @@ contains
         nth = mr_nthreads()
         call mr_tbuf_reset(nth)
         !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) &
-        !$OMP PRIVATE(tid, qa, qb, q, i, rsi, k, kp, dcy, klo, khi, row, lo, hi, mid, p, j, &
+        !$OMP PRIVATE(tid, nteam, qa, qb, q, i, rsi, k, kp, dcy, klo, khi, row, lo, hi, mid, p, j, &
         !$OMP         dx, dv, dv2, rcoll, margin, ts, dmin, ptr, ptr_ok)
         tid = 0
         !$ tid = omp_get_thread_num()
-        qa = int((int(nb, int64)*tid)/nth) + 1
-        qb = int((int(nb, int64)*(tid + 1))/nth)
+        ! Split by the ACTUAL team size: the runtime may give fewer threads than requested
+        nteam = 1
+        !$ nteam = omp_get_num_threads()
+        qa = int((int(nb, int64)*tid)/nteam) + 1
+        qb = int((int(nb, int64)*(tid + 1))/nteam)
         ptr_ok = .False.
         do q = qa, qb
             i = sid(q)
@@ -1078,7 +1084,7 @@ contains
         real(wp), dimension(:), intent(inout) :: y
         real(wp), intent(in) :: dt, dt_small
         integer(kind=4), intent(in) :: last_moon, N_total
-        integer(kind=4) :: a, p, i, idx, N_sub, k, e, nth, tid, qa, qb
+        integer(kind=4) :: a, p, i, idx, N_sub, k, e, nth, tid, qa, qb, nteam
         real(wp) :: h, h2, horizon, acc(2), F_vec(2), mi, mj
         logical :: touched
         integer(int64) :: nmiss
@@ -1135,11 +1141,14 @@ contains
         mr_np_moon = mr_np
         nth = mr_nthreads()
         call mr_tbuf_reset(nth)
-        !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) PRIVATE(tid, qa, qb, p) REDUCTION(+:nmiss)
+        !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) PRIVATE(tid, nteam, qa, qb, p) REDUCTION(+:nmiss)
         tid = 0
         !$ tid = omp_get_thread_num()
-        qa = mr_nc_moon + int((int(mr_nc - mr_nc_moon, int64)*tid)/nth) + 1
-        qb = mr_nc_moon + int((int(mr_nc - mr_nc_moon, int64)*(tid + 1))/nth)
+        ! Split by the ACTUAL team size: the runtime may give fewer threads than requested
+        nteam = 1
+        !$ nteam = omp_get_num_threads()
+        qa = mr_nc_moon + int((int(mr_nc - mr_nc_moon, int64)*tid)/nteam) + 1
+        qb = mr_nc_moon + int((int(mr_nc - mr_nc_moon, int64)*(tid + 1))/nteam)
         do p = qa, qb
             if (may_touch(y, mr_cand(1, p), mr_cand(2, p), dt, mr_u_typ)) then
                 call mr_tbuf_push(mr_tbuf(tid), mr_cand(1, p), mr_cand(2, p))
