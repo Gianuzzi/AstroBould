@@ -352,28 +352,45 @@ contains
         type(particle_st), dimension(:), intent(inout) :: self
         real(wp), intent(in) :: ele_a, ele_e, ele_M, ele_w, mmr
         integer(kind=4), intent(in), optional :: id_start
-        integer(kind=4) :: i
-        integer(kind=4) :: id0 = 0  ! Where to start using IDs from (first is 1)
+        integer(kind=4) :: i, n, start, pass
+        integer(kind=4) :: id0  ! Where to start using IDs from (first is 1)
+        integer(kind=4), save :: next_slot = 1  ! Search hint: slots are filled in order
         logical :: slot_found
 
         slot_found = .False. ! Default
 
-        ! Set starting ID
+        ! Set starting ID (not initialised in the declaration: that would make it SAVEd,
+        ! and an id_start given once would silently apply to every later call)
+        id0 = 0
         if (present(id_start)) id0 = id_start
 
-        ! Look for first empty particle slot (id = -1)
-        do i = 1, size(self)
-            if (self(i)%id == -1) then
-                self(i)%active = .True.
-                self(i)%id = i + id0
-                self(i)%elements(1) = ele_a
-                self(i)%elements(2) = ele_e
-                self(i)%elements(3) = ele_M
-                self(i)%elements(4) = ele_w
-                self(i)%mmr = mmr
-                slot_found = .True.
-                exit
-            end if
+        ! Look for the first empty particle slot (id = -1). Slots are filled in order, so the search
+        ! starts at the slot after the last one filled: filling N slots costs O(N) instead of O(N^2).
+        ! A fresh array (slot 1 empty) restarts at 1; if nothing is found from the hint (slots freed
+        ! by other means), the whole array is searched from the start.
+        n = size(self)
+        if (n > 0) then
+            if (self(1)%id == -1) next_slot = 1
+        end if
+        if ((next_slot < 1) .or. (next_slot > n)) next_slot = 1
+        start = next_slot
+        do pass = 1, 2
+            do i = start, n
+                if (self(i)%id == -1) then
+                    self(i)%active = .True.
+                    self(i)%id = i + id0
+                    self(i)%elements(1) = ele_a
+                    self(i)%elements(2) = ele_e
+                    self(i)%elements(3) = ele_M
+                    self(i)%elements(4) = ele_w
+                    self(i)%mmr = mmr
+                    slot_found = .True.
+                    next_slot = i + 1
+                    exit
+                end if
+            end do
+            if (slot_found .or. (start == 1)) exit
+            start = 1  ! Second pass: from the beginning
         end do
 
         if (.not. slot_found) then

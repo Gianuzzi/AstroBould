@@ -5,11 +5,12 @@ program main
     use celestial, only: get_Period, coord2geom
     use bodies
     use times, only: set_output_times, expand_checkpoints, select_fraction_symmetric
-    use derivates, only: dydt, set_dydt, dydt_grav_f, dydt_coll_f
+    use derivates, only: dydt, set_dydt, dydt_grav_f, drift_coll_f
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
     use surface, only: init_section, crossed_section, get_jacobi_constant
-    use collisions, only: set_coll_parameters, verlet_rebuilds, verlet_caches, list_collided
+    use collisions, only: set_coll_parameters, verlet_rebuilds, verlet_caches, list_collided, &
+                        & mr_steps, mr_active_sum, mr_pairs_sum, mr_missed
 
     implicit none
 
@@ -3018,7 +3019,7 @@ program main
                     ! INTEGRATE
                     call integrate_substeps(time, y_arr(:y_nvalues), &
                                             & adaptive_timestep, dydt_grav_f, &
-                                            & sub_timestep, dydt_coll_f, &
+                                            & sub_timestep, drift_coll_f, &
                                             & timestep, y_arr_new(:y_nvalues), check_func)
 
                 else
@@ -3104,6 +3105,20 @@ program main
 
     !! Porcentaje final
     if (sim%use_percentage .and. time /= sim%final_time) call percentage(sim%final_time + uno, sim%final_time)
+
+    !! Multi-rate collision stepping
+    if (sim%use_screen .and. mr_steps > 0) then
+        write (*, *) ACHAR(10)
+        write (*, s1r1) "Collision sub-stepping: mean bodies sub-stepped per step:", &
+                      & real(mr_active_sum, wp)/real(mr_steps, wp)
+        write (*, s1r1) "                        mean candidate pairs per step:    ", &
+                      & real(mr_pairs_sum, wp)/real(mr_steps, wp)
+        write (*, s1i1) "                        missed contact onsets:            ", mr_missed
+        if (mr_missed > 0) then
+            write (*, *) "WARNING: Some contacts started between bodies that were not sub-stepped."
+            write (*, *) "         Increase the Verlet skin factor or reduce the timestep."
+        end if
+    end if
 
     !! Info sobre Verlet
     if (sim%use_screen .and. verlet_rebuilds > 0) then

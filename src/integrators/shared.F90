@@ -110,6 +110,15 @@ module shared
             real(wp), dimension(size(y)) :: derivate
         end function dydt_tem
 
+        ! Drift of all bodies over dt_large, resolving contacts with sub-steps of ~dt_small
+        subroutine drift_fast_tem(t, y, dt_large, dt_small)
+            import :: wp
+            implicit none
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(inout) :: y
+            real(wp), intent(in) :: dt_large, dt_small
+        end subroutine drift_fast_tem
+
     end interface
 
 contains

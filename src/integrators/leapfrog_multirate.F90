@@ -1,4 +1,5 @@
-!> Multi-rate KDK Leapfrog integrator with collision sub-stepping.
+!> Multi-rate KDK Leapfrog integrator: gravity kicks with dt_large; the drift (with the contact
+!> forces resolved by sub-steps for the bodies that may touch) is delegated to drift_fast.
 module leapfrog_multirate
     use shared
 
@@ -28,49 +29,24 @@ contains
         if (allocated(yaux)) deallocate(yaux)
     end subroutine free_leapfrog_multirate
 
-    ! =========================================================================
-    !  Drift: pos += dt * vel, in-place on y
-    ! =========================================================================
-    subroutine drift_step(y, dt)
-        implicit none
-        real(wp), dimension(:), intent(inout) :: y
-        real(wp), intent(in) :: dt
-
-        integer(kind=4) :: i, j
-
-        ! ── 1D extra variable pairs (pos at odd, vel at even index) ──
-        do i = 1, EXTRA2, 2
-            y(i) = modulo(y(i) + dt * y(i + 1), DOSPI)
-        end do
-
-        ! ── NDIM body variables ───
-        do i = EXTRA2 + 1, size(y), NDIM2
-            do j = 0, NDIM - 1
-                y(i + j) = y(i + j) + dt * y(i + NDIM + j)
-            end do
-        end do
-
-    end subroutine drift_step
 
 
     ! =========================================================================
     !  Core: one large KDK step
     ! =========================================================================
-    subroutine leapfrog_KDK_multirate(sizey, y, dydt_slow, dydt_fast, t, dt_large, dt_small, deri, ynew)
+    subroutine leapfrog_KDK_multirate(sizey, y, dydt_slow, drift_fast, t, dt_large, dt_small, deri, ynew)
         implicit none
         integer(kind=4), intent(in) :: sizey
         real(wp), dimension(sizey), intent(in) :: y
-        procedure(dydt_tem) :: dydt_slow, dydt_fast
+        procedure(dydt_tem) :: dydt_slow
+        procedure(drift_fast_tem) :: drift_fast
         real(wp), intent(in) :: t, dt_large, dt_small
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
 
-        integer(kind=4) :: N_sub, k
-        real(wp) :: dt_small_eff, dt_half_large, t_sub
+        integer(kind=4) :: i
+        real(wp) :: dt_half_large
 
-        ! ── N_sub: nearest integer, minimum 1 ────
-        N_sub = max(1, nint(dt_large / dt_small))
-        dt_small_eff = dt_large / real(N_sub, wp)
         dt_half_large = C1_2 * dt_large
 
         ynew = y
@@ -80,26 +56,13 @@ contains
         ! Only velocity slots of der (accelerations) are non-zero here;
         ! position slots of ynew are unchanged.
 
-        ! ── 2. Collision sub-steps ──────
-        t_sub = t
-
-        do k = 1, N_sub
-
-            ! 2a. Half fast kick — velocity update only
-            yaux(:sizey) = dydt_fast(t_sub, ynew)
-            ynew = ynew + C1_2 * dt_small_eff * yaux(:sizey)
-
-            ! 2b. Drift — use velocity slots of ynew directly
-            call drift_step(ynew, dt_small_eff)
-
-            ! 2c. Half fast kick — velocity update only
-            ! After the drift the positions are at t_sub + dt_small_eff: that is the time the
-            ! Verlet list must see (it rotates its reference positions up to this time)
-            t_sub = t + real(k, wp) * dt_small_eff
-            yaux(:sizey) = dydt_fast(t_sub, ynew)
-            ynew = ynew + C1_2 * dt_small_eff * yaux(:sizey)
-
+        ! ── 2. Drift, with the contact forces resolved by sub-steps ──────
+        ! 1D extra variable pairs (pos at odd, vel at even index)
+        do i = 1, EXTRA2, 2
+            ynew(i) = modulo(ynew(i) + dt_large * ynew(i + 1), DOSPI)
         end do
+        ! Bodies: only those that may touch take the sub-steps (see collisions_drift)
+        call drift_fast(t, ynew, dt_large, dt_small)
 
         ! ── 3. Half slow kick ────
         ! Positions are now at t + dt_large.
@@ -112,14 +75,14 @@ contains
     ! =========================================================================
     !  Caller: advance y from t to t+dt
     ! =========================================================================
-    subroutine leapfrog_multirate_caller(t, y, dt_large, dydt_slow, dt_small, dydt_fast, dt, ynew, check_fun)
+    subroutine leapfrog_multirate_caller(t, y, dt_large, dydt_slow, dt_small, drift_fast, dt, ynew, check_fun)
         implicit none
         real(wp), intent(in) :: t
         real(wp), dimension(:), intent(in) :: y
         real(wp), intent(inout) :: dt_large
         procedure(dydt_tem) :: dydt_slow
         real(wp), intent(in) :: dt_small
-        procedure(dydt_tem) :: dydt_fast
+        procedure(drift_fast_tem) :: drift_fast
         real(wp), intent(in) :: dt
         real(wp), dimension(size(y)), intent(out) :: ynew
         procedure(function_check_keep_tem), optional :: check_fun
@@ -157,7 +120,7 @@ contains
 
             der(:sizey) = dydt_slow(time, ycaller(:sizey))
 
-            call leapfrog_KDK_multirate(sizey, ycaller(:sizey), dydt_slow, dydt_fast, time, dt_step, dt_small, der(:sizey), ynew)
+            call leapfrog_KDK_multirate(sizey, ycaller(:sizey), dydt_slow, drift_fast, time, dt_step, dt_small, der(:sizey), ynew)
 
             if (dt_step >= t_end - time) then
                 time = t_end

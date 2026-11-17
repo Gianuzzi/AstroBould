@@ -33,9 +33,10 @@ module integrators
             procedure(function_check_keep_tem), optional :: check_fun
         end subroutine integrator_caller
 
-        subroutine integrator_substep_caller(t, y, dt_large, dydt_slow, dt_small, dydt_fast, dt, ynew, check_fun)
+        subroutine integrator_substep_caller(t, y, dt_large, dydt_slow, dt_small, drift_fast, dt, ynew, check_fun)
             import :: wp
             import :: dydt_tem
+            import :: drift_fast_tem
             import :: function_check_keep_tem
             implicit none
             real(wp), intent(in) :: t
@@ -43,7 +44,7 @@ module integrators
             real(wp), intent(inout) :: dt_large
             procedure(dydt_tem) :: dydt_slow
             real(wp), intent(in) :: dt_small
-            procedure(dydt_tem) :: dydt_fast
+            procedure(drift_fast_tem) :: drift_fast
             real(wp), intent(in) :: dt
             real(wp), dimension(size(y)), intent(out) :: ynew
             procedure(function_check_keep_tem), optional :: check_fun

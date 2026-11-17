@@ -9,19 +9,19 @@ module derivates
                           & asteroid_data, &
                           & boulders_coords, boulders_data, &
                           & m_arr, R_arr, &
-                          & hard_exit, &
-                          & get_index
+                          & hard_exit
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
                             & use_drag, use_drag_moons, drag_coef, drag_time, &
                             & use_stokes, use_stokes_moons, stokes_C, stokes_alpha, stokes_time, &
                             & use_ellipsoid, K_coef, L_coef, &
                             & use_manual_J2_from_cm, use_manual_J2_from_primary, J2K_coef, &
                             & use_boulder_z, Gmboulder_z_coef, dz2_boulder_z_coef
-    use collisions, only: init_collisions, collisions_brute, collisions_grid, collisions_verlet, list_collided
+    use collisions, only: init_collisions, collisions_brute, collisions_grid, collisions_verlet, list_collided, &
+                        & collisions_drift
 
     implicit none
     private
-    public :: dydt, set_dydt, dydt_grav_f, dydt_coll_f
+    public :: dydt, set_dydt, dydt_grav_f, dydt_coll_f, drift_coll_f
 
     abstract interface
         function dydt_template(t, y) result(der)
@@ -46,6 +46,15 @@ module derivates
     procedure(dydt_grav_template), pointer :: dydt_grav => null()
 
 contains
+
+    !> Index of body i in the state array (local copy so that the compiler can inline it:
+    !> procedures from another module are not inlined without link-time optimization)
+    pure elemental function get_index(i) result(idx)
+        implicit none
+        integer(kind=4), intent(in) :: i
+        integer(kind=4) :: idx
+        idx = 4*i - 1
+    end function get_index
 
     subroutine set_dydt(Ntotal, sinodic)
         implicit none
@@ -1327,5 +1336,19 @@ contains
         call dydt_coll(t, y, der, first_particle, N_total)
 
     end function dydt_coll_f
+
+    !> Drift of all bodies over dt_large with the soft-sphere contacts resolved by sub-steps
+    !> (used by the multi-rate leapfrog)
+    subroutine drift_coll_f(t, y, dt_large, dt_small)
+        implicit none
+        real(wp), intent(in) :: t
+        real(wp), dimension(:), intent(inout) :: y
+        real(wp), intent(in) :: dt_large, dt_small
+        integer(kind=4) :: last_moon, N_total
+
+        last_moon = 1 + sim%Nmoon_active
+        N_total = last_moon + sim%Npart_active
+        call collisions_drift(y, dt_large, dt_small, last_moon, N_total)
+    end subroutine drift_coll_f
 
 end module derivates
