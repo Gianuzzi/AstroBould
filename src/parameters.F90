@@ -298,9 +298,12 @@ module parameters
     logical :: had_any_crossed_surface = .False.  ! Flag if any particle had crossed the surface in the previous step
     real(wp) :: surf_old_timestep  ! Previous timestep before crossing attempt
     real(wp) :: surf_min_timestep  ! Minimum timestep to consider surface crossing
-    real(wp) :: surf_alpha  ! alpha for interpolation to find crossing time
-    real(wp) :: surf_error  ! Error of the linear interpolation to find crossing time. 
-    logical :: surf_at_edge  ! Flag if we are at the edge of crossing
+    real(wp), dimension(:), allocatable :: surf_alpha  ! Per-particle alpha for interpolation to find crossing time
+    real(wp), dimension(:), allocatable :: surf_error  ! Per-particle error of the linear interpolation
+    logical, dimension(:), allocatable :: surf_converged  ! Per-particle: not crossed, or crossing resolved within tol
+    real(wp) :: surf_alpha_min  ! Smallest alpha among the unresolved crossings (drives the step shrinking)
+    real(wp) :: surf_alpha_this  ! alpha of the particle being written
+    logical :: surf_force_accept  ! Step accepted regardless of the crossing errors (min timestep / max counter)
     logical :: surf_accepted_step  ! Flag if the step is accepted after crossing check
     real(wp) :: jacobi_constant  ! Self explained
     integer(kind=4) :: surf_counter = 0  ! Counter of how many times we tried to cross the surface
@@ -1883,12 +1886,6 @@ contains
         derived%use_any_merge = derived%use_merge_part_mass .or. derived%use_merge_massive
         derived%use_any_stop = derived%use_stop_no_part_left .or. derived%use_stop_no_moon_left
         
-        ! Second surface check: No more than 1 particle/moon
-        if (derived%use_surface .and. derived%Nactive > 2) then
-            write (*, *) "ERROR: Surface section is available with a single moon/particle."
-            stop 1
-        end if
-
         ! First sinodic check: If sinodic, no moon
         if (derived%use_sinodic .and. derived%Nmoons > 0) then
             write (*, *) "ERROR: Sinodic system is available for systems with particles only."
@@ -2048,6 +2045,9 @@ contains
         if (allocated(tmp_y_arr)) deallocate (tmp_y_arr)
         if (allocated(has_crossed_surface)) deallocate (has_crossed_surface)
         if (allocated(y_cross)) deallocate (y_cross)
+        if (allocated(surf_alpha)) deallocate (surf_alpha)
+        if (allocated(surf_error)) deallocate (surf_error)
+        if (allocated(surf_converged)) deallocate (surf_converged)
     end subroutine free_parameters_arays
 
     ! Nullify pointers

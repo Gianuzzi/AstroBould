@@ -1215,7 +1215,11 @@ program main
 
     if (sim%use_surface) then
         allocate (y_cross(y_nvalues))  ! Array to store the crossing state (theta, omega, coord, secon_coord)
-        allocate (has_crossed_surface(sim%Npart_active))  ! Array to store whether each particle has crossed the surface
+        ! Sized with every non-asteroid body (moons + particles), as indexed in crossed_section
+        allocate (has_crossed_surface(sim%Nactive - 1))  ! Whether each body has crossed the surface
+        allocate (surf_alpha(sim%Nactive - 1))  ! Per-body crossing fraction of the step
+        allocate (surf_error(sim%Nactive - 1))  ! Per-body crossing error
+        allocate (surf_converged(sim%Nactive - 1))  ! Per-body crossing resolved
     end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2609,27 +2613,35 @@ program main
                         end if
                     end if
 
-                    ! Check if crossed
-                    call crossed_section(section, y_arr, y_arr_new, surf_alpha, surf_error, has_crossed_surface(:sim%Nactive - 1))
+                    ! Check if crossed (per-particle alpha and error)
+                    call crossed_section(section, y_arr, y_arr_new, &
+                                         & surf_alpha(:sim%Nactive - 1), &
+                                         & surf_error(:sim%Nactive - 1), &
+                                         & has_crossed_surface(:sim%Nactive - 1))
 
                     ! Check if crossed surface
                     has_any_crossed_surface = any(has_crossed_surface(:sim%Nactive - 1))
 
-                    ! Get alpha
-                    if (has_any_crossed_surface) then
-                        surf_at_edge = surf_error < myepsilon
-                    else
-                        surf_at_edge = .False.
-                    end if
+                    ! Per-particle convergence: either it did not cross, or its own crossing is resolved
+                    ! (at the edge, or within tolerance). Each particle is judged with its OWN error.
+                    surf_converged(:sim%Nactive - 1) = (.not. has_crossed_surface(:sim%Nactive - 1)) .or. &
+                        & (surf_error(:sim%Nactive - 1) < max(sim%surface_abs_tol, myepsilon))
 
-                    ! Check if accepted step
-                    surf_accepted_step = (timestep < surf_min_timestep) .or. &
-                                         & surf_at_edge .or. &
-                                         & (surf_error < sim%surface_abs_tol) &
-                                         & .or. (surf_counter > surf_max_counter)
+                    ! Forced acceptance (cannot / should not shrink any more)
+                    surf_force_accept = (timestep < surf_min_timestep) .or. (surf_counter > surf_max_counter)
+
+                    ! Accepted only if ALL crossings inside this step are resolved
+                    surf_accepted_step = surf_force_accept .or. all(surf_converged(:sim%Nactive - 1))
 
                     ! Two possibilities:
                     if (has_any_crossed_surface .and. .not. surf_accepted_step) then  ! Crossed too large
+
+                        ! Earliest UNRESOLVED crossing. Already-resolved ones are ignored here: if one of
+                        ! them sits at alpha ~ 0 it would otherwise collapse the timestep to ~0.
+                        ! Crossings later than this one fall out of the shrunk step and are resolved
+                        ! in later steps; earlier ones stay inside and are written with their own alpha.
+                        surf_alpha_min = minval(surf_alpha(:sim%Nactive - 1), &
+                                              & mask=.not. surf_converged(:sim%Nactive - 1))
 
                         ! Update past
                         had_any_crossed_surface = .True.
@@ -2637,7 +2649,9 @@ program main
 
                         ! Update timestep
                         if (sim%surface_use_adaptive) then
-                            timestep = surf_alpha * timestep  ! Redo with smaller timestep, but not too small
+                            ! Redo with smaller timestep. Since this crossing is unresolved,
+                            ! |f_old|, |f_new| >= tol, so 0 < surf_alpha_min < 1 (no clamping needed)
+                            timestep = surf_alpha_min * timestep
                         else
                             timestep = uno2 * timestep  ! Redo with half timestep
                         end if
@@ -2648,17 +2662,7 @@ program main
                     else ! Accepted step. Might have crossed, but we would be at y ~ surface
                         
                         ! Check if y = surface
-                        if (has_any_crossed_surface .and. surf_accepted_step) then  ! At y = surface
-
-                            ! Get crossing point, interpolated or not
-                            if (sim%surface_use_interpolated) then
-                                ! Interpolated crossing point
-                                y_cross(:y_nvalues) = y_arr(:y_nvalues) + surf_alpha * (y_arr_new(:y_nvalues) - y_arr(:y_nvalues))
-                            else if (surf_alpha > uno2) then
-                                y_cross(:y_nvalues) = y_arr_new(:y_nvalues)  ! Non-interpolated next crossing point
-                            else
-                                y_cross(:y_nvalues) = y_arr(:y_nvalues)  ! Non-interpolated previous crossing point
-                            end if
+                        if (has_any_crossed_surface) then  ! At y = surface
 
                             ! Loop over all particles and check if any crossed
                             do aux_int = 1, sim%Nactive - 1  ! Skip idx = 0, which is the asteroid
@@ -2667,6 +2671,21 @@ program main
 
                                 ! Get particle idx [TODO : This is a bit ugly, but works]
                                 i = 4*aux_int + 3 
+
+                                ! This particle's own crossing fraction
+                                surf_alpha_this = min(max(surf_alpha(aux_int), cero), uno)
+
+                                ! Get crossing point, interpolated or not (only the needed components)
+                                if (sim%surface_use_interpolated) then
+                                    y_cross(1:2) = y_arr(1:2) + surf_alpha_this * (y_arr_new(1:2) - y_arr(1:2))
+                                    y_cross(i:i+3) = y_arr(i:i+3) + surf_alpha_this * (y_arr_new(i:i+3) - y_arr(i:i+3))
+                                else if (surf_alpha_this > uno2) then
+                                    y_cross(1:2) = y_arr_new(1:2)  ! Non-interpolated next crossing point
+                                    y_cross(i:i+3) = y_arr_new(i:i+3)
+                                else
+                                    y_cross(1:2) = y_arr(1:2)  ! Non-interpolated previous crossing point
+                                    y_cross(i:i+3) = y_arr(i:i+3)
+                                end if
 
                                 ! Get jacobi constant
                                 if (sim%use_sinodic) then
@@ -2687,10 +2706,10 @@ program main
                                                     & system%asteroid%omega)
                                 end if
 
-                                ! Write surface crossing to file, with interpolated values
+                                ! Write surface crossing to file, with this particle's interpolated values
                                 write(u_surfacefile, '(I8,1X,8(E23.15,1X))') &
                                     & aux_int, &
-                                    & time + surf_alpha * timestep, &
+                                    & time + surf_alpha_this * timestep, &
                                     & y_cross(1:2), &
                                     & y_cross(i:i+3), &
                                     & jacobi_constant
@@ -2709,6 +2728,10 @@ program main
                         ! Update parameters and timestep
                         y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
                         time = time + timestep
+
+                        ! Step accepted: restart the retry counter (it bounds the retries of ONE step;
+                        ! accumulating it across steps forces acceptances with unresolved crossings)
+                        surf_counter = 0
 
                         ! Update timestep, according to the past
                         if (had_any_crossed_surface .and. surf_old_timestep > timestep) then
