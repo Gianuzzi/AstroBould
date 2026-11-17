@@ -326,16 +326,20 @@ module parameters
 
     ! ----  <<<<<    SURFACE SECTION     >>>>>   -----
     type(section_st) :: section
-    logical :: has_crossed_surface = .False.
+    logical, dimension(:), allocatable :: has_crossed_surface
     real(wp), dimension(:), allocatable :: y_cross    ! Coordinates array at the crossing time (interpolated with alpha)
     ! ==========   EXTRA SURFACE SECTION  ==========
     ! Uses tmp_adapt_timestep
-    logical :: had_crossed_surface = .False.
+    logical :: has_any_crossed_surface = .False.  ! Flag if any particle has crossed the surface
+    logical :: had_any_crossed_surface = .False.  ! Flag if any particle had crossed the surface in the previous step
     real(wp) :: surf_old_timestep  ! Previous timestep before crossing attempt
     real(wp) :: surf_min_timestep  ! Minimum timestep to consider surface crossing
-    real(wp) :: surf_alpha  ! alpha for interpolation to find crossing time
-    real(wp) :: surf_error  ! Error of the linear interpolation to find crossing time. 
-    logical :: surf_at_edge  ! Flag if we are at the edge of crossing
+    real(wp), dimension(:), allocatable :: surf_alpha  ! Per-particle alpha for interpolation to find crossing time
+    real(wp), dimension(:), allocatable :: surf_error  ! Per-particle error of the linear interpolation
+    logical, dimension(:), allocatable :: surf_converged  ! Per-particle: not crossed, or crossing resolved within tol
+    real(wp) :: surf_alpha_min  ! Smallest alpha among the unresolved crossings (drives the step shrinking)
+    real(wp) :: surf_alpha_this  ! alpha of the particle being written
+    logical :: surf_force_accept  ! Step accepted regardless of the crossing errors (min timestep / max counter)
     logical :: surf_accepted_step  ! Flag if the step is accepted after crossing check
     real(wp) :: jacobi_constant  ! Self explained
     integer(kind=4) :: surf_counter = 0  ! Counter of how many times we tried to cross the surface
@@ -425,6 +429,83 @@ module parameters
     end interface
 
 contains
+
+    ! Output the help message to the screen
+    subroutine help()
+        implicit none
+
+        write (*, *) "Uso: "//trim(PROGRAM_NAME)//" <ea> <ee> <eM> <ew> <mmr> [args]"
+        write (*, *) "    ea   : Elemento a de la partícula/luna (km)"
+        write (*, *) "    ee   : Elemento e de la partícula/luna"
+        write (*, *) "    eM   : Elemento M de la partícula/luna (deg)"
+        write (*, *) "    ew   : Elemento w de la partícula/luna (deg)"
+        write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional]"
+        write (*, *) "    --onlyprint   : No integrar; solo imprimir configuraciones"
+        write (*, *) "    -nsim         : Número de simulación [int]"
+        write (*, *) "    -ast_mass     : Masa del asteroide (kg)"
+        write (*, *) "    -ast_radius   : Radio del asteroide (km)"
+        write (*, *) "    -ast_period   : Período de rotación del asteroide (horas)"
+        write (*, *) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
+        write (*, *) "    -radius       : Radio de la partícula/luna individual (km)"
+        write (*, *) "    -datafile     : Nombre de archivo de salida de datos"
+        write (*, *) "    --nodataf     : No guardar datos de salida"
+        write (*, *) "    -chaosfile    : Nombre de archivo de salida caos"
+        write (*, *) "    --nochaosf    : No guardar salida de caos"
+        write (*, *) "    -geomfile     : Nombre de archivo de salida de elementos geométricos"
+        write (*, *) "    --nogeomf     : No guardar salida de elementos geométricos"
+        write (*, *) "    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)"
+        write (*, *) "    --nofilter    : No utilizar filtro"
+        write (*, *) "    --screen      : Imprimir información en pantalla"
+        write (*, *) "    --noscreen    : No imprimir en pantalla"
+        write (*, *) "    --perc        : Imprimir porcentaje de integración"
+        write (*, *) "    --noperc      : No imprimir porcentaje de integración"
+        write (*, *) "    --datascr     : Imprimir datos de salida en pantalla"
+        write (*, *) "    --nodatascr   : No imprimir datos de salida en pantalla"
+        write (*, *) "    --diagnostic  : Imprimir datos de diagnóstico en pantalla"
+        write (*, *) "    --nodiagnostic: No imprimir datos de diagnóstico en pantalla"
+        write (*, *) "    -multifile    : Nombre base de archivo de salida de datos individuales"
+        write (*, *) "    --nomultif    : No guardar datos en archivos individuales"
+        write (*, *) "    -mapfile      : Nombre de archivo de mapa"
+        write (*, *) "    --nomapf      : No guardar mapa de potencial"
+        write (*, *) "    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]"
+        write (*, *) "    --noelem      : Imprimir coordenadas baricéntricas"
+        write (*, *) "    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
+        write (*, *) "    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
+        write (*, *) "    -moonfile     : Nombre de archivo de lunas a utilizar"
+        write (*, *) "    --nomoonfile  : No utilizar archivo de lunas"
+        write (*, *) "    -partfile     : Nombre de archivo de partículas a utilizar"
+        write (*, *) "    --nopartfile  : No utilizar archivo de partículas"
+        write (*, *) "    --noconfig    : No leer archivo de configuración"
+        write (*, *) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
+        write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Toda"
+        write (*, *) "    -stopif       : Detener la integración sin más objetos del tipo [int]:"
+        write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
+        write (*, *) "    --megno       : Calcular MEGNO para partículas"
+        write (*, *) "    --nomegno     : No calcular MEGNO"
+        write (*, *) "    --sinodic     : Integar en sistema rotante"
+        write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
+        write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int]"
+        write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
+        write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
+        write (*, *) "    --help        : Mostrar esta ayuda"
+    end subroutine help
+
+    ! Check if help wanted
+    function check_help() result(need_help)
+        implicit none
+        integer(kind=4) :: i
+        character(30) :: aux_character30
+        logical :: need_help
+
+        need_help = .False.
+        arguments_number = command_argument_count()  ! Global variable
+
+        do i = 1, arguments_number
+            call get_command_argument(i, aux_character30)
+            if (trim(aux_character30) == "--help") need_help = .True.
+        end do
+    end function check_help
+
 
     ! Error caller
     subroutine fatal_error(message)
@@ -682,61 +763,7 @@ contains
                 case ("--version")
                     params%use_version = .True.
                 case ("--help")
-                    call get_command_argument(0, aux_character30)
-                    write (*, *) "Uso: "//trim(aux_character30)//" <ea> <ee> <eM> <ew> <mmr> [args]"
-                    write (*, *) "    ea   : Elemento a de la partícula/luna (km)"
-                    write (*, *) "    ee   : Elemento e de la partícula/luna"
-                    write (*, *) "    eM   : Elemento M de la partícula/luna (deg)"
-                    write (*, *) "    ew   : Elemento w de la partícula/luna (deg)"
-                    write (*, *) "    mmr  : Cociente Omega/n de la partícula/luna [Opcional]"
-                    write (*, *) "    --onlyprint   : No integrar; solo imprimir configuraciones"
-                    write (*, *) "    -nsim         : Número de simulación [int]"
-                    write (*, *) "    -ast_mass     : Masa del asteroide (kg)"
-                    write (*, *) "    -ast_radius   : Radio del asteroide (km)"
-                    write (*, *) "    -ast_period   : Período de rotación del asteroide (horas)"
-                    write (*, *) "    -mumoon       : Cociente de masa entre la luna individual y el asteroide"
-                    write (*, *) "    -radius       : Radio de la partícula/luna individual (km)"
-                    write (*, *) "    -datafile     : Nombre de archivo de salida de datos"
-                    write (*, *) "    --nodataf     : No guardar datos de salida"
-                    write (*, *) "    -chaosfile    : Nombre de archivo de salida caos"
-                    write (*, *) "    --nochaosf    : No guardar salida de caos"
-                    write (*, *) "    -geomfile     : Nombre de archivo de salida de elementos geométricos"
-                    write (*, *) "    --nogeomf     : No guardar salida de elementos geométricos"
-                    write (*, *) "    -filtfile     : Prefijo a agregar en archivos con filtro (y activar)"
-                    write (*, *) "    --nofilter    : No utilizar filtro"
-                    write (*, *) "    --screen      : Imprimir información en pantalla"
-                    write (*, *) "    --noscreen    : No imprimir en pantalla"
-                    write (*, *) "    --perc        : Imprimir porcentaje de integración"
-                    write (*, *) "    --noperc      : No imprimir porcentaje de integración"
-                    write (*, *) "    --datascr     : Imprimir datos de salida en pantalla"
-                    write (*, *) "    --nodatascr   : No imprimir datos de salida en pantalla"
-                    write (*, *) "    --diagnostic  : Imprimir datos de diagnóstico en pantalla"
-                    write (*, *) "    --nodiagnostic: No imprimir datos de diagnóstico en pantalla"
-                    write (*, *) "    -multifile    : Nombre base de archivo de salida de datos individuales"
-                    write (*, *) "    --nomultif    : No guardar datos en archivos individuales"
-                    write (*, *) "    -mapfile      : Nombre de archivo de mapa"
-                    write (*, *) "    --nomapf      : No guardar mapa de potencial"
-                    write (*, *) "    --elem        : Imprimir elementos orbitales (lunas/partículas) [default]"
-                    write (*, *) "    --noelem      : Imprimir coordenadas baricéntricas"
-                    write (*, *) "    -tomfile      : Nombre de archivo de (t)iempos|omega|masa a utilizar"
-                    write (*, *) "    --notomfile   : No utilizar archivo de (t)iempos|omega|masa"
-                    write (*, *) "    -moonfile     : Nombre de archivo de lunas a utilizar"
-                    write (*, *) "    --nomoonfile  : No utilizar archivo de lunas"
-                    write (*, *) "    -partfile     : Nombre de archivo de partículas a utilizar"
-                    write (*, *) "    --nopartfile  : No utilizar archivo de partículas"
-                    write (*, *) "    --noconfig    : No leer archivo de configuración"
-                    write (*, *) "    -merge        : Tipo de colisiones (merges) permitidas [int]: "
-                    write (*, *) "                    0: Ninguno, 1: Partícula-Masivo, 2: Masivo-Masivo, 3: Toda"
-                    write (*, *) "    -stopif       : Detener la integración sin más objetos del tipo [int]:"
-                    write (*, *) "                    0: No detener, 1: Luna, 2: Partícula, 3: Ambos"
-                    write (*, *) "    --megno       : Calcular MEGNO para partículas"
-                    write (*, *) "    --nomegno     : No calcular MEGNO"
-                    write (*, *) "    --sinodic     : Integar en sistema rotante"
-                    write (*, *) "    --nosinodic   : Integar en sistema NO rotante"
-                    write (*, *) "    -parallel     : Cantida de threads a utilizar en paralelo [int]"
-                    write (*, *) "    --parallel    : Paralelizar usando todos los threads disponibles"
-                    write (*, *) "    --noparallel  : No usar paralelización para lunas/partículas"
-                    write (*, *) "    --help        : Mostrar esta ayuda"
+                    call help()
                     stop 0
                 case default  ! Si no es un argumento reconocido...
                     is_number = .False.
@@ -2012,11 +2039,6 @@ contains
         ! Global consistency checks
         !===========================================================
 
-        if (derived%use_surface .and. derived%Nactive > 2) then
-            write (err_msg, '(A)') "Surface section requires a single moon/particle."
-            call fatal_error(err_msg)
-        end if
-
         if (derived%use_sinodic .and. derived%use_moons) then
             write (err_msg, '(A)') "Sinodic system requires particles only."
             call fatal_error(err_msg)
@@ -2314,6 +2336,10 @@ contains
         if (allocated(elem_filtered)) deallocate (elem_filtered)
         if (allocated(tmp_y_arr)) deallocate (tmp_y_arr)
         if (allocated(y_cross)) deallocate (y_cross)
+        if (allocated(has_crossed_surface)) deallocate (has_crossed_surface)
+        if (allocated(surf_alpha)) deallocate (surf_alpha)
+        if (allocated(surf_error)) deallocate (surf_error)
+        if (allocated(surf_converged)) deallocate (surf_converged)
     end subroutine free_parameters_arays
 
     ! Nullify pointers

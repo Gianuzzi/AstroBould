@@ -31,6 +31,12 @@ program main
     ! Set program name
     call get_command_argument(0, PROGRAM_NAME)
 
+    ! Check if HELP wanted
+    if (check_help()) then
+        call help()
+        stop 0
+    end if
+
     use_configfile = .True. ! Manual override if needed
     if (use_configfile) call read_config_file(input, "config.ini", configfile_exists) ! Leemos archivo de configuración
 
@@ -1427,7 +1433,14 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! SURFACE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    if (sim%use_surface) allocate (y_cross(y_nvalues))  ! Array to store the crossing state (theta, omega, coord, secon_coord)
+    if (sim%use_surface) then
+        allocate (y_cross(y_nvalues))  ! Array to store the crossing state (theta, omega, coord, secon_coord)
+        ! Sized with every non-asteroid body (moons + particles), as indexed in crossed_section
+        allocate (has_crossed_surface(sim%Nactive - 1))  ! Whether each body has crossed the surface
+        allocate (surf_alpha(sim%Nactive - 1))  ! Per-body crossing fraction of the step
+        allocate (surf_error(sim%Nactive - 1))  ! Per-body crossing error
+        allocate (surf_converged(sim%Nactive - 1))  ! Per-body crossing resolved
+    end if
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! FILTER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2799,7 +2812,7 @@ program main
 
                 ! Restart dynamic variables
                 surf_counter = 0
-                had_crossed_surface = .False.
+                had_any_crossed_surface = .False.
                 surf_old_timestep = cero  ! Just to be sure, not really needed now
                 
                 loop_surface: do while (timestep > tini)
@@ -2829,32 +2842,45 @@ program main
                         end if
                     end if
 
-                    ! Check if crossed
-                    call crossed_section(section, y_arr, y_arr_new, surf_alpha, surf_error, has_crossed_surface)
+                    ! Check if crossed (per-particle alpha and error)
+                    call crossed_section(section, y_arr, y_arr_new, &
+                                         & surf_alpha(:sim%Nactive - 1), &
+                                         & surf_error(:sim%Nactive - 1), &
+                                         & has_crossed_surface(:sim%Nactive - 1))
 
-                    ! Get alpha
-                    if (has_crossed_surface) then
-                        surf_at_edge = surf_error < myepsilon
-                    else
-                        surf_at_edge = .False.
-                    end if
+                    ! Check if crossed surface
+                    has_any_crossed_surface = any(has_crossed_surface(:sim%Nactive - 1))
 
-                    ! Check if accepted step
-                    surf_accepted_step = (timestep < surf_min_timestep) .or. &
-                                         & surf_at_edge .or. &
-                                         & (surf_error < sim%surface_abs_tol) &
-                                         & .or. (surf_counter > surf_max_counter)
+                    ! Per-particle convergence: either it did not cross, or its own crossing is resolved
+                    ! (at the edge, or within tolerance). Each particle is judged with its OWN error.
+                    surf_converged(:sim%Nactive - 1) = (.not. has_crossed_surface(:sim%Nactive - 1)) .or. &
+                        & (surf_error(:sim%Nactive - 1) < max(sim%surface_abs_tol, myepsilon))
+
+                    ! Forced acceptance (cannot / should not shrink any more)
+                    surf_force_accept = (timestep < surf_min_timestep) .or. (surf_counter > surf_max_counter)
+
+                    ! Accepted only if ALL crossings inside this step are resolved
+                    surf_accepted_step = surf_force_accept .or. all(surf_converged(:sim%Nactive - 1))
 
                     ! Two possibilities:
-                    if (has_crossed_surface .and. .not. surf_accepted_step) then  ! Crossed too large
+                    if (has_any_crossed_surface .and. .not. surf_accepted_step) then  ! Crossed too large
+
+                        ! Earliest UNRESOLVED crossing. Already-resolved ones are ignored here: if one of
+                        ! them sits at alpha ~ 0 it would otherwise collapse the timestep to ~0.
+                        ! Crossings later than this one fall out of the shrunk step and are resolved
+                        ! in later steps; earlier ones stay inside and are written with their own alpha.
+                        surf_alpha_min = minval(surf_alpha(:sim%Nactive - 1), &
+                                              & mask=.not. surf_converged(:sim%Nactive - 1))
 
                         ! Update past
-                        had_crossed_surface = .True.
+                        had_any_crossed_surface = .True.
                         surf_old_timestep = timestep
 
                         ! Update timestep
                         if (sim%surface_use_adaptive) then
-                            timestep = surf_alpha * timestep  ! Redo with smaller timestep, but not too small
+                            ! Redo with smaller timestep. Since this crossing is unresolved,
+                            ! |f_old|, |f_new| >= tol, so 0 < surf_alpha_min < 1 (no clamping needed)
+                            timestep = surf_alpha_min * timestep
                         else
                             timestep = uno2 * timestep  ! Redo with half timestep
                         end if
@@ -2865,48 +2891,65 @@ program main
                     else ! Accepted step. Might have crossed, but we would be at y ~ surface
                         
                         ! Check if y = surface
-                        if (has_crossed_surface .and. surf_accepted_step) then  ! At y = surface
+                        if (has_any_crossed_surface) then  ! At y = surface
 
-                            ! Get crossing point, interpolated or not
-                            if (sim%surface_use_interpolated) then
-                                ! Interpolated crossing point
-                                y_cross(:y_nvalues) = y_arr(:y_nvalues) + surf_alpha * (y_arr_new(:y_nvalues) - y_arr(:y_nvalues))
-                            else if (surf_alpha > uno2) then
-                                y_cross(:y_nvalues) = y_arr_new(:y_nvalues)  ! Non-interpolated next crossing point
-                            else
-                                y_cross(:y_nvalues) = y_arr(:y_nvalues)  ! Non-interpolated previous crossing point
-                            end if
+                            ! Loop over all particles and check if any crossed
+                            do aux_int = 1, sim%Nactive - 1  ! Skip idx = 0, which is the asteroid
+                                
+                                if (.not. has_crossed_surface(aux_int)) cycle  ! Skip if not crossed
 
-                            ! Get jacobi constant
-                            if (sim%use_sinodic) then
-                                jacobi_constant = get_jacobi_constant(&
-                                                & y_cross(7), y_cross(8), &
-                                                & y_cross(9), y_cross(10), &
-                                                & boulders_data(0:, 1), &
-                                                & boulders_coords(0:, :), &
-                                                & system%asteroid%omega)
-                            else
-                                ! Go to rotating frame to calculate jacobi
-                                jacobi_constant = get_jacobi_constant(&
-                                                & y_cross(7), y_cross(8), &
-                                                & y_cross(9) + y_cross(8) * system%asteroid%omega, &
-                                                & y_cross(10) - y_cross(7) * system%asteroid%omega, &
-                                                & boulders_data(0:, 1), &
-                                                & boulders_coords(0:, :), &
-                                                & system%asteroid%omega)
-                            end if
+                                ! Get particle idx [TODO : This is a bit ugly, but works]
+                                i = 4*aux_int + 3 
 
-                            ! Write surface crossing to file, with interpolated values
-                            write(u_surfacefile,'(8E23.15,1X)') time + surf_alpha * timestep, &
-                            & y_cross(1:2), &
-                            & y_cross(7:10), &
-                            & jacobi_constant
+                                ! This particle's own crossing fraction
+                                surf_alpha_this = min(max(surf_alpha(aux_int), cero), uno)
+
+                                ! Get crossing point, interpolated or not (only the needed components)
+                                if (sim%surface_use_interpolated) then
+                                    y_cross(1:2) = y_arr(1:2) + surf_alpha_this * (y_arr_new(1:2) - y_arr(1:2))
+                                    y_cross(i:i+3) = y_arr(i:i+3) + surf_alpha_this * (y_arr_new(i:i+3) - y_arr(i:i+3))
+                                else if (surf_alpha_this > uno2) then
+                                    y_cross(1:2) = y_arr_new(1:2)  ! Non-interpolated next crossing point
+                                    y_cross(i:i+3) = y_arr_new(i:i+3)
+                                else
+                                    y_cross(1:2) = y_arr(1:2)  ! Non-interpolated previous crossing point
+                                    y_cross(i:i+3) = y_arr(i:i+3)
+                                end if
+
+                                ! Get jacobi constant
+                                if (sim%use_sinodic) then
+                                    jacobi_constant = get_jacobi_constant(&
+                                                    & y_cross(i), y_cross(i+1), &
+                                                    & y_cross(i+2), y_cross(i+3), &
+                                                    & boulders_data(0:, 1), &
+                                                    & boulders_coords(0:, :), &
+                                                    & system%asteroid%omega)
+                                else
+                                    ! Go to rotating frame to calculate jacobi
+                                    jacobi_constant = get_jacobi_constant(&
+                                                    & y_cross(i), y_cross(i+1), &
+                                                    & y_cross(i+2) + y_cross(i+1) * system%asteroid%omega, &
+                                                    & y_cross(i+3) - y_cross(i) * system%asteroid%omega, &
+                                                    & boulders_data(0:, 1), &
+                                                    & boulders_coords(0:, :), &
+                                                    & system%asteroid%omega)
+                                end if
+
+                                ! Write surface crossing to file, with this particle's interpolated values
+                                write(u_surfacefile, '(I8,1X,8(E23.15,1X))') &
+                                    & aux_int, &
+                                    & time + surf_alpha_this * timestep, &
+                                    & y_cross(1:2), &
+                                    & y_cross(i:i+3), &
+                                    & jacobi_constant
+
+                            end do
 
                             ! Restart counter
                             surf_counter = 0
 
                             ! Restart past
-                            had_crossed_surface = .False.
+                            had_any_crossed_surface = .False.
                             surf_old_timestep = cero
 
                         end if
@@ -2915,11 +2958,15 @@ program main
                         y_arr(:y_nvalues) = y_arr_new(:y_nvalues)
                         time = time + timestep
 
+                        ! Step accepted: restart the retry counter (it bounds the retries of ONE step;
+                        ! accumulating it across steps forces acceptances with unresolved crossings)
+                        surf_counter = 0
+
                         ! Update timestep, according to the past
-                        if (had_crossed_surface .and. surf_old_timestep > timestep) then
+                        if (had_any_crossed_surface .and. surf_old_timestep > timestep) then
                             ! Try to keep the same timestep as before crossing, but not too large
                             timestep = min(surf_old_timestep - timestep, checkpoint_times(j) - time)
-                            had_crossed_surface = .False.                        
+                            had_any_crossed_surface = .False.                        
                         else
                             timestep = checkpoint_times(j) - time
                         end if
@@ -3236,6 +3283,7 @@ program main
 end program main
 
 subroutine create_map(sim, system)
+    use, intrinsic :: ieee_arithmetic
     use constants, only: wp, cero
     use bodies, only: system_st, get_acc_and_pot_xy
     use parameters, only: sim_params_st, u_mapfile
@@ -3246,6 +3294,14 @@ subroutine create_map(sim, system)
     real(wp), dimension(:, :, :), allocatable :: acc
     real(wp) :: dx_nx, dy_ny, rb(2)
     integer(kind=4) :: i, j
+    real(wp) :: nan
+    logical :: is_inside
+
+    ! Define nan
+    if (.not. ieee_support_nan(cero)) then
+        error stop "IEEE NaN is not supported"
+    end if
+    nan = ieee_value(cero, ieee_quiet_nan)
 
     !!! Check
     if ((sim%map_grid_size_x < 2) .or. (sim%map_grid_size_y < 2)) then
@@ -3275,7 +3331,11 @@ subroutine create_map(sim, system)
         do j = 1, sim%map_grid_size_y
             rb(1) = sim%map_min_x + (i - 1) * dx_nx
             rb(2) = sim%map_min_y + (j - 1) * dy_ny
-            call get_acc_and_pot_xy(system, rb, acc(i, j, :), pot(i, j))
+            call get_acc_and_pot_xy(system, rb, acc(i, j, :), pot(i, j), is_inside)
+            if (is_inside) then
+                pot(i, j) = nan
+                acc(i, j, :) = nan
+            end if
         end do
     end do
     !$OMP END DO

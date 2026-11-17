@@ -319,7 +319,7 @@ contains
 
                 theta_moon = atan2(dr_vec(2), dr_vec(1))
 
-                torque = torque - dos*m_arr(j)*L_coef*inv_dr3*sin(dos*(theta_moon - theta))
+                torque = torque + dos*Gmast*m_arr(j)*L_coef*inv_dr3*sin(dos*(theta_moon - theta))
 
             else if (use_manual_J2_from_cm) then
                 acc_grav = Gmi_r3*dr_vec*J2K_coef*inv_dr2
