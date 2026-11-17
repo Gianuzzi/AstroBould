@@ -2349,7 +2349,8 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                         else
-                            is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
+                            ! No progress: premature unless already there
+                            is_premature_exit = checkpoint_times(j) - time > myepsilon
                         end if
                     end if
 
@@ -2922,7 +2923,8 @@ program main
                             is_premature_exit = ((checkpoint_times(j) - (time + timestep)) / timestep > 1e-3_wp) &
                                                 & .or. (timestep > surf_min_timestep) 
                         else
-                            is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
+                            ! No progress: premature unless already there
+                            is_premature_exit = checkpoint_times(j) - time > myepsilon
                         end if
 
                         !! Do we leave?
