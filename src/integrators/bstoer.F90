@@ -285,8 +285,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end, dt_try, dt_used
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)

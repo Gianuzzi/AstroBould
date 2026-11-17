@@ -1385,6 +1385,13 @@ program main
                 write (*, *) ACHAR(5)
             end if
             sim%integrator_ID = -30  ! Leap-Frog KDK with substeps
+            ! The sub-stepped drift finds its own pairs: the Verlet list and the grid options are not used
+            if (sim%use_verlet_col) then
+                sim%use_verlet_col = .False.
+                if (sim%use_screen) then
+                    write (*, *) " Verlet list disabled: substeps use their own pair search."
+                end if
+            end if
         end if
     else if (sim%use_screen) then
         write (*, *) "Substeps for collisions deactivated."

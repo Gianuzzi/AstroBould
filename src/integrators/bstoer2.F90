@@ -42,9 +42,10 @@ contains
         implicit none
         integer(kind=4), intent(in) :: sizey
         logical, intent(in), optional :: standard
-        logical :: is_std = .False.
+        logical :: is_std
         integer(kind=4) :: n_x2
 
+        is_std = .False.  ! (not initialised in the declaration: that would make it SAVEd)
         if (present(standard)) is_std = standard
 
         if (MOD(sizey, 2) > 0) then
@@ -545,8 +546,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end, dt_try, dt_used
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)

@@ -815,7 +815,7 @@ contains
         real(wp), dimension(sizey), intent(out) :: ynew
 
         real(wp) :: e_calc, ratio, hdt_adap
-        integer(kind=4) :: iter = 0
+        integer(kind=4), save :: iter = 0
 
         iter = iter + 1
         dt_adap = max(dt_adap, DT_MIN_NOW)
@@ -887,8 +887,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end, dt_used
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)
@@ -937,8 +937,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)

@@ -227,7 +227,7 @@ contains
         implicit none
         type(asteroid_st), intent(inout) :: self
         real(wp), intent(in) :: mass_primary_or_ast, semi_a_primary, semi_b_primary, semi_c_primary
-        real(wp) :: aux_radius = cero, radius_primary = cero
+        real(wp) :: aux_radius, radius_primary
 
         if (self%primary%id /= -1) then
             write (*, *) "ERROR: Primary already set."
@@ -304,7 +304,7 @@ contains
         real(wp), intent(in) :: mu_to_asteroid, ele_a, ele_e, ele_M, ele_w, mmr, radius
         integer(kind=4), intent(in), optional :: id_start
         integer(kind=4) :: i
-        integer(kind=4) :: id0 = 0  ! Where to start using IDs from (first is 1)
+        integer(kind=4) :: id0  ! Where to start using IDs from (first is 1)
         logical :: slot_found
 
         slot_found = .False. ! Default
@@ -322,6 +322,7 @@ contains
         end if
 
         ! Set starting ID
+        id0 = 0  ! (not initialised in the declaration: that would make it SAVEd)
         if (present(id_start)) id0 = id_start
 
         ! Look for first empty moon slot (id = -1)
@@ -2046,7 +2047,7 @@ contains
         real(wp), intent(in) :: xy_target(2)
         real(wp), intent(inout) :: acc(2), pot
         logical, intent(inout), optional :: inside
-        logical :: has_inside = .False.
+        logical :: has_inside
         integer(kind=4) :: i
         real(wp) :: dx, dy, dr, dr2, dr4, dz2
         real(wp) :: xy_centered(2)
@@ -3819,11 +3820,12 @@ contains
         type(system_st), intent(in) :: initial
         type(system_st), intent(in) :: actual
         integer(kind=4), intent(in), optional :: unit_file
-        integer(kind=4) :: my_file = 6  ! StdOut
+        integer(kind=4) :: my_file
         real(wp) :: mass, COM(4), energy, ang_mom, inertia
 
         call get_cm(actual, mass, COM)
         call calculate_energy_ang_mom_inertia(actual, energy, ang_mom, inertia)
+        my_file = 6  ! StdOut (not initialised in the declaration: that would make it SAVEd)
         if (present(unit_file)) my_file = unit_file
 
         write (my_file, r13) actual%time/unit_time, &  ! time

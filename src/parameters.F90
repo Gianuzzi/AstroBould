@@ -564,9 +564,9 @@ contains
         logical, intent(inout) :: use_config
         logical :: is_number
         integer(kind=4) :: i, j
-        logical :: aux_logical = .False.
+        logical :: aux_logical
         integer(kind=4) :: aux_integer
-        integer(kind=4) :: merge_type = 0, stop_type = 0
+        integer(kind=4) :: merge_type, stop_type
         character(20) :: aux_character20
         character(30) :: aux_character30
         character(len=128) :: err_msg
@@ -1762,6 +1762,7 @@ contains
                 derived%requested_threads = 1
                 my_threads = 1
                 derived%use_parallel = .False.
+!$              call OMP_SET_NUM_THREADS(1)  ! Otherwise OpenMP uses its default (all cores)
             else if (.not. compiled_with_openmp) then
                 write (err_msg, '(A)') "Can not use paralelization withut OpenMP."
                 call fatal_error(err_msg)
@@ -1773,6 +1774,7 @@ contains
         else
             derived%requested_threads = 1
             my_threads = 1
+!$          call OMP_SET_NUM_THREADS(1)  ! Otherwise OpenMP uses its default (all cores)
         end if
 
         ! Output

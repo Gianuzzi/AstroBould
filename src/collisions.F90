@@ -34,9 +34,18 @@ module collisions
     integer(kind=4), save :: mr_n_act = 0
     integer(kind=4), save, allocatable :: mr_pairs(:, :) ! Pairs that may touch during the step (moon pairs first)
     integer(kind=4), save :: mr_np = 0, mr_np_moon = 0
-    real(wp), save, allocatable :: mr_acc(:, :)          ! Contact accelerations, per body
     integer(int64), save, allocatable :: mr_prev_keys(:) ! Sorted pair keys of the previous step
     integer(kind=4), save :: mr_n_prev = 0, mr_prev_Ntotal = -1
+    ! Per-thread pair buffers (merged in thread order: same order as a serial run)
+    type :: pair_buf_t
+        integer(kind=4), allocatable :: p(:, :)
+        integer(kind=4) :: n = 0
+    end type pair_buf_t
+    type(pair_buf_t), save, allocatable :: mr_tbuf(:)
+    ! Pairs of each active body (CSR, in pair order): +p if the body is the 2nd of pair p, -p if the 1st
+    integer(kind=4), save, allocatable :: mr_slot(:), mr_off(:), mr_adj(:), mr_fill(:)
+    real(wp), save, allocatable :: mr_Fi(:, :), mr_Fj(:, :)  ! Accelerations of pair p on its 1st / 2nd body
+    logical, save, allocatable :: mr_touch(:)
     ! Sorted cell search (mr_pairs_grid)
     integer(int64), save, allocatable :: gkey(:), gktmp(:), gcx(:), gcy(:), sk(:)
     integer(kind=4), save, allocatable :: gord(:), gtmp(:), sid(:)
@@ -704,6 +713,106 @@ contains
     end function may_touch
 
 
+    !> Number of threads available to parallel regions (1 without OpenMP)
+    integer(kind=4) function mr_nthreads()
+        implicit none
+        mr_nthreads = 1
+        !$ mr_nthreads = omp_get_max_threads()
+    end function mr_nthreads
+
+
+    !> Make sure there is one pair buffer per thread, and empty them
+    subroutine mr_tbuf_reset(nth)
+        implicit none
+        integer(kind=4), intent(in) :: nth
+        integer(kind=4) :: t
+        if (allocated(mr_tbuf)) then
+            if (size(mr_tbuf) < nth) deallocate(mr_tbuf)
+        end if
+        if (.not. allocated(mr_tbuf)) then
+            allocate(mr_tbuf(0:nth-1))
+            do t = 0, nth - 1
+                allocate(mr_tbuf(t)%p(2, 1024))
+            end do
+        end if
+        do t = 0, size(mr_tbuf) - 1
+            mr_tbuf(t)%n = 0
+        end do
+    end subroutine mr_tbuf_reset
+
+
+    !> Append a pair to a thread's buffer
+    subroutine mr_tbuf_push(b, i, j)
+        implicit none
+        type(pair_buf_t), intent(inout) :: b
+        integer(kind=4), intent(in) :: i, j
+        integer(kind=4), allocatable :: tmp(:, :)
+        if (b%n == size(b%p, 2)) then
+            allocate(tmp(2, 2*size(b%p, 2)))
+            tmp(:, 1:b%n) = b%p(:, 1:b%n)
+            call move_alloc(tmp, b%p)
+        end if
+        b%n = b%n + 1
+        b%p(1, b%n) = min(i, j)
+        b%p(2, b%n) = max(i, j)
+    end subroutine mr_tbuf_push
+
+
+    !> Append the thread buffers (in thread order) to a pair list
+    subroutine mr_tbuf_merge(list, n)
+        implicit none
+        integer(kind=4), allocatable, intent(inout) :: list(:, :)
+        integer(kind=4), intent(inout) :: n
+        integer(kind=4), allocatable :: tmp(:, :)
+        integer(kind=4) :: t, ntot
+        ntot = n
+        do t = 0, size(mr_tbuf) - 1
+            ntot = ntot + mr_tbuf(t)%n
+        end do
+        if (ntot > size(list, 2)) then
+            allocate(tmp(2, max(2*size(list, 2), ntot)))
+            tmp(:, 1:n) = list(:, 1:n)
+            call move_alloc(tmp, list)
+        end if
+        do t = 0, size(mr_tbuf) - 1
+            if (mr_tbuf(t)%n == 0) cycle
+            list(:, n+1:n+mr_tbuf(t)%n) = mr_tbuf(t)%p(:, 1:mr_tbuf(t)%n)
+            n = n + mr_tbuf(t)%n
+        end do
+    end subroutine mr_tbuf_merge
+
+
+    !> Are bodies i, j already overlapping although the pair was not listed in the previous step?
+    logical function mr_unlisted_overlap(y, i, j, N_total)
+        implicit none
+        real(wp), dimension(:), intent(in) :: y
+        integer(kind=4), intent(in) :: i, j, N_total
+        integer(kind=4) :: idx, jdx, a, b
+        real(wp) :: dx, dy, rcoll
+        integer(int64) :: key
+
+        mr_unlisted_overlap = .False.
+        if (mr_n_prev <= 0) return
+        idx = get_index(i)
+        jdx = get_index(j)
+        dx = y(jdx) - y(idx)
+        dy = y(jdx+1) - y(idx+1)
+        rcoll = R_arr(i) + R_arr(j)
+        if (dx*dx + dy*dy >= rcoll*rcoll) return
+        key = int(min(i, j), int64)*int(N_total + 1, int64) + int(max(i, j), int64)
+        a = 1
+        b = mr_n_prev
+        do while (a < b)
+            if (mr_prev_keys((a + b)/2) < key) then
+                a = (a + b)/2 + 1
+            else
+                b = (a + b)/2
+            end if
+        end do
+        mr_unlisted_overlap = (mr_prev_keys(a) /= key)
+    end function mr_unlisted_overlap
+
+
     !> Append a pair to the look-ahead candidates
     subroutine mr_cand_add(i, j)
         implicit none
@@ -720,17 +829,11 @@ contains
     end subroutine mr_cand_add
 
 
-    !> Register a candidate pair; count it as a missed contact if the bodies are already
-    !> overlapping although the pair was not listed in the previous step.
-    subroutine mr_add_pair(y, i, j, N_total)
+    !> Append a pair to this step's pair list
+    subroutine mr_add_pair_nocheck(i, j)
         implicit none
-        real(wp), dimension(:), intent(in) :: y
-        integer(kind=4), intent(in) :: i, j, N_total
+        integer(kind=4), intent(in) :: i, j
         integer(kind=4), allocatable :: tmp(:, :)
-        integer(kind=4) :: idx, jdx, a, b
-        real(wp) :: dx, dy, rcoll
-        integer(int64) :: key
-
         if (mr_np == size(mr_pairs, 2)) then
             allocate(tmp(2, 2*size(mr_pairs, 2)))
             tmp(:, 1:mr_np) = mr_pairs(:, 1:mr_np)
@@ -739,29 +842,7 @@ contains
         mr_np = mr_np + 1
         mr_pairs(1, mr_np) = min(i, j)
         mr_pairs(2, mr_np) = max(i, j)
-
-        if (mr_n_prev > 0) then
-            idx = get_index(i)
-            jdx = get_index(j)
-            dx = y(jdx) - y(idx)
-            dy = y(jdx+1) - y(idx+1)
-            rcoll = R_arr(i) + R_arr(j)
-            if (dx*dx + dy*dy < rcoll*rcoll) then
-                key = int(min(i, j), int64)*int(N_total + 1, int64) + int(max(i, j), int64)
-                ! Binary search in the previous (sorted) keys
-                a = 1
-                b = mr_n_prev
-                do while (a < b)
-                    if (mr_prev_keys((a + b)/2) < key) then
-                        a = (a + b)/2 + 1
-                    else
-                        b = (a + b)/2
-                    end if
-                end do
-                if (mr_prev_keys(a) /= key) mr_missed = mr_missed + 1_int64
-            end if
-        end if
-    end subroutine mr_add_pair
+    end subroutine mr_add_pair_nocheck
 
 
     !> Candidate pairs among bodies first..last, by brute force (few bodies: moons)
@@ -790,9 +871,10 @@ contains
         real(wp), dimension(:), intent(in) :: y
         real(wp), intent(in) :: dt
         integer(kind=4), intent(in) :: first, last
-        integer(kind=4) :: i, j, idx, k, nb, p, q, dcy, row, lo, hi, mid
+        integer(kind=4) :: i, j, idx, k, nb, p, q, dcy, row, lo, hi, mid, nth, tid, qa, qb
         integer(kind=4) :: ptr(-1:1)
-        integer(int64) :: cxmin, cymin, cxmax, cymax, Wx, kp, kt, klo, khi
+        logical :: ptr_ok(-1:1)
+        integer(int64) :: cxmin, cymin, cxmax, cymax, Wx, kp, klo, khi
         real(wp) :: GMa, xa(4), rx, ry, r, vc, ux, uy, u2sum, u_typ, nmax, base, shear, L_cell
         real(wp) :: dx(2), dv(2), dv2, ts, dmin(2), rcoll, margin, rsi
 
@@ -803,8 +885,9 @@ contains
         ! Random speed of each body relative to the circular flow around the asteroid
         GMa = G*m_arr(1)
         xa = y(3:6)
-        u2sum = cero
         nmax = cero
+        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i, idx, rx, ry, r, vc, ux, uy) &
+        !$OMP REDUCTION(max:nmax) SCHEDULE(STATIC)
         do i = first, last
             idx = get_index(i)
             rx = y(idx) - xa(1)
@@ -814,8 +897,13 @@ contains
             ux = y(idx+2) - xa(3) + vc*ry/r
             uy = y(idx+3) - xa(4) - vc*rx/r
             gu(i - first + 1) = sqrt(ux*ux + uy*uy)
-            u2sum = u2sum + gu(i - first + 1)**2
             nmax = max(nmax, vc/r)
+        end do
+        !$OMP END PARALLEL DO
+        ! Serial sum: the result must not depend on the number of threads
+        u2sum = cero
+        do p = 1, nb
+            u2sum = u2sum + gu(p)*gu(p)
         end do
         u_typ = sqrt(u2sum/real(nb, wp))
         mr_u_typ = u_typ
@@ -823,11 +911,15 @@ contains
         ! |dv_ij| <= u_i + u_j + (velocity difference of the circular flow) <= u_i + u_j + 2.5 n |dx|
         base = dos*maxval(R_arr(first:last))*(uno + MR_FIXED_MARGIN)
         shear = max(uno - 5.0_wp*nmax*dt, uno2)
-        ! Cells sized for a body with twice the typical random speed
-        L_cell = max((base + dt*(10.0_wp*u_typ))/shear, sim%grid_col_min_cell_size)
+        ! Cells sized for a body with twice the typical random speed (the grid options of the
+        ! non-sub-stepped search do not apply: the cells only cover occupied space, so their
+        ! number does not matter, and a minimum size would only add candidates)
+        L_cell = (base + dt*(10.0_wp*u_typ))/shear
 
         ! Cell keys (row-major)
         cxmin = huge(1_int64); cymin = huge(1_int64); cxmax = -huge(1_int64); cymax = -huge(1_int64)
+        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i, idx, p) SCHEDULE(STATIC) &
+        !$OMP REDUCTION(min:cxmin, cymin) REDUCTION(max:cxmax, cymax)
         do i = first, last
             idx = get_index(i)
             p = i - first + 1
@@ -836,14 +928,18 @@ contains
             cxmin = min(cxmin, gcx(p)); cxmax = max(cxmax, gcx(p))
             cymin = min(cymin, gcy(p)); cymax = max(cymax, gcy(p))
         end do
+        !$OMP END PARALLEL DO
         Wx = cxmax - cxmin + 3_int64   ! Spare column on each side: neighbour keys never wrap rows
+        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(p) SCHEDULE(STATIC)
         do p = 1, nb
             gkey(p) = (gcy(p) - cymin + 1_int64)*Wx + (gcx(p) - cxmin + 1_int64)
             gord(p) = p
         end do
+        !$OMP END PARALLEL DO
         call radix_sort_keys(nb)
 
         ! Data in sorted order
+        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(q, p, i, idx) SCHEDULE(STATIC)
         do q = 1, nb
             p = gord(q)
             i = p + first - 1
@@ -854,9 +950,21 @@ contains
             sx(3, q) = y(idx+2); sx(4, q) = y(idx+3)
             srs(q) = (base + dt*(4.0_wp*gu(p) + dos*u_typ))/shear
         end do
+        !$OMP END PARALLEL DO
 
-        ptr = 1
-        do q = 1, nb
+        ! Search: each thread takes a contiguous block of the sorted bodies, with its own running
+        ! pointers, and its own pair buffer (merged in thread order: the serial order)
+        nth = mr_nthreads()
+        call mr_tbuf_reset(nth)
+        !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) &
+        !$OMP PRIVATE(tid, qa, qb, q, i, rsi, k, kp, dcy, klo, khi, row, lo, hi, mid, p, j, &
+        !$OMP         dx, dv, dv2, rcoll, margin, ts, dmin, ptr, ptr_ok)
+        tid = 0
+        !$ tid = omp_get_thread_num()
+        qa = int((int(nb, int64)*tid)/nth) + 1
+        qb = int((int(nb, int64)*(tid + 1))/nth)
+        ptr_ok = .False.
+        do q = qa, qb
             i = sid(q)
             rsi = srs(q)
             k = max(1, ceiling(rsi/L_cell))
@@ -865,8 +973,23 @@ contains
                 klo = kp + int(dcy, int64)*Wx - int(k, int64)
                 khi = kp + int(dcy, int64)*Wx + int(k, int64)
                 if (k == 1) then
-                    ! Running pointer: klo grows with q, so the range start only moves forward
                     row = dcy
+                    if (.not. ptr_ok(row)) then
+                        ! First use in this block: binary search, then run forward
+                        lo = 1
+                        hi = nb + 1
+                        do while (lo < hi)
+                            mid = (lo + hi)/2
+                            if (sk(mid) < klo) then
+                                lo = mid + 1
+                            else
+                                hi = mid
+                            end if
+                        end do
+                        ptr(row) = lo
+                        ptr_ok(row) = .True.
+                    end if
+                    ! klo grows with q, so the range start only moves forward
                     do while (ptr(row) <= nb)
                         if (sk(ptr(row)) >= klo) exit
                         ptr(row) = ptr(row) + 1
@@ -886,8 +1009,7 @@ contains
                     end do
                 end if
                 do p = lo, nb
-                    kt = sk(p)
-                    if (kt > khi) exit
+                    if (sk(p) > khi) exit
                     if (p == q) cycle
                     ! Each pair once, from the body with the larger search radius
                     j = sid(p)
@@ -903,10 +1025,13 @@ contains
                     ts = cero
                     if (dv2 > tini) ts = min(max(-(dx(1)*dv(1) + dx(2)*dv(2))/dv2, cero), dt)
                     dmin = dx + dv*ts
-                    if ((dmin(1)*dmin(1) + dmin(2)*dmin(2)) < (rcoll + margin)**2) call mr_cand_add(i, j)
+                    if ((dmin(1)*dmin(1) + dmin(2)*dmin(2)) < (rcoll + margin)**2) call mr_tbuf_push(mr_tbuf(tid), i, j)
                 end do
             end do
         end do
+        !$OMP END PARALLEL
+
+        call mr_tbuf_merge(mr_cand, mr_nc)
 
     end subroutine mr_pairs_grid
 
@@ -956,32 +1081,6 @@ contains
     end subroutine radix_sort_keys
 
 
-    !> Contact accelerations on the active bodies (mr_acc), from the candidate pairs
-    subroutine mr_forces(y)
-        implicit none
-        real(wp), dimension(:), intent(in) :: y
-        integer(kind=4) :: a, p, i, j
-        real(wp) :: F_vec(2), mi, mj
-        logical :: touching
-
-        do a = 1, mr_n_act
-            i = mr_act(a)
-            mr_acc(1, i) = cero
-            mr_acc(2, i) = cero
-        end do
-        do p = 1, mr_np
-            i = mr_pairs(1, p)
-            j = mr_pairs(2, p)
-            call pair_force(y, i, j, p <= mr_np_moon, F_vec, mi, mj, touching)
-            if (.not. touching) cycle
-            mr_acc(1, j) = mr_acc(1, j) + F_vec(1)/mj
-            mr_acc(2, j) = mr_acc(2, j) + F_vec(2)/mj
-            mr_acc(1, i) = mr_acc(1, i) - F_vec(1)/mi
-            mr_acc(2, i) = mr_acc(2, i) - F_vec(2)/mi
-            list_collided(i) = .True.
-            list_collided(j) = .True.
-        end do
-    end subroutine mr_forces
 
 
     !> In-place heap sort of int64 keys
@@ -1061,19 +1160,22 @@ contains
         real(wp), dimension(:), intent(inout) :: y
         real(wp), intent(in) :: dt, dt_small
         integer(kind=4), intent(in) :: last_moon, N_total
-        integer(kind=4) :: a, p, i, idx, N_sub, k
-        real(wp) :: h, horizon
+        integer(kind=4) :: a, p, i, idx, N_sub, k, e, nth, tid, qa, qb
+        real(wp) :: h, h2, horizon, acc(2), F_vec(2), mi, mj
+        logical :: touched
+        integer(int64) :: nmiss
 
         ! Work arrays
         if (allocated(mr_is_active)) then
-            if (size(mr_is_active) < N_total) deallocate(mr_is_active, mr_act, mr_acc)
+            if (size(mr_is_active) < N_total) deallocate(mr_is_active, mr_act, mr_slot)
         end if
         if (.not. allocated(mr_is_active)) then
-            allocate(mr_is_active(N_total), mr_act(N_total), mr_acc(2, N_total))
+            allocate(mr_is_active(N_total), mr_act(N_total), mr_slot(N_total))
             mr_is_active = .False.
-            mr_acc = cero
             mr_n_act = 0
         end if
+        if (.not. allocated(mr_off)) allocate(mr_off(1024), mr_fill(1024), mr_adj(2048))
+        if (.not. allocated(mr_touch)) allocate(mr_Fi(2, 1024), mr_Fj(2, 1024), mr_touch(1024))
         if (.not. allocated(mr_pairs)) allocate(mr_pairs(2, 1024))
         if (.not. allocated(mr_cand)) allocate(mr_cand(2, 1024))
         if (.not. allocated(mr_prev_keys)) allocate(mr_prev_keys(1024))
@@ -1103,13 +1205,34 @@ contains
         mr_horizon_left = mr_horizon_left - dt
 
         ! ── Pairs that may touch during this step (from the candidates) ──
-        do p = 1, mr_nc
-            if (p == mr_nc_moon + 1) mr_np_moon = mr_np
-            if (may_touch(y, mr_cand(1, p), mr_cand(2, p), dt, merge(cero, mr_u_typ, p <= mr_nc_moon))) &
-                & call mr_add_pair(y, mr_cand(1, p), mr_cand(2, p), N_total)
+        ! Moon candidates (few) first, serially; then the particle candidates in thread blocks,
+        ! merged in thread order (the serial order)
+        nmiss = 0_int64
+        do p = 1, mr_nc_moon
+            if (may_touch(y, mr_cand(1, p), mr_cand(2, p), dt, cero)) then
+                call mr_add_pair_nocheck(mr_cand(1, p), mr_cand(2, p))
+                if (mr_unlisted_overlap(y, mr_cand(1, p), mr_cand(2, p), N_total)) nmiss = nmiss + 1_int64
+            end if
         end do
-        if (mr_nc_moon == mr_nc) mr_np_moon = mr_np
+        mr_np_moon = mr_np
+        nth = mr_nthreads()
+        call mr_tbuf_reset(nth)
+        !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) PRIVATE(tid, qa, qb, p) REDUCTION(+:nmiss)
+        tid = 0
+        !$ tid = omp_get_thread_num()
+        qa = mr_nc_moon + int((int(mr_nc - mr_nc_moon, int64)*tid)/nth) + 1
+        qb = mr_nc_moon + int((int(mr_nc - mr_nc_moon, int64)*(tid + 1))/nth)
+        do p = qa, qb
+            if (may_touch(y, mr_cand(1, p), mr_cand(2, p), dt, mr_u_typ)) then
+                call mr_tbuf_push(mr_tbuf(tid), mr_cand(1, p), mr_cand(2, p))
+                if (mr_unlisted_overlap(y, mr_cand(1, p), mr_cand(2, p), N_total)) nmiss = nmiss + 1_int64
+            end if
+        end do
+        !$OMP END PARALLEL
+        call mr_tbuf_merge(mr_pairs, mr_np)
+        mr_missed = mr_missed + nmiss
 
+        ! Active bodies (in order of first appearance in the pairs)
         do p = 1, mr_np
             do k = 1, 2
                 i = mr_pairs(k, p)
@@ -1117,8 +1240,41 @@ contains
                     mr_is_active(i) = .True.
                     mr_n_act = mr_n_act + 1
                     mr_act(mr_n_act) = i
+                    mr_slot(i) = mr_n_act
                 end if
             end do
+        end do
+
+        ! Pairs of each active body, in pair order (CSR)
+        if (size(mr_off) < mr_n_act + 1) then
+            deallocate(mr_off, mr_fill)
+            allocate(mr_off(2*mr_n_act + 1), mr_fill(2*mr_n_act + 1))
+        end if
+        if (size(mr_adj) < 2*mr_np) then
+            deallocate(mr_adj)
+            allocate(mr_adj(4*mr_np))
+        end if
+        if (size(mr_touch) < mr_np) then
+            deallocate(mr_Fi, mr_Fj, mr_touch)
+            allocate(mr_Fi(2, 2*mr_np), mr_Fj(2, 2*mr_np), mr_touch(2*mr_np))
+        end if
+        mr_off(1:mr_n_act+1) = 0
+        do p = 1, mr_np
+            mr_off(mr_slot(mr_pairs(1, p)) + 1) = mr_off(mr_slot(mr_pairs(1, p)) + 1) + 1
+            mr_off(mr_slot(mr_pairs(2, p)) + 1) = mr_off(mr_slot(mr_pairs(2, p)) + 1) + 1
+        end do
+        mr_off(1) = 1
+        do a = 1, mr_n_act
+            mr_off(a + 1) = mr_off(a + 1) + mr_off(a)
+        end do
+        mr_fill(1:mr_n_act) = mr_off(1:mr_n_act)
+        do p = 1, mr_np
+            a = mr_slot(mr_pairs(1, p))
+            mr_adj(mr_fill(a)) = -p
+            mr_fill(a) = mr_fill(a) + 1
+            a = mr_slot(mr_pairs(2, p))
+            mr_adj(mr_fill(a)) = p
+            mr_fill(a) = mr_fill(a) + 1
         end do
 
         ! Keys of this step's pairs, for the missed-contact check of the next step
@@ -1134,34 +1290,80 @@ contains
         mr_prev_Ntotal = N_total
         if (mr_np == 0) mr_n_prev = 0
 
+        N_sub = max(1, nint(dt/dt_small))
+        h = dt/real(N_sub, wp)
+        h2 = uno2*h
+
+        !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(i, idx, k, a, p, e, acc, F_vec, mi, mj, touched)
+
         ! ── Bodies that cannot touch: one drift ──
+        !$OMP DO SCHEDULE(STATIC)
         do i = 1, N_total
             if (mr_is_active(i)) cycle
             idx = get_index(i)
             y(idx)   = y(idx)   + dt*y(idx+2)
             y(idx+1) = y(idx+1) + dt*y(idx+3)
         end do
+        !$OMP END DO NOWAIT
 
         ! ── Bodies that may touch: KDK sub-steps with the contact forces ──
-        if (mr_n_act > 0) then
-            N_sub = max(1, nint(dt/dt_small))
-            h = dt/real(N_sub, wp)
-            do k = 1, N_sub
-                call mr_forces(y)
-                do a = 1, mr_n_act
-                    i = mr_act(a)
-                    idx = get_index(i)
-                    y(idx+2:idx+3) = y(idx+2:idx+3) + uno2*h*mr_acc(:, i)
-                    y(idx:idx+1) = y(idx:idx+1) + h*y(idx+2:idx+3)
-                end do
-                call mr_forces(y)
-                do a = 1, mr_n_act
-                    i = mr_act(a)
-                    idx = get_index(i)
-                    y(idx+2:idx+3) = y(idx+2:idx+3) + uno2*h*mr_acc(:, i)
-                end do
+        ! Pair forces in parallel (each pair writes its own slot); then each body sums its pairs in
+        ! a fixed order: the result does not depend on the number of threads
+        do k = 1, N_sub
+            !$OMP DO SCHEDULE(STATIC)
+            do p = 1, mr_np
+                call pair_force(y, mr_pairs(1, p), mr_pairs(2, p), p <= mr_np_moon, F_vec, mi, mj, mr_touch(p))
+                mr_Fi(:, p) = -F_vec/mi
+                mr_Fj(:, p) = F_vec/mj
             end do
-        end if
+            !$OMP END DO
+            !$OMP DO SCHEDULE(STATIC)
+            do a = 1, mr_n_act
+                i = mr_act(a)
+                idx = get_index(i)
+                acc = cero
+                touched = .False.
+                do e = mr_off(a), mr_off(a + 1) - 1
+                    p = mr_adj(e)
+                    if (p > 0) then
+                        if (mr_touch(p)) acc = acc + mr_Fj(:, p)
+                        touched = touched .or. mr_touch(p)
+                    else
+                        if (mr_touch(-p)) acc = acc + mr_Fi(:, -p)
+                        touched = touched .or. mr_touch(-p)
+                    end if
+                end do
+                if (touched) list_collided(i) = .True.
+                y(idx+2:idx+3) = y(idx+2:idx+3) + h2*acc
+                y(idx:idx+1) = y(idx:idx+1) + h*y(idx+2:idx+3)
+            end do
+            !$OMP END DO
+            !$OMP DO SCHEDULE(STATIC)
+            do p = 1, mr_np
+                call pair_force(y, mr_pairs(1, p), mr_pairs(2, p), p <= mr_np_moon, F_vec, mi, mj, mr_touch(p))
+                mr_Fi(:, p) = -F_vec/mi
+                mr_Fj(:, p) = F_vec/mj
+            end do
+            !$OMP END DO
+            !$OMP DO SCHEDULE(STATIC)
+            do a = 1, mr_n_act
+                i = mr_act(a)
+                idx = get_index(i)
+                acc = cero
+                do e = mr_off(a), mr_off(a + 1) - 1
+                    p = mr_adj(e)
+                    if (p > 0) then
+                        if (mr_touch(p)) acc = acc + mr_Fj(:, p)
+                    else
+                        if (mr_touch(-p)) acc = acc + mr_Fi(:, -p)
+                    end if
+                end do
+                y(idx+2:idx+3) = y(idx+2:idx+3) + h2*acc
+            end do
+            !$OMP END DO
+        end do
+
+        !$OMP END PARALLEL
 
         mr_steps = mr_steps + 1_int64
         mr_active_sum = mr_active_sum + int(mr_n_act, int64)
