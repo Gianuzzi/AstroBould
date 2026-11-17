@@ -164,6 +164,11 @@ contains
         dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
         dvt = dv_vec(1)*dt_ver(1) + dv_vec(2)*dt_ver(2)
 
+        ! In the rotating frame v_inertial = v + omega z x r: the relative velocity gains omega*dr along
+        ! the tangent (the normal part is unchanged). Friction must act on the inertial sliding velocity,
+        ! or it would drag the pair towards co-rotation with the asteroid.
+        if (is_sinodic) dvt = dvt + y(2) * dr
+
         ! Spring + dashpot. While separating the dashpot pulls the bodies together:
         ! if only repulsion is wanted, the normal force is clipped at zero
         F_n = kappa_pair * overlap - gamma_n_pair * dvr

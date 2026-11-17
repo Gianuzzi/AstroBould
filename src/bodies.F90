@@ -2826,11 +2826,13 @@ contains
                     end do
                 else  ! Ellipsoid
                     do i = m_act, 1, -1  ! Backwards loop
-                        xy_rotated = rotate2D(self%moons(i)%coordinates(1:2), -self%asteroid%theta)
-                        dx = xy_rotated(1) - boul_pos(1) + self%moons(i)%radius
-                        dy = xy_rotated(2) - boul_pos(2) + self%moons(i)%radius
-                        if (((dx/self%asteroid%primary%semi_axis(1))**2 &
-                         & + (dy/self%asteroid%primary%semi_axis(2))**2) < uno) then
+                        ! Position from the ellipsoid centre, in the body-fixed axes.
+                        ! Contact: semi-axes enlarged by the moon radius
+                        xy_rotated = rotate2D(self%moons(i)%coordinates(1:2) - boul_pos, -self%asteroid%theta)
+                        dx = xy_rotated(1)
+                        dy = xy_rotated(2)
+                        if (((dx/(self%asteroid%primary%semi_axis(1) + self%moons(i)%radius))**2 &
+                         & + (dy/(self%asteroid%primary%semi_axis(2) + self%moons(i)%radius))**2) < uno) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
                             was_any_moon_something = .True.
@@ -2935,11 +2937,13 @@ contains
                 end do
             else  ! Ellipsoid
                 do i = p_act, 1, -1  ! Backwards loop
-                    xy_rotated = rotate2D(self%particles(i)%coordinates(1:2), -self%asteroid%theta)
-                    dx = xy_rotated(1) - boul_pos(1)
-                    dy = xy_rotated(2) - boul_pos(2)
-                    if (((dx/self%asteroid%primary%semi_axis(1))**2 &
-                     & + (dy/self%asteroid%primary%semi_axis(2))**2) < uno) then
+                    ! Position from the ellipsoid centre, in the body-fixed axes.
+                    ! Contact: semi-axes enlarged by the particle radius
+                    xy_rotated = rotate2D(self%particles(i)%coordinates(1:2) - boul_pos, -self%asteroid%theta)
+                    dx = xy_rotated(1)
+                    dy = xy_rotated(2)
+                    if (((dx/(self%asteroid%primary%semi_axis(1) + self%particles_radius))**2 &
+                     & + (dy/(self%asteroid%primary%semi_axis(2) + self%particles_radius))**2) < uno) then
                         if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, &
                                                             & "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)

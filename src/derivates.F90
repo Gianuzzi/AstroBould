@@ -301,8 +301,9 @@ contains
                 xy_rotated(1) = dr_vec(1)*cth + dr_vec(2)*sth
                 xy_rotated(2) = -dr_vec(1)*sth + dr_vec(2)*cth
 
-                if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
+                & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
                     hard_exit = .True.
                 end if
 
@@ -506,8 +507,9 @@ contains
                 xy_rotated(1) = dr_vec(1)*cth + dr_vec(2)*sth
                 xy_rotated(2) = -dr_vec(1)*sth + dr_vec(2)*cth
 
-                if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
+                & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
                     hard_exit = .True.
                     cycle particle_loop
                 end if
@@ -969,8 +971,9 @@ contains
 
             if (use_ellipsoid) then
 
-                if (((dr_vec(1) + R_arr(j)) / asteroid_data(1))**2 &
-                & + ((dr_vec(2) + R_arr(j)) / asteroid_data(2))**2 < uno) then
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((dr_vec(1) / (asteroid_data(1) + R_arr(j)))**2 &
+                & + (dr_vec(2) / (asteroid_data(2) + R_arr(j)))**2 < uno) then
                     hard_exit = .True.
                     cycle particle_loop
                 end if

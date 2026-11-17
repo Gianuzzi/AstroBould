@@ -938,6 +938,13 @@ program main
         error stop "Particle collision beta must be between 0 and 1."
     end if
 
+    ! Bodies carry no spin: tangential friction cannot hand the angular momentum over to it
+    if ((sim%use_part_soft_sphere_col .and. sim%gamma_col_part_t > cero) .or. &
+      & (sim%use_moon_soft_sphere_col .and. sim%gamma_col_moon_t > cero)) then
+        write (*, *) "WARNING: Tangential friction is active (beta > 0). Spins are not integrated,"
+        write (*, *) "         so it does not conserve the total angular momentum."
+    end if
+
     ! Keep the derived flags consistent with what is actually active
     sim%use_soft_sphere_col = sim%use_moon_soft_sphere_col .or. sim%use_part_soft_sphere_col
     if (.not. sim%use_soft_sphere_col) then
@@ -1107,10 +1114,11 @@ program main
     !! Configuration
     if (sim%use_megno) then
         call init_megno(system, sim%megno_eps)
+        ! Nothing to do without particles (whatever the screen setting is)
+        if (sim%Npart_active == 0) sim%megno_active = .False.
         if (sim%use_screen) then
             if (sim%Npart_active == 0) then
                 write (*, *) "WARNING: MEGNO Activated but no particles found."
-                sim%megno_active = .False.
             else 
                 write (*, *) "ACTIVATED. Applied only in particles"
             end if
