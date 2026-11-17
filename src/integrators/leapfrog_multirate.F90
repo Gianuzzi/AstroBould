@@ -93,10 +93,11 @@ contains
             call drift_step(ynew, dt_small_eff)
 
             ! 2c. Half fast kick — velocity update only
-            yaux(:sizey) = dydt_fast(t_sub + dt_small_eff * C1_2, ynew)  ! * C1_2 is to have Verlet see pos at ~ t + dt_small_eff/2
+            ! After the drift the positions are at t_sub + dt_small_eff: that is the time the
+            ! Verlet list must see (it rotates its reference positions up to this time)
+            t_sub = t + real(k, wp) * dt_small_eff
+            yaux(:sizey) = dydt_fast(t_sub, ynew)
             ynew = ynew + C1_2 * dt_small_eff * yaux(:sizey)
-
-            t_sub = t_sub + dt_small_eff
 
         end do
 
@@ -124,9 +125,9 @@ contains
         procedure(function_check_keep_tem), optional :: check_fun
 
         integer(kind=4) :: sizey
-        real(wp) :: time, t_end
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        real(wp) :: time, t_end, dt_step
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)
@@ -146,14 +147,23 @@ contains
             end if
 
             ycaller(:sizey) = ynew
-            dt_large = min(dt_large, t_end - time)
-            DT_MIN_NOW = min(DT_MIN, dt_large)
+
+            ! This is a fixed-step scheme: dt_large is the nominal step and is NOT shrunk here,
+            ! or the short step that closes an interval would be inherited by every later call.
+            ! The last step absorbs the round-off remainder instead of taking a ~0 extra step.
+            dt_step = min(dt_large, t_end - time)
+            if ((t_end - time) - dt_step < 1.e-10_wp * dt_large) dt_step = t_end - time
+            DT_MIN_NOW = min(DT_MIN, dt_step)
 
             der(:sizey) = dydt_slow(time, ycaller(:sizey))
 
-            call leapfrog_KDK_multirate(sizey, ycaller(:sizey), dydt_slow, dydt_fast, time, dt_large, dt_small, der(:sizey), ynew)
+            call leapfrog_KDK_multirate(sizey, ycaller(:sizey), dydt_slow, dydt_fast, time, dt_step, dt_small, der(:sizey), ynew)
 
-            time = time + dt_large
+            if (dt_step >= t_end - time) then
+                time = t_end
+            else
+                time = time + dt_step
+            end if
         end do
 
     end subroutine leapfrog_multirate_caller

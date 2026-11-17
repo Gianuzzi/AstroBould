@@ -127,6 +127,8 @@ module bodies
         real(wp) :: eta_col_part = uno
         real(wp) :: f_col_part = uno2
         logical :: check_col_part = .False.
+        logical :: soft_col_moon = .False.  ! Moon-moon contacts are integrated (soft-sphere): here only merges are resolved
+        logical :: state_changed = .False.  ! A collision modified positions/velocities since the last array generation
         real(wp) :: particles_radius = cero
         ! Objects
         type(asteroid_st) :: asteroid
@@ -2417,6 +2419,9 @@ contains
 
         ! Are they already moving appart ?
         if (dv_rad > cero) then
+            ! With soft-sphere contacts the overlap is part of the integrated contact: do not touch it
+            if (self%soft_col_moon) return
+
             ! Push apart proportionally to masses
             overlap = self%moons(i)%radius + self%moons(j)%radius - dr
             if (overlap > cero) then
@@ -2430,6 +2435,7 @@ contains
                 new_rvj(3:4) = vj
 
                 ! Keep velocities unchanged
+                self%state_changed = .True.  ! Coordinates modified: the integration arrays must be regenerated
                 call shift_single_moon(self%moons(i), new_rvi)
                 call shift_single_moon(self%moons(j), new_rvj)
 
@@ -2493,7 +2499,12 @@ contains
             call deactivate_moon_i(self, j, .False., error)  ! Possible reordering done below
 
             ! Update COORDINATES and derivates
+            self%state_changed = .True.  ! Coordinates modified: the integration arrays must be regenerated
             call shift_single_moon(self%moons(i), rv_cm)
+
+        else if (self%soft_col_moon) then  ! Not plastic, and the bounce is integrated by the soft-sphere force
+
+            return  ! An impulse here would count the same collision twice
 
         else  ! Not plastic
 
@@ -2563,6 +2574,7 @@ contains
             new_rvj(4) = vj_col(2)
 
             ! Update COORDINATES and VELOCITIES
+            self%state_changed = .True.  ! Coordinates modified: the integration arrays must be regenerated
             call shift_single_moon(self%moons(i), new_rvi)
             call shift_single_moon(self%moons(j), new_rvj)
 
@@ -2658,6 +2670,7 @@ contains
             new_rvj(3:4) = vj
 
             ! Keep velocities unchanged
+            self%state_changed = .True.  ! Coordinates modified: the integration arrays must be regenerated
             call shift_single_particle(self%particles(i), new_rvi)
             call shift_single_particle(self%particles(j), new_rvj)
 
@@ -2734,6 +2747,7 @@ contains
         new_rvj(3:4) = vj_col
 
         ! Update COORDINATES and VELOCITIES
+        self%state_changed = .True.  ! Coordinates modified: the integration arrays must be regenerated
         call shift_single_particle(self%particles(i), new_rvi)
         call shift_single_particle(self%particles(j), new_rvj)
 
@@ -2761,6 +2775,7 @@ contains
 
         ! Init
         do_write = present(unit_file)
+        self%state_changed = .False.
         
         was_any_moon_something = .False.
         again = .True.

@@ -164,7 +164,7 @@ module parameters
         logical :: use_stop_no_moon_left = .True.
         real(wp) :: coulomb_mu_col = cero  ! Coulomb friction coeff. Only active if SOFT-SPHERE collisions and gamma_t > 0
         logical :: use_only_repulsive_col = .False.  ! Whether to use only the repulsive part of the collision
-        real(wp) :: dr_factor_col = uno  ! Minimum dr assumed at collisions ! SOFT-SPHERE
+        real(wp) :: dr_factor_col = cero  ! Minimum dr assumed at collisions, as a fraction of (R1 + R2) ! SOFT-SPHERE
         logical :: use_verlet_col = .False.  ! Whether to use Verlet list for collisions (only for particles)
         real(wp) :: verlet_skin_factor = 0.1_wp  ! skin = factor * 2R
         logical :: use_verlet_with_moons = .False.  ! Same as verlet_col but including only moons in the Verlet list
@@ -2185,6 +2185,25 @@ contains
             call fatal_error(err_msg)
         end if
 
+        ! The sub-stepping integrator only advances positions and velocities
+        if (derived%use_substeps_col .and. derived%use_megno) then
+            write (err_msg, '(A)') "MEGNO can not be used with collision substeps."
+            call fatal_error(err_msg)
+        end if
+
+        ! The sub-stepping scheme is a leapfrog: the velocity-dependent Coriolis term of the
+        ! rotating frame makes its explicit kicks unstable
+        if (derived%use_substeps_col .and. derived%use_sinodic) then
+            write (err_msg, '(A)') "Collision substeps can not be used in the rotating frame. Use the inertial one."
+            call fatal_error(err_msg)
+        end if
+
+        ! Sub-stepping is only wired into the plain integration loop
+        if (derived%use_substeps_col .and. (derived%use_filter .or. derived%use_surface)) then
+            write (err_msg, '(A)') "Collision substeps can not be used with filtering or surface sections."
+            call fatal_error(err_msg)
+        end if
+
     end subroutine set_derived_parameters_post_bodies
 
     ! Index elements in derivates and collisions
@@ -2685,6 +2704,10 @@ contains
         end if
 
         regenerate = regenerate .or. simu%megno_active  ! If still active, regenerate
+
+        ! A bounce (or a push-apart) changes the state without changing the amount of bodies:
+        ! without regenerating, the integration would restart from the pre-collision state
+        regenerate = regenerate .or. syst%state_changed
         
     end subroutine update_sim_from_system
 

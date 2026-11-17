@@ -95,7 +95,9 @@ contains
         if (integrator == -30) then
             call init_leapfrog_multirate(SIZEY0, 0)
             integrate_substeps => leapfrog_multirate_caller
-            print*, "ALL SET"
+            ! Plain KDK (whole derivative, no sub-stepping) so that "integrate" is never left unassociated
+            call init_leapfrog(SIZEY0, 1, is_std)
+            integrate => leapfrog_fixed_caller
         
         else if (integrator > -30 .and. integrator < -3) then
             call init_runge_kutta(SIZEY0, abs(integrator + 3))
@@ -145,6 +147,7 @@ contains
         if (allocated(der)) deallocate (der)
         call free_BS2()
         call free_leapfrog()
+        call free_leapfrog_multirate()
         call free_BS()
         call free_embedded()
         call free_runge_kutta()

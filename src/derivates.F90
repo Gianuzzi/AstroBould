@@ -17,7 +17,7 @@ module derivates
                             & use_ellipsoid, K_coef, L_coef, &
                             & use_manual_J2_from_cm, use_manual_J2_from_primary, J2K_coef, &
                             & use_boulder_z, Gmboulder_z_coef, dz2_boulder_z_coef
-    use collisions, only: init_collisions, collisions_brute, collisions_grid, collisions_verlet
+    use collisions, only: init_collisions, collisions_brute, collisions_grid, collisions_verlet, list_collided
 
     implicit none
     private
@@ -705,8 +705,14 @@ contains
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     rcoll = R_arr(i) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
-                        cycle
+                        if (sim%use_moon_soft_sphere_col) then
+                            ! The contact is integrated by the soft-sphere force: overlapping is part of it,
+                            ! so keep integrating. Gravity keeps acting, bounded for deep overlaps.
+                            dr2 = max(dr2, 0.25e0_wp*rcoll*rcoll)
+                        else
+                            hard_exit = .True.
+                            cycle
+                        end if
                     end if
 
                     dr = sqrt(dr2)
@@ -1172,7 +1178,11 @@ contains
         last_moon = first_particle - 1
         N_particles = N_total - last_moon
 
-        if (sim%use_moon_soft_sphere_col .and. (last_moon > 3)) then
+        ! Bodies in contact at this evaluation (diagnostics)
+        list_collided = .False.
+
+        ! Moons are bodies 2..last_moon: at least two of them are needed
+        if (sim%use_moon_soft_sphere_col .and. (last_moon > 2)) then
             if (last_moon <= sim%grid_col_min_bodies + 1) then
                 call collisions_brute(y, der, 2, last_moon, .True.)
             else if (sim%use_verlet_col .and. sim%use_verlet_with_moons) then

@@ -938,6 +938,16 @@ program main
         error stop "Particle collision beta must be between 0 and 1."
     end if
 
+    ! Keep the derived flags consistent with what is actually active
+    sim%use_soft_sphere_col = sim%use_moon_soft_sphere_col .or. sim%use_part_soft_sphere_col
+    if (.not. sim%use_soft_sphere_col) then
+        sim%use_verlet_col = .False.
+        sim%use_substeps_col = .False.
+    end if
+
+    ! If moon contacts are integrated, the hard-sphere check must only resolve merges
+    system%soft_col_moon = sim%use_moon_soft_sphere_col
+
     ! Messages
     if (sim%use_screen) then
         write (*, *) "Conditions for escape / collision"
@@ -1370,6 +1380,25 @@ program main
     else if (sim%use_screen) then
         write (*, *) "Substeps for collisions deactivated."
         write (*, *) ACHAR(5)
+    end if
+
+    ! A soft-sphere contact lasts Tdur: the step that integrates it must resolve it
+    if (sim%use_soft_sphere_col) then
+        if (sim%use_substeps_col) then
+            aux_real = sub_timestep
+        else
+            aux_real = sim%dt_min
+        end if
+        if (sim%use_moon_soft_sphere_col .and. (aux_real > sim%Tdur_col_moon / 10)) then
+            write (*, *) "WARNING: Moon contacts are poorly resolved by the timestep."
+            write (*, s1r1) "  Timestep:", aux_real/unit_time, "[day]. Contact duration:", sim%Tdur_col_moon/unit_time, "[day]."
+            write (*, *) "  Use a (sub)timestep of Tdur/20 or less, or a larger Tdur."
+        end if
+        if (sim%use_part_soft_sphere_col .and. (aux_real > sim%Tdur_col_part / 10)) then
+            write (*, *) "WARNING: Particle contacts are poorly resolved by the timestep."
+            write (*, s1r1) "  Timestep:", aux_real/unit_time, "[day]. Contact duration:", sim%Tdur_col_part/unit_time, "[day]."
+            write (*, *) "  Use a (sub)timestep of Tdur/20 or less, or a larger Tdur."
+        end if
     end if
 
     ! Get minimum and maximum periods (already have internal units)
@@ -3061,14 +3090,6 @@ program main
             ! Update j; only if not premature
             if (.not. is_premature_exit) j = j + 1
 
-            if (verlet_caches > 0) then
-                print*, ""
-                print*, "Pairs collisions: ", count(list_collided)
-                print*, "Verlet rebuilds: ", verlet_rebuilds, " Verlet caches: ", verlet_caches
-                print*, "Ratio: ", real(verlet_caches-verlet_rebuilds)/real(verlet_caches)
-                print*, "Time: ", time/unit_time, " days"
-            end if
-
         end do main_loop_normal
 
     end if
@@ -3080,7 +3101,8 @@ program main
     if (sim%use_screen .and. verlet_rebuilds > 0) then
         write (*, *) ACHAR(10)
         write (*, s1i1) "Total Verlet rebuilds: ", verlet_rebuilds
-        write (*, s1i1) "Total Verlet cache hits: ", verlet_caches
+        write (*, s1i1) "Total Verlet list uses: ", verlet_caches
+        write (*, s1i1) "Bodies in contact at the last evaluation: ", count(list_collided)
     end if
 
     !! Cerrar archivo de salida

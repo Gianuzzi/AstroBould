@@ -13,7 +13,8 @@ module collisions
 
 
     integer(kind=4), save :: vlist_n
-    real(wp), save :: vrcut
+    real(wp), save :: vskin  ! Verlet skin: pairs are listed up to (contact distance + vskin)
+    logical, save :: is_sinodic = .False.  ! Coordinates given in the frame rotating with the asteroid
     integer(kind=4), save, allocatable :: vlist(:, :)
     real(wp), save, allocatable :: vlist_pos(:, :)
     real(wp), save, allocatable :: vlist_r(:)
@@ -37,8 +38,11 @@ contains
         allocate(list_collided(N_total))
         list_collided = .False.
 
-        ! TBD
-        ! If sinodic, set get_xy_rotated to a function that rotates by the synodic frequency 
+        ! In the sinodic frame the bodies rotate with (n - omega): used by the Verlet drift check
+        is_sinodic = sinodic
+
+        ! Any previous Verlet list is no longer valid
+        vlist_built = .False.
 
     end subroutine init_collisions
 
@@ -53,11 +57,19 @@ contains
         real(wp) :: dzeta, eta
 
         if (explicit) then
+            if (kappa_n <= cero) return  ! No spring: nothing to derive (caller disables the collisions)
             dzeta = min(gamma_n / (dos * sqrt(kappa_n)), uno - tini)
             eta = dzeta * pi / sqrt(uno - dzeta*dzeta)
             epsilon = exp(-eta)
             Tdur = sqrt((pi*pi + eta*eta) / kappa_n)
         else
+            ! epsilon = 0 would need an infinite damping, and Tdur = 0 an infinite stiffness
+            if (epsilon <= cero .or. epsilon > uno .or. Tdur <= cero) then
+                kappa_n = cero
+                gamma_n = cero
+                gamma_t = cero
+                return  ! Caller disables the collisions (kappa = 0)
+            end if
             eta = -log(epsilon)
             kappa_n = (pi*pi + eta*eta) / Tdur**2
             gamma_n = dos * eta / Tdur
@@ -127,7 +139,9 @@ contains
 
         end if
 
-        overlap = max(overlap, sim%dr_factor_col * rcoll)
+        ! Minimum effective separation: dr_eff = max(dr, dr_factor * rcoll), which caps the overlap
+        ! (and so the force) for deeply interpenetrated bodies
+        overlap = min(overlap, (uno - sim%dr_factor_col) * rcoll)
         dt_ver(1) = -dr_ver(2)
         dt_ver(2) = dr_ver(1)
 
@@ -150,10 +164,10 @@ contains
         dvr = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
         dvt = dv_vec(1)*dt_ver(1) + dv_vec(2)*dt_ver(2)
 
-        F_n = kappa_pair * overlap
-        if (dvr < cero .or. (.not. sim%use_only_repulsive_col)) then
-            F_n = F_n - gamma_n_pair * dvr
-        end if
+        ! Spring + dashpot. While separating the dashpot pulls the bodies together:
+        ! if only repulsion is wanted, the normal force is clipped at zero
+        F_n = kappa_pair * overlap - gamma_n_pair * dvr
+        if (sim%use_only_repulsive_col) F_n = max(F_n, cero)
 
         F_t = cero
         if ((gamma_t_pair > cero) .and. (sim%coulomb_mu_col > cero) .and. (F_n > cero)) then
@@ -256,8 +270,8 @@ contains
         y_min = y_min - L_cell
         y_max = y_max + L_cell
 
-        Ncx = max(1, ceiling((x_max - x_min) / L_cell))
-        Ncy = max(1, ceiling((y_max - y_min) / L_cell))
+        Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
+        Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
 
         if (Ncx > sim%grid_col_max_cells / Ncy) then
             call collisions_brute(y, der, first_index, last_index, are_moons)
@@ -313,7 +327,29 @@ contains
     end subroutine collisions_grid
 
 
+    !> Append a pair to a growable (2, :) list.
+    subroutine push_pair(list, npairs, i, j)
+        implicit none
+        integer(kind=4), allocatable, intent(inout) :: list(:, :)
+        integer(kind=4), intent(inout) :: npairs
+        integer(kind=4), intent(in) :: i, j
+        integer(kind=4), allocatable :: tmp(:, :)
+
+        if (npairs == size(list, 2)) then
+            allocate(tmp(2, 2*size(list, 2)))
+            tmp(:, 1:npairs) = list(:, 1:npairs)
+            call move_alloc(tmp, list)
+        end if
+        npairs = npairs + 1
+        list(1, npairs) = i
+        list(2, npairs) = j
+    end subroutine push_pair
+
+
     !> Build Verlet neighbour list (serial — modifies global saved state).
+    !> Pairs closer than r_cut = contact + skin are stored, where contact is the largest
+    !> possible contact distance (2 Rmax) and skin = verlet_skin_factor * contact.
+    !> The list stays valid while no body moves more than skin/2 (see collisions_verlet).
     subroutine build_verlet_list(time, y, first_index, last_index, are_moons)
         implicit none
         real(wp),               intent(in) :: time
@@ -322,7 +358,7 @@ contains
         logical,                intent(in) :: are_moons
 
         integer(kind=4) :: i, j, idx, jdx, npairs, N_particles
-        real(wp) :: r_cut, r_cut2, dr_vec(2), dr2
+        real(wp) :: contact, r_cut, r_cut2, dr_vec(2), dr2, L_cell
         integer(kind=4), allocatable :: tmp_list(:, :)
 
         real(wp) :: x_min, x_max, y_min, y_max
@@ -336,15 +372,19 @@ contains
         N_particles = last_index - first_index + 1
 
         if (are_moons) then
-            vrcut = dos * maxval(R_arr(first_index:last_index))
+            contact = dos * maxval(R_arr(first_index:last_index))
         else
-            vrcut = dos * R_arr(first_index)
+            contact = dos * R_arr(first_index)
         end if
-        vrcut = max(vrcut, sim%grid_col_min_cell_size)
-        r_cut = vrcut * (uno + sim%verlet_skin_factor)
+        vskin = contact * sim%verlet_skin_factor
+        r_cut = contact + vskin
         r_cut2 = r_cut * r_cut
 
-        allocate(tmp_list(2, N_particles*(N_particles-1)/2))
+        ! The cells must be at least r_cut wide: only the 8 surrounding cells are searched
+        L_cell = max(r_cut, sim%grid_col_min_cell_size)
+
+        ! Growable pair list (a full N(N-1)/2 allocation is neither needed nor affordable)
+        allocate(tmp_list(2, max(16, 8*N_particles)))
         npairs = 0
 
         x_min = y(get_index(first_index))
@@ -365,26 +405,23 @@ contains
         end do
         !$OMP END PARALLEL DO
 
-        x_min = x_min - vrcut
-        x_max = x_max + vrcut
-        y_min = y_min - vrcut
-        y_max = y_max + vrcut
+        x_min = x_min - L_cell
+        x_max = x_max + L_cell
+        y_min = y_min - L_cell
+        y_max = y_max + L_cell
 
-        Ncx = max(1, ceiling((x_max - x_min) / vrcut))
-        Ncy = max(1, ceiling((y_max - y_min) / vrcut))
+        Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
+        Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
 
         if (Ncx > sim%grid_col_max_cells / Ncy) then
+            ! Too many cells: brute-force search
             do i = first_index, last_index - 1
                 idx = get_index(i)
                 do j = i + 1, last_index
                     jdx = get_index(j)
                     dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    if (dr2 < r_cut2) then
-                        npairs = npairs + 1
-                        tmp_list(1, npairs) = i
-                        tmp_list(2, npairs) = j
-                    end if
+                    if (dr2 < r_cut2) call push_pair(tmp_list, npairs, i, j)
                 end do
             end do
         else
@@ -395,8 +432,8 @@ contains
             ! Create linked lists serially — if this becomes a bottleneck, use colouring to parallelise.
             do i = first_index, last_index
                 idx = get_index(i)
-                cx = min(int((y(idx)   - x_min) / vrcut, int64), Ncx - 1_int64)
-                cy = min(int((y(idx+1) - y_min) / vrcut, int64), Ncy - 1_int64)
+                cx = min(int((y(idx)   - x_min) / L_cell, int64), Ncx - 1_int64)
+                cy = min(int((y(idx+1) - y_min) / L_cell, int64), Ncy - 1_int64)
                 cx = max(cx, 0_int64)
                 cy = max(cy, 0_int64)
                 ci = cx + Ncx * cy
@@ -406,8 +443,8 @@ contains
 
             do i = first_index, last_index
                 idx = get_index(i)
-                cx = min(max(int((y(idx)   - x_min) / vrcut, int64), 0_int64), Ncx - 1_int64)
-                cy = min(max(int((y(idx+1) - y_min) / vrcut, int64), 0_int64), Ncy - 1_int64)
+                cx = min(max(int((y(idx)   - x_min) / L_cell, int64), 0_int64), Ncx - 1_int64)
+                cy = min(max(int((y(idx+1) - y_min) / L_cell, int64), 0_int64), Ncy - 1_int64)
 
                 do dcy = -1, 1
                     do dcx = -1, 1
@@ -422,11 +459,7 @@ contains
                                 jdx = get_index(j)
                                 dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
                                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                                if (dr2 < r_cut2) then
-                                    npairs = npairs + 1
-                                    tmp_list(1, npairs) = i
-                                    tmp_list(2, npairs) = j
-                                end if
+                                if (dr2 < r_cut2) call push_pair(tmp_list, npairs, i, j)
                             end if
                             j = next(j)
                         end do
@@ -459,7 +492,7 @@ contains
             idx = get_index(i)
             vlist_pos(1, i) = y(idx)
             vlist_pos(2, i) = y(idx+1)
-            vlist_r(i) = sqrt(y(idx)**2 + y(idx+1)**2)
+            vlist_r(i) = max(sqrt(y(idx)**2 + y(idx+1)**2), tini)
             vlist_n_kep(i) = sq_GM / vlist_r(i)**(1.5_wp)
         end do
         !$OMP END PARALLEL DO
@@ -477,6 +510,11 @@ contains
     !> Verlet pair loop — PARALLEL over k (pairs).
     !> Each pair calls soft_sphere_force which uses ATOMIC writes internally.
     !> Rebuild check is serial (modifies global saved state).
+    !>
+    !> The list is valid while no body has moved more than skin/2 from where it was when
+    !> the list was built. Since a rigid rotation of the whole reference set keeps every
+    !> pair distance, the reference positions are first rotated with the mean orbital
+    !> motion, so that only the motion relative to it counts as drift.
     subroutine collisions_verlet(time, y, der, first_index, last_index, are_moons)
         implicit none
         real(wp),               intent(in) :: time
@@ -486,49 +524,46 @@ contains
         logical,                intent(in) :: are_moons
 
         integer(kind=4) :: i, j, k, idx
-        real(wp) :: r_skin2, dx, dy, drift2, dt, drift_max
-        real(wp), dimension(2) :: xyr
+        real(wp) :: r_skin2, dx, dy, dt, drift2_max
+        real(wp) :: xr, yr
         real(wp) :: dphi, cos_dphi, sin_dphi
-        
-        drift_max = cero
+        logical :: rebuild
 
         ! ── Rebuild check (serial — touches global saved state) ─────────────
-        if (.not. vlist_built) then
-            call build_verlet_list(time, y, first_index, last_index, are_moons)
+        rebuild = .not. vlist_built
+        if (.not. rebuild) rebuild = (lbound(vlist_pos, 2) /= first_index) .or. (ubound(vlist_pos, 2) /= last_index)
 
-        else if (size(vlist_pos, 2) /= last_index - first_index + 1) then
-            call build_verlet_list(time, y, first_index, last_index, are_moons)
-
-        else
-            r_skin2 = (vrcut * sim%verlet_skin_factor * uno2)**2
+        if (.not. rebuild) then
+            r_skin2 = (vskin * uno2)**2
             dt = time - vlist_time
-            dphi = vlist_mean_n_kep * dt
+            if (is_sinodic) then
+                dphi = (vlist_mean_n_kep - y(2)) * dt  ! Rotating frame: (n - omega)
+            else
+                dphi = vlist_mean_n_kep * dt
+            end if
             cos_dphi = cos(dphi)
             sin_dphi = sin(dphi)
+            drift2_max = cero
 
+            !$OMP PARALLEL DO                  &
+            !$OMP DEFAULT(SHARED)              &
+            !$OMP PRIVATE(i, idx, xr, yr, dx, dy) &
+            !$OMP REDUCTION(max:drift2_max)    &
+            !$OMP SCHEDULE(STATIC)
             do i = first_index, last_index
                 idx = get_index(i)
-                ! xyr = vlist_pos(:, i)
-                xyr(1) = vlist_pos(1, i) * cos_dphi - vlist_pos(2, i) * sin_dphi
-                xyr(2) = vlist_pos(1, i) * sin_dphi + vlist_pos(2, i) * cos_dphi
-
-                dx = y(idx)   - xyr(1)
-                dy = y(idx+1) - xyr(2)
-
-                drift2 = dx*dx + dy*dy
-                if (drift2 > r_skin2) then
-                    call build_verlet_list(time, y, first_index, last_index, are_moons)
-                    exit
-                end if
-
-                drift_max = max(drift_max, drift2)
-
+                xr = vlist_pos(1, i) * cos_dphi - vlist_pos(2, i) * sin_dphi
+                yr = vlist_pos(1, i) * sin_dphi + vlist_pos(2, i) * cos_dphi
+                dx = y(idx)   - xr
+                dy = y(idx+1) - yr
+                drift2_max = max(drift2_max, dx*dx + dy*dy)
             end do
+            !$OMP END PARALLEL DO
 
+            rebuild = drift2_max > r_skin2
         end if
 
-        ! Reset collision flags for this step — not strictly needed if only used for output, but good to keep clean.
-        list_collided = .False.
+        if (rebuild) call build_verlet_list(time, y, first_index, last_index, are_moons)
 
         ! ── Pair force loop (PARALLEL over k) ──────
         !$OMP PARALLEL DO            &
