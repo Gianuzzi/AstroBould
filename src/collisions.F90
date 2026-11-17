@@ -122,8 +122,9 @@ contains
                 rn = sqrt(rn)
                 dr_ver = dv_vec / rn
             else
-                call random_number(rand1)
-                rand1 = twopi * rand1
+                ! Coincident and at relative rest: any direction works. Take one from the pair
+                ! indices (golden-ratio sequence) so that runs stay deterministic, also with OpenMP
+                rand1 = twopi * modulo(0.6180339887498949_wp * real(i + 7*j, wp), uno)
                 dr_ver(1) = cos(rand1)
                 dr_ver(2) = sin(rand1)
             end if

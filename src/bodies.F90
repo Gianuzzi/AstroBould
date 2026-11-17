@@ -1344,10 +1344,21 @@ contains
         real(wp), intent(in) :: eps
         real(wp), dimension(4) :: rndm_arr
         real(wp) :: norma
-        integer(kind=4) :: i
+        integer(kind=4) :: i, nseed
+        integer(kind=4), allocatable :: seed(:)
 
         self%megno%epsilon = eps
         if ((self%Nparticles > 0) .and. (eps > cero)) then
+
+            ! Fixed seed: the initial tangent vectors (and so MEGNO) must not change from run to run.
+            ! An unseeded generator is randomly seeded on every run by gfortran, but not by ifx.
+            call random_seed(size=nseed)
+            allocate (seed(nseed))
+            do i = 1, nseed
+                seed(i) = 104729 + 7919*i
+            end do
+            call random_seed(put=seed)
+            deallocate (seed)
 
             do i = 1, self%Nparticles
                 rndm_arr = uno
