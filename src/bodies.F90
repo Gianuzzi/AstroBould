@@ -1366,6 +1366,17 @@ contains
             self%asteroid%tau_boulders = abs(growth_timescale) * self%asteroid%rotational_period
         end if
 
+        ! During a boulder mass growth the CM moves from the primary centre to its final place, so a
+        ! boulder (on the primary surface) can be up to R0 + d_p from the CM, d_p being the final
+        ! offset of the primary. The asteroid radius (and so r_min) must enclose it the whole time,
+        ! or a contact flagged by the dynamics might never be merged
+        if ((self%asteroid%tau_boulders > cero) .and. self%asteroid%primary%is_sphere .and. &
+          & (self%asteroid%Nboulders > 0)) then
+            self%asteroid%radius = max(self%asteroid%radius, &
+                                     & self%asteroid%primary%radius + self%asteroid%primary%dist_to_asteroid + &
+                                     & maxval(self%asteroid%boulders(:)%radius))
+        end if
+
         ! Set J2. If manual_J2 is given and primary is a sphere, set C20 = -J2 in the primary or asteroid
         if ((abs(manual_J2) > cero) .and. self%asteroid%primary%is_sphere) then
             if ((.not. J2_from_primary) .or. (self%asteroid%Nboulders == 0)) then
