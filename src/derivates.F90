@@ -273,7 +273,14 @@ contains
                 case (2)
                     der(2) = der(2) - omega/damp_coef_1*damp_f
                 case (3)
-                    der(2) = der(2) + damp_coef_1*(t - cero + tini)**(damp_coef_2 - uno)*omega*damp_f
+                    ! (A B) t^(B-1) omega. For B < 1 the rate diverges at t = 0 (omega itself does not):
+                    ! before dt_min the mean rate over [0, dt_min], A dt_min^(B-1), is used instead,
+                    ! which gives the exact change of log(omega) at t = dt_min
+                    if ((damp_coef_2 < uno) .and. (t < sim%dt_min)) then
+                        der(2) = der(2) + (damp_coef_1/damp_coef_2)*sim%dt_min**(damp_coef_2 - uno)*omega*damp_f
+                    else
+                        der(2) = der(2) + damp_coef_1*max(t, cero)**(damp_coef_2 - uno)*omega*damp_f
+                    end if
             end select
         end if
 
@@ -479,7 +486,8 @@ contains
         !$OMP         dr_ver, dv_vec,               &
         !$OMP         vel_circ, vel_radial,         &
         !$OMP         acc_radial_drag,              &
-        !$OMP         v2, two_ener, mean_movement)  &
+        !$OMP         v2, two_ener, mean_movement,  &
+        !$OMP         xy_rotated, dQdx, dQdy)       &
         !$OMP SCHEDULE(STATIC)
         particle_loop: do j = first_particle, N_total
             jdx = get_index(j)
@@ -749,6 +757,7 @@ contains
         !$OMP PRIVATE(i, idx, j, jdx, vdx,           &
         !$OMP         coords_M, dr_vec, dr, dr2,     &
         !$OMP         coords_P, Gmi_r3, rcoll,       &
+        !$OMP         inv_dr2,                       &
         !$OMP         coords_V, aux_real, aux_real2)
         do i = 2, last_moon
             idx = get_index(i)
@@ -1056,8 +1065,10 @@ contains
 
             if (use_drag .or. use_stokes) then
                 inv_dr = inv_dr3*dr2
-                dv_vec(1) = coords_P(3) - coords_A(3)
-                dv_vec(2) = coords_P(4) - coords_A(4)
+                ! The drag/Stokes laws use the inertial velocity relative to the asteroid:
+                ! v_in = v_rot + omega z x r (expressed in the rotating basis, as the force itself)
+                dv_vec(1) = coords_P(3) - coords_A(3) - omega*dr_vec(2)
+                dv_vec(2) = coords_P(4) - coords_A(4) + omega*dr_vec(1)
 
                 v2 = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
 
@@ -1114,6 +1125,7 @@ contains
                 end if
 
                 dr = sqrt(dr2)
+                inv_dr2 = uno/dr2  ! Distance to the primary (not to the CM)
                 Gmi_r3 = Gmi/(dr2*dr)
 
                 if (use_manual_J2_from_primary) then
@@ -1150,6 +1162,7 @@ contains
                     end if
 
                     dr = sqrt(dr2)
+                    inv_dr2 = uno/dr2  ! Distance to this boulder (not to the CM)
                     Gmi_r3 = Gmi/(dr2*dr)
 
                     acc_grav = -Gmi_r3*dr_vec

@@ -73,6 +73,7 @@ module bodies
         real(wp), dimension(4) :: elements = cero  ! a, e, M, w
         real(wp), dimension(4) :: coordinates = cero  ! x, y, vx, vy
         real(wp) :: C20 = cero  ! C20 of the asteroid as a whole
+        real(wp) :: J2R2 = cero  ! Effective J2 * R^2 of the integrated asteroid (for geometric elements)
         real(wp) :: e_rot = cero ! Rotational energy [dynamic]
         real(wp) :: e_kin = cero ! Kinetic energy [dynamic]
         type(chaos_st) :: chaos
@@ -1159,7 +1160,8 @@ contains
         radius_ast = self%asteroid%radius
         omega_ast = self%asteroid%omega
         ast_cm = self%asteroid%coordinates
-        J2_ast = -self%asteroid%C20
+        ! Only J2 R^2 enters the geometric elements: use the J2 of the body actually integrated
+        J2_ast = self%asteroid%J2R2/(radius_ast*radius_ast)
 
         ! Moons
         do j = 1, self%Nmoons_active
@@ -1353,6 +1355,47 @@ contains
         end if
 
     end subroutine set_system_extra
+
+    !> Effective J2 R^2 of the asteroid as integrated (azimuthally averaged quadrupole), used by the
+    !> geometric elements. Contributions:
+    !>   - Ellipsoid primary (boulders are not used then): -C20 Re^2
+    !>   - Rotating point masses (primary and boulders) at distance d from the CM: (m/M) d^2 / 2
+    !>   - Boulder in Z at height h: -(m/M) h^2
+    !>   - Manual J2: J2 (R/gamma)^2 from the CM, or (m0/M) J2 R0^2 from the primary
+    !> The mass ratios are constant (mass growth and merges scale all masses), so this is constant too.
+    pure subroutine set_effective_J2(self, manual_J2, gamma_J2, J2_from_primary)
+        implicit none
+        type(asteroid_st), intent(inout) :: self
+        real(wp), intent(in) :: manual_J2, gamma_J2
+        logical, intent(in) :: J2_from_primary
+        real(wp) :: J2R2
+        integer(kind=4) :: i
+
+        J2R2 = cero
+
+        if (.not. self%primary%is_sphere) then
+            J2R2 = -self%primary%C20*self%primary%radius**2
+        else
+            J2R2 = uno2*self%primary%mu_to_asteroid*self%primary%dist_to_asteroid**2
+            do i = 1, self%Nboulders
+                J2R2 = J2R2 + uno2*self%boulders(i)%mu_to_asteroid*self%boulders(i)%dist_to_asteroid**2
+            end do
+            if (self%boulder_z%active) then
+                J2R2 = J2R2 - self%boulder_z%mu_to_asteroid*self%boulder_z%dist_to_asteroid**2
+            end if
+            if (abs(manual_J2) > cero) then
+                if (J2_from_primary .and. (self%Nboulders > 0)) then
+                    J2R2 = J2R2 + self%primary%mu_to_asteroid*manual_J2*self%primary%radius**2
+                else if (gamma_J2 > cero) then
+                    J2R2 = J2R2 + manual_J2*(self%primary%radius/gamma_J2)**2
+                else
+                    J2R2 = J2R2 + manual_J2*self%primary%radius**2
+                end if
+            end if
+        end if
+
+        self%J2R2 = J2R2
+    end subroutine set_effective_J2
 
     ! ---------------------------   ADD MEGNO    ---------------------------
 
@@ -2784,6 +2827,81 @@ contains
 
     end subroutine collide_2_particles
 
+    !> Pairs (i < j) of active particles in contact (distance <= 2 R), found with a cell list.
+    !> Pairs are grouped by j (deterministic order).
+    subroutine get_particle_contact_pairs(self, pairs, npairs)
+        use iso_fortran_env, only: int64
+        implicit none
+        type(system_st), intent(in) :: self
+        integer(kind=4), allocatable, intent(inout) :: pairs(:, :)
+        integer(kind=4), intent(out) :: npairs
+        integer(kind=4), allocatable :: head(:), next(:), tmp(:, :)
+        integer(kind=4) :: np, i, j, dcx, dcy
+        integer(int64) :: Ncx, Ncy, cx, cy, cx2, cy2, max_cells
+        real(wp) :: rc2, L_cell, x_min, x_max, y_min, y_max, drx, dry
+
+        npairs = 0
+        np = self%Nparticles_active
+        if (.not. allocated(pairs)) allocate (pairs(2, 64))
+        if (np < 2) return
+
+        L_cell = dos*self%particles_radius
+        rc2 = L_cell*L_cell
+        if (L_cell <= cero) return
+
+        x_min = minval(self%particles(1:np)%coordinates(1)) - L_cell
+        x_max = maxval(self%particles(1:np)%coordinates(1)) + L_cell
+        y_min = minval(self%particles(1:np)%coordinates(2)) - L_cell
+        y_max = maxval(self%particles(1:np)%coordinates(2)) + L_cell
+
+        ! At most ~4 cells per particle: enlarge the cells if needed (they still find every pair)
+        max_cells = max(1024_int64, 4_int64*np)
+        L_cell = max(L_cell, sqrt((x_max - x_min)*(y_max - y_min)/real(max_cells, wp)))
+        Ncx = max(1_int64, ceiling((x_max - x_min)/L_cell, int64))
+        Ncy = max(1_int64, ceiling((y_max - y_min)/L_cell, int64))
+
+        allocate (head(0:Ncx*Ncy - 1), next(np))
+        head = -1
+        do i = np, 1, -1  ! Reversed so that each cell list is in increasing order
+            cx = min(max(int((self%particles(i)%coordinates(1) - x_min)/L_cell, int64), 0_int64), Ncx - 1_int64)
+            cy = min(max(int((self%particles(i)%coordinates(2) - y_min)/L_cell, int64), 0_int64), Ncy - 1_int64)
+            next(i) = head(cx + Ncx*cy)
+            head(cx + Ncx*cy) = i
+        end do
+
+        do j = 1, np
+            cx = min(max(int((self%particles(j)%coordinates(1) - x_min)/L_cell, int64), 0_int64), Ncx - 1_int64)
+            cy = min(max(int((self%particles(j)%coordinates(2) - y_min)/L_cell, int64), 0_int64), Ncy - 1_int64)
+            do dcy = -1, 1
+                do dcx = -1, 1
+                    cx2 = cx + dcx
+                    cy2 = cy + dcy
+                    if (cx2 < 0_int64 .or. cx2 >= Ncx .or. cy2 < 0_int64 .or. cy2 >= Ncy) cycle
+                    i = head(cx2 + Ncx*cy2)
+                    do while (i /= -1)
+                        if (i < j) then
+                            drx = self%particles(j)%coordinates(1) - self%particles(i)%coordinates(1)
+                            dry = self%particles(j)%coordinates(2) - self%particles(i)%coordinates(2)
+                            if (drx*drx + dry*dry <= rc2) then
+                                if (npairs == size(pairs, 2)) then
+                                    allocate (tmp(2, 2*size(pairs, 2)))
+                                    tmp(:, 1:npairs) = pairs(:, 1:npairs)
+                                    call move_alloc(tmp, pairs)
+                                end if
+                                npairs = npairs + 1
+                                pairs(1, npairs) = i
+                                pairs(2, npairs) = j
+                            end if
+                        end if
+                        i = next(i)
+                    end do
+                end do
+            end do
+        end do
+
+        deallocate (head, next)
+    end subroutine get_particle_contact_pairs
+
     ! Resolve collisions
     subroutine resolve_collisions(self, r_min, unit_file)
         implicit none
@@ -2791,7 +2909,7 @@ contains
         real(wp), intent(in) :: r_min
         integer(kind=4), intent(in), optional :: unit_file
         integer(kind=4) :: i, j, k
-        integer(kind=4) :: m_act0, p_act0
+        integer(kind=4) :: m_act0
         integer(kind=4) :: m_act, p_act
         integer(kind=4) :: moon_id
         integer(kind=4) :: outcome
@@ -2801,6 +2919,8 @@ contains
         real(wp) :: xy_rotated(2), dx, dy  ! For ellipsoid
         logical :: again, do_write, was_any_moon_something
         integer(kind=4), parameter :: MAX_P2P_REPETITIONS = 4 ! To avoid infinite loops
+        integer(kind=4), allocatable :: cpairs(:, :)
+        integer(kind=4) :: ncpairs, ip
 
         ! Init
         do_write = present(unit_file)
@@ -2909,20 +3029,23 @@ contains
             do while (k < MAX_P2P_REPETITIONS .and. again)
 
                 again = .False.
-                p_act0 = self%Nparticles_active
-                do j = p_act0, 2, -1  ! Backwards loop
-                    inner_loop_part: do i = j - 1, 1, -1  ! Backwards loop
-                        call collide_2_particles(self, i, j, outcome)
-                        if (outcome == 2) then
-                            again = .True.
-                            if (do_write) write (unit_file, s1i5x5) "Collision between particle ", j, &
-                                            & "(", self%particles(j)%id, ") and particle ", &
-                                            & i, "(", self%particles(i)%id, ")."
-                        end if
-                    end do inner_loop_part
+                ! Only the pairs in contact (cell list, O(N)); rebuilt each repetition,
+                ! as the position corrections may create new contacts
+                call get_particle_contact_pairs(self, cpairs, ncpairs)
+                do ip = 1, ncpairs
+                    i = cpairs(1, ip)
+                    j = cpairs(2, ip)
+                    call collide_2_particles(self, i, j, outcome)
+                    if (outcome == 2) then
+                        again = .True.
+                        if (do_write) write (unit_file, s1i5x5) "Collision between particle ", j, &
+                                        & "(", self%particles(j)%id, ") and particle ", &
+                                        & i, "(", self%particles(i)%id, ")."
+                    end if
                 end do
                 k = k + 1
             end do
+            if (allocated(cpairs)) deallocate (cpairs)
         end if
 
         ! Particles -> Moons

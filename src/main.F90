@@ -144,7 +144,7 @@ program main
         input%kappa_col_part = cero  ! 0: No bounce, 1: Full bounce.  ! SOFT SPHERE
         input%gamma_col_part_n = cero  ! 0: No damping, 1: Full damping  ! SOFT SPHERE
         input%beta_col_part = cero  ! beta = gamma_t / gamma_n ! Only active if SOFT-SPHERE collisions and gamma_t > 0
-        input%use_part_hard_sphere_col = .False. ! If true, they are used at every output
+        input%use_part_hard_sphere_col = .False. ! If true, approaching contacts are resolved at every integrator step
         input%eta_col_part = uno  ! 0: Elastic, 1: Plastic  ! HARD SPHERE
         input%f_col_part = uno  ! Bounded: Etot < -f |Epot|  ! HARD SPHERE
         !! --- Both --- (SOFT-SPHERE)
@@ -411,7 +411,7 @@ program main
             stop 1
         end if
         if (sim%use_screen) write (*, *) "Reading particles from file: ", trim(sim%particlesfile)
-        !!!! Formato: [mu, a, e, M, w, MMR]
+        !!!! Formato: [a, e, M, w, MMR]  (MMR optional)
         call read_columns_file(sim%particlesfile, aux_2D)
         sim%Nparticles = size(aux_2D, 1)
         if (sim%Nparticles == 0) then
@@ -425,10 +425,15 @@ program main
             write (*, s1i1) "  Read ", sim%Nparticles, " rows."
             write (*, s1i1) "  Read ", aux_int, " columns."
         end if
+        if (aux_int > 5) then
+            write (*, *) ACHAR(10)
+            write (*, s1i1) "ERROR: Particles file must have at most 5 columns [a, e, M, w, MMR]. Found:", aux_int
+            stop 1
+        end if
         call allocate_params_particles(sim%Nparticles)
         ! Fill the arrays
         particles_in = cero
-        do i = 1, min(aux_int, 6)
+        do i = 1, aux_int
             particles_in(:sim%Nparticles, i) = aux_2D(:, i)
         end do
         deallocate (aux_2D)
@@ -568,6 +573,9 @@ program main
                             & sim%radius_particles*unit_dist, &
                             & sim%tau_boulders*unit_time, &
                             & sim%manual_J2, sim%use_J2_from_primary)  ! Extra parameters
+
+    ! Effective J2 of the integrated asteroid (geometric elements)
+    call set_effective_J2(system%asteroid, sim%manual_J2, sim%gamma_J2, sim%use_J2_from_primary)
 
     ! <<<< Fill auxiliar arrays >>>>
     allocate (boulders_data(0:sim%Nboulders, 4))   ! To use in dydt
@@ -796,8 +804,9 @@ program main
                 write (*, *) ACHAR(5)
             end if
         else if (sim%use_poly_omega_damp) then
-            call init_damping(sim%omega_exp_damp_poly_A, &
-                            & sim%omega_exp_damp_poly_A, &
+            ! omega = omega0 exp(A t^B)  =>  domega/dt = (A B) t^(B-1) omega
+            call init_damping(sim%omega_exp_damp_poly_A*sim%omega_exp_damp_poly_B, &
+                            & sim%omega_exp_damp_poly_B, &
                             & sim%omega_damp_active_time*unit_time, &
                             & 3)
 
@@ -955,6 +964,11 @@ program main
 
     ! If moon contacts are integrated, the hard-sphere check must only resolve merges
     system%soft_col_moon = sim%use_moon_soft_sphere_col
+
+    ! Hard-sphere particle collisions: detected at every integrator step (not only at checkpoints).
+    ! Only if they are actually resolved (eta < 1), and not when contacts are integrated (soft-sphere)
+    use_hs_step_check = sim%use_part_hard_sphere_col .and. (sim%eta_col_part < uno) .and. &
+                      & (.not. sim%use_part_soft_sphere_col)
 
     ! Messages
     if (sim%use_screen) then
@@ -1946,7 +1960,7 @@ program main
                 if (timestep > cero) then
                     is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                 else  ! Weird case of timestep 0
-                    is_premature_exit = next_time - time < myepsilon
+                    is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                 end if
 
             end if
@@ -2037,7 +2051,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < myepsilon
+                        is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                     end if
 
                 end if
@@ -2189,7 +2203,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < myepsilon
+                        is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                     end if
 
                 end if
@@ -2314,7 +2328,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                         else
-                            is_premature_exit = checkpoint_times(j) - time < myepsilon
+                            is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                         end if
                     end if
 
@@ -2390,7 +2404,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                         else  ! Weird case of timestep 0
-                            is_premature_exit = next_time - time < myepsilon
+                            is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                         end if
 
                     end if
@@ -2563,7 +2577,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                     end if
                 end if
 
@@ -2678,7 +2692,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                     end if
                 end if
 
@@ -2752,7 +2766,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < myepsilon
+                        is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                     end if
 
                 end if
@@ -2875,7 +2889,7 @@ program main
                             is_premature_exit = ((checkpoint_times(j) - (time + timestep)) / timestep > 1e-3_wp) &
                                                 & .or. (timestep > surf_min_timestep) 
                         else
-                            is_premature_exit = checkpoint_times(j) - time < myepsilon
+                            is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                         end if
 
                         !! Do we leave?
@@ -3044,7 +3058,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                     end if
                 end if
 
