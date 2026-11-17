@@ -216,7 +216,8 @@ contains
                     !! Sphere + Steiner
                     inertia = inertia + Gmass_arr(i) * (aux_real + coords_B(i,1)**2 + coords_B(i,2)**2)
                 end do
-                inertia = inertia / G  ! Convert back to mass units for torque calculation
+                ! Gmass_arr still holds masses here (it is multiplied by G further below),
+                ! so the inertia is already in mass units: nothing to convert
                 
 
             else
