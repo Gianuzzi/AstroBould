@@ -279,10 +279,14 @@ contains
         Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
         Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
 
-        if (Ncx > sim%grid_col_max_cells / Ncy) then
-            call collisions_brute(y, der, first_index, last_index, are_moons)
-            return
-        end if
+        ! Too many cells: enlarge them instead of falling back to an O(N^2) search.
+        ! Cells wider than the cut-off still find every pair (only with more candidates per cell).
+        do while (Ncx > sim%grid_col_max_cells / Ncy)
+            L_cell = max(1.1_wp * L_cell, sqrt((x_max - x_min) * (y_max - y_min) / real(sim%grid_col_max_cells, wp)))
+            Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
+            Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
+        end do
+
 
         Nc = Ncx * Ncy
         allocate(head(0:Nc-1), next(first_index:last_index))
@@ -419,8 +423,16 @@ contains
         Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
         Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
 
+        ! Too many cells: enlarge them instead of falling back to an O(N^2) search.
+        ! Cells wider than the cut-off still find every pair (only with more candidates per cell).
+        do while (Ncx > sim%grid_col_max_cells / Ncy)
+            L_cell = max(1.1_wp * L_cell, sqrt((x_max - x_min) * (y_max - y_min) / real(sim%grid_col_max_cells, wp)))
+            Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
+            Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
+        end do
+
         if (Ncx > sim%grid_col_max_cells / Ncy) then
-            ! Too many cells: brute-force search
+            ! Not reached (cells are enlarged above); kept as a safe fallback
             do i = first_index, last_index - 1
                 idx = get_index(i)
                 do j = i + 1, last_index

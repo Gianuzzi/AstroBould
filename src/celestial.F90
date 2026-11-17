@@ -143,23 +143,26 @@ contains
         implicit none
         real(wp), intent(in) :: dm, e
         real(wp), intent(out) :: u, f
-        real(wp) :: u0, dif, seno, cose
+        real(wp) :: du, seno, cose, tol
         integer(kind=4), parameter :: MAX_ITER = 100
         integer(kind=4) :: i
 
-        u0 = dm
-        dif = uno
-        i = 0
-        do while (dif > myepsilon)
-            u = dm + e*sin(u0)
-            dif = abs(u - u0)
-            u0 = u
-            i = i + 1
-            if (i > MAX_ITER) then
-                print *, 'aver: too many iterations. Error:', dif
-                exit
-            end if
+        ! Kepler equation u - e sin(u) = dm, by Newton's method.
+        ! (The fixed-point iteration u = dm + e sin(u) converges as e^n: too slowly for e -> 1.)
+        ! The tolerance is relative to |u|: an absolute epsilon is below the spacing of angles ~2 pi.
+        tol = 16*myepsilon*max(uno, abs(dm))
+        if (e < 0.8e0_wp) then
+            u = dm + e*sin(dm)
+        else
+            u = dm + sign(e, sin(dm))  ! Safe start for high eccentricities
+        end if
+        do i = 1, MAX_ITER
+            du = (u - e*sin(u) - dm)/(uno - e*cos(u))
+            u = u - du
+            if (abs(du) <= tol) exit
         end do
+        if (i > MAX_ITER) print *, 'aver: too many iterations. Error:', du
+
         seno = sqrt(uno + e)*sin(uno2*u)
         cose = sqrt(uno - e)*cos(uno2*u)
         f = dos*atan2(seno, cose)
