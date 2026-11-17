@@ -3,7 +3,8 @@ module bodies
     use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, myepsilon2, sqepsilon, tini, infinito, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, degree, megno_factor
     use celestial, only: get_a_corot, get_acc_and_pot_single, get_acc_and_pot_single_with_J2, elem, coord, coord2geom
-    use auxiliary, only: quickargsort, quickargsort_int, rotate2D
+    use auxiliary, only: quickargsort, quickargsort_int, rotate2D, cell_index_t, cell_index_build, cell_index_advance
+    use iso_fortran_env, only: int64
 
     implicit none
     logical, parameter :: use_binary_output = .False.  ! Whether to use binary output or not (for debugging mostly)
@@ -2834,79 +2835,61 @@ contains
         end if
     end function separation_along
 
-    !> Pairs (i < j) of active particles in contact (distance <= 2 R), found with a cell list.
-    !> Pairs are grouped by j (deterministic order).
+    !> Pairs (i < j) of active particles in contact (distance <= 2 R), found with sorted cells of
+    !> the contact size (O(N), no dense grid). Deterministic order.
     subroutine get_particle_contact_pairs(self, pairs, npairs)
-        use iso_fortran_env, only: int64
         implicit none
         type(system_st), intent(in) :: self
         integer(kind=4), allocatable, intent(inout) :: pairs(:, :)
         integer(kind=4), intent(out) :: npairs
-        integer(kind=4), allocatable :: head(:), next(:), tmp(:, :)
-        integer(kind=4) :: np, i, j, dcx, dcy
-        integer(int64) :: Ncx, Ncy, cx, cy, cx2, cy2, max_cells
-        real(wp) :: rc2, L_cell, x_min, x_max, y_min, y_max, drx, dry
+        type(cell_index_t), save :: cells
+        integer(kind=4), allocatable :: tmp(:, :)
+        real(wp), allocatable :: pos(:, :)
+        integer(kind=4) :: np, i, j, q, p, dcy, ptr(-1:1)
+        logical :: ptr_ok(-1:1)
+        integer(int64) :: klo
+        real(wp) :: rc, drx, dry
 
         npairs = 0
         np = self%Nparticles_active
         if (.not. allocated(pairs)) allocate (pairs(2, 64))
         if (np < 2) return
 
-        L_cell = dos*self%particles_radius
-        rc2 = L_cell*L_cell
-        if (L_cell <= cero) return
+        rc = dos*self%particles_radius
+        if (rc <= cero) return
 
-        x_min = minval(self%particles(1:np)%coordinates(1)) - L_cell
-        x_max = maxval(self%particles(1:np)%coordinates(1)) + L_cell
-        y_min = minval(self%particles(1:np)%coordinates(2)) - L_cell
-        y_max = maxval(self%particles(1:np)%coordinates(2)) + L_cell
-
-        ! At most ~4 cells per particle: enlarge the cells if needed (they still find every pair)
-        max_cells = max(1024_int64, 4_int64*np)
-        L_cell = max(L_cell, sqrt((x_max - x_min)*(y_max - y_min)/real(max_cells, wp)))
-        Ncx = max(1_int64, ceiling((x_max - x_min)/L_cell, int64))
-        Ncy = max(1_int64, ceiling((y_max - y_min)/L_cell, int64))
-
-        allocate (head(0:Ncx*Ncy - 1), next(np))
-        head = -1
-        do i = np, 1, -1  ! Reversed so that each cell list is in increasing order
-            cx = min(max(int((self%particles(i)%coordinates(1) - x_min)/L_cell, int64), 0_int64), Ncx - 1_int64)
-            cy = min(max(int((self%particles(i)%coordinates(2) - y_min)/L_cell, int64), 0_int64), Ncy - 1_int64)
-            next(i) = head(cx + Ncx*cy)
-            head(cx + Ncx*cy) = i
+        allocate (pos(2, np))
+        do i = 1, np
+            pos(:, i) = self%particles(i)%coordinates(1:2)
         end do
+        ! Cells slightly larger than the contact: the test below is distance <= 2R (inclusive)
+        call cell_index_build(cells, np, pos, rc*(uno + 1.e-12_wp))
+        deallocate (pos)
 
-        do j = 1, np
-            cx = min(max(int((self%particles(j)%coordinates(1) - x_min)/L_cell, int64), 0_int64), Ncx - 1_int64)
-            cy = min(max(int((self%particles(j)%coordinates(2) - y_min)/L_cell, int64), 0_int64), Ncy - 1_int64)
+        ptr_ok = .False.
+        do q = 1, np
+            i = cells%ord(q)
             do dcy = -1, 1
-                do dcx = -1, 1
-                    cx2 = cx + dcx
-                    cy2 = cy + dcy
-                    if (cx2 < 0_int64 .or. cx2 >= Ncx .or. cy2 < 0_int64 .or. cy2 >= Ncy) cycle
-                    i = head(cx2 + Ncx*cy2)
-                    do while (i /= -1)
-                        if (i < j) then
-                            drx = self%particles(j)%coordinates(1) - self%particles(i)%coordinates(1)
-                            dry = self%particles(j)%coordinates(2) - self%particles(i)%coordinates(2)
-                            if (drx*drx + dry*dry <= rc2) then
-                                if (npairs == size(pairs, 2)) then
-                                    allocate (tmp(2, 2*size(pairs, 2)))
-                                    tmp(:, 1:npairs) = pairs(:, 1:npairs)
-                                    call move_alloc(tmp, pairs)
-                                end if
-                                npairs = npairs + 1
-                                pairs(1, npairs) = i
-                                pairs(2, npairs) = j
-                            end if
-                        end if
-                        i = next(i)
-                    end do
+                klo = cells%key(q) + int(dcy, int64)*cells%Wx - 1_int64
+                call cell_index_advance(cells, klo, ptr(dcy), ptr_ok(dcy))
+                do p = ptr(dcy), np
+                    if (cells%key(p) > klo + 2_int64) exit
+                    j = cells%ord(p)
+                    if (j <= i) cycle  ! Each pair once, as (i, j) with i < j
+                    drx = cells%px(p) - cells%px(q)
+                    dry = cells%py(p) - cells%py(q)
+                    if (drx*drx + dry*dry > rc*rc) cycle
+                    if (npairs == size(pairs, 2)) then
+                        allocate (tmp(2, 2*size(pairs, 2)))
+                        tmp(:, 1:npairs) = pairs(:, 1:npairs)
+                        call move_alloc(tmp, pairs)
+                    end if
+                    npairs = npairs + 1
+                    pairs(1, npairs) = i
+                    pairs(2, npairs) = j
                 end do
             end do
         end do
-
-        deallocate (head, next)
     end subroutine get_particle_contact_pairs
 
     ! Resolve collisions

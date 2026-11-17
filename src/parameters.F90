@@ -174,8 +174,9 @@ module parameters
         logical :: use_verlet_with_moons = .False.  ! Same as verlet_col but including only moons in the Verlet list
         !! Grid collisions
         integer(kind=4) :: grid_col_min_bodies = 100  ! Do not even consider grid if number of bodies is below this threshold
-        integer(kind=4) :: grid_col_max_cells = 10000  ! Max amount of cells before falling back to brute-force
-        real(wp) :: grid_col_min_cell_size = uno  ! Minimum cell size to avoid too much overhead
+        ! [UNUSED] The grid only stores occupied cells, of the contact size: kept so that old configs still read
+        integer(kind=4) :: grid_col_max_cells = 10000
+        real(wp) :: grid_col_min_cell_size = uno
         !! Substeps
         logical :: use_substeps_col = .False.  ! Whether to use substeps for collision detection.
         real(wp) :: dt_substeps = cero  ! If >0, subdt=min(subdt, dt); -1<subdt<0, subdt=|subdt|*dt; subdt<-1, subdt=dt/|subdt|
@@ -277,6 +278,7 @@ module parameters
     ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
     real(wp), dimension(3) :: asteroid_data !! |axis_a, axis_b, inertia|
     logical :: use_hs_step_check = .False. !! Check hard-sphere particle collisions at every integrator step
+    type(cell_index_t), save :: hs_cells   !! Sorted cells of the hard-sphere check
     real(wp), dimension(:, :), allocatable :: boulders_coords !! (Nb, 4) |x,y,vx,vy|
     real(wp), dimension(:, :), allocatable :: boulders_data !! (Nb, 5) |mass,radius,theta_Ast0,dist_Ast,theta_from_primary|
 
@@ -2192,17 +2194,6 @@ contains
                 call fatal_error(err_msg)
             end if
 
-            if (derived%grid_col_max_cells <= 0) then
-                write (err_msg, '(A,G0)') "Collision grid max cells must be positive. Given: ", derived%grid_col_max_cells
-                call fatal_error(err_msg)
-            end if
-
-            if (derived%grid_col_min_cell_size <= cero) then
-                write (err_msg, '(A,G0)') "Collision grid min cell size must be positive. Given: ", &
-                    & derived%grid_col_min_cell_size
-                call fatal_error(err_msg)
-            end if
-
             derived%grid_col_min_bodies = max(derived%grid_col_min_bodies, 100)
 
             if (derived%coulomb_mu_col < cero .or. derived%coulomb_mu_col > uno) then
@@ -2453,10 +2444,12 @@ contains
         implicit none
         real(wp), dimension(:), intent(in) :: y
         logical :: found
-        integer(kind=4) :: first, last, i, j, idx, jdx, dcx, dcy
-        real(wp) :: L_cell, x_min, x_max, y_min, y_max, rc2, drx, dry
-        integer(int64) :: Ncx, Ncy, cx, cy, cx2, cy2
-        integer(kind=4), allocatable :: head(:), next(:)
+        integer(kind=4) :: first, last, i, j, idx, jdx, dcy, n, q, p, nth, tid, qa, qb
+        integer(kind=4) :: ptr(-1:1)
+        logical :: ptr_ok(-1:1)
+        integer(int64) :: klo
+        real(wp) :: L_cell, rc2, drx, dry
+        real(wp), allocatable :: pos(:, :)
 
         found = .False.
         first = 2 + sim%Nmoon_active
@@ -2484,71 +2477,47 @@ contains
             return
         end if
 
-        x_min = huge(uno)
-        x_max = -huge(uno)
-        y_min = huge(uno)
-        y_max = -huge(uno)
+        ! Sorted cells of the contact size (no dense grid: the cells are never enlarged)
+        n = last - first + 1
+        allocate (pos(2, n))
         do i = first, last
             idx = get_index(i)
-            x_min = min(x_min, y(idx))
-            x_max = max(x_max, y(idx))
-            y_min = min(y_min, y(idx + 1))
-            y_max = max(y_max, y(idx + 1))
+            pos(1, i - first + 1) = y(idx)
+            pos(2, i - first + 1) = y(idx + 1)
         end do
-        x_min = x_min - L_cell
-        x_max = x_max + L_cell
-        y_min = y_min - L_cell
-        y_max = y_max + L_cell
+        call cell_index_build(hs_cells, n, pos, L_cell)
+        deallocate (pos)
 
-        Ncx = max(1_int64, ceiling((x_max - x_min)/L_cell, int64))
-        Ncy = max(1_int64, ceiling((y_max - y_min)/L_cell, int64))
-        ! Too many cells: enlarge them (larger cells still find every pair)
-        do while (Ncx > sim%grid_col_max_cells/Ncy)
-            L_cell = max(1.1_wp*L_cell, sqrt((x_max - x_min)*(y_max - y_min)/real(sim%grid_col_max_cells, wp)))
-            Ncx = max(1_int64, ceiling((x_max - x_min)/L_cell, int64))
-            Ncy = max(1_int64, ceiling((y_max - y_min)/L_cell, int64))
-        end do
-
-        allocate (head(0:Ncx*Ncy - 1), next(first:last))
-        head = -1
-        do i = first, last
+        nth = 1
+        !$ nth = omp_get_max_threads()
+        nth = max(1, min(nth, n))
+        !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) &
+        !$OMP PRIVATE(tid, qa, qb, q, i, idx, p, j, jdx, dcy, klo, ptr, ptr_ok, drx, dry) &
+        !$OMP REDUCTION(.or.:found)
+        tid = 0
+        !$ tid = omp_get_thread_num()
+        qa = int((int(n, int64)*tid)/nth) + 1
+        qb = int((int(n, int64)*(tid + 1))/nth)
+        ptr_ok = .False.
+        do q = qa, qb
+            i = hs_cells%ord(q) + first - 1
             idx = get_index(i)
-            cx = min(max(int((y(idx) - x_min)/L_cell, int64), 0_int64), Ncx - 1_int64)
-            cy = min(max(int((y(idx + 1) - y_min)/L_cell, int64), 0_int64), Ncy - 1_int64)
-            next(i) = head(cx + Ncx*cy)
-            head(cx + Ncx*cy) = i
-        end do
-
-        !$OMP PARALLEL DO DEFAULT(SHARED) &
-        !$OMP PRIVATE(i, j, idx, jdx, cx, cy, cx2, cy2, dcx, dcy, drx, dry) &
-        !$OMP REDUCTION(.or.:found) SCHEDULE(DYNAMIC, 64)
-        do i = first, last
-            idx = get_index(i)
-            cx = min(max(int((y(idx) - x_min)/L_cell, int64), 0_int64), Ncx - 1_int64)
-            cy = min(max(int((y(idx + 1) - y_min)/L_cell, int64), 0_int64), Ncy - 1_int64)
             do dcy = -1, 1
-                do dcx = -1, 1
-                    cx2 = cx + dcx
-                    cy2 = cy + dcy
-                    if (cx2 < 0_int64 .or. cx2 >= Ncx .or. cy2 < 0_int64 .or. cy2 >= Ncy) cycle
-                    j = head(cx2 + Ncx*cy2)
-                    do while (j /= -1)
-                        if (j > i) then
-                            jdx = get_index(j)
-                            drx = y(jdx) - y(idx)
-                            dry = y(jdx + 1) - y(idx + 1)
-                            if (drx*drx + dry*dry < rc2) then
-                                if (drx*(y(jdx + 2) - y(idx + 2)) + dry*(y(jdx + 3) - y(idx + 3)) < cero) found = .True.
-                            end if
-                        end if
-                        j = next(j)
-                    end do
+                klo = hs_cells%key(q) + int(dcy, int64)*hs_cells%Wx - 1_int64
+                call cell_index_advance(hs_cells, klo, ptr(dcy), ptr_ok(dcy))
+                do p = ptr(dcy), n
+                    if (hs_cells%key(p) > klo + 2_int64) exit
+                    j = hs_cells%ord(p) + first - 1
+                    if (j <= i) cycle  ! Each pair once
+                    drx = hs_cells%px(p) - hs_cells%px(q)
+                    dry = hs_cells%py(p) - hs_cells%py(q)
+                    if (drx*drx + dry*dry >= rc2) cycle
+                    jdx = get_index(j)
+                    if (drx*(y(jdx + 2) - y(idx + 2)) + dry*(y(jdx + 3) - y(idx + 3)) < cero) found = .True.
                 end do
             end do
         end do
-        !$OMP END PARALLEL DO
-
-        deallocate (head, next)
+        !$OMP END PARALLEL
     end function any_approaching_overlap
 
     ! Deallocate initial arrays

@@ -3,7 +3,7 @@ module collisions
     use iso_fortran_env, only: int64
     use omp_lib
     use constants, only: wp, G, cero, uno, uno2, dos, pi, twopi, tini
-    use auxiliary, only: rotate2D
+    use auxiliary, only: rotate2D, cell_index_t, cell_index_build, cell_index_advance
     use parameters, only: sim, m_arr, R_arr
 
     private
@@ -24,6 +24,8 @@ module collisions
     real(wp), save :: vlist_time
     logical, save :: vlist_built = .False.
     logical, save, allocatable :: list_collided(:)
+    ! Sorted cells of the grid search and of the Verlet list builds
+    type(cell_index_t), save :: gcells
     ! Verlet pair forces (filled in parallel, summed serially)
     real(wp), save, allocatable :: vforce(:, :), vmass(:, :)
     logical, save, allocatable :: vtouch(:)
@@ -304,9 +306,10 @@ contains
     end subroutine collisions_brute
 
 
-    !> Cell-list O(N).
-    !> The linked lists (head/next) are built serially; the force loop is parallel over i,
-    !> each i summing all its neighbours (deterministic, no atomics).
+    !> Cell search, O(N): bodies sorted by cells of the contact size (cell_index_t). Only occupied
+    !> cells exist, so the cells are never enlarged, whatever the extent of the system.
+    !> The force loop is parallel over contiguous blocks of sorted bodies (running row pointers);
+    !> each body sums all its neighbours in a fixed order: deterministic, no atomics.
     subroutine collisions_grid(y, der, first_index, last_index, are_moons)
         implicit none
         real(wp), dimension(:), intent(in) :: y
@@ -314,103 +317,64 @@ contains
         integer(kind=4),        intent(in) :: first_index, last_index
         logical,                intent(in) :: are_moons
 
-        real(wp) :: L_cell, x_min, x_max, y_min, y_max
-        integer(int64) :: Ncx, Ncy, Nc
-        integer(int64) :: cx, cy, ci, cx2, cy2, ci2
-        integer(kind=4) :: dcx, dcy
-        integer(kind=4) :: i, j, idx
-        integer(kind=4), allocatable :: head(:), next(:)
+        real(wp) :: L_cell, dx, dy, rc
+        integer(kind=4) :: i, j, idx, n, q, p, dcy, nth, tid, qa, qb
+        integer(kind=4) :: ptr(-1:1)
+        logical :: ptr_ok(-1:1)
+        integer(int64) :: klo
+        real(wp), allocatable :: pos(:, :)
 
+        n = last_index - first_index + 1
+        if (n < 2) return
+
+        ! Contact distance: one cell row/column around each body holds all its partners
         if (are_moons) then
             L_cell = dos * maxval(R_arr(first_index:last_index))
         else
             L_cell = dos * R_arr(first_index)
         end if
-        L_cell = max(L_cell, sim%grid_col_min_cell_size)
+        if (L_cell <= cero) return  ! Point bodies never touch
 
-        x_min = y(get_index(first_index))
-        x_max = x_min
-        y_min = y(get_index(first_index)+1)
-        y_max = y_min
-
-        !$OMP PARALLEL DO &
-        !$OMP DEFAULT(SHARED) &
-        !$OMP PRIVATE(i, idx) &
-        !$OMP REDUCTION(min:x_min,y_min) &
-        !$OMP REDUCTION(max:x_max,y_max)
+        allocate (pos(2, n))
+        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i, idx) SCHEDULE(STATIC)
         do i = first_index, last_index
             idx = get_index(i)
-
-            x_min = min(x_min, y(idx))
-            x_max = max(x_max, y(idx))
-            y_min = min(y_min, y(idx+1))
-            y_max = max(y_max, y(idx+1))
+            pos(1, i - first_index + 1) = y(idx)
+            pos(2, i - first_index + 1) = y(idx+1)
         end do
         !$OMP END PARALLEL DO
+        call cell_index_build(gcells, n, pos, L_cell)
+        deallocate (pos)
 
-        x_min = x_min - L_cell
-        x_max = x_max + L_cell
-        y_min = y_min - L_cell
-        y_max = y_max + L_cell
-
-        Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
-        Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
-
-        ! Too many cells: enlarge them instead of falling back to an O(N^2) search.
-        ! Cells wider than the cut-off still find every pair (only with more candidates per cell).
-        do while (Ncx > sim%grid_col_max_cells / Ncy)
-            L_cell = max(1.1_wp * L_cell, sqrt((x_max - x_min) * (y_max - y_min) / real(sim%grid_col_max_cells, wp)))
-            Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
-            Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
-        end do
-
-
-        Nc = Ncx * Ncy
-        allocate(head(0:Nc-1), next(first_index:last_index))
-        head = -1
-
-        ! Create linked lists serially — if this becomes a bottleneck, use colouring to parallelise.
-        do i = first_index, last_index
-            idx = get_index(i)
-            cx = min(int((y(idx)   - x_min) / L_cell, int64), Ncx - 1_int64)
-            cy = min(int((y(idx+1) - y_min) / L_cell, int64), Ncy - 1_int64)
-            cx = max(cx, 0_int64)
-            cy = max(cy, 0_int64)
-            ci = cx + Ncx * cy
-            next(i) = head(ci)
-            head(ci) = i
-        end do
-
-        !$OMP PARALLEL DO                                         &
-        !$OMP DEFAULT(SHARED)                                     &
-        !$OMP PRIVATE(i, idx, cx, cy, cx2, cy2, ci2, j, dcx, dcy) &
-        !$OMP SCHEDULE(DYNAMIC, 32)
-        do i = first_index, last_index
-            idx = get_index(i)
-            cx = min(max(int((y(idx)   - x_min) / L_cell, int64), 0_int64), Ncx - 1_int64)
-            cy = min(max(int((y(idx+1) - y_min) / L_cell, int64), 0_int64), Ncy - 1_int64)
-
+        nth = 1
+        !$ nth = omp_get_max_threads()
+        nth = max(1, min(nth, n))
+        !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) &
+        !$OMP PRIVATE(tid, qa, qb, q, i, p, j, dcy, klo, ptr, ptr_ok, dx, dy, rc)
+        tid = 0
+        !$ tid = omp_get_thread_num()
+        qa = int((int(n, int64)*tid)/nth) + 1
+        qb = int((int(n, int64)*(tid + 1))/nth)
+        ptr_ok = .False.
+        do q = qa, qb
+            i = gcells%ord(q) + first_index - 1
             do dcy = -1, 1
-                do dcx = -1, 1
-                    cx2 = cx + dcx
-                    cy2 = cy + dcy
-                    if (cx2 < 0_int64 .or. cx2 >= Ncx) cycle
-                    if (cy2 < 0_int64 .or. cy2 >= Ncy) cycle
-                    ci2 = cx2 + Ncx * cy2
-                    j = head(ci2)
-                    do while (j /= -1)
-                        ! Each i sums all its neighbours (deterministic, no atomics)
-                        if (j /= i) then
-                            call soft_sphere_force_on_i(y, der, i, j, are_moons)
-                        end if
-                        j = next(j)
-                    end do
+                klo = gcells%key(q) + int(dcy, int64)*gcells%Wx - 1_int64
+                call cell_index_advance(gcells, klo, ptr(dcy), ptr_ok(dcy))
+                do p = ptr(dcy), n
+                    if (gcells%key(p) > klo + 2_int64) exit
+                    if (p == q) cycle
+                    j = gcells%ord(p) + first_index - 1
+                    ! Cheap rejection on the sorted copies (pair_force repeats the exact test)
+                    dx = gcells%px(p) - gcells%px(q)
+                    dy = gcells%py(p) - gcells%py(q)
+                    rc = R_arr(i) + R_arr(j)
+                    if (dx*dx + dy*dy >= rc*rc) cycle
+                    call soft_sphere_force_on_i(y, der, i, j, are_moons)
                 end do
             end do
         end do
-        !$OMP END PARALLEL DO
-
-        deallocate(head, next)
+        !$OMP END PARALLEL
 
     end subroutine collisions_grid
 
@@ -445,14 +409,13 @@ contains
         integer(kind=4),        intent(in) :: first_index, last_index
         logical,                intent(in) :: are_moons
 
-        integer(kind=4) :: i, j, idx, jdx, npairs, N_particles
-        real(wp) :: contact, r_cut, r_cut2, dr_vec(2), dr2, L_cell
+        integer(kind=4) :: i, j, idx, npairs, N_particles, q, p, dcy
+        real(wp) :: contact, r_cut, r_cut2, dr_vec(2), dr2
         integer(kind=4), allocatable :: tmp_list(:, :)
-
-        real(wp) :: x_min, x_max, y_min, y_max
-        integer(int64) :: Ncx, Ncy, Nc, cx, cy, ci, cx2, cy2, ci2
-        integer(kind=4) :: dcx, dcy
-        integer(kind=4), allocatable :: head(:), next(:)
+        real(wp), allocatable :: pos(:, :)
+        integer(kind=4) :: ptr(-1:1)
+        logical :: ptr_ok(-1:1)
+        integer(int64) :: klo
         real(wp) :: sq_GM
 
         sq_GM = sqrt(G * m_arr(1))
@@ -468,102 +431,39 @@ contains
         r_cut = contact + vskin
         r_cut2 = r_cut * r_cut
 
-        ! The cells must be at least r_cut wide: only the 8 surrounding cells are searched
-        L_cell = max(r_cut, sim%grid_col_min_cell_size)
-
         ! Growable pair list (a full N(N-1)/2 allocation is neither needed nor affordable)
         allocate(tmp_list(2, max(16, 8*N_particles)))
         npairs = 0
 
-        x_min = y(get_index(first_index))
-        x_max = x_min
-        y_min = y(get_index(first_index)+1)
-        y_max = y_min
-
-        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i,idx) &
-        !$OMP REDUCTION(min:x_min,y_min) &
-        !$OMP REDUCTION(max:x_max,y_max)
-        do i = first_index, last_index
-            idx = get_index(i)
-
-            x_min = min(x_min, y(idx))
-            x_max = max(x_max, y(idx))
-            y_min = min(y_min, y(idx+1))
-            y_max = max(y_max, y(idx+1))
-        end do
-        !$OMP END PARALLEL DO
-
-        x_min = x_min - L_cell
-        x_max = x_max + L_cell
-        y_min = y_min - L_cell
-        y_max = y_max + L_cell
-
-        Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
-        Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
-
-        ! Too many cells: enlarge them instead of falling back to an O(N^2) search.
-        ! Cells wider than the cut-off still find every pair (only with more candidates per cell).
-        do while (Ncx > sim%grid_col_max_cells / Ncy)
-            L_cell = max(1.1_wp * L_cell, sqrt((x_max - x_min) * (y_max - y_min) / real(sim%grid_col_max_cells, wp)))
-            Ncx = max(1_int64, ceiling((x_max - x_min) / L_cell, int64))
-            Ncy = max(1_int64, ceiling((y_max - y_min) / L_cell, int64))
-        end do
-
-        if (Ncx > sim%grid_col_max_cells / Ncy) then
-            ! Not reached (cells are enlarged above); kept as a safe fallback
-            do i = first_index, last_index - 1
-                idx = get_index(i)
-                do j = i + 1, last_index
-                    jdx = get_index(j)
-                    dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
-                    dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                    if (dr2 < r_cut2) call push_pair(tmp_list, npairs, i, j)
-                end do
-            end do
-        else
-            Nc = Ncx * Ncy
-            allocate(head(0:Nc-1), next(first_index:last_index))
-            head = -1
-
-            ! Create linked lists serially — if this becomes a bottleneck, use colouring to parallelise.
+        ! Sorted cells of size r_cut: only the surrounding cells are searched (serial: the
+        ! list is rebuilt rarely, and its order must be deterministic)
+        if (r_cut > cero) then
+            allocate (pos(2, N_particles))
             do i = first_index, last_index
                 idx = get_index(i)
-                cx = min(int((y(idx)   - x_min) / L_cell, int64), Ncx - 1_int64)
-                cy = min(int((y(idx+1) - y_min) / L_cell, int64), Ncy - 1_int64)
-                cx = max(cx, 0_int64)
-                cy = max(cy, 0_int64)
-                ci = cx + Ncx * cy
-                next(i) = head(ci)
-                head(ci) = i
+                pos(1, i - first_index + 1) = y(idx)
+                pos(2, i - first_index + 1) = y(idx+1)
             end do
+            call cell_index_build(gcells, N_particles, pos, r_cut)
+            deallocate (pos)
 
-            do i = first_index, last_index
-                idx = get_index(i)
-                cx = min(max(int((y(idx)   - x_min) / L_cell, int64), 0_int64), Ncx - 1_int64)
-                cy = min(max(int((y(idx+1) - y_min) / L_cell, int64), 0_int64), Ncy - 1_int64)
-
+            ptr_ok = .False.
+            do q = 1, N_particles
+                i = gcells%ord(q) + first_index - 1
                 do dcy = -1, 1
-                    do dcx = -1, 1
-                        cx2 = cx + dcx
-                        cy2 = cy + dcy
-                        if (cx2 < 0_int64 .or. cx2 >= Ncx) cycle
-                        if (cy2 < 0_int64 .or. cy2 >= Ncy) cycle
-                        ci2 = cx2 + Ncx * cy2
-                        j = head(ci2)
-                        do while (j /= -1)
-                            if (j > i) then
-                                jdx = get_index(j)
-                                dr_vec = y(jdx:jdx+1) - y(idx:idx+1)
-                                dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
-                                if (dr2 < r_cut2) call push_pair(tmp_list, npairs, i, j)
-                            end if
-                            j = next(j)
-                        end do
+                    klo = gcells%key(q) + int(dcy, int64)*gcells%Wx - 1_int64
+                    call cell_index_advance(gcells, klo, ptr(dcy), ptr_ok(dcy))
+                    do p = ptr(dcy), N_particles
+                        if (gcells%key(p) > klo + 2_int64) exit
+                        j = gcells%ord(p) + first_index - 1
+                        if (j <= i) cycle  ! Each pair once
+                        dr_vec(1) = gcells%px(p) - gcells%px(q)
+                        dr_vec(2) = gcells%py(p) - gcells%py(q)
+                        dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
+                        if (dr2 < r_cut2) call push_pair(tmp_list, npairs, i, j)
                     end do
                 end do
             end do
-            
-            deallocate(head, next)
         end if
 
         if (allocated(vlist))     deallocate(vlist)

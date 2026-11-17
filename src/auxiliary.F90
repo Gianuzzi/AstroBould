@@ -1,11 +1,138 @@
 !> Module with array, string, ordering, ... routines.
 module auxiliary
     use constants, only: wp
+    use iso_fortran_env, only: int64
 
     implicit none
     public
 
+    !> Bodies sorted by square cell (row-major key), for neighbour searches that are linear in the
+    !> number of bodies with any cell size: only occupied cells are stored (no dense grid), so the
+    !> cells can be as small as the contact distance whatever the extent of the system.
+    !> Neighbours of the body in sorted slot q, in the cell row dcy (-1, 0, 1), have keys in
+    !> [key(q) + dcy*Wx - 1, key(q) + dcy*Wx + 1]: a contiguous range of slots.
+    type :: cell_index_t
+        integer(kind=4) :: n = 0
+        real(wp) :: L = 0.0_wp                    ! Cell size
+        integer(int64) :: Wx = 0_int64            ! Key stride of a row (with a spare column per side)
+        integer(kind=4), allocatable :: ord(:)    ! ord(q): input position (1..n) of the body in slot q
+        integer(int64), allocatable :: key(:)     ! Sorted keys
+        real(wp), allocatable :: px(:), py(:)     ! Positions, in sorted order
+        integer(int64), allocatable :: ktmp(:)    ! Work (radix sort)
+        integer(kind=4), allocatable :: otmp(:)   ! Work (radix sort)
+    end type cell_index_t
+
 contains
+
+    !> Sort the n positions pos(1:2, 1:n) by cells of size L (stable: equal keys keep their input
+    !> order, so the result is deterministic)
+    subroutine cell_index_build(ci, n, pos, L)
+        implicit none
+        type(cell_index_t), intent(inout) :: ci
+        integer(kind=4), intent(in) :: n
+        real(wp), intent(in) :: pos(:, :)
+        real(wp), intent(in) :: L
+        integer(kind=4), parameter :: BITS = 11, NBUCK = 2**BITS
+        integer(kind=4) :: cnt(0:NBUCK-1), i, b, shift
+        integer(int64) :: cx, cy, cxmin, cxmax, cymin, cymax, kmax
+        real(wp) :: Lc
+
+        ci%n = n
+        if (allocated(ci%key)) then
+            if (size(ci%key) < n) deallocate (ci%ord, ci%key, ci%px, ci%py, ci%ktmp, ci%otmp)
+        end if
+        if (.not. allocated(ci%key)) then
+            allocate (ci%ord(max(n, 1)), ci%key(max(n, 1)), ci%px(max(n, 1)), ci%py(max(n, 1)), &
+                    & ci%ktmp(max(n, 1)), ci%otmp(max(n, 1)))
+        end if
+        if (n < 1) return
+
+        ! Cell range. Enlarge the cells only if the keys would not fit in 62 bits (not in practice)
+        Lc = L
+        do
+            cxmin = huge(1_int64); cxmax = -huge(1_int64)
+            cymin = huge(1_int64); cymax = -huge(1_int64)
+            do i = 1, n
+                cx = floor(pos(1, i)/Lc, int64)
+                cy = floor(pos(2, i)/Lc, int64)
+                cxmin = min(cxmin, cx); cxmax = max(cxmax, cx)
+                cymin = min(cymin, cy); cymax = max(cymax, cy)
+            end do
+            if (real(cxmax - cxmin + 3, wp)*real(cymax - cymin + 3, wp) < 4.0e18_wp) exit
+            Lc = 2.0_wp*Lc
+        end do
+        ci%L = Lc
+        ci%Wx = cxmax - cxmin + 3_int64  ! Spare column on each side: neighbour keys never wrap rows
+
+        do i = 1, n
+            cx = floor(pos(1, i)/Lc, int64)
+            cy = floor(pos(2, i)/Lc, int64)
+            ci%key(i) = (cy - cymin + 1_int64)*ci%Wx + (cx - cxmin + 1_int64)
+            ci%ord(i) = i
+        end do
+
+        ! LSD radix sort of the keys (stable), carrying the permutation
+        kmax = maxval(ci%key(1:n))
+        shift = 0
+        do while (shiftr(kmax, shift) > 0_int64)
+            cnt = 0
+            do i = 1, n
+                b = int(iand(shiftr(ci%key(i), shift), int(NBUCK - 1, int64)))
+                cnt(b) = cnt(b) + 1
+            end do
+            do b = 1, NBUCK - 1
+                cnt(b) = cnt(b) + cnt(b - 1)
+            end do
+            do i = n, 1, -1
+                b = int(iand(shiftr(ci%key(i), shift), int(NBUCK - 1, int64)))
+                ci%ktmp(cnt(b)) = ci%key(i)
+                ci%otmp(cnt(b)) = ci%ord(i)
+                cnt(b) = cnt(b) - 1
+            end do
+            ci%key(1:n) = ci%ktmp(1:n)
+            ci%ord(1:n) = ci%otmp(1:n)
+            shift = shift + BITS
+        end do
+
+        ! Positions in sorted order (sequential memory access in the searches)
+        do i = 1, n
+            ci%px(i) = pos(1, ci%ord(i))
+            ci%py(i) = pos(2, ci%ord(i))
+        end do
+    end subroutine cell_index_build
+
+    !> Move ptr to the first sorted slot with key >= kval. The first call (ok = .False.) uses a
+    !> binary search; later calls only move forward, which is valid when kval does not decrease
+    !> (as when the slots q are visited in increasing order). Then ptr..n with key <= kval + 2
+    !> is the cell row range.
+    pure subroutine cell_index_advance(ci, kval, ptr, ok)
+        implicit none
+        type(cell_index_t), intent(in) :: ci
+        integer(int64), intent(in) :: kval
+        integer(kind=4), intent(inout) :: ptr
+        logical, intent(inout) :: ok
+        integer(kind=4) :: lo, hi, mid
+
+        if (.not. ok) then
+            lo = 1
+            hi = ci%n + 1
+            do while (lo < hi)
+                mid = (lo + hi)/2
+                if (ci%key(mid) < kval) then
+                    lo = mid + 1
+                else
+                    hi = mid
+                end if
+            end do
+            ptr = lo
+            ok = .True.
+        else
+            do while (ptr <= ci%n)
+                if (ci%key(ptr) >= kval) exit
+                ptr = ptr + 1
+            end do
+        end if
+    end subroutine cell_index_advance
 
     ! From lower to upper case
     pure function to_upper(strIn) result(strOut)
