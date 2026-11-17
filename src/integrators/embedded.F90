@@ -60,8 +60,8 @@ contains
 
         else if (which == 2) then
             embedded_ptr => Heun_Euler2_1
-            OSOL = 1
-            OAUX = 2
+            OSOL = 2  ! ynew is Heun (2nd order)
+            OAUX = 1  ! yauxi is Euler (1st order)
             n_stages = 2
 
         else if (which == 3) then

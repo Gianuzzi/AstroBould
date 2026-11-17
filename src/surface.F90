@@ -164,8 +164,10 @@ contains
             f_old = val_old - sec%valor
             f_new = val_new - sec%valor
 
-            ! Must change sign
+            ! Must change sign. Half-open: a step that starts exactly on the surface does not cross it
+            ! (that crossing was counted by the previous step, which ended there with f_new = 0)
             if (f_old * f_new > cero) cycle  ! This not crossing
+            if (f_old == cero) cycle
 
             ! ---- Direction control ----
             select case (sec%direction)

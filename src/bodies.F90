@@ -74,6 +74,8 @@ module bodies
         real(wp), dimension(4) :: coordinates = cero  ! x, y, vx, vy
         real(wp) :: C20 = cero  ! C20 of the asteroid as a whole
         real(wp) :: J2R2 = cero  ! Effective J2 * R^2 of the integrated asteroid (for geometric elements)
+        real(wp) :: J2K_manual = cero  ! Manual J2 coefficient as in the dynamics: -1.5 (R/gamma)^2 J2
+        logical :: J2_from_primary = .False.  ! Manual J2 centred on the primary (else on the CM)
         real(wp) :: e_rot = cero ! Rotational energy [dynamic]
         real(wp) :: e_kin = cero ! Kinetic energy [dynamic]
         type(chaos_st) :: chaos
@@ -243,7 +245,10 @@ contains
         end if
         radius_primary = (aux_radius)**uno3
 
-        self%primary%is_sphere = abs(radius_primary - semi_c_primary) < myepsilon  ! c == radius => Sphere
+        ! Sphere if all semi-axes are equal (relative test: the cube root above is not exact)
+        self%primary%is_sphere = (max(semi_a_primary, semi_b_primary, semi_c_primary) - &
+                                & min(semi_a_primary, semi_b_primary, semi_c_primary)) &
+                                & <= 1.e-12_wp*max(semi_a_primary, semi_b_primary, semi_c_primary)
 
         self%primary%semi_axis = (/semi_a_primary, semi_b_primary, semi_c_primary/)
         self%primary%mass = mass_primary_or_ast
@@ -515,7 +520,8 @@ contains
 
         ! Set Radius
         if (self%primary%is_sphere) then
-            self%radius = self%primary%radius
+            ! Largest extent from the CM: the primary is offset from it by the boulders
+            self%radius = self%primary%radius + self%primary%dist_to_asteroid
             do i = 1, self%Nboulders
                 self%radius = max(self%radius, self%boulders(i)%radius + self%boulders(i)%dist_to_asteroid) ! Radius
             end do
@@ -579,6 +585,12 @@ contains
                     self(i)%mmr = (self(i)%elements(1)/aux_real)**(1.5e0_wp) ! MMR
                 end if
             end if
+            ! Only bound (elliptic) orbits can be set from elements
+            if ((self(i)%elements(1) <= cero) .or. (self(i)%elements(2) < cero) .or. (self(i)%elements(2) >= uno)) then
+                write (*, *) "ERROR: Moon", i, "needs a > 0 and 0 <= e < 1. Given a, e:", &
+                           & self(i)%elements(1), self(i)%elements(2)
+                stop 1
+            end if
             call coord(combined_mass, &
                         & self(i)%elements(1), &
                         & self(i)%elements(2), &
@@ -590,7 +602,7 @@ contains
             self(i)%coordinates = (/aux_real6(1:2), aux_real6(4:5)/)
 
             ! Inertia
-            self%inertia = 0.4e0_wp*self(i)%mass*self(i)%radius*self(i)%radius
+            self(i)%inertia = 0.4e0_wp*self(i)%mass*self(i)%radius*self(i)%radius
 
             ! Angular momentum
             self(i)%ang_mom_rot = cero
@@ -632,6 +644,12 @@ contains
                 else
                     self(i)%mmr = (self(i)%elements(1)/asteroid%a_corotation)**(1.5e0_wp) ! MMR
                 end if
+            end if
+            ! Only bound (elliptic) orbits can be set from elements
+            if ((self(i)%elements(1) <= cero) .or. (self(i)%elements(2) < cero) .or. (self(i)%elements(2) >= uno)) then
+                write (*, *) "ERROR: Particle", i, "needs a > 0 and 0 <= e < 1. Given a, e:", &
+                           & self(i)%elements(1), self(i)%elements(2)
+                stop 1
             end if
             call coord(asteroid%mass, &
                         & self(i)%elements(1), &
@@ -956,7 +974,8 @@ contains
             if (dist2 < myepsilon2) cycle
             dist = sqrt(dist2)
             inertia = inertia + self%moons(i)%mass*dist*dist
-            e_pot = e_pot - (self%asteroid%mass*self%moons(i)%mass)/dist
+            ! Full asteroid potential (ellipsoid, boulders, J2...), not only its monopole
+            e_pot = e_pot - self%moons(i)%mass*asteroid_potential(self%asteroid, self%moons(i)%coordinates(1:2))/G
         end do
         !! Moons (here, only moons with moons are added)
         do i = 1, self%Nmoons_active - 1
@@ -1116,10 +1135,10 @@ contains
 
         else  ! Astrocentric
 
-            ! Moons
+            ! Moons (two-body elements: mu = G (M + m), as used to set their initial conditions)
             do j = 1, self%Nmoons_active
                 coords_shifted = self%moons(j)%coordinates - coords_cm_in
-                call elem(mass_cm_in, &
+                call elem(mass_cm_in + self%moons(j)%mass, &
                         & (/coords_shifted(1:2), cero, coords_shifted(3:4), cero/), &
                         a, e, i, M, w, O)
                 self%moons(j)%elements = (/a, e, M, w/)
@@ -1238,7 +1257,7 @@ contains
         real(wp), intent(in) :: lambda_kep, rotational_period
         integer(kind=4), intent(in) :: reference_frame
         logical, intent(in) :: is_sinodic
-        integer(kind=4) :: i, j
+        integer(kind=4) :: i
         integer(kind=4), allocatable :: id_list(:)
 
         ! Set main reference frame
@@ -1272,26 +1291,29 @@ contains
             self%Nparticles_active = 0
         end if
 
-        ! Check unique ids
+        ! Check unique ids (O(N): mark each id as seen). Repeated ids would mix the outputs of
+        ! different bodies, so this is an error (the system must not be left half initialised)
         allocate (id_list(self%Nmoons + self%Nparticles))
         do i = 1, self%Nmoons
             id_list(i) = self%moons(i)%id
-            do j = i - 1, 1, -1  ! Back loop
-                if (id_list(i) == id_list(j)) then
-                    write (*, *) "WARNING: Moons IDs are not unique. Repeated:", id_list(i)
-                    return
-                end if
-            end do
         end do
         do i = self%Nmoons + 1, self%Nmoons + self%Nparticles
             id_list(i) = self%particles(i - self%Nmoons)%id
-            do j = i - 1, 1, -1  ! Back loop
-                if (id_list(i) == id_list(j)) then
-                    write (*, *) "WARNING: Particles + Moons IDs are not unique. Repeated:", id_list(i)
-                    return
-                end if
-            end do
         end do
+        if (size(id_list) > 1) then
+            block
+                logical, allocatable :: seen(:)
+                allocate (seen(minval(id_list):maxval(id_list)))
+                seen = .False.
+                do i = 1, size(id_list)
+                    if (seen(id_list(i))) then
+                        write (*, *) "ERROR: Moons/particles IDs are not unique. Repeated:", id_list(i)
+                        stop 1
+                    end if
+                    seen(id_list(i)) = .True.
+                end do
+            end block
+        end if
 
         ! Right now, all coordinates are AsteroidCentric
         call recalculate_all(self)
@@ -1393,7 +1415,68 @@ contains
         end if
 
         self%J2R2 = J2R2
+
+        ! Manual J2 as used by the dynamics (for the potential energy)
+        self%J2K_manual = cero
+        self%J2_from_primary = .False.
+        if ((abs(manual_J2) > cero) .and. self%primary%is_sphere) then
+            if (J2_from_primary) then
+                self%J2K_manual = -1.5e0_wp*self%primary%radius**2*manual_J2
+                self%J2_from_primary = .True.
+            else if (gamma_J2 > cero) then
+                self%J2K_manual = -1.5e0_wp*(self%primary%radius/gamma_J2)**2*manual_J2
+            end if
+        end if
     end subroutine set_effective_J2
+
+    !> Gravitational potential of the asteroid, U = -Phi > 0 (per unit mass), at the barycentric
+    !> point xy. The same terms as the dynamics: ellipsoid (C20, C22), or point masses (primary
+    !> and boulders, at their current positions), manual J2 and boulders in Z.
+    pure function asteroid_potential(self, xy) result(U)
+        implicit none
+        type(asteroid_st), intent(in) :: self
+        real(wp), intent(in) :: xy(2)
+        real(wp) :: U
+        real(wp) :: rel(2), rb(2), r2, d(2), d2, K, L
+        integer(kind=4) :: i
+
+        rel = xy - self%coordinates(1:2)
+        r2 = rel(1)*rel(1) + rel(2)*rel(2)
+
+        if (.not. self%primary%is_sphere) then
+            ! Phi = -GM/r [1 - K/(3 r^2) + L (x^2 - y^2)/r^4], in the body frame
+            rb = rotate2D(rel, -self%theta)
+            K = 1.5e0_wp*self%primary%radius**2*self%primary%C20
+            L = 3.e0_wp*self%primary%radius**2*self%primary%C22
+            U = G*self%mass/sqrt(r2)*(uno - K/(3*r2) + L*(rb(1)*rb(1) - rb(2)*rb(2))/(r2*r2))
+            return
+        end if
+
+        ! Primary
+        d = rel - self%primary%coordinates_CM(1:2)
+        d2 = d(1)*d(1) + d(2)*d(2)
+        if (self%J2_from_primary) then
+            U = G*self%primary%mass/sqrt(d2)*(uno - self%J2K_manual/(3*d2))
+        else
+            U = G*self%primary%mass/sqrt(d2)
+        end if
+
+        ! Boulders
+        do i = 1, self%Nboulders
+            d = rel - self%boulders(i)%coordinates_CM(1:2)
+            U = U + G*self%boulders(i)%mass/sqrt(d(1)*d(1) + d(2)*d(2))
+        end do
+
+        ! Manual J2 from the CM (perturbation only)
+        if ((abs(self%J2K_manual) > cero) .and. (.not. self%J2_from_primary)) then
+            U = U - G*self%mass*self%J2K_manual/(3*r2*sqrt(r2))
+        end if
+
+        ! Boulders in Z
+        if (self%boulder_z%active) then
+            U = U + G*self%boulder_z%mass/sqrt(r2 + self%boulder_z%dist_to_asteroid**2)
+        end if
+    end function asteroid_potential
 
     ! ---------------------------   ADD MEGNO    ---------------------------
 
@@ -2037,10 +2120,10 @@ contains
             mass_cm = mass_in
             coords_cm = cero
 
-            ! Moons (massive)
+            ! Moons (massive): two-body elements with mu = G (M + m), as in update_elements
             do i = 2, self%Nmoons_active + 1
                 idx = 4*i - 1
-                call coord(mass_in, &
+                call coord(mass_in + self%moons(i-1)%mass, &
                         & array(idx), &
                         & array(idx + 1), &
                         & cero, &

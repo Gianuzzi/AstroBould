@@ -27,7 +27,7 @@ contains
         if (abs(omega) < myepsilon) then
             acorot = cero
         else
-            acorot = (G*mass/(omega*omega))**(1/3.)
+            acorot = (G*mass/(omega*omega))**uno3  ! Double-precision exponent (1/3. is single precision)
         end if
     end function get_a_corot
 
@@ -193,9 +193,13 @@ contains
         hz = x*vy - y*vx
         h2 = hx*hx + hy*hy + hz*hz
         h = sqrt(h2)
-        inc = acos(hz/h)
-
-        fac = sqrt(hx*hx + hy*hy)/h
+        if (h > tini) then
+            inc = acos(max(-uno, min(uno, hz/h)))  ! Clamped: round-off can give |hz/h| > 1
+            fac = sqrt(hx*hx + hy*hy)/h
+        else  ! Radial orbit (h = 0): no orbital plane, take the reference one
+            inc = cero
+            fac = cero
+        end if
         if (fac < myepsilon) then
             capom = cero
             u = atan2(y, x)
@@ -324,23 +328,26 @@ contains
         end if
     end subroutine elem
 
+    ! Jacobi <-> astrocentric coordinates. Row 1 is the central body (left unchanged).
+    ! With a_i = r_i - r_1 (astrocentric) and j_i = r_i - R_{i-1}, R_{i-1} the CM of bodies 1..i-1:
+    !   j_i = a_i - S_{i-1}/M_{i-1},  S_{i-1} = sum_{k=2}^{i-1} m_k a_k,  M_{i-1} = sum_{k=1}^{i-1} m_k
+
     ! Get astrocentric from jacobi coordinates
     pure subroutine jacobi_to_astroc(mass_array, coords_j, coords_a)
         implicit none
         real(wp), dimension(:), intent(in) :: mass_array
         real(wp), dimension(:, :), intent(in) :: coords_j
         real(wp), dimension(:, :), intent(out) :: coords_a
-        real(wp) :: mass_acum, mass_acum_prev
+        real(wp) :: mass_acum, sum_ma(size(coords_j, 2))
         integer(kind=4) :: i
 
         coords_a = coords_j
-        mass_acum_prev = mass_array(1)  ! Arrancamos desde 1
+        mass_acum = mass_array(1)
+        sum_ma = cero
         do i = 2, size(coords_j, 1)
-            mass_acum = mass_acum_prev + mass_array(i)
-            coords_a(i, 1:4) = coords_j(i, 1:4) + &
-                            & (mass_acum_prev*(coords_a(i - 1, 1:4) - coords_j(i - 1, 1:4)) + &
-                            & mass_array(i)*coords_a(i - 1, 1:4))/mass_acum
-            mass_acum_prev = mass_acum
+            coords_a(i, :) = coords_j(i, :) + sum_ma/mass_acum
+            sum_ma = sum_ma + mass_array(i)*coords_a(i, :)
+            mass_acum = mass_acum + mass_array(i)
         end do
     end subroutine jacobi_to_astroc
 
@@ -350,17 +357,16 @@ contains
         real(wp), dimension(:), intent(in) :: mass_array
         real(wp), dimension(:, :), intent(in) :: coords_a
         real(wp), dimension(:, :), intent(out) :: coords_j
-        real(wp) :: mass_acum, mass_acum_prev
+        real(wp) :: mass_acum, sum_ma(size(coords_a, 2))
         integer(kind=4) :: i
 
         coords_j = coords_a
-        mass_acum_prev = mass_array(1)  ! Arrancamos desde 1
+        mass_acum = mass_array(1)
+        sum_ma = cero
         do i = 2, size(coords_a, 1)
-            mass_acum = mass_acum_prev + mass_array(i)
-            coords_j(i, 1:4) = coords_a(i, 1:4) - &
-                            & (mass_acum_prev*(coords_a(i - 1, 1:4) - coords_j(i - 1, 1:4)) + &
-                            & mass_array(i)*coords_a(i - 1, 1:4))/mass_acum
-            mass_acum_prev = mass_acum
+            coords_j(i, :) = coords_a(i, :) - sum_ma/mass_acum
+            sum_ma = sum_ma + mass_array(i)*coords_a(i, :)
+            mass_acum = mass_acum + mass_array(i)
         end do
     end subroutine astroc_to_jacob
 

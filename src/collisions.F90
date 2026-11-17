@@ -24,6 +24,9 @@ module collisions
     real(wp), save :: vlist_time
     logical, save :: vlist_built = .False.
     logical, save, allocatable :: list_collided(:)
+    ! Verlet pair forces (filled in parallel, summed serially)
+    real(wp), save, allocatable :: vforce(:, :), vmass(:, :)
+    logical, save, allocatable :: vtouch(:)
 
     integer(int64), save :: verlet_rebuilds = 0_int64
     integer(int64), save :: verlet_caches = 0_int64
@@ -105,10 +108,18 @@ contains
 
         if (explicit) then
             if (kappa_n <= cero) return  ! No spring: nothing to derive (caller disables the collisions)
-            dzeta = min(gamma_n / (dos * sqrt(kappa_n)), uno - tini)
-            eta = dzeta * pi / sqrt(uno - dzeta*dzeta)
-            epsilon = exp(-eta)
-            Tdur = sqrt((pi*pi + eta*eta) / kappa_n)
+            dzeta = gamma_n / (dos * sqrt(kappa_n))
+            if (dzeta < uno) then  ! Underdamped: the bodies rebound
+                eta = dzeta * pi / sqrt(uno - dzeta*dzeta)
+                epsilon = exp(-eta)
+                Tdur = sqrt((pi*pi + eta*eta) / kappa_n)
+            else  ! (Critically) overdamped: no rebound (epsilon = 0). The contact still acts
+                write (*, *) "WARNING: Overdamped soft-sphere contact (gamma >= 2 sqrt(kappa)): no rebound."
+                epsilon = cero
+                ! Time scale to resolve: the fastest decay rate, gamma/2 + sqrt(gamma^2/4 - kappa)
+                ! (the contact itself lasts longer, but the timestep must follow this one)
+                Tdur = pi / (uno2*gamma_n + sqrt(max(cero, uno2*uno2*gamma_n*gamma_n - kappa_n)))
+            end if
         else
             ! epsilon = 0 would need an infinite damping, and Tdur = 0 an infinite stiffness
             if (epsilon <= cero .or. epsilon > uno .or. Tdur <= cero) then
@@ -130,8 +141,6 @@ contains
     !!!!!!!!!!!!!!!!!!!! SOFT-SPHERE COLLISION ROUTINES !!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    !> Soft-sphere force kernel with ATOMIC writes on all der and list_collided.
-    !> Safe to call from any parallel region.
     !> Soft-sphere contact force between bodies i and j (no side effects).
     !> touching = .False. if they are not in contact (F_vec is then zero).
     !> The force on j is +F_vec and on i is -F_vec; mi and mj are the masses to divide by.
@@ -181,9 +190,11 @@ contains
             else
                 ! Coincident and at relative rest: any direction works. Take one from the pair
                 ! indices (golden-ratio sequence) so that runs stay deterministic, also with OpenMP
-                rand1 = twopi * modulo(0.6180339887498949_wp * real(i + 7*j, wp), uno)
+                ! Built from the ordered pair, and reversed for (j, i): the force stays antisymmetric
+                rand1 = twopi * modulo(0.6180339887498949_wp * real(min(i, j) + 7*max(i, j), wp), uno)
                 dr_ver(1) = cos(rand1)
                 dr_ver(2) = sin(rand1)
+                if (i > j) dr_ver = -dr_ver
             end if
 
             dr = tini
@@ -243,16 +254,18 @@ contains
     end subroutine pair_force
 
 
-    !> Soft-sphere force kernel with ATOMIC writes on all der and list_collided.
-    !> Safe to call from any parallel region.
-    subroutine soft_sphere_force(y, der, i, j, are_moons)
+    !> Contact force of j on i, added to body i ONLY (no atomics: each thread owns its i).
+    !> Called for (i, j) and for (j, i), each body sums its contacts in a fixed order, so the
+    !> result does not depend on the number of threads. pair_force(j, i) = -pair_force(i, j)
+    !> exactly (every term only changes sign), so the momentum is still conserved.
+    subroutine soft_sphere_force_on_i(y, der, i, j, are_moons)
         implicit none
         real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(:), intent(inout) :: der
         integer(kind=4),        intent(in) :: i, j
         logical,                intent(in) :: are_moons
 
-        integer(kind=4) :: idx, jdx
+        integer(kind=4) :: idx
         real(wp) :: F_vec(2), mi, mj
         logical :: touching
 
@@ -260,28 +273,14 @@ contains
         if (.not. touching) return
 
         idx = get_index(i)
-        jdx = get_index(j)
-
-        ! ── Newton's 3rd law — ATOMIC on all four velocity slots ────────────
-        !$OMP ATOMIC UPDATE
-        der(jdx+2) = der(jdx+2) + F_vec(1) / mj
-        !$OMP ATOMIC UPDATE
-        der(jdx+3) = der(jdx+3) + F_vec(2) / mj
-        !$OMP ATOMIC UPDATE
-        der(idx+2) = der(idx+2) - F_vec(1) / mi
-        !$OMP ATOMIC UPDATE
+        der(idx+2) = der(idx+2) - F_vec(1) / mi  ! The force on i is -F_vec
         der(idx+3) = der(idx+3) - F_vec(2) / mi
-
-        ! Not need to  be ATOMIC bc only changes to TRUE
         list_collided(i) = .True.
-        list_collided(j) = .True.
 
-    end subroutine soft_sphere_force
+    end subroutine soft_sphere_force_on_i
 
 
-    !> Brute-force O(N²).
-    !> Outer i loop is PARALLEL — atomics inside soft_sphere_force handle conflicts.
-    !> DYNAMIC schedule because the triangular inner loop makes load uneven.
+    !> Brute-force O(N²). Each i sums the forces of all j /= i (deterministic, no atomics).
     subroutine collisions_brute(y, der, first_index, last_index, are_moons)
         implicit none
         real(wp), dimension(:), intent(in) :: y
@@ -294,10 +293,10 @@ contains
         !$OMP PARALLEL DO                &
         !$OMP DEFAULT(SHARED)            &
         !$OMP PRIVATE(i, j)              &
-        !$OMP SCHEDULE(GUIDED,64)
-        do i = first_index, last_index - 1
-            do j = i + 1, last_index
-                call soft_sphere_force(y, der, i, j, are_moons)
+        !$OMP SCHEDULE(STATIC)
+        do i = first_index, last_index
+            do j = first_index, last_index
+                if (j /= i) call soft_sphere_force_on_i(y, der, i, j, are_moons)
             end do
         end do
         !$OMP END PARALLEL DO
@@ -306,9 +305,8 @@ contains
 
 
     !> Cell-list O(N).
-    !> The linked-list traversal (head/next) is not thread-safe to build in
-    !> parallel, so this routine stays serial. The force kernel itself is called
-    !> serially here — if this loop ever becomes the bottleneck, use colouring.
+    !> The linked lists (head/next) are built serially; the force loop is parallel over i,
+    !> each i summing all its neighbours (deterministic, no atomics).
     subroutine collisions_grid(y, der, first_index, last_index, are_moons)
         implicit none
         real(wp), dimension(:), intent(in) :: y
@@ -401,8 +399,9 @@ contains
                     ci2 = cx2 + Ncx * cy2
                     j = head(ci2)
                     do while (j /= -1)
-                        if (j > i) then
-                            call soft_sphere_force(y, der, i, j, are_moons)
+                        ! Each i sums all its neighbours (deterministic, no atomics)
+                        if (j /= i) then
+                            call soft_sphere_force_on_i(y, der, i, j, are_moons)
                         end if
                         j = next(j)
                     end do
@@ -662,17 +661,36 @@ contains
 
         if (rebuild) call build_verlet_list(time, y, first_index, last_index, are_moons)
 
-        ! ── Pair force loop (PARALLEL over k) ──────
+        ! ── Pair forces (PARALLEL over k, each into its own slot) ──────
+        if (.not. allocated(vforce)) then
+            allocate (vforce(2, max(vlist_n, 1024)), vmass(2, max(vlist_n, 1024)), vtouch(max(vlist_n, 1024)))
+        else if (size(vtouch) < vlist_n) then
+            deallocate (vforce, vmass, vtouch)
+            allocate (vforce(2, 2*vlist_n), vmass(2, 2*vlist_n), vtouch(2*vlist_n))
+        end if
         !$OMP PARALLEL DO            &
         !$OMP DEFAULT(SHARED)        &
-        !$OMP PRIVATE(k, i, j)       &
+        !$OMP PRIVATE(k)             &
         !$OMP SCHEDULE(STATIC)
         do k = 1, vlist_n
-            i = vlist(1, k)
-            j = vlist(2, k)
-            call soft_sphere_force(y, der, i, j, are_moons)
+            call pair_force(y, vlist(1, k), vlist(2, k), are_moons, vforce(:, k), vmass(1, k), vmass(2, k), vtouch(k))
         end do
         !$OMP END PARALLEL DO
+
+        ! ── Accumulation in list order (serial: deterministic, no atomics) ──────
+        do k = 1, vlist_n
+            if (.not. vtouch(k)) cycle
+            i = vlist(1, k)
+            j = vlist(2, k)
+            idx = get_index(i)
+            der(idx+2) = der(idx+2) - vforce(1, k) / vmass(1, k)
+            der(idx+3) = der(idx+3) - vforce(2, k) / vmass(1, k)
+            idx = get_index(j)
+            der(idx+2) = der(idx+2) + vforce(1, k) / vmass(2, k)
+            der(idx+3) = der(idx+3) + vforce(2, k) / vmass(2, k)
+            list_collided(i) = .True.
+            list_collided(j) = .True.
+        end do
 
         verlet_caches = verlet_caches + 1_int64
 

@@ -47,7 +47,7 @@ contains
     pure recursive subroutine quickargsort(a, b, first, last)
         implicit none
         real(wp), intent(in) :: a(:)          ! Input array (not modified)
-        integer(kind=4), intent(inout) :: b(size(a))    ! Indices array to be sorted
+        integer(kind=4), intent(inout) :: b(:)    ! Indices array to be sorted (may be shorter than a: only b(first:last) is used)
         integer(kind=4), intent(in) :: first, last
         real(wp) :: pivot
         integer(kind=4) :: i, j, temp
@@ -83,7 +83,7 @@ contains
     pure recursive subroutine quickargsort_int(a, b, first, last)
         implicit none
         integer(kind=4), intent(in) :: a(:)    ! Input array (not modified)
-        integer(kind=4), intent(inout) :: b(size(a)) ! Indices array to be sorted
+        integer(kind=4), intent(inout) :: b(:) ! Indices array to be sorted (only b(first:last) is used)
         integer(kind=4), intent(in) :: first, last
         integer(kind=4) :: pivot
         integer(kind=4) :: i, j, temp

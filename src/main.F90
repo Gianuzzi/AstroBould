@@ -576,6 +576,7 @@ program main
 
     ! Effective J2 of the integrated asteroid (geometric elements)
     call set_effective_J2(system%asteroid, sim%manual_J2, sim%gamma_J2, sim%use_J2_from_primary)
+    call recalculate_all(system)  ! Energy with the full asteroid potential (needs the J2 data above)
 
     ! <<<< Fill auxiliar arrays >>>>
     allocate (boulders_data(0:sim%Nboulders, 5))   ! To use in dydt
@@ -922,7 +923,9 @@ program main
     end if
 
     ! Disable if no actual collisions
-    if (sim%kappa_col_moon <= cero .or. sim%epsilon_col_moon <= cero) then
+    ! (with explicit parameters, epsilon = 0 is an overdamped contact, which is still active)
+    if (sim%kappa_col_moon <= cero .or. &
+      & ((sim%epsilon_col_moon <= cero) .and. (.not. sim%use_moon_soft_explicit_col))) then
         sim%use_moon_soft_sphere_col = .False.
     end if
 
@@ -941,7 +944,9 @@ program main
     end if
 
     ! Disable if no actual collisions
-    if (sim%kappa_col_part <= cero .or. sim%epsilon_col_part <= cero) then
+    ! (with explicit parameters, epsilon = 0 is an overdamped contact, which is still active)
+    if (sim%kappa_col_part <= cero .or. &
+      & ((sim%epsilon_col_part <= cero) .and. (.not. sim%use_part_soft_explicit_col))) then
         sim%use_part_soft_sphere_col = .False.
     end if
 
@@ -3272,7 +3277,8 @@ program main
                 !! Chaosfile
                 inquire (unit=u_filtchaosfile, opened=aux_logical)
                 if (.not. aux_logical) then
-                    open (unit=u_filtchaosfile, file=trim(sim%chaosfile), status='unknown', action='write')
+                    open (unit=u_filtchaosfile, file=trim(sim%filter_prefix)//trim(sim%chaosfile), &
+                        & status='unknown', action='write')  ! Not the unfiltered chaos file
                 else
                     rewind (u_filtchaosfile)
                 end if
@@ -3281,7 +3287,7 @@ program main
                 !! Mensaje
                 if (sim%use_screen) then
                     write (*, *) ACHAR(10)
-                    write (*, *) "Filterd chaos data saved into: ", "fil"//trim(sim%chaosfile)
+                    write (*, *) "Filterd chaos data saved into: ", trim(sim%filter_prefix)//trim(sim%chaosfile)
                 end if
             end if
             if (sim%use_datascreen) then

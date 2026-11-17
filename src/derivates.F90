@@ -303,7 +303,8 @@ contains
 
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
-                hard_exit = .True.
+                !$OMP ATOMIC WRITE
+                hard_exit = .True.  ! Atomic: written by several threads
                 cycle
             end if
 
@@ -323,7 +324,8 @@ contains
                 ! Contact with the ellipsoid: semi-axes enlarged by the body radius
                 if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
                 & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                 end if
 
 
@@ -412,7 +414,8 @@ contains
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle moon_loop
                 end if
 
@@ -449,7 +452,8 @@ contains
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
+                        !$OMP ATOMIC WRITE
+                        hard_exit = .True.  ! Atomic: written by several threads
                         cycle moon_loop
                     end if
 
@@ -508,7 +512,8 @@ contains
 
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
-                hard_exit = .True.
+                !$OMP ATOMIC WRITE
+                hard_exit = .True.  ! Atomic: written by several threads
                 cycle particle_loop
             end if
 
@@ -533,7 +538,8 @@ contains
                 ! Contact with the ellipsoid: semi-axes enlarged by the body radius
                 if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
                 & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle particle_loop
                 end if
 
@@ -645,7 +651,8 @@ contains
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle particle_loop
                 end if
 
@@ -682,7 +689,8 @@ contains
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
+                        !$OMP ATOMIC WRITE
+                        hard_exit = .True.  ! Atomic: written by several threads
                         cycle particle_loop
                     end if
 
@@ -741,7 +749,8 @@ contains
                             ! so keep integrating. Gravity keeps acting, bounded for deep overlaps.
                             dr2 = max(dr2, 0.25e0_wp*rcoll*rcoll)
                         else
-                            hard_exit = .True.
+                            !$OMP ATOMIC WRITE
+                            hard_exit = .True.  ! Atomic: written by several threads
                             cycle
                         end if
                     end if
@@ -790,7 +799,8 @@ contains
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 rcoll = R_arr(i) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle
                 end if
 
@@ -981,7 +991,8 @@ contains
 
             rcoll = min(sim%min_distance, R_arr(1) + R_arr(j))
             if ((dr2 < rcoll*rcoll) .or. (dr2 > rescape*rescape)) then
-                hard_exit = .True.
+                !$OMP ATOMIC WRITE
+                hard_exit = .True.  ! Atomic: written by several threads
                 cycle particle_loop
             end if
 
@@ -1005,7 +1016,8 @@ contains
                 ! Contact with the ellipsoid: semi-axes enlarged by the body radius
                 if ((dr_vec(1) / (asteroid_data(1) + R_arr(j)))**2 &
                 & + (dr_vec(2) / (asteroid_data(2) + R_arr(j)))**2 < uno) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle particle_loop
                 end if
 
@@ -1138,7 +1150,8 @@ contains
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                 rcoll = boulders_data(0, 2) + R_arr(j)
                 if (dr2 < rcoll*rcoll) then
-                    hard_exit = .True.
+                    !$OMP ATOMIC WRITE
+                    hard_exit = .True.  ! Atomic: written by several threads
                     cycle particle_loop
                 end if
 
@@ -1175,7 +1188,8 @@ contains
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)
                     rcoll = boulders_data(i, 2) + R_arr(j)
                     if (dr2 < rcoll*rcoll) then
-                        hard_exit = .True.
+                        !$OMP ATOMIC WRITE
+                        hard_exit = .True.  ! Atomic: written by several threads
                         cycle particle_loop
                     end if
 

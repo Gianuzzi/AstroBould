@@ -1894,7 +1894,7 @@ contains
         end if
 
         ! Check no Extra checkpoints and Filter
-        if (derived%use_tomfile .and. (derived%extra_checkpoints > 0)) then
+        if (derived%use_filter .and. (derived%extra_checkpoints > 0)) then
             write(err_msg, '(A)') "Can not use both filtering and extra checkpoints at the same time (yet)."
             call fatal_error(err_msg)
         end if
@@ -2935,13 +2935,13 @@ contains
         integer(kind=4) :: new_Nactive
         
         ! Get new_Nactive
-        call get_Nactive(system, new_Nactive)
+        call get_Nactive(syst, new_Nactive)
 
         ! Is different from old?
         if (new_Nactive < simu%Nactive) then
             call update_sim_Nactive(simu, syst%Nparticles_active, syst%Nmoons_active)  ! Update sim Nactive
             ynvalues = get_y_nvalues(syst)  ! Update nvalues to use in y
-            simu%megno_active = system%megno%active ! EXTRA: Update megno
+            simu%megno_active = syst%megno%active ! EXTRA: Update megno
             regenerate = .True.
         end if
 
