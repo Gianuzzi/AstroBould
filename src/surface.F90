@@ -123,7 +123,7 @@ contains
         implicit none
         type(section_st), intent(in) :: sec
         real(wp), intent(in) :: y_old(:), y_new(:)
-        real(wp), intent(inout) :: alpha, error
+        real(wp), intent(inout) :: alpha(:), error(:)  ! Per particle
         logical, intent(inout) :: has_crossed(:)
         real(wp) :: val_old, val_new, f_old, f_new
         logical :: direction_ok, condition_ok
@@ -133,10 +133,10 @@ contains
         ntotal = size(has_crossed)
 
         ! Default
-        alpha = infinito
-        error = infinito
         do idx = 1, ntotal
             has_crossed(idx) = .False.
+            alpha(idx) = infinito
+            error(idx) = infinito
         end do
 
         ! No surface
@@ -195,10 +195,15 @@ contains
 
             ! Crossed!
             has_crossed(idx) = .True.
+            ! Linear estimate of the crossing fraction of the step, for THIS particle
             ! abs just in case, but should be positive since they have different signs
-            alpha = min(alpha, abs(-f_old / (f_new - f_old)))
-            ! Estimate of the error in the crossing point (the smaller of the two values) 
-            error = min(error, min(abs(f_old), abs(f_new)))  
+            if (abs(f_new - f_old) > cero) then
+                alpha(idx) = abs(-f_old / (f_new - f_old))
+            else
+                alpha(idx) = cero  ! f_old = f_new = 0
+            end if
+            ! Estimate of the error in the crossing point (the smaller of the two values)
+            error(idx) = min(abs(f_old), abs(f_new))
         
         end do
 
