@@ -2056,7 +2056,6 @@ contains
 
     end subroutine define_writing_pointers
 
-    ! Check if continue function. This will be passed to the integ caller
     ! Index of body i in the state array y (x, y, vx, vy of body i start here)
     pure function get_index(i) result(idx)
         implicit none
@@ -2065,6 +2064,7 @@ contains
         idx = 4*i - 1
     end function get_index
 
+    ! Check if continue function. This will be passed to the integ caller
     function check_func(y) result(keep_going)
         implicit none
         real(wp), dimension(:), intent(in) :: y
@@ -2108,8 +2108,7 @@ contains
     !> Gravitational potential of the asteroid, U = -Phi > 0, at (x, y) in its BODY frame
     !> (centred on the asteroid CM, axes fixed to the body at theta = 0). The same terms
     !> as the dynamics (dydt): ellipsoid, or point masses (primary + boulders), manual J2
-    !> (from the CM or from the primary) and boulders in Z. During a boulder mass growth
-    !> the final configuration is used.
+    !> (from the CM or from the primary) and boulders in Z.
     function body_frame_potential(x, y) result(U)
         implicit none
         real(wp), intent(in) :: x, y
@@ -2351,7 +2350,7 @@ contains
 
         if (.not. allocated(boulders_data)) return
 
-        ! Full (grown) masses: the mass ratios are constant, so they do not depend on the growth stage
+        ! Masses from the (constant) mass ratios: merges and TOM changes scale all of them
         boulders_data(0, 1) = sistema%asteroid%primary%mu_to_asteroid*sistema%asteroid%mass
         do i = 1, min(sistema%asteroid%Nboulders, ubound(boulders_data, 1))
             boulders_data(i, 1) = sistema%asteroid%boulders(i)%mu_to_asteroid*sistema%asteroid%mass
