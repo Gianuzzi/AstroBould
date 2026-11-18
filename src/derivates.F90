@@ -7,7 +7,7 @@ module derivates
                           & asteroid_data, &  !! |axis_a, axis_b, inertia|
                           & boulders_coords, boulders_data, & !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
                           & m_arr, R_arr, &
-                          & hard_exit
+                          & hard_exit, t_last_dydt
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
                             & use_drag, use_drag_moons, drag_coef, drag_time, &
                             & use_stokes, use_stokes_moons, stokes_C, stokes_alpha, stokes_time, &
@@ -88,7 +88,7 @@ contains
         real(wp) :: vel_circ(2), v2  ! For extra forces
         real(wp) :: two_ener  ! For extra forces
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z  ! For extra forces
-        real(wp) :: mean_movement  ! For extra forces
+        real(wp) :: mean_movement, n_circ  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: damp_f, drag_f, stokes_f  ! For extra forces
         real(wp) :: rcoll, rescape  ! For collision and escape distances
@@ -103,6 +103,7 @@ contains
         N_total = last_moon + N_particles
 
         ! Calculate the angle of the asteroid
+        t_last_dydt = t  ! For the re-check of the hard-exit conditions on accepted states
         theta = y(1)
         omega = y(2)
         der(1) = omega
@@ -127,8 +128,14 @@ contains
             case (2) ! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau
                 der(2) = der(2) - omega/damp_coef_1*damp_f
             case (3) ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
-                der(2) = der(2) +  &
-                        & damp_coef_1*(t - cero + tini)**(damp_coef_2 - uno)*omega*damp_f
+                ! damp_coef_1 = A B, damp_coef_2 = B. For B < 1 the rate diverges at t = 0 (omega itself
+                ! does not): before dt_min the mean rate over [0, dt_min], A dt_min^(B-1), is used instead,
+                ! which gives the exact change of log(omega) at t = dt_min
+                if ((damp_coef_2 < uno) .and. (t < sim%dt_min)) then
+                    der(2) = der(2) + (damp_coef_1/damp_coef_2)*sim%dt_min**(damp_coef_2 - uno)*omega*damp_f
+                else
+                    der(2) = der(2) + damp_coef_1*max(t, cero)**(damp_coef_2 - uno)*omega*damp_f
+                end if
             end select
         end if
 
@@ -182,8 +189,9 @@ contains
 
                 ! Anti-rotate target to check if inside
                 xy_rotated = rotate2D(dr_vec, -theta)
-                if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
+                & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
                     hard_exit = .True.
                 end if
 
@@ -254,6 +262,7 @@ contains
                 ! Check if unbound
                 if (two_ener > cero) then ! Can calculate only in this case
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmcomb ! n
+                    n_circ = sqrt(Gmcomb*inv_dr3)  ! Local circular mean motion
 
                     ! ---> Drag <---
                     if (use_drag_moons) then
@@ -268,7 +277,8 @@ contains
 
                     ! ---> Stokes <---
                     if (use_stokes_moons) then
-                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ = n_circ*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                         ! Acceleration of moon j by Stokes
                         !! acc = -C * (v - alpha * vc) * factor
@@ -312,8 +322,9 @@ contains
 
                 ! Anti-rotate target to check if inside
                 xy_rotated = rotate2D(dr_vec, -theta)
-                if (((xy_rotated(1)+ R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2)+ R_arr(j))/asteroid_data(2))**2 < uno) then
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
+                & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
                     hard_exit = .True.
                     cycle  ! Skip
                 end if
@@ -470,12 +481,16 @@ contains
 
                 ! Get energy
                 if (use_manual_J2_from_cm) then
+                    ! a = -GM r/r^3 (1 - J2K/r^2): potential -GM/r (1 - J2K/(3 r^2)),
+                    ! circular mean motion sqrt(GM/r^3) (1 - J2K/(2 r^2)) to first order
                     aux_J2K = J2K_coef/dr2  ! J2K_coef is negative
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2  ! Check if unbound
-                    mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K*uno3) - v2  ! Check if unbound
+                    mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno2)
+                    n_circ = mean_movement
                 else
                     two_ener = dos*Gmast*inv_dr - v2  ! Check if unbound
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast ! n
+                    n_circ = sqrt(Gmast*inv_dr3)
                 end if
 
                 if (two_ener > cero) then ! Can calculate only in this case
@@ -492,7 +507,8 @@ contains
                     end if
                     ! ---> Stokes <---
                     if (use_stokes) then
-                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ = n_circ*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                         ! Acceleration of particle j by Stokes
                         !! acc = -C * (v - alpha * vc) * factor
@@ -917,7 +933,7 @@ contains
         real(wp) :: vel_circ(2), v2  ! For extra forces
         real(wp) :: two_ener  ! For extra forces
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z  ! For extra forces
-        real(wp) :: mean_movement  ! For extra forces
+        real(wp) :: mean_movement, n_circ  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: drag_f, stokes_f  ! For extra forces
         real(wp) :: rcoll, rescape  ! For collision distance
@@ -932,6 +948,7 @@ contains
         N_total = last_moon + N_particles
 
         ! Calculate the angle of the asteroid
+        t_last_dydt = t  ! For the re-check of the hard-exit conditions on accepted states
         theta = y(1)
         omega = y(2)
         der(1) = omega  ! Just to keep track
@@ -988,7 +1005,8 @@ contains
             if (use_ellipsoid) then
 
                 ! Check if inside
-                if ((dr_vec(1)/asteroid_data(1))**2 + (dr_vec(2)/asteroid_data(2))**2 < uno) then
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((dr_vec(1)/(asteroid_data(1) + R_arr(j)))**2 + (dr_vec(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
                     hard_exit = .True.
                     cycle  ! Skip
                 end if
@@ -1093,17 +1111,23 @@ contains
             if (use_drag .or. use_stokes) then
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
-                dv_vec = coords_P(3:4)  ! Velocity from Asteroid to Particle
+                ! The drag/Stokes laws use the inertial velocity relative to the asteroid:
+                ! v_in = v_rot + omega z x r (expressed in the rotating basis, as the force itself)
+                dv_vec = coords_P(3:4) + omega*(/-dr_vec(2), dr_vec(1)/)
                 v2 = dot_product(dv_vec, dv_vec)
 
                 ! Get energy
                 if (use_manual_J2_from_cm) then
+                    ! a = -GM r/r^3 (1 - J2K/r^2): potential -GM/r (1 - J2K/(3 r^2)),
+                    ! circular mean motion sqrt(GM/r^3) (1 - J2K/(2 r^2)) to first order
                     aux_J2K = J2K_coef/dr2  ! J2K_coef is negative
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2  ! Check if unbound
-                    mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K*uno3) - v2  ! Check if unbound
+                    mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno2)
+                    n_circ = mean_movement
                 else
                     two_ener = dos*Gmast*inv_dr - v2  ! Check if unbound
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast ! n
+                    n_circ = sqrt(Gmast*inv_dr3)
                 end if
 
                 if (two_ener > cero) then ! Can calculate only in this case
@@ -1120,7 +1144,8 @@ contains
                     end if
                     ! ---> Stokes <---
                     if (use_stokes) then
-                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ = n_circ*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                         ! Acceleration of particle j by Stokes
                         !! acc = -C * (v - alpha * vc) * factor

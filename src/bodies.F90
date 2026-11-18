@@ -3,7 +3,8 @@ module bodies
     use constants, only: wp, cero, uno, uno2, uno3, dos, G, pi, twopi, myepsilon, myepsilon2, sqepsilon, tini, infinito, &
                          & unit_mass, unit_time, unit_dist, unit_vel, unit_ener, unit_angm, degree, megno_factor
     use celestial, only: get_a_corot, get_acc_and_pot_single, get_acc_and_pot_single_with_J2, elem, coord, coord2geom
-    use auxiliary, only: quickargsort, quickargsort_int, rotate2D
+    use auxiliary, only: quickargsort, quickargsort_int, rotate2D, cell_index_t, cell_index_build, cell_index_advance
+    use iso_fortran_env, only: int64
 
     implicit none
     logical, parameter :: use_binary_output = .False.  ! Whether to use binary output or not (for debugging mostly)
@@ -73,6 +74,9 @@ module bodies
         real(wp), dimension(4) :: elements = cero  ! a, e, M, w
         real(wp), dimension(4) :: coordinates = cero  ! x, y, vx, vy
         real(wp) :: C20 = cero  ! C20 of the asteroid as a whole
+        real(wp) :: J2R2 = cero  ! Effective J2 * R^2 of the integrated asteroid (for geometric elements)
+        real(wp) :: J2K_manual = cero  ! Manual J2 coefficient as in the dynamics: -1.5 (R/gamma)^2 J2
+        logical :: J2_from_primary = .False.  ! Manual J2 centred on the primary (else on the CM)
         real(wp) :: e_rot = cero ! Rotational energy [dynamic]
         real(wp) :: e_kin = cero ! Kinetic energy [dynamic]
         type(chaos_st) :: chaos
@@ -121,6 +125,7 @@ module bodies
         real(wp) :: inertia = cero
         real(wp) :: eta_col = uno  ! For collisions
         real(wp) :: f_col = uno  ! For collisions
+        logical :: state_changed = .False.  ! A collision modified positions/velocities since the last array generation
         type(asteroid_st) :: asteroid
         integer(kind=4) :: Nmoons = 0
         integer(kind=4) :: Nmoons_active = 0
@@ -216,7 +221,7 @@ contains
         implicit none
         type(asteroid_st), intent(inout) :: self
         real(wp), intent(in) :: mass_primary_or_ast, semi_a_primary, semi_b_primary, semi_c_primary
-        real(wp) :: aux_radius = cero, radius_primary = cero
+        real(wp) :: aux_radius, radius_primary
 
         if (self%primary%id /= -1) then
             write (*, *) "ERROR: Primary already set."
@@ -231,7 +236,10 @@ contains
         end if
         radius_primary = (aux_radius)**uno3
 
-        self%primary%is_sphere = abs(radius_primary - semi_c_primary) < myepsilon  ! c == radius => Sphere
+        ! Sphere if all semi-axes are equal (relative test: the cube root above is not exact)
+        self%primary%is_sphere = (max(semi_a_primary, semi_b_primary, semi_c_primary) - &
+                                & min(semi_a_primary, semi_b_primary, semi_c_primary)) &
+                                & <= 1.e-12_wp*max(semi_a_primary, semi_b_primary, semi_c_primary)
 
         self%primary%semi_axis = (/semi_a_primary, semi_b_primary, semi_c_primary/)
         self%primary%mass = mass_primary_or_ast
@@ -293,7 +301,7 @@ contains
         real(wp), intent(in) :: mu_to_asteroid, ele_a, ele_e, ele_M, ele_w, mmr, radius
         integer(kind=4), intent(in), optional :: id_start
         integer(kind=4) :: i
-        integer(kind=4) :: id0 = 0  ! Where to start using IDs from (first is 1)
+        integer(kind=4) :: id0  ! Where to start using IDs from (first is 1)
         logical :: slot_found
 
         slot_found = .False. ! Default
@@ -311,6 +319,7 @@ contains
         end if
 
         ! Set starting ID
+        id0 = 0  ! (not initialised in the declaration: that would make it SAVEd)
         if (present(id_start)) id0 = id_start
 
         ! Look for first empty moon slot (id = -1)
@@ -342,12 +351,14 @@ contains
         real(wp), intent(in) :: ele_a, ele_e, ele_M, ele_w, mmr
         integer(kind=4), intent(in), optional :: id_start
         integer(kind=4) :: i
-        integer(kind=4) :: id0 = 0  ! Where to start using IDs from (first is 1)
+        integer(kind=4) :: id0  ! Where to start using IDs from (first is 1)
         logical :: slot_found
 
         slot_found = .False. ! Default
 
-        ! Set starting ID
+        ! Set starting ID (not initialised in the declaration: that would make it SAVEd,
+        ! and an id_start given once would silently apply to every later call)
+        id0 = 0
         if (present(id_start)) id0 = id_start
 
         ! Look for first empty particle slot (id = -1)
@@ -485,7 +496,8 @@ contains
 
         ! Set Radius
         if (self%primary%is_sphere) then
-            self%radius = self%primary%radius
+            ! Largest extent from the CM: the primary is offset from it by the boulders
+            self%radius = self%primary%radius + self%primary%dist_to_asteroid
             do i = 1, self%Nboulders
                 self%radius = max(self%radius, self%boulders(i)%radius + self%boulders(i)%dist_to_asteroid) ! Radius
             end do
@@ -548,6 +560,12 @@ contains
                     self(i)%mmr = (self(i)%elements(1)/aux_real)**(1.5e0_wp) ! MMR
                 end if
             end if
+            ! Only bound (elliptic) orbits can be set from elements
+            if ((self(i)%elements(1) <= cero) .or. (self(i)%elements(2) < cero) .or. (self(i)%elements(2) >= uno)) then
+                write (*, *) "ERROR: Moon", i, "needs a > 0 and 0 <= e < 1. Given a, e:", &
+                           & self(i)%elements(1), self(i)%elements(2)
+                stop 1
+            end if
             call coord(combined_mass, &
                         & self(i)%elements(1), &
                         & self(i)%elements(2), &
@@ -559,7 +577,7 @@ contains
             self(i)%coordinates = (/aux_real6(1:2), aux_real6(4:5)/)
 
             ! Inertia
-            self%inertia = 0.4e0_wp*self(i)%mass*self(i)%radius*self(i)%radius
+            self(i)%inertia = 0.4e0_wp*self(i)%mass*self(i)%radius*self(i)%radius
 
             ! Angular momentum
             self(i)%ang_mom_rot = cero
@@ -601,6 +619,12 @@ contains
                 else
                     self(i)%mmr = (self(i)%elements(1)/asteroid%a_corotation)**(1.5e0_wp) ! MMR
                 end if
+            end if
+            ! Only bound (elliptic) orbits can be set from elements
+            if ((self(i)%elements(1) <= cero) .or. (self(i)%elements(2) < cero) .or. (self(i)%elements(2) >= uno)) then
+                write (*, *) "ERROR: Particle", i, "needs a > 0 and 0 <= e < 1. Given a, e:", &
+                           & self(i)%elements(1), self(i)%elements(2)
+                stop 1
             end if
             call coord(asteroid%mass, &
                         & self(i)%elements(1), &
@@ -842,7 +866,8 @@ contains
             if (dist2 < myepsilon2) cycle
             dist = sqrt(dist2)
             inertia = inertia + self%moons(i)%mass*dist*dist
-            e_pot = e_pot - (self%asteroid%mass*self%moons(i)%mass)/dist
+            ! Full asteroid potential (ellipsoid, boulders, J2...), not only its monopole
+            e_pot = e_pot - self%moons(i)%mass*asteroid_potential(self%asteroid, self%moons(i)%coordinates(1:2))/G
         end do
         !! Moons (here, only moons with moons are added)
         do i = 1, self%Nmoons_active - 1
@@ -1002,10 +1027,10 @@ contains
 
         else  ! Astrocentric
 
-            ! Moons
+            ! Moons (two-body elements: mu = G (M + m), as used to set their initial conditions)
             do j = 1, self%Nmoons_active
                 coords_shifted = self%moons(j)%coordinates - coords_cm_in
-                call elem(mass_cm_in, &
+                call elem(mass_cm_in + self%moons(j)%mass, &
                         & (/coords_shifted(1:2), cero, coords_shifted(3:4), cero/), &
                         a, e, i, M, w, O)
                 self%moons(j)%elements = (/a, e, M, w/)
@@ -1044,7 +1069,8 @@ contains
         radius_ast = self%asteroid%radius
         omega_ast = self%asteroid%omega
         ast_cm = self%asteroid%coordinates
-        J2_ast = -self%asteroid%C20
+        ! Only J2 R^2 enters the geometric elements: use the J2 of the body actually integrated
+        J2_ast = self%asteroid%J2R2/(radius_ast*radius_ast)
 
         ! Moons
         do j = 1, self%Nmoons_active
@@ -1112,7 +1138,7 @@ contains
         real(wp), intent(in) :: lambda_kep, rotational_period
         integer(kind=4), intent(in) :: reference_frame
         logical, intent(in) :: is_sinodic
-        integer(kind=4) :: i, j
+        integer(kind=4) :: i
         integer(kind=4), allocatable :: id_list(:)
 
         ! Set main reference frame
@@ -1146,26 +1172,29 @@ contains
             self%Nparticles_active = 0
         end if
 
-        ! Check unique ids
+        ! Check unique ids (O(N): mark each id as seen). Repeated ids would mix the outputs of
+        ! different bodies, so this is an error (the system must not be left half initialised)
         allocate (id_list(self%Nmoons + self%Nparticles))
         do i = 1, self%Nmoons
             id_list(i) = self%moons(i)%id
-            do j = i - 1, 1, -1  ! Back loop
-                if (id_list(i) == id_list(j)) then
-                    write (*, *) "WARNING: Moons IDs are not unique. Repeated:", id_list(i)
-                    return
-                end if
-            end do
         end do
         do i = self%Nmoons + 1, self%Nmoons + self%Nparticles
             id_list(i) = self%particles(i - self%Nmoons)%id
-            do j = i - 1, 1, -1  ! Back loop
-                if (id_list(i) == id_list(j)) then
-                    write (*, *) "WARNING: Particles + Moons IDs are not unique. Repeated:", id_list(i)
-                    return
-                end if
-            end do
         end do
+        if (size(id_list) > 1) then
+            block
+                logical, allocatable :: seen(:)
+                allocate (seen(minval(id_list):maxval(id_list)))
+                seen = .False.
+                do i = 1, size(id_list)
+                    if (seen(id_list(i))) then
+                        write (*, *) "ERROR: Moons/particles IDs are not unique. Repeated:", id_list(i)
+                        stop 1
+                    end if
+                    seen(id_list(i)) = .True.
+                end do
+            end block
+        end if
 
         ! Right now, all coordinates are AsteroidCentric
         call recalculate_all(self)
@@ -1210,6 +1239,108 @@ contains
 
     end subroutine set_system_extra
 
+    !> Effective J2 R^2 of the asteroid as integrated (azimuthally averaged quadrupole), used by the
+    !> geometric elements. Contributions:
+    !>   - Ellipsoid primary (boulders are not used then): -C20 Re^2
+    !>   - Rotating point masses (primary and boulders) at distance d from the CM: (m/M) d^2 / 2
+    !>   - Boulder in Z at height h: -(m/M) h^2
+    !>   - Manual J2: J2 (R/gamma)^2 from the CM, or (m0/M) J2 R0^2 from the primary
+    !> The mass ratios are constant (mass growth and merges scale all masses), so this is constant too.
+    pure subroutine set_effective_J2(self, manual_J2, gamma_J2, J2_from_primary)
+        implicit none
+        type(asteroid_st), intent(inout) :: self
+        real(wp), intent(in) :: manual_J2, gamma_J2
+        logical, intent(in) :: J2_from_primary
+        real(wp) :: J2R2
+        integer(kind=4) :: i
+
+        J2R2 = cero
+
+        if (.not. self%primary%is_sphere) then
+            J2R2 = -self%primary%C20*self%primary%radius**2
+        else
+            J2R2 = uno2*self%primary%mu_to_asteroid*self%primary%dist_to_asteroid**2
+            do i = 1, self%Nboulders
+                J2R2 = J2R2 + uno2*self%boulders(i)%mu_to_asteroid*self%boulders(i)%dist_to_asteroid**2
+            end do
+            if (self%boulder_z%active) then
+                J2R2 = J2R2 - self%boulder_z%mu_to_asteroid*self%boulder_z%dist_to_asteroid**2
+            end if
+            if (abs(manual_J2) > cero) then
+                if (J2_from_primary .and. (self%Nboulders > 0)) then
+                    J2R2 = J2R2 + self%primary%mu_to_asteroid*manual_J2*self%primary%radius**2
+                else if (gamma_J2 > cero) then
+                    J2R2 = J2R2 + manual_J2*(self%primary%radius/gamma_J2)**2
+                else
+                    J2R2 = J2R2 + manual_J2*self%primary%radius**2
+                end if
+            end if
+        end if
+
+        self%J2R2 = J2R2
+
+        ! Manual J2 as used by the dynamics (for the potential energy)
+        self%J2K_manual = cero
+        self%J2_from_primary = .False.
+        if ((abs(manual_J2) > cero) .and. self%primary%is_sphere) then
+            if (J2_from_primary) then
+                self%J2K_manual = -1.5e0_wp*self%primary%radius**2*manual_J2
+                self%J2_from_primary = .True.
+            else if (gamma_J2 > cero) then
+                self%J2K_manual = -1.5e0_wp*(self%primary%radius/gamma_J2)**2*manual_J2
+            end if
+        end if
+    end subroutine set_effective_J2
+
+    !> Gravitational potential of the asteroid, U = -Phi > 0 (per unit mass), at the barycentric
+    !> point xy. The same terms as the dynamics: ellipsoid (C20, C22), or point masses (primary
+    !> and boulders, at their current positions), manual J2 and boulders in Z.
+    pure function asteroid_potential(self, xy) result(U)
+        implicit none
+        type(asteroid_st), intent(in) :: self
+        real(wp), intent(in) :: xy(2)
+        real(wp) :: U
+        real(wp) :: rel(2), rb(2), r2, d(2), d2, K, L
+        integer(kind=4) :: i
+
+        rel = xy - self%coordinates(1:2)
+        r2 = rel(1)*rel(1) + rel(2)*rel(2)
+
+        if (.not. self%primary%is_sphere) then
+            ! Phi = -GM/r [1 - K/(3 r^2) + L (x^2 - y^2)/r^4], in the body frame
+            rb = rotate2D(rel, -self%theta)
+            K = 1.5e0_wp*self%primary%radius**2*self%primary%C20
+            L = 3.e0_wp*self%primary%radius**2*self%primary%C22
+            U = G*self%mass/sqrt(r2)*(uno - K/(3*r2) + L*(rb(1)*rb(1) - rb(2)*rb(2))/(r2*r2))
+            return
+        end if
+
+        ! Primary
+        d = rel - self%primary%coordinates_CM(1:2)
+        d2 = d(1)*d(1) + d(2)*d(2)
+        if (self%J2_from_primary) then
+            U = G*self%primary%mass/sqrt(d2)*(uno - self%J2K_manual/(3*d2))
+        else
+            U = G*self%primary%mass/sqrt(d2)
+        end if
+
+        ! Boulders
+        do i = 1, self%Nboulders
+            d = rel - self%boulders(i)%coordinates_CM(1:2)
+            U = U + G*self%boulders(i)%mass/sqrt(d(1)*d(1) + d(2)*d(2))
+        end do
+
+        ! Manual J2 from the CM (perturbation only)
+        if ((abs(self%J2K_manual) > cero) .and. (.not. self%J2_from_primary)) then
+            U = U - G*self%mass*self%J2K_manual/(3*r2*sqrt(r2))
+        end if
+
+        ! Boulders in Z
+        if (self%boulder_z%active) then
+            U = U + G*self%boulder_z%mass/sqrt(r2 + self%boulder_z%dist_to_asteroid**2)
+        end if
+    end function asteroid_potential
+
     ! ---------------------------   ADD MEGNO    ---------------------------
 
     subroutine init_megno(self, eps)
@@ -1218,10 +1349,21 @@ contains
         real(wp), intent(in) :: eps
         real(wp), dimension(4) :: rndm_arr
         real(wp) :: norma
-        integer(kind=4) :: i
+        integer(kind=4) :: i, nseed
+        integer(kind=4), allocatable :: seed(:)
 
         self%megno%epsilon = eps
         if ((self%Nparticles > 0) .and. (eps > cero)) then
+
+            ! Fixed seed: the initial tangent vectors (and so MEGNO) must not change from run to run.
+            ! An unseeded generator is randomly seeded on every run by gfortran, but not by ifx.
+            call random_seed(size=nseed)
+            allocate (seed(nseed))
+            do i = 1, nseed
+                seed(i) = 104729 + 7919*i
+            end do
+            call random_seed(put=seed)
+            deallocate (seed)
 
             do i = 1, self%Nparticles
                 rndm_arr = uno
@@ -1410,6 +1552,7 @@ contains
         if (.not. self%particles(i)%active) then
             write (*, *) "WARNING: Can not deactivate particle already deactivated:", i
             if (present(error)) error = error + 1
+            return  ! Otherwise an active particle would be dropped from the count
         end if
 
         ! Deactivate particle
@@ -1837,10 +1980,10 @@ contains
             mass_cm = mass_in
             coords_cm = cero
 
-            ! Moons (massive)
+            ! Moons (massive): two-body elements with mu = G (M + m), as in update_elements
             do i = 2, self%Nmoons_active + 1
                 idx = 4*i - 1
-                call coord(mass_in, &
+                call coord(mass_in + self%moons(i-1)%mass, &
                         & array(idx), &
                         & array(idx + 1), &
                         & cero, &
@@ -1889,7 +2032,7 @@ contains
         real(wp), intent(in) :: xy_target(2)
         real(wp), intent(inout) :: acc(2), pot
         logical, intent(inout), optional :: inside
-        logical :: has_inside = .False.
+        logical :: has_inside
         integer(kind=4) :: i
         real(wp) :: dx, dy, dr, dr2, dr4, dz2
         real(wp) :: xy_centered(2)
@@ -2130,7 +2273,13 @@ contains
         type(system_st), intent(inout) :: self
         integer(kind=4), intent(in) :: i
         integer(kind=4), intent(inout), optional :: error
-        real(wp) :: aux_real, ang_mom
+        real(wp) :: aux_real, ang_mom, aux_inertia
+
+        ! An inactive moon was already merged/removed: its mass must not be added twice
+        if (.not. self%moons(i)%active) then
+            if (present(error)) error = error + 1
+            return
+        end if
 
         ! Perform the merge
         call merge_moon_into_ast(self%asteroid, self%moons(i), error)
@@ -2145,7 +2294,7 @@ contains
         call check_coordinates(self, error)
 
         ! Check ANGULAR MOMENTUM
-        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_real)
+        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_inertia)  ! Distinct actuals
         aux_real = max(sqepsilon, abs(ang_mom))
         if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
             write (*, *) "WARNING: Total angular momentum relative error:", abs(ang_mom - self%ang_mom)/aux_real
@@ -2233,25 +2382,21 @@ contains
         integer(kind=4), intent(out) :: outcome
         integer(kind=4), intent(inout), optional :: error
         real(wp) :: m_cm, rv_cm(4)
-        real(wp) :: L_rot, L_orb
-        real(wp) :: aux_real, ang_mom, aux_real24(2, 4)
+        real(wp) :: L_rot
+        real(wp) :: aux_real, ang_mom, aux_real24(2, 4), aux_inertia
         real(wp) :: mi, mj, radiusi, radiusj
         real(wp) :: ri(2), rj(2)
         real(wp) :: vi(2), vj(2)
         real(wp) :: dr_vec(2), dr, dr2, dr_ver(2)
         real(wp) :: dv_vec(2), dv2
         real(wp) :: dv_rad
-        real(wp) :: Li_orb, Lj_orb
         real(wp) :: mu, Ekin, Epot, vesc2
         real(wp) :: vin, vit, vjn, vjt
         real(wp) :: vin_new, vjn_new
-        real(wp) :: Li_tmp, Lj_tmp
-        real(wp) :: L_tmp
-        real(wp) :: denom
-        real(wp) :: delta_vi, delta_vj
         real(wp) :: vi_col(2), vj_col(2)
         real(wp) :: overlap, corr1, corr2
         real(wp) :: new_rvi(4), new_rvj(4)
+        real(wp) :: u(2), sep
 
         ! Result
         outcome = 0
@@ -2294,19 +2439,24 @@ contains
 
         ! Are they already moving appart ?
         if (dv_rad > cero) then
-            ! Push apart proportionally to masses
+            ! Remove the overlap moving the pair along its relative velocity, mass weighted:
+            ! the CM, the angular momentum and the energy are unchanged
+            ! (a push along the line of centres would change the angular momentum)
             overlap = radiusi + radiusj - dr
             if (overlap > cero) then
-                corr1 = overlap*(mj/m_cm)
-                corr2 = overlap*(mi/m_cm)
+                u = dv_vec/sqrt(dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2))  ! dv_rad > 0, so dv /= 0
+                sep = separation_along(dr_vec, u, (radiusi + radiusj)*(uno + 1.e-10_wp))
+                corr1 = sep*(mj/m_cm)
+                corr2 = sep*(mi/m_cm)
 
-                new_rvi(1:2) = ri + corr1*dr_ver
-                new_rvj(1:2) = rj - corr2*dr_ver
+                new_rvi(1:2) = ri + corr1*u
+                new_rvj(1:2) = rj - corr2*u
 
                 new_rvi(3:4) = vi
                 new_rvj(3:4) = vj
 
                 ! Keep velocities unchanged
+                self%state_changed = .True.  ! Coordinates modified: the integration arrays must be regenerated
                 call shift_single_moon(self%moons(i), new_rvi)
                 call shift_single_moon(self%moons(j), new_rvj)
 
@@ -2370,17 +2520,13 @@ contains
             call deactivate_moon_i(self, j, .False., error)  ! Possible reordering done below
 
             ! Update COORDINATES and derivates
+            self%state_changed = .True.  ! Coordinates modified: the integration arrays must be regenerated
             call shift_single_moon(self%moons(i), rv_cm)
 
         else  ! Not plastic
 
             ! Result (not plastic)
             outcome = 2
-
-            ! Angular momentum BEFORE collision (orbital part)
-            Li_orb = mi*(ri(1)*vi(2) - ri(2)*vi(1))
-            Lj_orb = mj*(rj(1)*vj(2) - rj(2)*vj(1))
-            L_orb = Li_orb + Lj_orb
 
             ! Project velocities
             vin = vi(1)*dr_ver(1) + vi(2)*dr_ver(2)
@@ -2392,45 +2538,24 @@ contains
             vin_new = ((mi*vin + mj*vjn) - (uno - self%eta_col)*mj*(vin - vjn))/m_cm
             vjn_new = ((mi*vin + mj*vjn) + (uno - self%eta_col)*mi*(vin - vjn))/m_cm
 
-            ! --- Position correction (push apart to avoid overlap) ---
-            overlap = radiusi + radiusj - dr
-            if (overlap > cero) then
-                corr1 = overlap*(mj/m_cm)
-                corr2 = overlap*(mi/m_cm)
-                new_rvi(1) = ri(1) + corr1*dr_ver(1)
-                new_rvi(2) = ri(2) + corr1*dr_ver(2)
-                new_rvj(1) = rj(1) - corr2*dr_ver(1)
-                new_rvj(2) = rj(2) - corr2*dr_ver(2)
-            else
-                new_rvi(1:2) = ri
-                new_rvj(1:2) = rj
-            end if
-
-            ! Build the post-impulse cartesian velocities (before tangential tweak)
-            ! vi_col and vj_col are the velocities after impulse using vin_new/vit etc.
+            ! Post-impulse cartesian velocities: only the normal components change, so the momentum
+            ! and the angular momentum (impulse along the line of centres) are conserved
             vi_col(1) = vin_new*dr_ver(1) - vit*dr_ver(2)
             vi_col(2) = vin_new*dr_ver(2) + vit*dr_ver(1)
             vj_col(1) = vjn_new*dr_ver(1) - vjt*dr_ver(2)
             vj_col(2) = vjn_new*dr_ver(2) + vjt*dr_ver(1)
 
-            ! Angular momentum AFTER position correction but BEFORE tangential tweak
-            Li_tmp = mi*(new_rvi(1)*vi_col(2) - new_rvi(2)*vi_col(1))
-            Lj_tmp = mj*(new_rvj(1)*vj_col(2) - new_rvj(2)*vj_col(1))
-            L_tmp = Li_tmp + Lj_tmp
-
-            ! Denominator: lever arms for tangential correction (explicit symmetric form)
-            denom = mi*((new_rvi(1) - new_rvj(1))*dr_ver(1) + (new_rvi(2) - new_rvj(2))*dr_ver(2))
-
-            if (abs(denom) > myepsilon) then
-                ! Solve for tangential velocity correction (delta on vi_col along t)
-                delta_vi = (L_orb - L_tmp)/denom
-                delta_vj = -(mi/mj)*delta_vi
-
-                ! Apply corrections along tangent direction, preserving linear momentum
-                vi_col(1) = vi_col(1) - delta_vi*dr_ver(2)
-                vi_col(2) = vi_col(2) + delta_vi*dr_ver(1)
-                vj_col(1) = vj_col(1) - delta_vj*dr_ver(2)
-                vj_col(2) = vj_col(2) + delta_vj*dr_ver(1)
+            ! Remove the overlap moving the pair along its NEW relative velocity, mass weighted
+            ! (CM, angular momentum and energy unchanged)
+            new_rvi(1:2) = ri
+            new_rvj(1:2) = rj
+            dv_vec = vi_col - vj_col
+            dv2 = dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2)
+            if (dv2 > cero) then
+                u = dv_vec/sqrt(dv2)
+                sep = separation_along(dr_vec, u, (radiusi + radiusj)*(uno + 1.e-10_wp))
+                new_rvi(1:2) = ri + sep*(mj/m_cm)*u
+                new_rvj(1:2) = rj - sep*(mi/m_cm)*u
             end if
 
             ! Pack the new states to pass to shift_single_moon
@@ -2440,6 +2565,7 @@ contains
             new_rvj(4) = vj_col(2)
 
             ! Update COORDINATES and VELOCITIES
+            self%state_changed = .True.  ! Coordinates modified: the integration arrays must be regenerated
             call shift_single_moon(self%moons(i), new_rvi)
             call shift_single_moon(self%moons(j), new_rvj)
 
@@ -2449,7 +2575,7 @@ contains
         call check_coordinates(self, error)
 
         ! Check ANGULAR MOMENTUM
-        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_real)
+        call calculate_energy_ang_mom_inertia(self, aux_real, ang_mom, aux_inertia)  ! Distinct actuals
         aux_real = max(sqepsilon, abs(ang_mom))
         if (abs(ang_mom - self%ang_mom)/aux_real > sqepsilon) then
             write (*, *) "WARNING: Total angular momentum differs from previous. Err_rel:", abs(ang_mom - self%ang_mom)/aux_real
@@ -2467,20 +2593,12 @@ contains
         integer(kind=4), intent(in) :: i, j
         integer(kind=4), intent(out) :: outcome
         integer(kind=4), intent(inout), optional :: error
-        real(wp) :: L_orb
         real(wp) :: ri(2), rj(2)
         real(wp) :: vi(2), vj(2)
         real(wp) :: dr_vec(2), dr, dr2, dr_ver(2)
-        real(wp) :: dv_vec(2)
-        real(wp) :: v_mean, v_diff
-        real(wp) :: dv_rad
-        real(wp) :: vin, vit, vjn, vjt
-        real(wp) :: vin_new, vjn_new
-        real(wp) :: L_tmp
-        real(wp) :: denom
-        real(wp) :: delta
-        real(wp) :: vi_col(2), vj_col(2)
-        real(wp) :: overlap, corr
+        real(wp) :: dv_vec(2), dv_mod, u(2)
+        real(wp) :: dv_rad, jn
+        real(wp) :: sep, rsum
         real(wp) :: new_rvi(4), new_rvj(4)
 
         ! Result
@@ -2496,12 +2614,14 @@ contains
         ! Relative attrs
         dr_vec = ri - rj  ! Relative pos
         dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
+        rsum = 2*self%particles_radius
 
         ! Skip if not touching
-        if (dr2 .gt. 4*self%particles_radius**2) return ! Nothing to do
+        if (dr2 .gt. rsum**2) return ! Nothing to do
 
         ! Distance
         dr = sqrt(dr2)
+        if (dr <= cero) return  ! Coincident: no direction defined
 
         ! Relative position versor
         dr_ver = dr_vec/dr
@@ -2514,33 +2634,9 @@ contains
         dv_vec = vi - vj  ! Relative vel
         dv_rad = dv_vec(1)*dr_ver(1) + dv_vec(2)*dr_ver(2)
 
-        ! Are they already moving appart ?
-        if (dv_rad > cero) then
-            ! Push apart proportionally to masses
-            overlap = 2 * self%particles_radius - dr
-            if (overlap > cero) then
-
-                corr = uno2 * overlap
-
-                new_rvi(1:2) = ri + corr*dr_ver
-                new_rvj(1:2) = rj - corr*dr_ver
-            else
-
-                new_rvi(1:2) = ri
-                new_rvj(1:2) = rj
-
-            end if
-            
-            new_rvi(3:4) = vi
-            new_rvj(3:4) = vj
-
-            ! Keep velocities unchanged
-            call shift_single_particle(self%particles(i), new_rvi)
-            call shift_single_particle(self%particles(j), new_rvj)
-
-            return  ! Nothing else to do
-
-        end if
+        ! Already moving apart: nothing to do (the overlap clears by itself, and no
+        ! position change is needed: it would not conserve the angular momentum)
+        if (dv_rad > cero) return
 
         ! Check if particles are active
         if ((.not. self%particles(i)%active) .or. ((.not. self%particles(j)%active))) then
@@ -2552,71 +2648,105 @@ contains
         ! Only not plastic collision in this case
         outcome = 2
 
-        ! --- Angular momentum BEFORE (specific, no mass) ---
-        L_orb = ri(1)*vi(2) - ri(2)*vi(1) + &
-              & rj(1)*vj(2) - rj(2)*vj(1)
+        ! --- Normal impulse (equal masses), restitution 1 - eta ---
+        ! Only the normal components change: the momentum and the angular momentum
+        ! (the impulse acts along the line of centres) are conserved, the energy decreases
+        jn = (uno - uno2*self%eta_col)*dv_rad  ! Change of the normal velocity of i (j gets -jn)
+        new_rvi(3:4) = vi - jn*dr_ver
+        new_rvj(3:4) = vj + jn*dr_ver
 
-        ! --- Project velocities ---
-        vin = vi(1)*dr_ver(1) + vi(2)*dr_ver(2)
-        vit = -vi(1)*dr_ver(2) + vi(2)*dr_ver(1)
-
-        vjn = vj(1)*dr_ver(1) + vj(2)*dr_ver(2)
-        vjt = -vj(1)*dr_ver(2) + vj(2)*dr_ver(1)
-
-        ! --- Normal collision (equal-mass simplified) ---
-        v_mean = uno2*(vin + vjn)
-        v_diff = uno2*(vin - vjn)
-
-        vin_new = v_mean - (uno - self%eta_col)*v_diff
-        vjn_new = v_mean + (uno - self%eta_col)*v_diff
-
-        ! --- Position correction ---
-        overlap = 2 * self%particles_radius - dr
-        if (overlap > cero) then
-            corr = uno2 * overlap
-            new_rvi(1:2) = ri + corr*dr_ver
-            new_rvj(1:2) = rj - corr*dr_ver
-        else
-            new_rvi(1:2) = ri
-            new_rvj(1:2) = rj
+        ! --- Remove the overlap moving the pair along its NEW relative velocity ---
+        ! (CM, angular momentum and energy unchanged)
+        new_rvi(1:2) = ri
+        new_rvj(1:2) = rj
+        dv_vec = new_rvi(3:4) - new_rvj(3:4)
+        dv_mod = sqrt(dv_vec(1)*dv_vec(1) + dv_vec(2)*dv_vec(2))
+        if (dv_mod > cero) then
+            u = dv_vec/dv_mod
+            sep = separation_along(dr_vec, u, rsum*(uno + 1.e-10_wp))
+            new_rvi(1:2) = ri + uno2*sep*u
+            new_rvj(1:2) = rj - uno2*sep*u
         end if
-
-        ! --- Rebuild velocities ---
-        vi_col(1) = vin_new*dr_ver(1) - vit*dr_ver(2)
-        vi_col(2) = vin_new*dr_ver(2) + vit*dr_ver(1)
-
-        vj_col(1) = vjn_new*dr_ver(1) - vjt*dr_ver(2)
-        vj_col(2) = vjn_new*dr_ver(2) + vjt*dr_ver(1)
-
-        ! --- Angular momentum AFTER (specific) ---
-        L_tmp = new_rvi(1)*vi_col(2) - new_rvi(2)*vi_col(1) + &
-                new_rvj(1)*vj_col(2) - new_rvj(2)*vj_col(1)
-
-        ! --- Tangential correction ---
-        denom = (dr + overlap)
-
-        if (abs(denom) > myepsilon) then
-            delta = (L_orb - L_tmp)/denom
-
-            ! Apply antisymmetric correction
-            vi_col(1) = vi_col(1) - delta*dr_ver(2)
-            vi_col(2) = vi_col(2) + delta*dr_ver(1)
-
-            vj_col(1) = vj_col(1) + delta*dr_ver(2)
-            vj_col(2) = vj_col(2) - delta*dr_ver(1)
-        end if
-
-        ! --- Pack results ---
-        new_rvi(3:4) = vi_col
-        new_rvj(3:4) = vj_col
 
         ! Update COORDINATES and VELOCITIES
+        self%state_changed = .True.  ! Coordinates modified: the integration arrays must be regenerated
         call shift_single_particle(self%particles(i), new_rvi)
         call shift_single_particle(self%particles(j), new_rvj)
 
-        ! No need to check CM or angular momentum here, as they are not tracked for particles
-
     end subroutine collide_2_particles
+
+    !> Relative displacement s >= 0 along the unit vector u that takes the separation dr to
+    !> |dr + s u| = rsum (positive root). Moving a pair along its own relative velocity
+    !> (mass weighted) removes the overlap keeping the CM, the angular momentum and the energy.
+    pure function separation_along(dr_vec, u, rsum) result(sep)
+        implicit none
+        real(wp), intent(in) :: dr_vec(2), u(2), rsum
+        real(wp) :: sep, b, c
+        b = dr_vec(1)*u(1) + dr_vec(2)*u(2)
+        c = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2) - rsum*rsum
+        if (c >= cero) then
+            sep = cero  ! Not overlapping
+        else
+            sep = -b + sqrt(b*b - c)  ! c < 0: real and positive
+        end if
+    end function separation_along
+
+    !> Pairs (i < j) of active particles in contact (distance <= 2 R), found with sorted cells of
+    !> the contact size (O(N), no dense grid). Deterministic order.
+    subroutine get_particle_contact_pairs(self, pairs, npairs)
+        implicit none
+        type(system_st), intent(in) :: self
+        integer(kind=4), allocatable, intent(inout) :: pairs(:, :)
+        integer(kind=4), intent(out) :: npairs
+        type(cell_index_t), save :: cells
+        integer(kind=4), allocatable :: tmp(:, :)
+        real(wp), allocatable :: pos(:, :)
+        integer(kind=4) :: np, i, j, q, p, dcy, ptr(-1:1)
+        logical :: ptr_ok(-1:1)
+        integer(int64) :: klo
+        real(wp) :: rc, drx, dry
+
+        npairs = 0
+        np = self%Nparticles_active
+        if (.not. allocated(pairs)) allocate (pairs(2, 64))
+        if (np < 2) return
+
+        rc = dos*self%particles_radius
+        if (rc <= cero) return
+
+        allocate (pos(2, np))
+        do i = 1, np
+            pos(:, i) = self%particles(i)%coordinates(1:2)
+        end do
+        ! Cells slightly larger than the contact: the test below is distance <= 2R (inclusive)
+        call cell_index_build(cells, np, pos, rc*(uno + 1.e-12_wp))
+        deallocate (pos)
+
+        ptr_ok = .False.
+        do q = 1, np
+            i = cells%ord(q)
+            do dcy = -1, 1
+                klo = cells%key(q) + int(dcy, int64)*cells%Wx - 1_int64
+                call cell_index_advance(cells, klo, ptr(dcy), ptr_ok(dcy))
+                do p = ptr(dcy), np
+                    if (cells%key(p) > klo + 2_int64) exit
+                    j = cells%ord(p)
+                    if (j <= i) cycle  ! Each pair once, as (i, j) with i < j
+                    drx = cells%px(p) - cells%px(q)
+                    dry = cells%py(p) - cells%py(q)
+                    if (drx*drx + dry*dry > rc*rc) cycle
+                    if (npairs == size(pairs, 2)) then
+                        allocate (tmp(2, 2*size(pairs, 2)))
+                        tmp(:, 1:npairs) = pairs(:, 1:npairs)
+                        call move_alloc(tmp, pairs)
+                    end if
+                    npairs = npairs + 1
+                    pairs(1, npairs) = i
+                    pairs(2, npairs) = j
+                end do
+            end do
+        end do
+    end subroutine get_particle_contact_pairs
 
     ! Resolve collisions
     subroutine resolve_collisions(self, r_min, unit_file)
@@ -2625,7 +2755,7 @@ contains
         real(wp), intent(in) :: r_min
         integer(kind=4), intent(in), optional :: unit_file
         integer(kind=4) :: i, j, k
-        integer(kind=4) :: m_act0, p_act0
+        integer(kind=4) :: m_act0
         integer(kind=4) :: m_act, p_act
         integer(kind=4) :: moon_id
         integer(kind=4) :: outcome
@@ -2635,9 +2765,12 @@ contains
         real(wp) :: xy_rotated(2), dx, dy  ! For ellipsoid
         logical :: again, do_write, was_any_moon_something
         integer(kind=4), parameter :: MAX_P2P_REPETITIONS = 4 ! To avoid infinite loops
+        integer(kind=4), allocatable :: cpairs(:, :)
+        integer(kind=4) :: ncpairs, ip
 
         ! Init
         do_write = present(unit_file)
+        self%state_changed = .False.
         
         was_any_moon_something = .False.
         again = .True.
@@ -2671,7 +2804,7 @@ contains
 
             ! Moons -> Primary + Boulders
             m_act = self%Nmoons_active
-            if (r_min .le. cero) then  ! Only if not r_min
+            if (r_min <= cero) then  ! Only if not r_min
 
                 ! Primary
                 boul_pos = self%asteroid%primary%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
@@ -2680,7 +2813,7 @@ contains
                     do i = m_act, 1, -1  ! Backwards loop
                         dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
                         dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                        if (dr2 .le. (boul_rad + self%moons(i)%radius)**2) then
+                        if (dr2 <= (boul_rad + self%moons(i)%radius)**2) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
                             was_any_moon_something = .True.
@@ -2688,11 +2821,13 @@ contains
                     end do
                 else  ! Ellipsoid
                     do i = m_act, 1, -1  ! Backwards loop
-                        xy_rotated = rotate2D(self%moons(i)%coordinates(1:2), -self%asteroid%theta)
-                        dx = xy_rotated(1) - boul_pos(1) + self%moons(i)%radius
-                        dy = xy_rotated(2) - boul_pos(2) + self%moons(i)%radius
-                        if (((dx/self%asteroid%primary%semi_axis(1))**2 &
-                         & + (dy/self%asteroid%primary%semi_axis(2))**2) < uno) then
+                        ! Position from the ellipsoid centre, in the body-fixed axes.
+                        ! Contact: semi-axes enlarged by the moon radius
+                        xy_rotated = rotate2D(self%moons(i)%coordinates(1:2) - boul_pos, -self%asteroid%theta)
+                        dx = xy_rotated(1)
+                        dy = xy_rotated(2)
+                        if (((dx/(self%asteroid%primary%semi_axis(1) + self%moons(i)%radius))**2 &
+                         & + (dy/(self%asteroid%primary%semi_axis(2) + self%moons(i)%radius))**2) < uno) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
                             was_any_moon_something = .True.
@@ -2700,17 +2835,18 @@ contains
                     end do
                 end if
 
-                m_act = self%Nmoons_active
                 ! Boulders
                 do j = 1, self%asteroid%Nboulders
+                    m_act = self%Nmoons_active  ! Moons merged into a previous boulder are no longer active
                     boul_pos = self%asteroid%boulders(j)%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
                     boul_rad = self%asteroid%boulders(j)%radius
                     do i = m_act, 1, -1  ! Backwards loop
                         dr_vec = self%moons(i)%coordinates(1:2) - boul_pos  ! Relative pos
                         dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                        if (dr2 .le. (boul_rad + self%moons(i)%radius)**2) then
+                        if (dr2 <= (boul_rad + self%moons(i)%radius)**2) then
                             if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                             call merge_moon_i_into_ast(self, i)
+                            was_any_moon_something = .True.
                         end if
                     end do
                 end do
@@ -2720,7 +2856,7 @@ contains
                 do i = m_act, 1, -1  ! Backwards loop
                     dr_vec = self%moons(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                    if (dr2 .le. (r_min + self%moons(i)%radius)**2) then
+                    if (dr2 <= (r_min + self%moons(i)%radius)**2) then
                         if (do_write) write (unit_file, s1i5x5) "Merged moon ", i, "(", self%moons(i)%id, ") into asteroid."
                         call merge_moon_i_into_ast(self, i)
                         was_any_moon_something = .True.
@@ -2729,7 +2865,7 @@ contains
 
             end if
 
-            again = again .or. ((self%Nmoons_active .ge. 1) .and. (m_act0 > self%Nmoons_active))
+            again = again .or. ((self%Nmoons_active >= 1) .and. (m_act0 > self%Nmoons_active))
 
         end do
 
@@ -2740,26 +2876,29 @@ contains
             do while (k < MAX_P2P_REPETITIONS .and. again)
 
                 again = .False.
-                p_act0 = self%Nparticles_active
-                do j = p_act0, 2, -1  ! Backwards loop
-                    inner_loop_part: do i = j - 1, 1, -1  ! Backwards loop
-                        call collide_2_particles(self, i, j, outcome)
-                        if (outcome == 2) then
-                            again = .True.
-                            if (do_write) write (unit_file, s1i5x5) "Collision between particle ", j, &
-                                            & "(", self%particles(j)%id, ") and particle ", &
-                                            & i, "(", self%particles(i)%id, ")."
-                        end if
-                    end do inner_loop_part
+                ! Only the pairs in contact (cell list, O(N)); rebuilt each repetition,
+                ! as the position corrections may create new contacts
+                call get_particle_contact_pairs(self, cpairs, ncpairs)
+                do ip = 1, ncpairs
+                    i = cpairs(1, ip)
+                    j = cpairs(2, ip)
+                    call collide_2_particles(self, i, j, outcome)
+                    if (outcome == 2) then
+                        again = .True.
+                        if (do_write) write (unit_file, s1i5x5) "Collision between particle ", j, &
+                                        & "(", self%particles(j)%id, ") and particle ", &
+                                        & i, "(", self%particles(i)%id, ")."
+                    end if
                 end do
                 k = k + 1
             end do
+            if (allocated(cpairs)) deallocate (cpairs)
         end if
 
         ! Particles -> Moons
         m_act = self%Nmoons_active
-        p_act = self%Nparticles_active
         do j = 1, m_act
+            p_act = self%Nparticles_active  ! Particles merged into a previous moon are no longer active
             moon_pos = self%moons(j)%coordinates(1:2)
             moon_rad = self%moons(j)%radius
             moon_id = self%moons(j)%id
@@ -2767,7 +2906,7 @@ contains
             do i = p_act, 1, -1  ! Backwards loop
                 dr_vec = self%particles(i)%coordinates(1:2) - moon_pos  ! Relative pos
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                if (dr2 .le. coll_dist2) then
+                if (dr2 <= coll_dist2) then
                     if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, "(", self%particles(i)%id, ") into moon ", &
                                     & j, "(", self%moons(j)%id, ")."
                     self%particles(i)%merged_to = moon_id  ! Set where merged to
@@ -2778,7 +2917,7 @@ contains
 
         ! Particles -> Primary + Boulders (Only if not r_min)
         p_act = self%Nparticles_active
-        if (r_min .le. cero) then
+        if (r_min <= cero) then
 
             ! Primary
             boul_pos = self%asteroid%primary%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
@@ -2788,7 +2927,7 @@ contains
                 do i = p_act, 1, -1  ! Backwards loop
                     dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                    if (dr2 .le. coll_dist2) then
+                    if (dr2 <= coll_dist2) then
                         if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, &
                                                             & "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
@@ -2797,11 +2936,13 @@ contains
                 end do
             else  ! Ellipsoid
                 do i = p_act, 1, -1  ! Backwards loop
-                    xy_rotated = rotate2D(self%particles(i)%coordinates(1:2), -self%asteroid%theta)
-                    dx = xy_rotated(1) - boul_pos(1)
-                    dy = xy_rotated(2) - boul_pos(2)
-                    if (((dx/self%asteroid%primary%semi_axis(1))**2 &
-                     & + (dy/self%asteroid%primary%semi_axis(2))**2) < uno) then
+                    ! Position from the ellipsoid centre, in the body-fixed axes.
+                    ! Contact: semi-axes enlarged by the particle radius
+                    xy_rotated = rotate2D(self%particles(i)%coordinates(1:2) - boul_pos, -self%asteroid%theta)
+                    dx = xy_rotated(1)
+                    dy = xy_rotated(2)
+                    if (((dx/(self%asteroid%primary%semi_axis(1) + self%particles_radius))**2 &
+                     & + (dy/(self%asteroid%primary%semi_axis(2) + self%particles_radius))**2) < uno) then
                         if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, &
                                                             & "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
@@ -2810,16 +2951,16 @@ contains
                 end do
             end if
 
-            p_act = self%Nparticles_active
             ! Boulders
             do j = 1, self%asteroid%Nboulders
+                p_act = self%Nparticles_active  ! Particles merged into a previous boulder are no longer active
                 boul_pos = self%asteroid%boulders(j)%coordinates_CM(1:2) + self%asteroid%coordinates(1:2)
                 boul_rad = self%asteroid%boulders(j)%radius
                 coll_dist2 = (boul_rad + self%particles_radius)**2
                 do i = p_act, 1, -1  ! Backwards loop
                     dr_vec = self%particles(i)%coordinates(1:2) - boul_pos  ! Relative pos
                     dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                    if (dr2 .le. coll_dist2) then
+                    if (dr2 <= coll_dist2) then
                         if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, &
                                                             & "(", self%particles(i)%id, ") into asteroid."
                         self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
@@ -2834,7 +2975,7 @@ contains
             do i = p_act, 1, -1  ! Backwards loop
                 dr_vec = self%particles(i)%coordinates(1:2) - self%asteroid%coordinates(1:2)  ! Relative pos
                 dr2 = dr_vec(1)*dr_vec(1) + dr_vec(2)*dr_vec(2)  ! Distance²
-                if (dr2 .le. coll_dist2) then
+                if (dr2 <= coll_dist2) then
                     if (do_write) write (unit_file, s1i5x5) "Merged particle ", i, "(", self%particles(i)%id, ") into asteroid."
                     self%particles(i)%merged_to = 0  ! Set where merged to (Asteroid)
                     call deactivate_particle_i(self, i)  ! Deactivate
@@ -3642,11 +3783,12 @@ contains
         type(system_st), intent(in) :: initial
         type(system_st), intent(in) :: actual
         integer(kind=4), intent(in), optional :: unit_file
-        integer(kind=4) :: my_file = 6  ! StdOut
+        integer(kind=4) :: my_file
         real(wp) :: mass, COM(4), energy, ang_mom, inertia
 
         call get_cm(actual, mass, COM)
         call calculate_energy_ang_mom_inertia(actual, energy, ang_mom, inertia)
+        my_file = 6  ! StdOut (not initialised in the declaration: that would make it SAVEd)
         if (present(unit_file)) my_file = unit_file
 
         write (my_file, r13) actual%time/unit_time, &  ! time

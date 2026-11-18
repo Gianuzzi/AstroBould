@@ -46,11 +46,12 @@ contains
             stop 1
         end if
 
-        self%total_dt = cutoff_period*support_factor
-
         self%n_samples = samples_per_cutoff
         self%n_windows = support_factor
         if (mod(support_factor, 2) == 1) self%n_windows = support_factor + 1  ! even
+
+        ! Span of the (possibly enlarged) windows: keeps n_samples samples per cutoff period
+        self%total_dt = cutoff_period*self%n_windows
 
         self%size = self%n_samples*self%n_windows + 1  ! +1 for the first condition  ! odd
         self%half_size = int((self%size - 1)/2, 4)

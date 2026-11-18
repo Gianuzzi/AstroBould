@@ -339,8 +339,9 @@ contains
         real(wp), intent(in) :: time, omega
         real(wp), intent(inout) :: acc_omega
         real(wp), intent(in), optional :: initial_time
-        real(wp) :: damp_factor, t0 = cero
+        real(wp) :: damp_factor, t0
 
+        t0 = cero  ! Not in the declaration: that would make it SAVEd between calls
         if (present(initial_time)) t0 = initial_time
         damp_factor = uno2*(uno + tanh(1.e1_wp*(uno - time/damp_time)))
 
