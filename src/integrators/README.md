@@ -63,7 +63,7 @@ Symplecticity applies only for constant timestep.
 | -24    | Gauss–Legendre4 (Implicit)         | 4                               |
 | -23    | RK4                                | 4                               |
 | -22    | Lobatto4 (Implicit)                | 4                               |
-| -21    | Ralston4 (Implicit)                | 4                               |
+| -21    | Ralston4                           | 4                               |
 | -20    | RK_implicit3 (Implicit)            | 3                               |
 | -19    | Crouzeix3 (Implicit)               | 3                               |
 | -18    | SSPRrk3                            | 3                               |

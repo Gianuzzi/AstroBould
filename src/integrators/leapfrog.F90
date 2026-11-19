@@ -44,8 +44,9 @@ contains
         integer(kind=4), intent(in) :: sizey
         integer(kind=4), intent(in) :: which
         logical, intent(in), optional :: standard
-        logical :: is_std = .False.
+        logical :: is_std
 
+        is_std = .False.  ! (not initialised in the declaration: that would make it SAVEd)
         if (present(standard)) is_std = standard
 
         if (MOD(sizey, 2) > 0) then
@@ -364,8 +365,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end, dt_used
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)
@@ -386,7 +387,7 @@ contains
 
             ycaller(:sizey) = ynew
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
             der(:sizey) = dydt(time, ycaller(:sizey))
@@ -414,8 +415,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)
@@ -436,7 +437,7 @@ contains
 
             ycaller(:sizey) = ynew
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
             der(:sizey) = dydt(time, ycaller(:sizey))

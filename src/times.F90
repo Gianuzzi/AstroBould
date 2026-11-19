@@ -21,14 +21,17 @@ contains
         real(wp) :: t_aux, t_add
         integer(kind=4) :: i
         real(wp) :: npointsr
+        logical :: dt_given
 
         ! Define n_out
-        if (dt_out > cero) then
+        dt_given = dt_out > cero
+        if (dt_given) then
             if (dt_out > tf - t0) then
                 write (*, *) "ERROR: dt_out >= (tf - t0)"
                 stop 1
             end if
-            n_out = int((tf - t0)/dt_out) + 1
+            ! Outputs every dt_out, plus the final time (the last interval may be shorter)
+            n_out = ceiling((tf - t0)/dt_out*(uno - 1.e-12_wp)) + 1
             npointsr = max(real(n_out, kind=wp), dos)
         else
             npointsr = max(real(n_out, kind=wp), dos)
@@ -55,7 +58,11 @@ contains
         ! Create dist
         select case (case_dist)
         case (0) ! Lineal
-            t_aux = (tf - t0)/(npointsr - uno)
+            if (dt_given) then
+                t_aux = dt_out  ! As requested
+            else
+                t_aux = (tf - t0)/(npointsr - uno)
+            end if
             do i = 2, n_out - 1
                 t_out(i) = t0 + t_aux*(i - 1)
             end do

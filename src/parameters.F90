@@ -4,10 +4,15 @@ module parameters
     use auxiliary
     use bodies, only: system_st, asteroid_st, moon_st, particle_st
     use accelerations, only: init_ellipsoid, init_boulder_z, init_manual_J2, init_stokes, init_drag, init_damping, update_boulder_z
+    use accelerations, only: acc_ellipsoid => use_ellipsoid, acc_K => K_coef, acc_L => L_coef, &
+                           & acc_J2_cm => use_manual_J2_from_cm, acc_J2_primary => use_manual_J2_from_primary, &
+                           & acc_J2K => J2K_coef, acc_bz => use_boulder_z, acc_Gm_bz => Gmboulder_z_coef, &
+                           & acc_dz2_bz => dz2_boulder_z_coef
     use filtering, only: filter_st
     use omp_lib
     use tomodule, only: tom_st
     use surface, only: section_st
+    use shared, only: DT_MAX  ! Integrators: physical limit of a single step
 
     implicit none
 
@@ -237,6 +242,8 @@ module parameters
 
     ! ----  <<<<<    BOULDERS for DYDT     >>>>>   -----
     real(wp), dimension(3) :: asteroid_data !! |axis_a, axis_b, inertia|
+    logical :: use_hs_step_check = .False. !! Check hard-sphere particle collisions at every integrator step
+    type(cell_index_t), save :: hs_cells   !! Sorted cells of the hard-sphere check
     real(wp), dimension(:, :), allocatable :: boulders_coords !! (Nb, 4) |x,y,vx,vy|
     real(wp), dimension(:, :), allocatable :: boulders_data !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
 
@@ -306,12 +313,18 @@ module parameters
     logical :: surf_force_accept  ! Step accepted regardless of the crossing errors (min timestep / max counter)
     logical :: surf_accepted_step  ! Flag if the step is accepted after crossing check
     real(wp) :: jacobi_constant  ! Self explained
+    real(wp) :: surf_rel(4)  ! Body-frame state relative to the asteroid (for the Jacobi constant)
     integer(kind=4) :: surf_counter = 0  ! Counter of how many times we tried to cross the surface
     integer(kind=4), parameter :: surf_max_counter = 250  ! Maximum number of times to try to cross the surface before giving up
 
     ! ----  <<<<<    HARD EXIT     >>>>>   -----
     logical :: is_premature_exit = .False.
     logical :: hard_exit = .False. !  Hard Exit logical
+    ! Re-check of the hard-exit conditions on an accepted state (set to the derivatives in main)
+    procedure(state_dydt_template), pointer :: dydt_recheck => null()
+    real(wp) :: t_last_dydt = cero  !! Time of the last derivative evaluation
+    logical :: integration_stopped = .False.  !! The integrator returned early (check_func said stop)
+    real(wp) :: t_redo_until = -huge(uno)  !! A filter rollback re-integrates up to here: events already written
     ! procedure (check_continue_template), pointer :: check_continue_ptr => null ()
 
     ! ----  <<<<<    I/O     >>>>>   -----
@@ -359,6 +372,14 @@ module parameters
     procedure(int_i_template), pointer :: flush_geomchaos => null()
 
     abstract interface
+
+        function state_dydt_template(t, y) result(der)
+            import :: wp
+            implicit none
+            real(wp), intent(in) :: t
+            real(wp), dimension(:), intent(in) :: y
+            real(wp), dimension(size(y)) :: der
+        end function state_dydt_template
 
         subroutine simple_ptr_template()
             implicit none
@@ -1521,6 +1542,10 @@ contains
                  (derived%use_exp_omega_damp .and. derived%use_poly_omega_damp)) then
             write (*, *) "ERROR: Can not use multiple omega dampings."
             stop 1
+        else if (derived%use_poly_omega_damp .and. &
+               & ((abs(derived%omega_exp_damp_poly_A) < myepsilon) .or. (derived%omega_exp_damp_poly_B < myepsilon))) then
+            write (*, *) "ERROR: Poly-exponential omega damping needs A /= 0 and B > 0."
+            stop 1
         end if
 
         !!! Boulders in Z
@@ -1631,6 +1656,7 @@ contains
                 derived%requested_threads = 1
                 my_threads = 1
                 derived%use_parallel = .False.
+!$              call OMP_SET_NUM_THREADS(1)  ! Otherwise OpenMP uses its default (all cores)
             else if (.not. compiled_with_openmp) then
                 write (*, *) "ERROR: Can not use paralelization withut OpenMP."
                 stop 1
@@ -1642,6 +1668,7 @@ contains
         else
             derived%requested_threads = 1
             my_threads = 1
+!$          call OMP_SET_NUM_THREADS(1)  ! Otherwise OpenMP uses its default (all cores)
         end if
 
         ! Output
@@ -1737,7 +1764,7 @@ contains
         end if
 
         ! Check no Extra checkpoints and Filter
-        if (derived%use_tomfile .and. (derived%extra_checkpoints > 0)) then
+        if (derived%use_filter .and. (derived%extra_checkpoints > 0)) then
             write (*, *) "ERROR: Can not use both filtering and extra checkpoints at the same time (yet)."
             write (*, *) "       Set all checkpoints to outputs."
             stop 1
@@ -1751,6 +1778,10 @@ contains
             derived%megno_eps = cero
         else if ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2)) then
             write (*, *) "ERROR: MEGNO can not be set with LeapFrog integrator yet."
+            stop 1
+        else if (derived%use_manual_J2 .and. derived%use_J2_from_primary) then
+            ! The variational equations of the J2 from the primary are not implemented
+            write (*, *) "ERROR: MEGNO can not be set with manual J2 from the primary yet."
             stop 1
         else
             derived%megno_active = .True.
@@ -1789,6 +1820,18 @@ contains
             stop 1
         end if
 
+        ! Leap-Frog (KDK) is only second order and symplectic for position-dependent forces.
+        ! The Coriolis force of the rotating frame depends on the velocity: block it
+        if (derived%use_sinodic .and. ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2))) then
+            write (*, *) "ERROR: Sinodic system is not compatible with the LeapFrog integrator (Coriolis force)."
+            stop 1
+        end if
+        if ((derived%use_drag .or. derived%use_stokes) .and. &
+          & ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2))) then
+            write (*, *) "WARNING: Drag/Stokes forces depend on the velocity: the LeapFrog integrator"
+            write (*, *) "         is only first order with them. Prefer an adaptive integrator."
+        end if
+
         ! Second sinodic check: If sinodic, no damping
         if (derived%use_sinodic .and. derived%use_omega_damping) then
             write (*, *) "ERROR: Sinodic system is not compatible with Omega damping."
@@ -1809,7 +1852,11 @@ contains
 
         ! Original sizes
         n_moons     = size(moons_in, 1)
-        n_particles = size(particles_in, 1)
+        if (allocated(particles_in)) then
+            n_particles = size(particles_in, 1)
+        else
+            n_particles = 0
+        end if
 
         !----------------------------------------
         ! Count
@@ -1838,7 +1885,8 @@ contains
                 moons_tmp(im, :) = moons_in(i, :)
             else
                 ip = ip + 1
-                particles_tmp(ip, :) = moons_in(i, 1:5)
+                ! moons_in: [mass, a, e, M, w, MMR, radius]  ->  particles_in: [a, e, M, w, MMR]
+                particles_tmp(ip, :) = moons_in(i, 2:6)
             end if
         end do
 
@@ -2004,6 +2052,14 @@ contains
 
     end subroutine define_writing_pointers
 
+    ! Index of body i in the state array y (x, y, vx, vy of body i start here)
+    pure function get_index(i) result(idx)
+        implicit none
+        integer(kind=4), intent(in) :: i
+        integer(kind=4) :: idx
+        idx = 4*i - 1
+    end function get_index
+
     ! Check if continue function. This will be passed to the integ caller
     function check_func(y) result(keep_going)
         implicit none
@@ -2012,8 +2068,212 @@ contains
         ! ! Here, we use the global hexit_arr  (Old Code)
         ! keep_going = all(hexit_arr == 0)
         ! if (.not. keep_going) hexit_arr(1) = 1  ! Set the PROXY
-        keep_going = .not. hard_exit
+        real(wp), allocatable :: aux_der(:)
+
+        keep_going = .True.
+        if (hard_exit) then
+            ! The flag is raised by ANY derivative evaluation, including the trial stages of a step
+            ! that was later rejected or shortened. Stop only if the condition holds on this
+            ! accepted state: re-evaluate it here (it sets hard_exit again if so)
+            hard_exit = .False.
+            if (associated(dydt_recheck)) then
+                allocate (aux_der(size(y)))
+                aux_der = dydt_recheck(t_last_dydt, y)
+                deallocate (aux_der)
+            else
+                hard_exit = .True.
+            end if
+            keep_going = .not. hard_exit
+        end if
+        ! Hard-sphere contacts are only seen between steps: limit the next step so that no pair
+        ! can go through each other within it (from this accepted state)
+        if (use_hs_step_check) DT_MAX = hs_step_cap(y)
+
+        ! Hard-sphere particle collisions are resolved between steps: stop at the first step
+        ! where two particles overlap while still approaching, so that the collision is resolved
+        ! where it happens (and not only at the next checkpoint)
+        if (keep_going .and. use_hs_step_check) then
+            if (any_approaching_overlap(y)) then
+                hard_exit = .True.
+                keep_going = .False.
+            end if
+        end if
+        if (.not. keep_going) integration_stopped = .True.  ! The integrator returns at this state
     end function check_func
+
+    !> Gravitational potential of the asteroid, U = -Phi > 0, at (x, y) in its BODY frame
+    !> (centred on the asteroid CM, axes fixed to the body at theta = 0). The same terms
+    !> as the dynamics (dydt): ellipsoid, or point masses (primary + boulders), manual J2
+    !> (from the CM or from the primary) and boulders in Z.
+    function body_frame_potential(x, y) result(U)
+        implicit none
+        real(wp), intent(in) :: x, y
+        real(wp) :: U
+        real(wp) :: r2, r, dx, dy, d2, d
+        integer(kind=4) :: i
+
+        U = cero
+        r2 = x*x + y*y
+        r = sqrt(r2)
+
+        if (acc_ellipsoid) then
+            ! Phi = -GM/r [1 - K/(3 r^2) + L (x^2 - y^2)/r^4]  (gives the accelerations used in dydt)
+            U = G*m_arr(1)/r*(uno - acc_K/(3*r2) + acc_L*(x*x - y*y)/(r2*r2))
+            return
+        end if
+
+        ! Point masses: primary (i = 0) and boulders
+        do i = 0, ubound(boulders_data, 1)
+            dx = x - boulders_data(i, 4)*cos(boulders_data(i, 3))
+            dy = y - boulders_data(i, 4)*sin(boulders_data(i, 3))
+            d2 = dx*dx + dy*dy
+            d = sqrt(d2)
+            if ((i == 0) .and. acc_J2_primary) then
+                U = U + G*boulders_data(i, 1)/d*(uno - acc_J2K/(3*d2))
+            else
+                U = U + G*boulders_data(i, 1)/d
+            end if
+        end do
+
+        ! Manual J2 from the CM (only the perturbation: the point masses give the monopole)
+        if (acc_J2_cm) then
+            U = U - G*m_arr(1)*acc_J2K/(3*r2*r)
+        else if (acc_bz) then
+            U = U + acc_Gm_bz/sqrt(r2 + acc_dz2_bz)
+        end if
+    end function body_frame_potential
+
+    !> Largest step for which no pair of particles can go through each other unseen: during it
+    !> a pair may close at most half a contact distance. The closing speed of a pair is bounded
+    !> by twice the largest speed relative to the circular flow, plus the Keplerian shear of the
+    !> circular flow across a contact distance (1.5 n 2R).
+    function hs_step_cap(y) result(dt_cap)
+        implicit none
+        real(wp), dimension(:), intent(in) :: y
+        real(wp) :: dt_cap
+        real(wp), parameter :: HS_STEP_FRACTION = 0.5_wp  ! Fraction of the contact distance per step
+        integer(kind=4) :: first, last, i, idx
+        real(wp) :: GMa, rx, ry, r, vc, vx, vy, ux, uy, u_max, n_max, omega, v_close
+
+        dt_cap = huge(uno)
+        first = 2 + sim%Nmoon_active
+        last = 1 + sim%Nmoon_active + sim%Npart_active
+        if (last - first < 1) return
+
+        GMa = G*m_arr(1)
+        omega = y(2)
+        u_max = cero
+        n_max = cero
+        !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i, idx, rx, ry, r, vc, vx, vy, ux, uy) &
+        !$OMP REDUCTION(max:u_max, n_max) SCHEDULE(STATIC)
+        do i = first, last
+            idx = get_index(i)
+            rx = y(idx) - y(3)
+            ry = y(idx + 1) - y(4)
+            r = max(sqrt(rx*rx + ry*ry), tini)
+            vx = y(idx + 2) - y(5)
+            vy = y(idx + 3) - y(6)
+            if (sim%use_sinodic) then  ! Rotating frame: inertial velocity v + omega z x r
+                vx = vx - omega*ry
+                vy = vy + omega*rx
+            end if
+            vc = sqrt(GMa/r)
+            ux = vx + vc*ry/r  ! Velocity relative to the circular (prograde) flow
+            uy = vy - vc*rx/r
+            u_max = max(u_max, sqrt(ux*ux + uy*uy))
+            n_max = max(n_max, vc/r)
+        end do
+        !$OMP END PARALLEL DO
+
+        v_close = dos*u_max + 1.5_wp*n_max*dos*R_arr(first)
+        if (v_close > tini) dt_cap = HS_STEP_FRACTION*dos*R_arr(first)/v_close
+    end function hs_step_cap
+
+    !> Whether any pair of particles overlaps while approaching (cell list, O(N)).
+    !> The approach test (dr . dv < 0) does not depend on the frame (rotating or not).
+    function any_approaching_overlap(y) result(found)
+        use iso_fortran_env, only: int64
+        implicit none
+        real(wp), dimension(:), intent(in) :: y
+        logical :: found
+        integer(kind=4) :: first, last, i, j, idx, jdx, dcy, n, q, p, nth, tid, qa, qb, nteam
+        integer(kind=4) :: ptr(-1:1)
+        logical :: ptr_ok(-1:1)
+        integer(int64) :: klo
+        real(wp) :: L_cell, rc2, drx, dry
+        real(wp), allocatable :: pos(:, :)
+
+        found = .False.
+        first = 2 + sim%Nmoon_active
+        last = 1 + sim%Nmoon_active + sim%Npart_active
+        if (last - first < 1) return
+
+        L_cell = dos*R_arr(first)  ! Contact distance (all particles share the radius)
+        rc2 = L_cell*L_cell
+
+        ! Few particles: brute force
+        if (last - first + 1 < 100) then
+            !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i, j, idx, jdx, drx, dry) &
+            !$OMP REDUCTION(.or.:found) SCHEDULE(DYNAMIC, 16)
+            do i = first, last - 1
+                idx = get_index(i)
+                do j = i + 1, last
+                    jdx = get_index(j)
+                    drx = y(jdx) - y(idx)
+                    dry = y(jdx + 1) - y(idx + 1)
+                    if (drx*drx + dry*dry >= rc2) cycle
+                    if (drx*(y(jdx + 2) - y(idx + 2)) + dry*(y(jdx + 3) - y(idx + 3)) < cero) found = .True.
+                end do
+            end do
+            !$OMP END PARALLEL DO
+            return
+        end if
+
+        ! Sorted cells of the contact size (no dense grid: the cells are never enlarged)
+        n = last - first + 1
+        allocate (pos(2, n))
+        do i = first, last
+            idx = get_index(i)
+            pos(1, i - first + 1) = y(idx)
+            pos(2, i - first + 1) = y(idx + 1)
+        end do
+        call cell_index_build(hs_cells, n, pos, L_cell)
+        deallocate (pos)
+
+        nth = 1
+        !$ nth = omp_get_max_threads()
+        nth = max(1, min(nth, n))
+        !$OMP PARALLEL DEFAULT(SHARED) NUM_THREADS(nth) &
+        !$OMP PRIVATE(tid, nteam, qa, qb, q, i, idx, p, j, jdx, dcy, klo, ptr, ptr_ok, drx, dry) &
+        !$OMP REDUCTION(.or.:found)
+        tid = 0
+        !$ tid = omp_get_thread_num()
+        ! Split by the ACTUAL team size: the runtime may give fewer threads than requested
+        nteam = 1
+        !$ nteam = omp_get_num_threads()
+        qa = int((int(n, int64)*tid)/nteam) + 1
+        qb = int((int(n, int64)*(tid + 1))/nteam)
+        ptr_ok = .False.
+        do q = qa, qb
+            i = hs_cells%ord(q) + first - 1
+            idx = get_index(i)
+            do dcy = -1, 1
+                klo = hs_cells%key(q) + int(dcy, int64)*hs_cells%Wx - 1_int64
+                call cell_index_advance(hs_cells, klo, ptr(dcy), ptr_ok(dcy))
+                do p = ptr(dcy), n
+                    if (hs_cells%key(p) > klo + 2_int64) exit
+                    j = hs_cells%ord(p) + first - 1
+                    if (j <= i) cycle  ! Each pair once
+                    drx = hs_cells%px(p) - hs_cells%px(q)
+                    dry = hs_cells%py(p) - hs_cells%py(q)
+                    if (drx*drx + dry*dry >= rc2) cycle
+                    jdx = get_index(j)
+                    if (drx*(y(jdx + 2) - y(idx + 2)) + dry*(y(jdx + 3) - y(idx + 3)) < cero) found = .True.
+                end do
+            end do
+        end do
+        !$OMP END PARALLEL
+    end function any_approaching_overlap
 
     ! Deallocate initial arrays
     subroutine free_initial_arays()
@@ -2077,12 +2337,25 @@ contains
         simu%Nactive = 1 + Npart_active + Nmoon_active ! Update Nactive, including asteroid
     end subroutine update_sim_Nactive
 
-    ! Update forces and constant arrays data
-    subroutine update_forces_and_constants(simu, sistema)
+    ! Update the asteroid data used by the derivatives (dydt), after the asteroid changed
+    ! (moon merged into it, TOM mass/omega change). The geometry is unchanged: masses are scaled.
+    subroutine update_forces_and_constants(sistema)
         implicit none
-        type(sim_params_st), intent(in) :: simu
         type(system_st), intent(in) :: sistema
-        if (simu%use_merge_massive) asteroid_data(3) = sistema%asteroid%inertia
+        integer(kind=4) :: i
+
+        if (.not. allocated(boulders_data)) return
+
+        ! Masses from the (constant) mass ratios: merges and TOM changes scale all of them
+        boulders_data(0, 1) = sistema%asteroid%primary%mu_to_asteroid*sistema%asteroid%mass
+        do i = 1, min(sistema%asteroid%Nboulders, ubound(boulders_data, 1))
+            boulders_data(i, 1) = sistema%asteroid%boulders(i)%mu_to_asteroid*sistema%asteroid%mass
+        end do
+
+        ! Moment of inertia (spin equation)
+        asteroid_data(3) = sistema%asteroid%inertia
+
+        ! Boulder in Z
         if (sistema%asteroid%boulder_z%active) call update_boulder_z(sistema%asteroid%boulder_z%mass)
     end subroutine update_forces_and_constants
 
@@ -2347,7 +2620,9 @@ contains
         type(system_st), intent(inout) :: syst
         integer(kind=4), intent(in) :: unit_out
 
-        if (unit_out < 0) then ! Use to avoid writing file
+        ! With filtering, the integration may go back in time and redo an interval (a rollback):
+        ! the events there, up to the time reached before the rollback, were already written
+        if ((unit_out < 0) .or. (syst%time <= t_redo_until)) then ! Use to avoid writing file
 
             ! Apply colissions and check
             call resolve_collisions(syst, simu%min_distance)
@@ -2382,17 +2657,24 @@ contains
         integer(kind=4) :: new_Nactive
         
         ! Get new_Nactive
-        call get_Nactive(system, new_Nactive)
+        call get_Nactive(syst, new_Nactive)
 
         ! Is different from old?
         if (new_Nactive < simu%Nactive) then
             call update_sim_Nactive(simu, syst%Nparticles_active, syst%Nmoons_active)  ! Update sim Nactive
             ynvalues = get_y_nvalues(syst)  ! Update nvalues to use in y
-            simu%megno_active = system%megno%active ! EXTRA: Update megno
+            simu%megno_active = syst%megno%active ! EXTRA: Update megno
             regenerate = .True.
         end if
 
         regenerate = regenerate .or. simu%megno_active  ! If still active, regenerate
+
+        ! A bounce (or a push-apart) changes the state without changing the amount of bodies:
+        ! without regenerating, the integration would restart from the pre-collision state
+        regenerate = regenerate .or. syst%state_changed
+
+        ! The asteroid may have changed (merges, TOM): keep the data used by dydt consistent with it
+        if (regenerate) call update_forces_and_constants(syst)
         
     end subroutine update_sim_from_system
 

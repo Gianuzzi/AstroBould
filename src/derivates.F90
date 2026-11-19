@@ -7,7 +7,7 @@ module derivates
                           & asteroid_data, &  !! |axis_a, axis_b, inertia|
                           & boulders_coords, boulders_data, & !! (Nb, 4) |mass,radius,theta_Ast0,dist_Ast|
                           & m_arr, R_arr, &
-                          & hard_exit
+                          & hard_exit, t_last_dydt
     use accelerations, only: use_damp, damp_time, damp_coef_1, damp_coef_2, damp_model, &
                             & use_drag, use_drag_moons, drag_coef, drag_time, &
                             & use_stokes, use_stokes_moons, stokes_C, stokes_alpha, stokes_time, &
@@ -61,6 +61,31 @@ contains
         idx = 4*(Ntotal + 1) - 1 + 7*(i - first_particle)
     end function get_variational_index
 
+    !> Tangent acceleration J d of a test particle in the ellipsoid field, in the BODY frame:
+    !> J = -Hessian(Phi), Phi = -GM [1/r - K/(3 r^3) + L (x^2 - y^2)/r^5] (the potential of the
+    !> accelerations used here). With P = x^2 - y^2:
+    !>   J_ij = GM/r^5 [3 x_i x_j - r^2 d_ij + K (d_ij - 5 x_i x_j/r^2)
+    !>                  + L (P_ij - 5 (P_i x_j + P_j x_i)/r^2 - 5 P d_ij/r^2 + 35 P x_i x_j/r^4)]
+    pure function ellipsoid_tangent_acc(pb, db, GM, K, L) result(w)
+        implicit none
+        real(wp), intent(in) :: pb(2), db(2), GM, K, L
+        real(wp) :: w(2)
+        real(wp) :: x, y, r2, P, J11, J12, J22, fac
+
+        x = pb(1)
+        y = pb(2)
+        r2 = x*x + y*y
+        P = x*x - y*y
+        J11 = 3*x*x - r2 + K*(uno - 5*x*x/r2) &
+            & + L*(dos - 20*x*x/r2 - 5*P/r2 + 35*P*x*x/(r2*r2))
+        J22 = 3*y*y - r2 + K*(uno - 5*y*y/r2) &
+            & + L*(-dos + 20*y*y/r2 - 5*P/r2 + 35*P*y*y/(r2*r2))
+        J12 = 3*x*y - 5*K*x*y/r2 + L*(35*P*x*y/(r2*r2))  ! P_x y + P_y x = 2xy - 2xy = 0
+        fac = GM/(r2*r2*sqrt(r2))
+        w(1) = fac*(J11*db(1) + J12*db(2))
+        w(2) = fac*(J12*db(1) + J22*db(2))
+    end function ellipsoid_tangent_acc
+
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! DERIVATIVES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -72,7 +97,7 @@ contains
         real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(size(y))       :: der
         real(wp) :: theta, omega
-        real(wp) :: coords_A(4), coords_M(4), coords_P(4), dr_vec(2), dr, dr2
+        real(wp) :: coords_A(4), coords_M(4), coords_P(4), coords_V(4), dr_vec(2), dr, dr2
         real(wp) :: acc_grav(2), acc_grav_m(2), torque
         integer(kind=4) :: i, idx
         integer(kind=4) :: j, jdx
@@ -88,7 +113,7 @@ contains
         real(wp) :: vel_circ(2), v2  ! For extra forces
         real(wp) :: two_ener  ! For extra forces
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z  ! For extra forces
-        real(wp) :: mean_movement  ! For extra forces
+        real(wp) :: mean_movement, n_circ  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: damp_f, drag_f, stokes_f  ! For extra forces
         real(wp) :: rcoll, rescape  ! For collision and escape distances
@@ -103,6 +128,7 @@ contains
         N_total = last_moon + N_particles
 
         ! Calculate the angle of the asteroid
+        t_last_dydt = t  ! For the re-check of the hard-exit conditions on accepted states
         theta = y(1)
         omega = y(2)
         der(1) = omega
@@ -127,8 +153,14 @@ contains
             case (2) ! domega/dt = -exp(- (t-t0) / tau) * omega0 / tau = - omega / tau
                 der(2) = der(2) - omega/damp_coef_1*damp_f
             case (3) ! domega/dt = A * B * (t-t0)**(B-1) * omega0 * exp (A * (t-t0)**B) = (A * B * (t-t0)**(B-1)) * omega
-                der(2) = der(2) +  &
-                        & damp_coef_1*(t - cero + tini)**(damp_coef_2 - uno)*omega*damp_f
+                ! damp_coef_1 = A B, damp_coef_2 = B. For B < 1 the rate diverges at t = 0 (omega itself
+                ! does not): before dt_min the mean rate over [0, dt_min], A dt_min^(B-1), is used instead,
+                ! which gives the exact change of log(omega) at t = dt_min
+                if ((damp_coef_2 < uno) .and. (t < sim%dt_min)) then
+                    der(2) = der(2) + (damp_coef_1/damp_coef_2)*sim%dt_min**(damp_coef_2 - uno)*omega*damp_f
+                else
+                    der(2) = der(2) + damp_coef_1*max(t, cero)**(damp_coef_2 - uno)*omega*damp_f
+                end if
             end select
         end if
 
@@ -182,8 +214,9 @@ contains
 
                 ! Anti-rotate target to check if inside
                 xy_rotated = rotate2D(dr_vec, -theta)
-                if (((xy_rotated(1) + R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2) + R_arr(j))/asteroid_data(2))**2 < uno) then
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
+                & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
                     hard_exit = .True.
                 end if
 
@@ -254,6 +287,7 @@ contains
                 ! Check if unbound
                 if (two_ener > cero) then ! Can calculate only in this case
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmcomb ! n
+                    n_circ = sqrt(Gmcomb*inv_dr3)  ! Local circular mean motion
 
                     ! ---> Drag <---
                     if (use_drag_moons) then
@@ -268,7 +302,8 @@ contains
 
                     ! ---> Stokes <---
                     if (use_stokes_moons) then
-                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ = n_circ*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                         ! Acceleration of moon j by Stokes
                         !! acc = -C * (v - alpha * vc) * factor
@@ -312,8 +347,9 @@ contains
 
                 ! Anti-rotate target to check if inside
                 xy_rotated = rotate2D(dr_vec, -theta)
-                if (((xy_rotated(1)+ R_arr(j))/asteroid_data(1))**2 &
-                & + ((xy_rotated(2)+ R_arr(j))/asteroid_data(2))**2 < uno) then
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((xy_rotated(1)/(asteroid_data(1) + R_arr(j)))**2 &
+                & + (xy_rotated(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
                     hard_exit = .True.
                     cycle  ! Skip
                 end if
@@ -337,69 +373,13 @@ contains
                                 &  - K_coef*dr_vec(2)*inv_dr2 &
                                 &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_eff) )
                 
-                ! ! Variational [MEGNO]
-                ! if (sim%megno_active) then
-                !     vdx = get_variational_index(j, first_particle, N_total)
-                !     coords_P = y(vdx:vdx + 3)  ! Variational particle
-                    
-
-                !     ! dvx = mu / r³ * (r² * (-dy (K - 3 r²) x y + dx (4 x⁴ + 5 x² y² + y⁴ - K (2 x² + y²))) &
-                !     !                 & + L (6 dx x⁴ - 17 dy x³ y + 9 dx x² y² - 7 dy x y³ - 7 dx y⁴) cos(2th) &
-                !     !                 & + 2 L (4 dy x⁴ + 4 dx x³ y - 3 dy x² y² + 9 dx x y³ - 2 dy y⁴) sin(2th))
-                !     der(vdx + 2) = der(vdx + 2) + aux_real*m_arr(1) * (&
-                !                 & dr2*( &
-                !                         & -coords_P(2)*(K_coef - 3*dr2)*dr_vec(1)*dr_vec(2) &
-                !                         & + coords_P(1)*(&
-                !                             & 3*dr_vec(1)**4 &
-                !                             & + 5*(dr_vec(1)*dr_vec(2))**2 &
-                !                             & + dr2*dr2 &
-                !                             & - K_coef*(dr_vec(1)**2 + dr2 ) &
-                !                             & ) &
-                !                         & ) &
-                !                 & + L_coef*( &
-                !                         & 6*coords_P(1)*dr_vec(1)**4 &
-                !                         & -17*coords_P(2)*dr_vec(1)**3*dr_vec(2) &
-                !                         & + 9*coords_P(1)*(dr_vec(1)*dr_vec(2))**2 &
-                !                         & -7*coords_P(2)*dr_vec(1)*dr_vec(2)**3 &
-                !                         & -7*coords_P(1)*dr_vec(2)**4 &
-                !                         & )*c2th &
-                !                 & + 2*L_coef*( &
-                !                           & 4*coords_P(2)*dr_vec(1)**4 &
-                !                           & + 4*coords_P(1)*dr_vec(1)**3*dr_vec(2) &
-                !                           & -3*coords_P(2)*(dr_vec(1)*dr_vec(2))**2 &
-                !                           & +9*coords_P(1)*dr_vec(1)*dr_vec(2)**3 &
-                !                           & -2*coords_P(2)*dr_vec(2)**4 &
-                !                           & )*s2th)
-                    
-                !     ! dvy = mu / r³ * (r² * (-dx (K - 3 r²) x y + dy (x⁴ + 5 x² y² + 4 y⁴ - K (x² + 2 y²))) &
-                !     !                 & + L (7 dy x⁴ + 7 dx x³ y - 9 dy x² y² + 17 dy x y³ - 6 dy y⁴) cos(2th) &
-                !     !                 & - 2 L (2 dx x⁴ - 9 dy x³ y + 3 dx x² y² - 4 dx x y³ - 4 dx y⁴) sin(2th))
-                !     der(vdx + 3) = der(vdx + 3) + aux_real*m_arr(1) * (&
-                !                 & dr2*( &
-                !                         & -coords_P(1)*(K_coef - 3*dr2)*dr_vec(1)*dr_vec(2) &
-                !                         & + coords_P(2)*(&
-                !                             & dr2*dr2 &
-                !                             & + 5*(dr_vec(1)*dr_vec(2))**2 &
-                !                             & + 3*dr_vec(2)**4 &
-                !                             & - K_coef*(dr2 + dr_vec(2)**2) &
-                !                             & ) &
-                !                         & ) &
-                !                 & + L_coef*( &
-                !                         & 7*coords_P(2)*dr_vec(1)**4 &
-                !                         & + 7*coords_P(1)*dr_vec(1)**3*dr_vec(2) &
-                !                         & -9*coords_P(2)*(dr_vec(1)*dr_vec(2))**2 &
-                !                         & + 17*coords_P(1)*dr_vec(1)*dr_vec(2)**3 &
-                !                         & -6*coords_P(2)*dr_vec(2)**4 &
-                !                         & )*c2th &
-                !                 & + 2*L_coef*( &
-                !                           & 2*coords_P(1)*dr_vec(1)**4 &
-                !                           & -9*coords_P(2)*dr_vec(1)**3*dr_vec(2) &
-                !                           & + 3*coords_P(1)*(dr_vec(1)*dr_vec(2))**2 &
-                !                           & -4*coords_P(2)*dr_vec(1)*dr_vec(2)**3 &
-                !                           & -4*coords_P(1)*dr_vec(2)**4 &
-                !                           & )*s2th)
-
-                ! end if
+                ! Variational [MEGNO]: J d in the body frame, rotated back
+                if (sim%megno_active) then
+                    vdx = get_variational_index(j, first_particle, N_total)
+                    der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) + rotate2D( &
+                        & ellipsoid_tangent_acc(xy_rotated, rotate2D(y(vdx:vdx + 1), -theta), &
+                        &                       Gmast, K_coef, L_coef), theta)
+                end if
 
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
@@ -410,20 +390,20 @@ contains
                 ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                     
                     inv_dr7 = inv_dr3 * inv_dr3 / dr
                     aux_real = Gmast*J2K_coef*inv_dr7
 
                     ! dvx = mu J2k / r⁷ * (-5 dy x y + dx (-4 x² + y²))
                     der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & + coords_P(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
+                            & -5*coords_V(2)*dr_vec(1)*dr_vec(2) &
+                            & + coords_V(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
                     
                     ! dvy = mu J2k / r⁷ * (-5 dx x y + dy (x² - 4 y²))
                     der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & -5*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & + coords_P(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
+                            & -5*coords_V(1)*dr_vec(1)*dr_vec(2) &
+                            & + coords_V(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
 
                 end if
 
@@ -438,19 +418,19 @@ contains
                 ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                     
                     aux_real = Gmboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
 
                     ! dvx = - mu / (r² + rz²)²·⁵ * (-3 dy x y + dx (-2 x² + y² + rz²))
                     der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & 3*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
+                            & 3*coords_V(2)*dr_vec(1)*dr_vec(2) &
+                            & - coords_V(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
                     
                     ! dvy = mu / (r² + rz²)²·⁵ * (3 dx x y - dy (x² - 2 y² + rz²))
                     der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & 3*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
+                            & 3*coords_V(1)*dr_vec(1)*dr_vec(2) &
+                            & - coords_V(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
 
                 end if
 
@@ -470,12 +450,16 @@ contains
 
                 ! Get energy
                 if (use_manual_J2_from_cm) then
+                    ! a = -GM r/r^3 (1 - J2K/r^2): potential -GM/r (1 - J2K/(3 r^2)),
+                    ! circular mean motion sqrt(GM/r^3) (1 - J2K/(2 r^2)) to first order
                     aux_J2K = J2K_coef/dr2  ! J2K_coef is negative
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2  ! Check if unbound
-                    mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K*uno3) - v2  ! Check if unbound
+                    mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno2)
+                    n_circ = mean_movement
                 else
                     two_ener = dos*Gmast*inv_dr - v2  ! Check if unbound
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast ! n
+                    n_circ = sqrt(Gmast*inv_dr3)
                 end if
 
                 if (two_ener > cero) then ! Can calculate only in this case
@@ -492,7 +476,8 @@ contains
                     end if
                     ! ---> Stokes <---
                     if (use_stokes) then
-                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ = n_circ*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                         ! Acceleration of particle j by Stokes
                         !! acc = -C * (v - alpha * vc) * factor
@@ -630,10 +615,10 @@ contains
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                         
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                            & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
 
@@ -721,10 +706,10 @@ contains
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                         
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                            & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
 
@@ -771,10 +756,10 @@ contains
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
 
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
 
                     der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) + aux_real / dr2 * &
-                        & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec)
+                        & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec)
 
                 end if
 
@@ -904,7 +889,7 @@ contains
         real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(size(y))       :: der
         real(wp) :: theta, omega
-        real(wp) :: coords_P(4), dr_vec(2), dr, dr2
+        real(wp) :: coords_P(4), coords_V(4), dr_vec(2), dr, dr2
         real(wp) :: acc_grav(2)
         integer(kind=4) :: i, idx
         integer(kind=4) :: j, jdx
@@ -917,7 +902,7 @@ contains
         real(wp) :: vel_circ(2), v2  ! For extra forces
         real(wp) :: two_ener  ! For extra forces
         real(wp) :: aux_J2K, aux_inv_dr3_boulder_z  ! For extra forces
-        real(wp) :: mean_movement  ! For extra forces
+        real(wp) :: mean_movement, n_circ  ! For extra forces
         real(wp) :: vel_radial(2), acc_radial_drag(2)  ! For extra forces
         real(wp) :: drag_f, stokes_f  ! For extra forces
         real(wp) :: rcoll, rescape  ! For collision distance
@@ -932,6 +917,7 @@ contains
         N_total = last_moon + N_particles
 
         ! Calculate the angle of the asteroid
+        t_last_dydt = t  ! For the re-check of the hard-exit conditions on accepted states
         theta = y(1)
         omega = y(2)
         der(1) = omega  ! Just to keep track
@@ -988,7 +974,8 @@ contains
             if (use_ellipsoid) then
 
                 ! Check if inside
-                if ((dr_vec(1)/asteroid_data(1))**2 + (dr_vec(2)/asteroid_data(2))**2 < uno) then
+                ! Contact with the ellipsoid: semi-axes enlarged by the body radius
+                if ((dr_vec(1)/(asteroid_data(1) + R_arr(j)))**2 + (dr_vec(2)/(asteroid_data(2) + R_arr(j)))**2 < uno) then
                     hard_exit = .True.
                     cycle  ! Skip
                 end if
@@ -1010,6 +997,13 @@ contains
                                 &  - K_coef*inv_dr2 &
                                 &  - L_coef*(-dos*inv_dr2 - Q_eff) )
 
+                ! Variational [MEGNO]: J d (body frame = this frame)
+                if (sim%megno_active) then
+                    vdx = get_variational_index(j, first_particle, N_total)
+                    der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) &
+                        & + ellipsoid_tangent_acc(dr_vec, y(vdx:vdx + 1), Gmast, K_coef, L_coef)
+                end if
+
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
 
@@ -1019,20 +1013,20 @@ contains
                 ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                     
                     inv_dr7 = inv_dr3 * inv_dr3 / dr
                     aux_real = Gmast*J2K_coef*inv_dr7
 
                     ! dvx = mu J2k / r⁷ * (-5 dy x y + dx (-4 x² + y²))
                     der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & + coords_P(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
+                            & -5*coords_V(2)*dr_vec(1)*dr_vec(2) &
+                            & + coords_V(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
                     
                     ! dvy = mu J2k / r⁷ * (-5 dx x y + dy (x² - 4 y²))
                     der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & -5*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & + coords_P(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
+                            & -5*coords_V(1)*dr_vec(1)*dr_vec(2) &
+                            & + coords_V(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
 
                 end if
 
@@ -1047,19 +1041,19 @@ contains
                 ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                     
                     aux_real = Gmboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
 
                     ! dvx = - mu / (r² + rz²)²·⁵ * (-3 dy x y + dx (-2 x² + y² + rz²))
                     der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & 3*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
+                            & 3*coords_V(2)*dr_vec(1)*dr_vec(2) &
+                            & - coords_V(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
                     
                     ! dvy = mu / (r² + rz²)²·⁵ * (3 dx x y - dy (x² - 2 y² + rz²))
                     der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & 3*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
+                            & 3*coords_V(1)*dr_vec(1)*dr_vec(2) &
+                            & - coords_V(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
 
                 end if
 
@@ -1075,15 +1069,15 @@ contains
             ! Variational [MEGNO]
             if (sim%megno_active) then
                 vdx = get_variational_index(j, first_particle, N_total)
-                coords_P = y(vdx:vdx + 3)  ! Variational particle
+                coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
 
                 ! Coriolis
-                der(vdx + 2) = der(vdx + 2) + 2 * omega * coords_P(4)
-                der(vdx + 3) = der(vdx + 3) - 2 * omega * coords_P(3)
+                der(vdx + 2) = der(vdx + 2) + 2 * omega * coords_V(4)
+                der(vdx + 3) = der(vdx + 3) - 2 * omega * coords_V(3)
 
                 ! Centrifugal
-                der(vdx + 2) = der(vdx + 2) + omega*omega * coords_P(1)
-                der(vdx + 3) = der(vdx + 3) + omega*omega * coords_P(2)
+                der(vdx + 2) = der(vdx + 2) + omega*omega * coords_V(1)
+                der(vdx + 3) = der(vdx + 3) + omega*omega * coords_V(2)
 
             end if
 
@@ -1093,17 +1087,23 @@ contains
             if (use_drag .or. use_stokes) then
                 inv_dr = inv_dr3*dr2
                 dr_ver = dr_vec*inv_dr
-                dv_vec = coords_P(3:4)  ! Velocity from Asteroid to Particle
+                ! The drag/Stokes laws use the inertial velocity relative to the asteroid:
+                ! v_in = v_rot + omega z x r (expressed in the rotating basis, as the force itself)
+                dv_vec = coords_P(3:4) + omega*(/-dr_vec(2), dr_vec(1)/)
                 v2 = dot_product(dv_vec, dv_vec)
 
                 ! Get energy
                 if (use_manual_J2_from_cm) then
+                    ! a = -GM r/r^3 (1 - J2K/r^2): potential -GM/r (1 - J2K/(3 r^2)),
+                    ! circular mean motion sqrt(GM/r^3) (1 - J2K/(2 r^2)) to first order
                     aux_J2K = J2K_coef/dr2  ! J2K_coef is negative
-                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K) - v2  ! Check if unbound
-                    mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno3)
+                    two_ener = dos*Gmast*inv_dr*(uno - aux_J2K*uno3) - v2  ! Check if unbound
+                    mean_movement = sqrt(Gmast*inv_dr3)*(uno - aux_J2K*uno2)
+                    n_circ = mean_movement
                 else
                     two_ener = dos*Gmast*inv_dr - v2  ! Check if unbound
                     mean_movement = abs(two_ener)**(1.5e0_wp)/Gmast ! n
+                    n_circ = sqrt(Gmast*inv_dr3)
                 end if
 
                 if (two_ener > cero) then ! Can calculate only in this case
@@ -1120,7 +1120,8 @@ contains
                     end if
                     ! ---> Stokes <---
                     if (use_stokes) then
-                        vel_circ = mean_movement*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
+                        ! Local circular velocity, v_c = sqrt(GM/r) (Beauge et al. 2006)
+                        vel_circ = n_circ*(/-dr_vec(2), dr_vec(1)/)  ! v_circ = n (-y, x)
 
                         ! Acceleration of particle j by Stokes
                         !! acc = -C * (v - alpha * vc) * factor
@@ -1179,10 +1180,10 @@ contains
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                         
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                            & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
 
@@ -1230,10 +1231,10 @@ contains
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                         
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                            & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
 

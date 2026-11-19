@@ -40,7 +40,7 @@ contains
         real(wp), intent(in) :: min_dt, err_tol, learning_beta
         logical, intent(in) :: fix_dt
         logical, intent(in), optional :: standard
-        logical :: is_std = .False.
+        logical :: is_std
 
         ! Allocate der, used in callers
         allocate (der(sizey))
@@ -64,6 +64,7 @@ contains
         BETA = learning_beta
 
         ! Check if std
+        is_std = .False.  ! (not initialised in the declaration: that would make it SAVEd)
         if (present(standard)) is_std = standard
 
         ! Set the integrator

@@ -166,7 +166,7 @@ contains
             N_IMPLICIT = 1
 
         else if (which == 18) then
-            runge_kutta_ptr => Ralston4 ! Implicit
+            runge_kutta_ptr => Ralston4 ! Explicit (minimum error)
             OSOL = 4
             N_STAGES = 4
             N_IMPLICIT = 1
@@ -546,13 +546,26 @@ contains
         real(wp), dimension(sizey), intent(in) :: deri
         real(wp), dimension(sizey), intent(out) :: ynew
 
-        rk(1:sizey, 2) = dydt(t + dt*C2_5, y + dt*deri*C2_5)
-        rk(1:sizey, 3) = dydt(t + dt*0.45573725e0_wp, y + dt*(deri*0.29697761e0_wp + rk(1:sizey, 2)*0.15875964e0_wp))
-        rk(1:sizey, 4) = dydt(t + dt, y + dt*(deri*0.21810040e0_wp - rk(1:sizey, 2)*3.05096516e0_wp + &
-                                            & rk(1:sizey, 3)*3.83286476e0_wp))
+        ! Ralston's minimum-error 4th order coefficients (closed forms in sqrt(5)), to full precision:
+        ! c3 = 7/8 - 3 sqrt5/16, a31 = (-2889 + 1428 sqrt5)/1024, a32 = (3785 - 1620 sqrt5)/1024,
+        ! a41 = (-3365 + 2094 sqrt5)/6040, a42 = (-975 - 3046 sqrt5)/2552, a43 = (467040 + 203968 sqrt5)/240845,
+        ! b1 = (263 + 24 sqrt5)/1812, b2 = (125 - 1000 sqrt5)/3828, b4 = (30 - 4 sqrt5)/123, b3 = 1 - b1 - b2 - b4
+        real(wp), parameter :: c3 = 0.455737254218789431923279937113e0_wp
+        real(wp), parameter :: a31 = 0.296977609247753600070605467725e0_wp
+        real(wp), parameter :: a32 = 0.158759644971035831852674469395e0_wp
+        real(wp), parameter :: a41 = 0.218100388225920467596160540119e0_wp
+        real(wp), parameter :: a42 = -3.05096514869293080535358267827e0_wp
+        real(wp), parameter :: a43 = 3.83286476046701033775742213816e0_wp
+        real(wp), parameter :: b1 = 0.174760282262690371254867642412e0_wp
+        real(wp), parameter :: b2 = -0.551480662878732940545761146481e0_wp
+        real(wp), parameter :: b3 = 1.20553559939652353502777720061e0_wp
+        real(wp), parameter :: b4 = 0.171184781219519034263116303456e0_wp
 
-        ynew = y + dt*(deri*0.17476028e0_wp - rk(1:sizey, 2)*0.55148066e0_wp + rk(1:sizey, 3)*1.20553560e0_wp + &
-                                            & rk(1:sizey, 4)*0.17118478e0_wp)
+        rk(1:sizey, 2) = dydt(t + dt*C2_5, y + dt*deri*C2_5)
+        rk(1:sizey, 3) = dydt(t + dt*c3, y + dt*(deri*a31 + rk(1:sizey, 2)*a32))
+        rk(1:sizey, 4) = dydt(t + dt, y + dt*(deri*a41 + rk(1:sizey, 2)*a42 + rk(1:sizey, 3)*a43))
+
+        ynew = y + dt*(deri*b1 + rk(1:sizey, 2)*b2 + rk(1:sizey, 3)*b3 + rk(1:sizey, 4)*b4)
 
     end subroutine Ralston4
 
@@ -774,11 +787,25 @@ contains
         do i = 1, MAX_N_ITER
             rk_imp_solv(1:sizey, 1) = kout
             kout = dydt(t, y + dt*(kprev + cte*kout))
-            if (maxval(abs((rk_imp_solv(1:sizey, 1) - kout)/(rk_imp_solv(1:sizey, 1) + SAFE_LOW))) .le. E_TOL) then
+            ! Relative change, scaled by the magnitudes (the signed old value could be ~0 or negative)
+            if (maxval(abs(rk_imp_solv(1:sizey, 1) - kout)/ &
+                     & (abs(rk_imp_solv(1:sizey, 1)) + abs(kout) + SAFE_LOW)) .le. E_TOL) then
                 exit
             end if
         end do
+        if (i > MAX_N_ITER) call warn_no_convergence()
     end subroutine solve_1k_implicit
+
+    !> Warn (once) that the fixed-point iteration of an implicit method did not converge
+    subroutine warn_no_convergence()
+        implicit none
+        logical, save :: warned = .False.
+        if (.not. warned) then
+            write (*, *) "WARNING: Implicit Runge-Kutta iteration did not converge (step accepted anyway)."
+            write (*, *) "         Reduce the timestep. This warning is shown only once."
+            warned = .True.
+        end if
+    end subroutine warn_no_convergence
 
     !!!! Implicit: ND SOLVER
     subroutine solve_rk_implicit(sizey, nstages, y, dydt, t, dt, impl_funK, rkout)
@@ -794,11 +821,12 @@ contains
         do i = 1, MAX_N_ITER
             rk_imp_solv(1:sizey, 1:nstages) = rkout
             call impl_funK(sizey, y, dydt, t, dt, nstages, rk_imp_solv(1:sizey, 1:nstages), rkout)
-            if (maxval(abs((rk_imp_solv(1:sizey, 1:nstages) - rkout)/ &
-                         & (rk_imp_solv(1:sizey, 1:nstages) + SAFE_LOW))) .le. E_TOL) then
+            if (maxval(abs(rk_imp_solv(1:sizey, 1:nstages) - rkout)/ &
+                     & (abs(rk_imp_solv(1:sizey, 1:nstages)) + abs(rkout) + SAFE_LOW)) .le. E_TOL) then
                 exit
             end if
         end do
+        if (i > MAX_N_ITER) call warn_no_convergence()
     end subroutine solve_rk_implicit
 
     !!!! Adaptive Timestep: Half step
@@ -815,7 +843,7 @@ contains
         real(wp), dimension(sizey), intent(out) :: ynew
 
         real(wp) :: e_calc, ratio, hdt_adap
-        integer(kind=4) :: iter = 0
+        integer(kind=4), save :: iter = 0
 
         iter = iter + 1
         dt_adap = max(dt_adap, DT_MIN_NOW)
@@ -887,8 +915,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end, dt_used
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)
@@ -909,7 +937,7 @@ contains
 
             ycaller(:sizey) = ynew
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
             der(:sizey) = dydt(time, ycaller(:sizey))
@@ -937,8 +965,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)
@@ -959,7 +987,7 @@ contains
 
             ycaller(:sizey) = ynew
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
             der(:sizey) = dydt(time, ycaller(:sizey))

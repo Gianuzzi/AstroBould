@@ -60,8 +60,8 @@ contains
 
         else if (which == 2) then
             embedded_ptr => Heun_Euler2_1
-            OSOL = 1
-            OAUX = 2
+            OSOL = 2  ! ynew is Heun (2nd order)
+            OAUX = 1  ! yauxi is Euler (1st order)
             n_stages = 2
 
         else if (which == 3) then
@@ -609,8 +609,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end, dt_used
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)
@@ -631,7 +631,7 @@ contains
 
             ycaller(:sizey) = ynew
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
             der(:sizey) = dydt(time, ycaller(:sizey))
@@ -659,8 +659,8 @@ contains
 
         integer(kind=4) :: sizey
         real(wp) :: time, t_end
-        logical :: keep = .True.
-        logical :: has_check = .False.
+        logical :: keep
+        logical :: has_check
 
         sizey = size(y)
         has_check = present(check_fun)
@@ -681,7 +681,7 @@ contains
 
             ycaller(:sizey) = ynew
 
-            dt_adap = min(dt_adap, t_end - time)
+            dt_adap = min(dt_adap, t_end - time, DT_MAX)  ! DT_MAX: physical step limit
             DT_MIN_NOW = min(DT_MIN, dt_adap)
 
             der(:sizey) = dydt(time, ycaller(:sizey))

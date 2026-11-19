@@ -8,7 +8,7 @@ program main
     use derivates, only: dydt, set_dydt
     use filtering, only: setup_filter, store_to_filter, free_filter
     use tomodule, only: read_tomfile, setup_TOM, free_tom
-    use surface, only: init_section, crossed_section, get_jacobi_constant
+    use surface, only: init_section, crossed_section
 
     implicit none
 
@@ -378,7 +378,7 @@ program main
             stop 1
         end if
         if (sim%use_screen) write (*, *) "Reading particles from file: ", trim(sim%particlesfile)
-        !!!! Formato: [mu, a, e, M, w, MMR]
+        !!!! Formato: [a, e, M, w, MMR]  (MMR optional)
         call read_columns_file(sim%particlesfile, aux_2D)
         sim%Nparticles = size(aux_2D, 1)
         if (sim%Nparticles == 0) then
@@ -392,10 +392,15 @@ program main
             write (*, s1i1) "  Read ", sim%Nparticles, " rows."
             write (*, s1i1) "  Read ", aux_int, " columns."
         end if
+        if (aux_int > 5) then
+            write (*, *) ACHAR(10)
+            write (*, s1i1) "ERROR: Particles file must have at most 5 columns [a, e, M, w, MMR]. Found:", aux_int
+            stop 1
+        end if
         call allocate_params_particles(sim%Nparticles)
         ! Fill the arrays
         particles_in = cero
-        do i = 1, min(aux_int, 6)
+        do i = 1, aux_int
             particles_in(:sim%Nparticles, i) = aux_2D(:, i)
         end do
         deallocate (aux_2D)
@@ -533,6 +538,10 @@ program main
                             & sim%eta_col, sim%f_col, &
                             & sim%manual_J2, sim%use_J2_from_primary, &
                             & sim%radius_particles*unit_dist)  ! Extra parameters
+
+    ! Effective J2 of the integrated asteroid (geometric elements)
+    call set_effective_J2(system%asteroid, sim%manual_J2, sim%gamma_J2, sim%use_J2_from_primary)
+    call recalculate_all(system)  ! Energy with the full asteroid potential (needs the J2 data above)
 
     ! <<<< Save initial data >>>>
     initial_system = system
@@ -760,8 +769,9 @@ program main
                 write (*, *) ACHAR(5)
             end if
         else if (sim%use_poly_omega_damp) then
-            call init_damping(sim%omega_exp_damp_poly_A, &
-                            & sim%omega_exp_damp_poly_A, &
+            ! omega = omega0 exp(A t^B)  =>  domega/dt = (A B) t^(B-1) omega
+            call init_damping(sim%omega_exp_damp_poly_A*sim%omega_exp_damp_poly_B, &
+                            & sim%omega_exp_damp_poly_B, &
                             & sim%omega_damp_active_time*unit_time, &
                             & 3)
 
@@ -945,10 +955,11 @@ program main
     !! Configuration
     if (sim%use_megno) then
         call init_megno(system, sim%megno_eps)
+        ! Nothing to do without particles (whatever the screen setting is)
+        if (sim%Npart_active == 0) sim%megno_active = .False.
         if (sim%use_screen) then
             if (sim%Npart_active == 0) then
                 write (*, *) "WARNING: MEGNO Activated but no particles found."
-                sim%megno_active = .False.
             else 
                 write (*, *) "ACTIVATED. Applied only in particles"
             end if
@@ -965,6 +976,13 @@ program main
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     call set_dydt(sim%use_sinodic)
+
+    ! Re-check of the hard-exit conditions on accepted states
+    dydt_recheck => dydt
+
+    ! Hard-sphere particle collisions: detected at every integrator step (not only at checkpoints),
+    ! if they are resolved (eta < 1) and the particles have a radius
+    use_hs_step_check = (sim%eta_col < uno) .and. (sim%Nparticles > 1) .and. (sim%radius_particles > cero)
 
     ! Initial message
     if (sim%use_screen) then
@@ -1001,9 +1019,9 @@ program main
             write (*, *) ACHAR(5)
             write (*, *) "ACTIVATED."
             if (sim%use_sinodic) then
-                write (*, *) " Working on inertial frame."
-            else
                 write (*, *) " Working on rotating frame."
+            else
+                write (*, *) " Working on inertial frame."
             end if
             write (*, *) ACHAR(5)
             write (*, *)    " Surface coordiante selected: " // section%name
@@ -1660,10 +1678,12 @@ program main
             timestep = next_time - time
 
             ! INTEGRATE
+            hard_exit = .False.  ! Only flags raised during this call matter
+            integration_stopped = .False.
             call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
             ! Check if it might be hard_exit
-            if (hard_exit) then
+            if (integration_stopped) then
 
                 !! If so, the dt used is in dt_adap
                 timestep = adaptive_timestep
@@ -1672,7 +1692,7 @@ program main
                 if (timestep > cero) then
                     is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                 else  ! Weird case of timestep 0
-                    is_premature_exit = next_time - time < myepsilon
+                    is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                 end if
 
             end if
@@ -1752,10 +1772,12 @@ program main
                 if (abs(timestep) < myepsilon) exit loop_until_first_filter !! Manual CHECK
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -1763,7 +1785,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < myepsilon
+                        is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                     end if
 
                 end if
@@ -1846,6 +1868,8 @@ program main
                 if (.not. sim%use_adaptive) adaptive_timestep_filt = fixed_timestep
 
                 ! INTEGRATE (without check)
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt, y_arr_new(:y_nvalues))
 
                 !! Update time
@@ -1903,10 +1927,12 @@ program main
                 timestep = next_time - time
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
 
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
@@ -1915,7 +1941,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < myepsilon
+                        is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                     end if
 
                 end if
@@ -1984,6 +2010,8 @@ program main
                 if (time > next_t_filt) then
 
                     ! We reset the system up to the tmp values
+                    ! Events up to the time reached so far were already written: do not write them again
+                    t_redo_until = max(t_redo_until, time)
                     j = tmp_j
                     sim = tmp_sim
                     time = tmp_time
@@ -1991,11 +2019,9 @@ program main
                     y_nvalues = tmp_y_nvalues
                     adaptive_timestep = tmp_adapt_timestep
                     y_arr(:y_nvalues) = tmp_y_arr(:y_nvalues)
-                    aux_int = unit_file  ! For coll/escp writing
-
-                else
-                    aux_int = -1  ! For coll/escp writing
-
+                    ! Masses/radii (and the asteroid data) may have changed after tmp: rebuild them
+                    call generate_arrays(system, m_arr, R_arr, y_arr_new)  ! y_arr_new only as scratch
+                    call update_forces_and_constants(system)
                 end if
 
                 !! Now we just need to integrate the normal system up to next filter time
@@ -2029,10 +2055,12 @@ program main
                     timestep = checkpoint_times(j) - time
 
                     ! INTEGRATE
+                    hard_exit = .False.  ! Only flags raised during this call matter
+                    integration_stopped = .False.
                     call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                     ! Check if it might be hard_exit
-                    if (hard_exit) then
+                    if (integration_stopped) then
                         !! If so, the dt used is in dt_adap
                         timestep = adaptive_timestep
 
@@ -2040,7 +2068,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                         else
-                            is_premature_exit = checkpoint_times(j) - time < myepsilon
+                            is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                         end if
                     end if
 
@@ -2059,7 +2087,7 @@ program main
                     if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                     ! Apply escapes and colissions and check
-                    call check_esc_and_col(sim, system, aux_int)
+                    call check_esc_and_col(sim, system, unit_file)  ! Already-written times are skipped
 
                     ! Update Nactive and y_nvalues if necessary
                     call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -2105,10 +2133,12 @@ program main
                     if (abs(timestep) < myepsilon) exit loop_until_second_filter !! Manual CHECK
 
                     ! INTEGRATE
+                    hard_exit = .False.  ! Only flags raised during this call matter
+                    integration_stopped = .False.
                     call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                     ! Check if it might be hard_exit
-                    if (hard_exit) then
+                    if (integration_stopped) then
                         !! If so, the dt used is in dt_adap
                         timestep = adaptive_timestep
 
@@ -2116,7 +2146,7 @@ program main
                         if (timestep > cero) then
                             is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                         else  ! Weird case of timestep 0
-                            is_premature_exit = next_time - time < myepsilon
+                            is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                         end if
 
                     end if
@@ -2226,6 +2256,8 @@ program main
                 if (.not. sim%use_adaptive) adaptive_timestep_filt = fixed_timestep
 
                 !! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time_filt, y_pre_filter(:y_nvalues), adaptive_timestep_filt, dydt, filter%dt,&
                                 &  y_arr_new(:y_nvalues))  ! No checks here
 
@@ -2278,10 +2310,12 @@ program main
                 timestep = checkpoint_times(j) - time
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -2289,7 +2323,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                     end if
                 end if
 
@@ -2356,6 +2390,8 @@ program main
             !! In this case, then next filter time has already passed
             if (time > next_t_filt) then
                 ! We reset the system up to the tmp values
+                ! Events up to the time reached so far were already written: do not write them again
+                t_redo_until = max(t_redo_until, time)
                 j = tmp_j
                 sim = tmp_sim
                 time = tmp_time
@@ -2363,11 +2399,9 @@ program main
                 y_nvalues = tmp_y_nvalues
                 adaptive_timestep = tmp_adapt_timestep
                 y_arr(:y_nvalues) = tmp_y_arr(:y_nvalues)
-                aux_int = unit_file  ! For coll/escp writing
-
-            else
-                aux_int = -1  ! For coll/escp writing
-
+                ! Masses/radii (and the asteroid data) may have changed after tmp: rebuild them
+                call generate_arrays(system, m_arr, R_arr, y_arr_new)  ! y_arr_new only as scratch
+                call update_forces_and_constants(system)
             end if
 
             !! Now we just need to integrate the normal system up to next filter time
@@ -2393,10 +2427,12 @@ program main
                 timestep = checkpoint_times(j) - time
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -2404,7 +2440,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                     end if
                 end if
 
@@ -2423,7 +2459,7 @@ program main
                 if (sim%use_geometricfile) call update_chaos_geometric(system)
 
                 ! Apply escapes and colissions and check
-                call check_esc_and_col(sim, system, aux_int)
+                call check_esc_and_col(sim, system, unit_file)  ! Already-written times are skipped
 
                 ! Update Nactive and y_nvalues if necessary
                 call update_sim_from_system(sim, system, y_nvalues, regenerate_arrays)
@@ -2467,10 +2503,12 @@ program main
                 if (abs(timestep) < myepsilon) exit loop2_until_second_filter !! Manual EXIT
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -2478,7 +2516,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (next_time - (time + timestep))/timestep > 0.01e0_wp
                     else  ! Weird case of timestep 0
-                        is_premature_exit = next_time - time < myepsilon
+                        is_premature_exit = next_time - time > myepsilon  ! No progress: premature unless already there
                     end if
 
                 end if
@@ -2589,10 +2627,12 @@ program main
                 loop_surface: do while (timestep > tini)
                 
                     ! INTEGRATE
+                    hard_exit = .False.  ! Only flags raised during this call matter
+                    integration_stopped = .False.
                     call integrate(time, y_arr(:y_nvalues), tmp_adapt_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                     ! Check if it might be hard_exit
-                    if (hard_exit) then
+                    if (integration_stopped) then
                         !! If so, the dt used is in dt_adap
                         timestep = tmp_adapt_timestep
 
@@ -2601,7 +2641,7 @@ program main
                             is_premature_exit = ((checkpoint_times(j) - (time + timestep)) / timestep > 1e-3_wp) &
                                                 & .or. (timestep > surf_min_timestep) 
                         else
-                            is_premature_exit = checkpoint_times(j) - time < myepsilon
+                            is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                         end if
 
                         !! Do we leave?
@@ -2677,34 +2717,29 @@ program main
 
                                 ! Get crossing point, interpolated or not (only the needed components)
                                 if (sim%surface_use_interpolated) then
-                                    y_cross(1:2) = y_arr(1:2) + surf_alpha_this * (y_arr_new(1:2) - y_arr(1:2))
+                                    y_cross(1:6) = y_arr(1:6) + surf_alpha_this * (y_arr_new(1:6) - y_arr(1:6))
                                     y_cross(i:i+3) = y_arr(i:i+3) + surf_alpha_this * (y_arr_new(i:i+3) - y_arr(i:i+3))
                                 else if (surf_alpha_this > uno2) then
-                                    y_cross(1:2) = y_arr_new(1:2)  ! Non-interpolated next crossing point
+                                    y_cross(1:6) = y_arr_new(1:6)  ! Non-interpolated next crossing point
                                     y_cross(i:i+3) = y_arr_new(i:i+3)
                                 else
-                                    y_cross(1:2) = y_arr(1:2)  ! Non-interpolated previous crossing point
+                                    y_cross(1:6) = y_arr(1:6)  ! Non-interpolated previous crossing point
                                     y_cross(i:i+3) = y_arr(i:i+3)
                                 end if
 
-                                ! Get jacobi constant
-                                if (sim%use_sinodic) then
-                                    jacobi_constant = get_jacobi_constant(&
-                                                    & y_cross(i), y_cross(i+1), &
-                                                    & y_cross(i+2), y_cross(i+3), &
-                                                    & boulders_data(0:, 1), &
-                                                    & boulders_coords(0:, :), &
-                                                    & system%asteroid%omega)
-                                else
-                                    ! Go to rotating frame to calculate jacobi
-                                    jacobi_constant = get_jacobi_constant(&
-                                                    & y_cross(i), y_cross(i+1), &
-                                                    & y_cross(i+2) + y_cross(i+1) * system%asteroid%omega, &
-                                                    & y_cross(i+3) - y_cross(i) * system%asteroid%omega, &
-                                                    & boulders_data(0:, 1), &
-                                                    & boulders_coords(0:, :), &
-                                                    & system%asteroid%omega)
-                                end if
+                                ! Jacobi constant, in the asteroid BODY frame (centred on its CM), with the
+                                ! same potential as the dynamics:  C = omega^2 r^2 + 2 U - v^2
+                                surf_rel(1:4) = y_cross(i:i+3) - y_cross(3:6)  ! Relative to the asteroid
+                                if (.not. sim%use_sinodic) then
+                                    ! Inertial: rotate by -theta, and remove omega x r from the velocity
+                                    surf_rel(1:2) = rotate2D(surf_rel(1:2), -y_cross(1))
+                                    surf_rel(3:4) = rotate2D(surf_rel(3:4), -y_cross(1))
+                                    surf_rel(3) = surf_rel(3) + y_cross(2)*surf_rel(2)
+                                    surf_rel(4) = surf_rel(4) - y_cross(2)*surf_rel(1)
+                                end if  ! Sinodic: the state is already in the body frame
+                                jacobi_constant = y_cross(2)**2*(surf_rel(1)**2 + surf_rel(2)**2) &
+                                                & + dos*body_frame_potential(surf_rel(1), surf_rel(2)) &
+                                                & - (surf_rel(3)**2 + surf_rel(4)**2)
 
                                 ! Write surface crossing to file, with this particle's interpolated values
                                 write(u_surfacefile, '(I8,1X,8(E23.15,1X))') &
@@ -2749,10 +2784,12 @@ program main
             else
 
                 ! INTEGRATE
+                hard_exit = .False.  ! Only flags raised during this call matter
+                integration_stopped = .False.
                 call integrate(time, y_arr(:y_nvalues), adaptive_timestep, dydt, timestep, y_arr_new(:y_nvalues), check_func)
 
                 ! Check if it might be hard_exit
-                if (hard_exit) then
+                if (integration_stopped) then
                     !! If so, the dt used is in dt_adap
                     timestep = adaptive_timestep
 
@@ -2760,7 +2797,7 @@ program main
                     if (timestep > cero) then
                         is_premature_exit = (checkpoint_times(j) - (time + timestep))/timestep > 0.01e0_wp
                     else
-                        is_premature_exit = checkpoint_times(j) - time < myepsilon
+                        is_premature_exit = checkpoint_times(j) - time > myepsilon  ! No progress: premature unless already there
                     end if
                 end if
 
@@ -2793,7 +2830,9 @@ program main
             if (sim%use_percentage) call percentage(time, sim%final_time)
 
             ! Check update from TOM
-            if (checkpoint_is_tom(j) .and. (tom%index_number <= tom%total_number)) then
+            ! Only once the checkpoint is actually reached (not on a premature exit, after which
+            ! the same checkpoint j is integrated to again)
+            if (checkpoint_is_tom(j) .and. (tom%index_number <= tom%total_number) .and. (.not. is_premature_exit)) then
                 if (tom%use_domega) call spin_asteroid(system%asteroid, &
                                                      & system%asteroid%theta, &
                                                      & system%asteroid%omega + tom%deltaomega(tom%index_number))
@@ -2927,7 +2966,8 @@ program main
                 !! Chaosfile
                 inquire (unit=u_filtchaosfile, opened=aux_logical)
                 if (.not. aux_logical) then
-                    open (unit=u_filtchaosfile, file=trim(sim%chaosfile), status='unknown', action='write')
+                    open (unit=u_filtchaosfile, file=trim(sim%filter_prefix)//trim(sim%chaosfile), &
+                        & status='unknown', action='write')  ! Not the unfiltered chaos file
                 else
                     rewind (u_filtchaosfile)
                 end if
@@ -2936,7 +2976,7 @@ program main
                 !! Mensaje
                 if (sim%use_screen) then
                     write (*, *) ACHAR(10)
-                    write (*, *) "Filterd chaos data saved into: ", "fil"//trim(sim%chaosfile)
+                    write (*, *) "Filterd chaos data saved into: ", trim(sim%filter_prefix)//trim(sim%chaosfile)
                 end if
             end if
             if (sim%use_datascreen) then
