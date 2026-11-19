@@ -102,6 +102,31 @@ contains
 
     end subroutine set_pos_derivatives
 
+    !> Tangent acceleration J d of a test particle in the ellipsoid field, in the BODY frame:
+    !> J = -Hessian(Phi), Phi = -GM [1/r - K/(3 r^3) + L (x^2 - y^2)/r^5] (the potential of the
+    !> accelerations used here). With P = x^2 - y^2:
+    !>   J_ij = GM/r^5 [3 x_i x_j - r^2 d_ij + K (d_ij - 5 x_i x_j/r^2)
+    !>                  + L (P_ij - 5 (P_i x_j + P_j x_i)/r^2 - 5 P d_ij/r^2 + 35 P x_i x_j/r^4)]
+    pure function ellipsoid_tangent_acc(pb, db, GM, K, L) result(w)
+        implicit none
+        real(wp), intent(in) :: pb(2), db(2), GM, K, L
+        real(wp) :: w(2)
+        real(wp) :: x, y, r2, P, J11, J12, J22, fac
+
+        x = pb(1)
+        y = pb(2)
+        r2 = x*x + y*y
+        P = x*x - y*y
+        J11 = 3*x*x - r2 + K*(uno - 5*x*x/r2) &
+            & + L*(dos - 20*x*x/r2 - 5*P/r2 + 35*P*x*x/(r2*r2))
+        J22 = 3*y*y - r2 + K*(uno - 5*y*y/r2) &
+            & + L*(-dos + 20*y*y/r2 - 5*P/r2 + 35*P*y*y/(r2*r2))
+        J12 = 3*x*y - 5*K*x*y/r2 + L*(35*P*x*y/(r2*r2))  ! P_x y + P_y x = 2xy - 2xy = 0
+        fac = GM/(r2*r2*sqrt(r2))
+        w(1) = fac*(J11*db(1) + J12*db(2))
+        w(2) = fac*(J12*db(1) + J22*db(2))
+    end function ellipsoid_tangent_acc
+
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!                       GRAVITATIONAL DERIVATIVES                         !!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -554,7 +579,14 @@ contains
                               &  - K_coef*dr_vec(2)*inv_dr2 &
                               &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_eff) )
 
-                ! TODO: variational equations for ellipsoid case (need to derive and implement)
+                ! Variational [MEGNO]: J d in the body frame (rotate d by -theta, and the result back)
+                if (sim%megno_active) then
+                    aux_real2 = ellipsoid_tangent_acc(xy_rotated, &
+                              & (/ coords_V(1)*cth + coords_V(2)*sth, -coords_V(1)*sth + coords_V(2)*cth /), &
+                              & Gmast, K_coef, L_coef)
+                    der(vdx + 2) = der(vdx + 2) + aux_real2(1)*cth - aux_real2(2)*sth
+                    der(vdx + 3) = der(vdx + 3) + aux_real2(1)*sth + aux_real2(2)*cth
+                end if
 
             else if (use_manual_J2_from_cm) then
                 acc_grav = Gmi_r3*dr_vec*J2K_coef*inv_dr2
@@ -1028,21 +1060,13 @@ contains
 
                 acc_grav = -Gmi_r3*dr_vec*aux_real2
 
-                ! TODO: Check variational
-                ! if (sim%megno_active) then
-                !     aux_real = dr_vec(1) * dr_vec(2) * (3.0_wp - 5 * K_coef * inv_dr2 + 7 * L_coef * Q_eff)
-
-                !     der(vdx + 2) = der(vdx + 2) - Gmi_r3 * (coords_V(1) *  ( &
-                !             & aux_real2(1) * (uno - 3 * dr_vec(1)**2 * inv_dr2) + &
-                !             & 2*dr_vec(1)*inv_dr2*( (K_coef + 2*L_coef)*inv_dr2 + 5*L_coef*(inv_dr2 - 0.4_wp*Q_eff) ) )&
-                !         & + coords_V(2)*aux_real)
-
-                !     der(vdx + 3) = der(vdx + 3) - Gmi_r3 * (coords_V(2) *  ( &
-                !             & aux_real2(2) * (uno - 3 * dr_vec(2)**2 * inv_dr2) + &
-                !             & 2*dr_vec(2)*inv_dr2*( (K_coef - 2*L_coef)*inv_dr2 + 5*L_coef*(-inv_dr2 - 0.4_wp*Q_eff) ) )&
-                !         & + coords_V(1)*aux_real)
-                    
-                ! end if
+                ! Variational [MEGNO]: the rotating frame is the body frame (Coriolis and centrifugal
+                ! terms of the tangent equations are added below)
+                if (sim%megno_active) then
+                    aux_real2 = ellipsoid_tangent_acc(dr_vec, coords_V(1:2), Gmast, K_coef, L_coef)
+                    der(vdx + 2) = der(vdx + 2) + aux_real2(1)
+                    der(vdx + 3) = der(vdx + 3) + aux_real2(2)
+                end if
 
             else if (use_manual_J2_from_cm) then
                 acc_grav = Gmi_r3*dr_vec*J2K_coef*inv_dr2
