@@ -1779,10 +1779,6 @@ contains
         else if ((derived%integrator_ID == -1) .or. (derived%integrator_ID == -2)) then
             write (*, *) "ERROR: MEGNO can not be set with LeapFrog integrator yet."
             stop 1
-        else if (derived%use_triaxial) then
-            ! The variational equations of the ellipsoid potential are not implemented
-            write (*, *) "ERROR: MEGNO can not be set with a triaxial asteroid yet."
-            stop 1
         else if (derived%use_manual_J2 .and. derived%use_J2_from_primary) then
             ! The variational equations of the J2 from the primary are not implemented
             write (*, *) "ERROR: MEGNO can not be set with manual J2 from the primary yet."

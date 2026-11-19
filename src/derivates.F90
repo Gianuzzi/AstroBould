@@ -61,6 +61,31 @@ contains
         idx = 4*(Ntotal + 1) - 1 + 7*(i - first_particle)
     end function get_variational_index
 
+    !> Tangent acceleration J d of a test particle in the ellipsoid field, in the BODY frame:
+    !> J = -Hessian(Phi), Phi = -GM [1/r - K/(3 r^3) + L (x^2 - y^2)/r^5] (the potential of the
+    !> accelerations used here). With P = x^2 - y^2:
+    !>   J_ij = GM/r^5 [3 x_i x_j - r^2 d_ij + K (d_ij - 5 x_i x_j/r^2)
+    !>                  + L (P_ij - 5 (P_i x_j + P_j x_i)/r^2 - 5 P d_ij/r^2 + 35 P x_i x_j/r^4)]
+    pure function ellipsoid_tangent_acc(pb, db, GM, K, L) result(w)
+        implicit none
+        real(wp), intent(in) :: pb(2), db(2), GM, K, L
+        real(wp) :: w(2)
+        real(wp) :: x, y, r2, P, J11, J12, J22, fac
+
+        x = pb(1)
+        y = pb(2)
+        r2 = x*x + y*y
+        P = x*x - y*y
+        J11 = 3*x*x - r2 + K*(uno - 5*x*x/r2) &
+            & + L*(dos - 20*x*x/r2 - 5*P/r2 + 35*P*x*x/(r2*r2))
+        J22 = 3*y*y - r2 + K*(uno - 5*y*y/r2) &
+            & + L*(-dos + 20*y*y/r2 - 5*P/r2 + 35*P*y*y/(r2*r2))
+        J12 = 3*x*y - 5*K*x*y/r2 + L*(35*P*x*y/(r2*r2))  ! P_x y + P_y x = 2xy - 2xy = 0
+        fac = GM/(r2*r2*sqrt(r2))
+        w(1) = fac*(J11*db(1) + J12*db(2))
+        w(2) = fac*(J12*db(1) + J22*db(2))
+    end function ellipsoid_tangent_acc
+
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!! DERIVATIVES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -348,69 +373,13 @@ contains
                                 &  - K_coef*dr_vec(2)*inv_dr2 &
                                 &  - L_coef*(dQdy*inv_dr2 - dr_vec(2)*Q_eff) )
                 
-                ! ! Variational [MEGNO]
-                ! if (sim%megno_active) then
-                !     vdx = get_variational_index(j, first_particle, N_total)
-                !     coords_P = y(vdx:vdx + 3)  ! Variational particle
-                    
-
-                !     ! dvx = mu / r³ * (r² * (-dy (K - 3 r²) x y + dx (4 x⁴ + 5 x² y² + y⁴ - K (2 x² + y²))) &
-                !     !                 & + L (6 dx x⁴ - 17 dy x³ y + 9 dx x² y² - 7 dy x y³ - 7 dx y⁴) cos(2th) &
-                !     !                 & + 2 L (4 dy x⁴ + 4 dx x³ y - 3 dy x² y² + 9 dx x y³ - 2 dy y⁴) sin(2th))
-                !     der(vdx + 2) = der(vdx + 2) + aux_real*m_arr(1) * (&
-                !                 & dr2*( &
-                !                         & -coords_P(2)*(K_coef - 3*dr2)*dr_vec(1)*dr_vec(2) &
-                !                         & + coords_P(1)*(&
-                !                             & 3*dr_vec(1)**4 &
-                !                             & + 5*(dr_vec(1)*dr_vec(2))**2 &
-                !                             & + dr2*dr2 &
-                !                             & - K_coef*(dr_vec(1)**2 + dr2 ) &
-                !                             & ) &
-                !                         & ) &
-                !                 & + L_coef*( &
-                !                         & 6*coords_P(1)*dr_vec(1)**4 &
-                !                         & -17*coords_P(2)*dr_vec(1)**3*dr_vec(2) &
-                !                         & + 9*coords_P(1)*(dr_vec(1)*dr_vec(2))**2 &
-                !                         & -7*coords_P(2)*dr_vec(1)*dr_vec(2)**3 &
-                !                         & -7*coords_P(1)*dr_vec(2)**4 &
-                !                         & )*c2th &
-                !                 & + 2*L_coef*( &
-                !                           & 4*coords_P(2)*dr_vec(1)**4 &
-                !                           & + 4*coords_P(1)*dr_vec(1)**3*dr_vec(2) &
-                !                           & -3*coords_P(2)*(dr_vec(1)*dr_vec(2))**2 &
-                !                           & +9*coords_P(1)*dr_vec(1)*dr_vec(2)**3 &
-                !                           & -2*coords_P(2)*dr_vec(2)**4 &
-                !                           & )*s2th)
-                    
-                !     ! dvy = mu / r³ * (r² * (-dx (K - 3 r²) x y + dy (x⁴ + 5 x² y² + 4 y⁴ - K (x² + 2 y²))) &
-                !     !                 & + L (7 dy x⁴ + 7 dx x³ y - 9 dy x² y² + 17 dy x y³ - 6 dy y⁴) cos(2th) &
-                !     !                 & - 2 L (2 dx x⁴ - 9 dy x³ y + 3 dx x² y² - 4 dx x y³ - 4 dx y⁴) sin(2th))
-                !     der(vdx + 3) = der(vdx + 3) + aux_real*m_arr(1) * (&
-                !                 & dr2*( &
-                !                         & -coords_P(1)*(K_coef - 3*dr2)*dr_vec(1)*dr_vec(2) &
-                !                         & + coords_P(2)*(&
-                !                             & dr2*dr2 &
-                !                             & + 5*(dr_vec(1)*dr_vec(2))**2 &
-                !                             & + 3*dr_vec(2)**4 &
-                !                             & - K_coef*(dr2 + dr_vec(2)**2) &
-                !                             & ) &
-                !                         & ) &
-                !                 & + L_coef*( &
-                !                         & 7*coords_P(2)*dr_vec(1)**4 &
-                !                         & + 7*coords_P(1)*dr_vec(1)**3*dr_vec(2) &
-                !                         & -9*coords_P(2)*(dr_vec(1)*dr_vec(2))**2 &
-                !                         & + 17*coords_P(1)*dr_vec(1)*dr_vec(2)**3 &
-                !                         & -6*coords_P(2)*dr_vec(2)**4 &
-                !                         & )*c2th &
-                !                 & + 2*L_coef*( &
-                !                           & 2*coords_P(1)*dr_vec(1)**4 &
-                !                           & -9*coords_P(2)*dr_vec(1)**3*dr_vec(2) &
-                !                           & + 3*coords_P(1)*(dr_vec(1)*dr_vec(2))**2 &
-                !                           & -4*coords_P(2)*dr_vec(1)*dr_vec(2)**3 &
-                !                           & -4*coords_P(1)*dr_vec(2)**4 &
-                !                           & )*s2th)
-
-                ! end if
+                ! Variational [MEGNO]: J d in the body frame, rotated back
+                if (sim%megno_active) then
+                    vdx = get_variational_index(j, first_particle, N_total)
+                    der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) + rotate2D( &
+                        & ellipsoid_tangent_acc(xy_rotated, rotate2D(y(vdx:vdx + 1), -theta), &
+                        &                       Gmast, K_coef, L_coef), theta)
+                end if
 
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
@@ -1027,6 +996,13 @@ contains
                 acc_grav(2) = -(Gmast*inv_dr3)*dr_vec(2)*( uno &
                                 &  - K_coef*inv_dr2 &
                                 &  - L_coef*(-dos*inv_dr2 - Q_eff) )
+
+                ! Variational [MEGNO]: J d (body frame = this frame)
+                if (sim%megno_active) then
+                    vdx = get_variational_index(j, first_particle, N_total)
+                    der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) &
+                        & + ellipsoid_tangent_acc(dr_vec, y(vdx:vdx + 1), Gmast, K_coef, L_coef)
+                end if
 
             ! ---> Manual J2 from asteroid CM <---
             else if (use_manual_J2_from_cm) then
