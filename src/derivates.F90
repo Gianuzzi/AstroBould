@@ -97,7 +97,7 @@ contains
         real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(size(y))       :: der
         real(wp) :: theta, omega
-        real(wp) :: coords_A(4), coords_M(4), coords_P(4), dr_vec(2), dr, dr2
+        real(wp) :: coords_A(4), coords_M(4), coords_P(4), coords_V(4), dr_vec(2), dr, dr2
         real(wp) :: acc_grav(2), acc_grav_m(2), torque
         integer(kind=4) :: i, idx
         integer(kind=4) :: j, jdx
@@ -390,20 +390,20 @@ contains
                 ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                     
                     inv_dr7 = inv_dr3 * inv_dr3 / dr
                     aux_real = Gmast*J2K_coef*inv_dr7
 
                     ! dvx = mu J2k / r⁷ * (-5 dy x y + dx (-4 x² + y²))
                     der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & + coords_P(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
+                            & -5*coords_V(2)*dr_vec(1)*dr_vec(2) &
+                            & + coords_V(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
                     
                     ! dvy = mu J2k / r⁷ * (-5 dx x y + dy (x² - 4 y²))
                     der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & -5*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & + coords_P(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
+                            & -5*coords_V(1)*dr_vec(1)*dr_vec(2) &
+                            & + coords_V(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
 
                 end if
 
@@ -418,19 +418,19 @@ contains
                 ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                     
                     aux_real = Gmboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
 
                     ! dvx = - mu / (r² + rz²)²·⁵ * (-3 dy x y + dx (-2 x² + y² + rz²))
                     der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & 3*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
+                            & 3*coords_V(2)*dr_vec(1)*dr_vec(2) &
+                            & - coords_V(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
                     
                     ! dvy = mu / (r² + rz²)²·⁵ * (3 dx x y - dy (x² - 2 y² + rz²))
                     der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & 3*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
+                            & 3*coords_V(1)*dr_vec(1)*dr_vec(2) &
+                            & - coords_V(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
 
                 end if
 
@@ -615,10 +615,10 @@ contains
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                         
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                            & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
 
@@ -706,10 +706,10 @@ contains
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                         
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                            & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
 
@@ -756,10 +756,10 @@ contains
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
 
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
 
                     der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) + aux_real / dr2 * &
-                        & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec)
+                        & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec)
 
                 end if
 
@@ -889,7 +889,7 @@ contains
         real(wp), dimension(:), intent(in) :: y
         real(wp), dimension(size(y))       :: der
         real(wp) :: theta, omega
-        real(wp) :: coords_P(4), dr_vec(2), dr, dr2
+        real(wp) :: coords_P(4), coords_V(4), dr_vec(2), dr, dr2
         real(wp) :: acc_grav(2)
         integer(kind=4) :: i, idx
         integer(kind=4) :: j, jdx
@@ -1013,20 +1013,20 @@ contains
                 ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                     
                     inv_dr7 = inv_dr3 * inv_dr3 / dr
                     aux_real = Gmast*J2K_coef*inv_dr7
 
                     ! dvx = mu J2k / r⁷ * (-5 dy x y + dx (-4 x² + y²))
                     der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & -5*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & + coords_P(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
+                            & -5*coords_V(2)*dr_vec(1)*dr_vec(2) &
+                            & + coords_V(1)*(-5*dr_vec(1)*dr_vec(1) + dr2))
                     
                     ! dvy = mu J2k / r⁷ * (-5 dx x y + dy (x² - 4 y²))
                     der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & -5*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & + coords_P(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
+                            & -5*coords_V(1)*dr_vec(1)*dr_vec(2) &
+                            & + coords_V(2)*(dr2 - 5*dr_vec(2)*dr_vec(2)))
 
                 end if
 
@@ -1041,19 +1041,19 @@ contains
                 ! Variational [MEGNO]
                 if (sim%megno_active) then
                     vdx = get_variational_index(j, first_particle, N_total)
-                    coords_P = y(vdx:vdx + 3)  ! Variational particle
+                    coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                     
                     aux_real = Gmboulder_z_coef/(dr2 + dz2_boulder_z_coef)**(2.5e0_wp)
 
                     ! dvx = - mu / (r² + rz²)²·⁵ * (-3 dy x y + dx (-2 x² + y² + rz²))
                     der(vdx + 2) = der(vdx + 2) + aux_real*(&
-                            & 3*coords_P(2)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
+                            & 3*coords_V(2)*dr_vec(1)*dr_vec(2) &
+                            & - coords_V(1)*(-3*dr_vec(1)*dr_vec(1) + dr2 + dz2_boulder_z_coef))
                     
                     ! dvy = mu / (r² + rz²)²·⁵ * (3 dx x y - dy (x² - 2 y² + rz²))
                     der(vdx + 3) = der(vdx + 3) + aux_real*(&
-                            & 3*coords_P(1)*dr_vec(1)*dr_vec(2) &
-                            & - coords_P(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
+                            & 3*coords_V(1)*dr_vec(1)*dr_vec(2) &
+                            & - coords_V(2)*(dr2 - 3*dr_vec(2)*dr_vec(2) + dz2_boulder_z_coef))
 
                 end if
 
@@ -1069,15 +1069,15 @@ contains
             ! Variational [MEGNO]
             if (sim%megno_active) then
                 vdx = get_variational_index(j, first_particle, N_total)
-                coords_P = y(vdx:vdx + 3)  ! Variational particle
+                coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
 
                 ! Coriolis
-                der(vdx + 2) = der(vdx + 2) + 2 * omega * coords_P(4)
-                der(vdx + 3) = der(vdx + 3) - 2 * omega * coords_P(3)
+                der(vdx + 2) = der(vdx + 2) + 2 * omega * coords_V(4)
+                der(vdx + 3) = der(vdx + 3) - 2 * omega * coords_V(3)
 
                 ! Centrifugal
-                der(vdx + 2) = der(vdx + 2) + omega*omega * coords_P(1)
-                der(vdx + 3) = der(vdx + 3) + omega*omega * coords_P(2)
+                der(vdx + 2) = der(vdx + 2) + omega*omega * coords_V(1)
+                der(vdx + 3) = der(vdx + 3) + omega*omega * coords_V(2)
 
             end if
 
@@ -1180,10 +1180,10 @@ contains
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                         
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                            & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
 
@@ -1231,10 +1231,10 @@ contains
                     if (sim%megno_active) then
                         vdx = get_variational_index(j, first_particle, N_total)
 
-                        coords_P = y(vdx:vdx + 3)  ! Variational particle
+                        coords_V = y(vdx:vdx + 3)  ! Variational particle (tangent vector)
                         
                         der(vdx + 2:vdx + 3) = der(vdx + 2:vdx + 3) - Gmi * &
-                            & ( coords_P(1:2)*dr2 - 3 * dot_product(dr_vec,coords_P(1:2))*dr_vec) / (dr2*dr2*dr)
+                            & ( coords_V(1:2)*dr2 - 3 * dot_product(dr_vec,coords_V(1:2))*dr_vec) / (dr2*dr2*dr)
 
                     end if
 
